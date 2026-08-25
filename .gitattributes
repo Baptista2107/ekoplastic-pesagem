@@ -1,0 +1,72 @@
+# ============================================================
+# Ekoplastic Pesagem - normalizacao de fim de linha
+# ============================================================
+# CRITICO: .bat SO funciona no Windows com CRLF. Sem a regra
+# abaixo o git converte para LF e quebra o INICIAR.bat - labels
+# e "goto" param de funcionar - ou seja, quebra a inicializacao.
+
+* text=auto
+
+# --- Precisam OBRIGATORIAMENTE de CRLF - Windows ---
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+*.ps1  text eol=crlf
+
+# ============================================================
+# EXCECAO OBRIGATORIA: enviar_raw.ps1
+# ============================================================
+# Este arquivo NAO e' fonte editada a mao: o server.js o
+# regenera. Veja garantirScriptImpressao no server.js - a cada
+# boot ele compara o arquivo em disco com a constante
+# ENVIAR_RAW_PS1 e, se houver QUALQUER diferenca de byte, faz
+# backup em .bak e reescreve o arquivo.
+#
+# A constante vive dentro do server.js, que e' armazenado com LF.
+# Logo o server.js SEMPRE escreve enviar_raw.ps1 com LF.
+#
+# Se o git entregasse este arquivo com CRLF, entao a cada boot:
+#   1. o server veria diferenca e reescreveria o arquivo em LF
+#   2. o "git status" ficaria sujo permanentemente
+#   3. o "git pull" do ATUALIZAR.bat FALHARIA no Mini PC com
+#      "your local changes would be overwritten"
+#
+# Por isso este arquivo - e SO ele - fica em LF, identico ao que
+# o server.js escreve. Confirmado: o arquivo em producao ja' e'
+# LF e a impressao funciona.
+enviar_raw.ps1  text eol=lf
+
+# --- Codigo e texto: LF no repositorio ---
+*.js   text eol=lf
+*.json text eol=lf
+*.md   text eol=lf
+*.html text eol=lf
+*.txt  text eol=lf
+
+# --- Binarios: nunca converter ---
+*.pdf  binary
+*.png  binary
+*.jpg  binary
+*.ico  binary
+*.node binary
+*.exe  binary
+*.dll  binary
+
+# --- Artefatos de build nativo - serialport / node-gyp ---
+*.lib    binary
+*.a      binary
+*.o      binary
+*.obj    binary
+*.pdb    binary
+*.exp    binary
+*.so     binary
+*.dylib  binary
+*.swf    binary
+
+# ============================================================
+# node_modules VENDORIZADO: byte a byte, sem normalizacao
+# ============================================================
+# O node_modules e' versionado de proposito - decisao 4.1.3. Ele
+# carrega o binario nativo do serialport. "-text" desliga
+# qualquer conversao de fim de linha ali dentro, garantindo que o
+# que o Mini PC recebe no clone e' byte a byte o que foi commitado.
+node_modules/** -text

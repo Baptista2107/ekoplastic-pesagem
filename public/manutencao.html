@@ -1,0 +1,1178 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Ekoplastic · Opções</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;700&family=Nunito:wght@600;700;800;900&display=swap');
+
+:root {
+  --bg:       #0d0f14;
+  --surface:  #161a23;
+  --panel:    #1e2330;
+  --panel-hi: #252b3d;
+  --border:   #2a3045;
+  --text:     #e8eaf0;
+  --muted:    #6b7490;
+  --entrada:  #00d4ff;
+  --devol:    #00ff9d;
+  --danger:   #ff4466;
+  --warn:     #ffaa00;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  min-height: 100vh;
+  font-family: 'Nunito', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+header {
+  height: 56px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 28px;
+}
+.logo {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 18px; font-weight: 700; letter-spacing: 3px;
+  color: var(--entrada);
+}
+.sub { font-size: 11px; color: var(--muted); letter-spacing: 1.5px; margin-top: 2px; }
+.btn-icon {
+  background: transparent; border: 1px solid var(--border);
+  border-radius: 6px; width: 32px; height: 32px;
+  color: var(--muted); font-size: 14px; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.btn-icon:hover { color: var(--text); border-color: var(--panel-hi); }
+
+main {
+  padding: 40px 28px;
+  max-width: 980px;
+  margin: 0 auto;
+}
+h1 {
+  font-size: 22px; font-weight: 900;
+  letter-spacing: 1px;
+  margin-bottom: 4px;
+}
+.h-sub { font-size: 12px; color: var(--muted); margin-bottom: 30px; letter-spacing: 1px; }
+.h2 {
+  font-size: 11px; letter-spacing: 3px; font-weight: 800;
+  color: var(--muted); text-transform: uppercase;
+  margin: 30px 0 12px;
+}
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 22px;
+  margin-bottom: 14px;
+}
+.card-titulo {
+  font-size: 14px; font-weight: 800; letter-spacing: 1px;
+  margin-bottom: 6px;
+}
+.card-desc {
+  font-size: 12px; color: var(--muted);
+  margin-bottom: 18px; line-height: 1.5;
+}
+.card-acoes { display: flex; gap: 10px; flex-wrap: wrap; }
+.btn {
+  background: var(--panel-hi);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 18px;
+  color: var(--text);
+  font-family: 'Nunito', sans-serif;
+  font-size: 12px; font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-flex; align-items: center; gap: 8px;
+  transition: all 0.15s;
+}
+.btn:hover { background: var(--border); border-color: var(--muted); }
+.btn-primary { background: var(--entrada); color: #002a35; border-color: var(--entrada); }
+.btn-primary:hover { background: #00b3d8; border-color: #00b3d8; }
+
+.diag-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 10px;
+}
+.diag-item {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 16px;
+  display: flex; align-items: center; gap: 12px;
+}
+.diag-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
+.diag-dot.on  { background: var(--devol); box-shadow: 0 0 6px var(--devol); }
+.diag-dot.off { background: var(--danger); }
+.diag-dot.warn{ background: var(--warn); }
+.diag-info { flex: 1; min-width: 0; }
+.diag-titulo { font-size: 11px; font-weight: 800; letter-spacing: 1.5px; color: var(--muted); text-transform: uppercase; }
+.diag-valor  { font-size: 13px; font-weight: 700; margin-top: 2px;
+               font-family: 'IBM Plex Mono', monospace;
+               white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.json-raw {
+  margin-top: 10px;
+  background: #000;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  color: var(--devol);
+  max-height: 320px;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
+.rodape {
+  margin-top: 30px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--muted);
+}
+/* ═══ CÓDIGOS GRAVIMÉTRICOS (cadastro pela tela) ═══ */
+.cg-form { display: grid; grid-template-columns: 130px 1fr; gap: 10px 12px; align-items: center; max-width: 560px; }
+.cg-form label { font-size: 12px; color: var(--muted); font-weight: 700; letter-spacing: 0.5px; }
+.cg-form select, .cg-form input {
+  padding: 11px 12px; border: 1px solid var(--border); border-radius: 9px;
+  background: var(--bg); color: var(--text); font-size: 15px; width: 100%;
+}
+.cg-form input[readonly] { cursor: pointer; font-weight: 800; letter-spacing: 2px; font-family: monospace; }
+.cg-linha-cod { display: flex; gap: 8px; }
+.cg-msg { grid-column: 1 / -1; font-size: 13px; min-height: 20px; line-height: 1.5; }
+.cg-msg .ok    { color: var(--devol); }
+.cg-msg .erro  { color: var(--danger); }
+.cg-msg .aviso { color: var(--warn); }
+.cg-lista { margin-top: 18px; border-top: 1px solid var(--border); padding-top: 14px; }
+.cg-lista-tit { font-size: 11px; font-weight: 800; letter-spacing: 1.5px; color: var(--muted); text-transform: uppercase; margin-bottom: 10px; }
+.cg-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; background: var(--bg); margin-bottom: 6px; font-size: 13px; }
+.cg-item .cg-cod { font-family: monospace; font-weight: 800; color: var(--entrada); min-width: 74px; letter-spacing: 1px; }
+.cg-item .cg-desc { flex: 1; color: var(--text); }
+.cg-item .cg-del { background: none; border: 1px solid var(--border); color: var(--muted); border-radius: 7px; padding: 5px 10px; cursor: pointer; font-size: 12px; }
+.cg-item .cg-del:hover { border-color: var(--danger); color: var(--danger); }
+.cg-vazio { font-size: 13px; color: var(--muted); }
+/* ── Teclado alfanumérico na tela (Mini PC sem teclado físico) ── */
+.kb-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.80); display: none; align-items: center; justify-content: center; z-index: 9999; }
+.kb-overlay.ativo { display: flex; }
+.kb-box { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 20px; width: 620px; max-width: 96vw; }
+.kb-titulo { font-size: 15px; font-weight: 800; text-align: center; margin-bottom: 12px; }
+.kb-display { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; color: var(--entrada); font-size: 30px; font-weight: 800; letter-spacing: 4px; text-align: center; padding: 14px 10px; margin-bottom: 6px; min-height: 34px; font-family: monospace; }
+.kb-dica { font-size: 11px; color: var(--muted); text-align: center; margin-bottom: 12px; }
+.kb-linha { display: grid; gap: 6px; margin-bottom: 6px; }
+.kb-linha button { background: var(--panel-hi); border: 1px solid var(--border); color: var(--text); font-size: 19px; font-weight: 700; padding: 15px 0; border-radius: 8px; cursor: pointer; }
+.kb-linha button:active { background: var(--entrada); color: #002a35; }
+.kb-linha button.kb-aux { color: var(--muted); font-size: 16px; }
+/* "LIMPAR" é mais largo que uma letra — sem isso a última linha ficaria torta */
+.kb-linha button.kb-aux:last-child { font-size: 11px; font-weight: 800; letter-spacing: 0.5px; padding-left: 4px; padding-right: 4px; }
+.kb-acoes { display: grid; grid-template-columns: 1fr 1.2fr; gap: 10px; margin-top: 12px; }
+.kb-acoes button { padding: 15px 0; border-radius: 8px; font-size: 15px; font-weight: 800; cursor: pointer; border: 1px solid transparent; }
+.kb-cancel { background: var(--panel-hi); color: var(--text); border-color: var(--border); }
+.kb-ok { background: var(--devol); color: #062916; }
+  /* Categorias recolhíveis — a tela tinha cards demais lado a lado */
+  .grupo { border: 1px solid var(--border, #213029); border-radius: 14px; margin-bottom: 12px; overflow: hidden;
+           background: rgba(255,255,255,0.015); }
+  .grupo-cab { width: 100%; display: flex; align-items: center; gap: 14px; padding: 18px 20px;
+               background: transparent; border: none; color: inherit; cursor: pointer; text-align: left; font-family: inherit; }
+  .grupo-cab:hover { background: rgba(255,255,255,0.03); }
+  .grupo-cab .gi { font-size: 22px; }
+  .grupo-cab .gt { flex: 1; display: flex; flex-direction: column; gap: 3px; }
+  .grupo-cab .gt b { font-size: 16px; font-weight: 800; }
+  .grupo-cab .gt small { font-size: 12.5px; opacity: 0.6; }
+  .grupo-cab .gs { font-size: 16px; opacity: 0.5; transition: transform 0.2s; }
+  .grupo.aberto .gs { transform: rotate(180deg); }
+  .grupo-corpo { display: none; padding: 0 14px 14px; }
+  .grupo.aberto .grupo-corpo { display: block; }
+  .grupo .card { margin-bottom: 12px; }
+  .grupo .card:last-child { margin-bottom: 0; }
+  .sync-in { padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border, #2a3854);
+             background: rgba(0,0,0,0.3); color: inherit; font-size: 13px; font-family: inherit; }
+</style>
+</head>
+<body data-tela="Opções">
+
+<!-- Banner que aparece só quando a página é aberta via file:// (duplo-clique) -->
+<div id="banner-file" style="display:none; background:#ffaa00; color:#1a0f00; padding:14px 28px; font-weight:800; font-size:13px; letter-spacing:0.5px; text-align:center; border-bottom:2px solid #cc8800;">
+  ⚠ Esta página foi aberta direto do arquivo (file://). Para funcionar corretamente, acesse pelo navegador:
+  <code style="font-family:'IBM Plex Mono',monospace; background:rgba(0,0,0,0.15); padding:2px 8px; border-radius:4px; margin-left:6px;">http://localhost:3000/manutencao.html</code>
+  <span style="margin-left:8px; font-weight:600; opacity:0.7;">(usando URL absoluta como fallback)</span>
+</div>
+
+<header>
+  <div>
+    <div class="logo">EKOPLASTIC</div>
+    <div class="sub">Opções · uso administrativo</div>
+  </div>
+  <button class="btn-icon" onclick="location.href='/'" title="Voltar ao menu inicial">🏠</button>
+</header>
+
+<main>
+  <h1>Opções</h1>
+  <div class="h-sub">Diagnóstico, autenticação e ferramentas administrativas</div>
+
+  <div class="h2">Diagnóstico</div>
+  <div class="card">
+    <div class="card-desc">Status atualizado a cada 3 segundos. Use o botão para ver a resposta completa do servidor.</div>
+    <div class="diag-grid">
+      <div class="diag-item">
+        <span class="diag-dot" id="d-srv"></span>
+        <div class="diag-info">
+          <div class="diag-titulo">Servidor</div>
+          <div class="diag-valor" id="dv-srv">aguardando...</div>
+        </div>
+      </div>
+      <div class="diag-item">
+        <span class="diag-dot" id="d-bling"></span>
+        <div class="diag-info">
+          <div class="diag-titulo">Bling (OAuth)</div>
+          <div class="diag-valor" id="dv-bling">—</div>
+        </div>
+      </div>
+      <div class="diag-item">
+        <span class="diag-dot" id="d-bal"></span>
+        <div class="diag-info">
+          <div class="diag-titulo">Balança</div>
+          <div class="diag-valor" id="dv-bal">—</div>
+        </div>
+      </div>
+      <div class="diag-item">
+        <span class="diag-dot" id="d-impr"></span>
+        <div class="diag-info">
+          <div class="diag-titulo">Impressora</div>
+          <div class="diag-valor" id="dv-impr">—</div>
+        </div>
+      </div>
+      <div class="diag-item">
+        <span class="diag-dot on"></span>
+        <div class="diag-info">
+          <div class="diag-titulo">Banco SQLite</div>
+          <div class="diag-valor" id="dv-db">—</div>
+        </div>
+      </div>
+      <div class="diag-item">
+        <span class="diag-dot on"></span>
+        <div class="diag-info">
+          <div class="diag-titulo">Sessões abertas</div>
+          <div class="diag-valor" id="dv-sess">—</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-acoes" style="margin-top:16px;">
+      <button class="btn" onclick="toggleRaw()" id="btn-raw">VER RESPOSTA COMPLETA</button>
+      <a class="btn" href="/healthcheck" target="_blank">ABRIR /healthcheck</a>
+    </div>
+    <pre class="json-raw" id="raw" style="display:none;"></pre>
+  </div>
+
+  <div class="card">
+    <div class="card-titulo">Autenticação OAuth</div>
+    <div class="card-desc">
+      Refaz a autorização do servidor com sua conta Bling. Use quando o token expirar,
+      a integração reclamar de credenciais ou após trocar de conta. Uma nova aba será
+      aberta com a tela de login do Bling.
+    </div>
+    <div class="card-acoes">
+      <button class="btn btn-primary" onclick="autenticarBling()">🔑 AUTENTICAR BLING</button>
+    </div>
+  </div>
+
+  <section class="grupo" id="grp-operacao">
+    <button class="grupo-cab" onclick="alternarGrupo('operacao')">
+      <span class="gi">📋</span>
+      <span class="gt"><b>Telas de operação</b><small>Inventário e retirada de bobinas</small></span>
+      <span class="gs">▾</span>
+    </button>
+    <div class="grupo-corpo">
+  <div class="card">
+    <div class="card-titulo">📦 Inventário</div>
+    <div class="card-desc">
+      Contagem de estoque pelo celular: selecione o produto, bipe os big bags e compare com o saldo do Bling.
+      Abra pelo celular no mesmo Wi-Fi (ou aqui mesmo para conferir).
+    </div>
+    <div class="card-acoes">
+      <a class="btn btn-primary" href="/inventario.html" target="_top">📦 ABRIR INVENTÁRIO</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-titulo">🧵 Retirada de bobinas</div>
+    <div class="card-desc">
+      Baixa de bobinas pelo celular: o operador lê o código de barras da bobina e confirma —
+      cada bobina gera um pedido de venda próprio no Bling, descontando o estoque daquele
+      cor/tipo/largura.
+    </div>
+    <div class="card-acoes">
+      <a class="btn btn-primary" href="/retirada-bobinas.html" target="_top">🧵 ABRIR RETIRADA DE BOBINAS</a>
+    </div>
+  </div>
+    </div>
+  </section>
+
+  <section class="grupo" id="grp-acesso">
+    <button class="grupo-cab" onclick="alternarGrupo('acesso')">
+      <span class="gi">🔑</span>
+      <span class="gt"><b>Senhas e permissões</b><small>Colaboradores e senha do supervisor</small></span>
+      <span class="gs">▾</span>
+    </button>
+    <div class="grupo-corpo">
+  <div class="card">
+    <div class="card-titulo">👥 Colaboradores e senhas</div>
+    <div class="card-desc">
+      Cada colaborador tem uma senha numérica (PIN) própria para entrar nas telas de operação.
+      O nome dele fica gravado na sessão e sai no resumo impresso como responsável.
+    </div>
+    <div id="colab-lista" style="margin:14px 0;"></div>
+    <div style="display:grid; gap:10px; margin-bottom:12px;">
+      <input id="colab-nome" placeholder="Nome do colaborador" style="padding:12px; border-radius:9px; border:1px solid var(--border,#2a3854); background:rgba(0,0,0,0.25); color:inherit; font-size:15px; font-family:inherit;">
+      <input id="colab-pin" placeholder="Senha (4 a 8 números)" inputmode="numeric" style="padding:12px; border-radius:9px; border:1px solid var(--border,#2a3854); background:rgba(0,0,0,0.25); color:inherit; font-size:15px; font-family:inherit;">
+      <div style="display:flex; gap:16px; flex-wrap:wrap; font-size:14px; align-items:center;">
+        <span style="opacity:0.7">Acessa:</span>
+        <label><input type="checkbox" class="colab-tela" value="mp"> Matéria-Prima</label>
+        <label><input type="checkbox" class="colab-tela" value="pa"> Produto Acabado</label>
+        <label><input type="checkbox" class="colab-tela" value="bobinas"> Retirada de Bobinas</label>
+      </div>
+    </div>
+    <div class="card-acoes">
+      <button class="btn btn-primary" onclick="salvarColaborador()">💾 SALVAR COLABORADOR</button>
+    </div>
+    <div id="colab-msg" style="margin-top:10px; font-size:14px;"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-titulo">🔒 Senha do supervisor</div>
+    <div class="card-desc">
+      Esta senha protege a saída do sistema (ESC) e o acesso a esta tela de
+      Opções. Use de 4 a 8 dígitos. Após trocar, a nova senha vale
+      imediatamente para todas as telas.
+    </div>
+    <div style="display:flex;flex-direction:column;gap:10px;max-width:340px;margin-top:6px;">
+      <input id="snh-atual" type="password" inputmode="numeric" placeholder="Senha atual" autocomplete="off"
+             style="padding:11px 12px;border:1px solid #2a3550;border-radius:9px;background:#0e1524;color:#e8eefc;font-size:15px;" />
+      <input id="snh-nova" type="password" inputmode="numeric" placeholder="Nova senha (4 a 8 dígitos)" autocomplete="off"
+             style="padding:11px 12px;border:1px solid #2a3550;border-radius:9px;background:#0e1524;color:#e8eefc;font-size:15px;" />
+      <input id="snh-conf" type="password" inputmode="numeric" placeholder="Confirmar nova senha" autocomplete="off"
+             style="padding:11px 12px;border:1px solid #2a3550;border-radius:9px;background:#0e1524;color:#e8eefc;font-size:15px;" />
+      <div id="snh-msg" style="font-size:13px;min-height:18px;"></div>
+    </div>
+    <div class="card-acoes" style="margin-top:12px;">
+      <button class="btn btn-primary" onclick="trocarSenhaSupervisor()">💾 SALVAR NOVA SENHA</button>
+    </div>
+  </div>
+    </div>
+  </section>
+
+  <section class="grupo" id="grp-bling">
+    <button class="grupo-cab" onclick="alternarGrupo('bling')">
+      <span class="gi">↻</span>
+      <span class="gt"><b>Envios ao Bling</b><small>Pendentes e reenvio forçado</small></span>
+      <span class="gs">▾</span>
+    </button>
+    <div class="grupo-corpo">
+  <div class="card">
+    <div class="card-titulo">↻ Reenviar ao Bling (pendentes)</div>
+    <div class="card-desc">
+      Sessões já finalizadas cujo envio ao Bling não foi concluído (fornecedor sem cadastro,
+      erro de conexão, etc). Corrija a causa e clique em <b>Reenviar</b> — as etiquetas já bipadas
+      são reaproveitadas, sem reimprimir nem rebipar.
+    </div>
+    <div id="pend-lista" style="display:flex; flex-direction:column; gap:10px;">
+      <div style="color:var(--muted); font-size:13px;">Carregando...</div>
+    </div>
+    <div class="card-acoes" style="margin-top:14px;">
+      <button class="btn" onclick="carregarPendentesBling()">↻ ATUALIZAR LISTA</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-titulo">↻ Reenviar sessão JÁ enviada (forçar)</div>
+    <div class="card-desc">
+      Para uma sessão que <b>já foi enviada com sucesso</b> mas precisou ser corrigida
+      (ex.: material escolhido errado). Fluxo: corrija as etiquetas na tela de recebimento
+      (botão ✎) → <b>exclua o pedido antigo no Bling manualmente</b> → clique em
+      <b>Reenviar (forçar)</b> aqui. Isso gera um <b>novo pedido</b> no Bling com os dados
+      já corrigidos. Lista as sessões enviadas nas últimas 48h.
+    </div>
+    <div id="rec-lista" style="display:flex; flex-direction:column; gap:10px;">
+      <div style="color:var(--muted); font-size:13px;">Carregando...</div>
+    </div>
+    <div class="card-acoes" style="margin-top:14px;">
+      <button class="btn" onclick="carregarRecentesBling()">↻ ATUALIZAR LISTA</button>
+    </div>
+  </div>
+    </div>
+  </section>
+
+  <section class="grupo" id="grp-cadastros">
+    <button class="grupo-cab" onclick="alternarGrupo('cadastros')">
+      <span class="gi">🏷️</span>
+      <span class="gt"><b>Cadastros</b><small>Códigos gravimétricos e sincronização com o Bling</small></span>
+      <span class="gs">▾</span>
+    </button>
+    <div class="grupo-corpo">
+  <div class="card">
+    <div class="card-titulo">🔄 Sincronizar matéria-prima com o Bling</div>
+    <div class="card-desc">
+      Procura no Bling os produtos de matéria-prima que ainda não estão no sistema.
+      Ele já identifica material, cor e fornecedor pelo nome — você confere, informa o
+      código gravimétrico e confirma. Não precisa de nova versão do sistema.
+    </div>
+    <div class="card-acoes">
+      <button class="btn btn-primary" onclick="syncProcurar()">🔍 PROCURAR NOVOS</button>
+    </div>
+    <div id="sync-res" style="margin-top:14px;"></div>
+  </div>
+
+
+  <div class="card">
+    <div class="card-titulo">🏷️ Código gravimétrico (cadastro)</div>
+    <div class="card-desc">
+      Cadastre aqui o código da receita da balança para uma combinação de
+      <b>material + cor + fornecedor</b>. O fornecedor precisa já aparecer na tela de
+      Recebimento. Depois de salvar, o código vale assim que a tela de Recebimento
+      for aberta de novo.
+    </div>
+    <div class="cg-form">
+      <label for="cg-mat">Material</label>
+      <select id="cg-mat" onchange="cgMaterialMudou()"></select>
+
+      <label for="cg-cor">Cor</label>
+      <select id="cg-cor" onchange="cgPreencherExistente()"></select>
+
+      <label for="cg-forn">Fornecedor</label>
+      <select id="cg-forn" onchange="cgPreencherExistente()"></select>
+
+      <label for="cg-codigo">Código</label>
+      <div class="cg-linha-cod">
+        <input id="cg-codigo" readonly onclick="cgAbrirTeclado()" placeholder="toque para digitar" />
+        <button class="btn" onclick="cgAbrirTeclado()">⌨ TECLADO</button>
+      </div>
+
+      <div class="cg-msg" id="cg-msg"></div>
+    </div>
+    <div class="card-acoes" style="margin-top:12px;">
+      <button class="btn btn-primary" onclick="cgSalvar()">💾 SALVAR CÓDIGO</button>
+    </div>
+
+    <div class="cg-lista">
+      <div class="cg-lista-tit" id="cg-lista-tit">Códigos já cadastrados</div>
+      <div id="cg-lista"></div>
+    </div>
+  </div>
+    </div>
+  </section>
+
+
+
+  <div class="rodape">
+    Esta página é destinada a uso administrativo. Operadores devem usar o menu principal.
+  </div>
+</main>
+
+<!-- Teclado alfanumérico na tela (o Mini PC não tem teclado físico) -->
+<div class="kb-overlay" id="kb-modal">
+  <div class="kb-box">
+    <div class="kb-titulo" id="kb-titulo">Digite o código</div>
+    <div class="kb-display" id="kb-display">&nbsp;</div>
+    <div class="kb-dica">Letras e números — ex.: CAN6, COL8, NCAN3</div>
+    <div class="kb-linha" id="kb-l1" style="grid-template-columns:repeat(10,1fr)"></div>
+    <div class="kb-linha" id="kb-l2" style="grid-template-columns:repeat(10,1fr)"></div>
+    <div class="kb-linha" id="kb-l3" style="grid-template-columns:repeat(9,1fr)"></div>
+    <div class="kb-linha" id="kb-l4" style="grid-template-columns:repeat(9,1fr)"></div>
+    <div class="kb-acoes">
+      <button class="kb-cancel" onclick="kbCancelar()">Cancelar</button>
+      <button class="kb-ok" onclick="kbOk()">✓ OK</button>
+    </div>
+  </div>
+</div>
+
+<script src="/seguranca-saida.js"></script>
+
+<script>
+// Quando a página é servida pelo servidor (http://localhost:3000/manutencao.html),
+// URLs relativas funcionam normalmente. Quando aberta via file://
+// (duplo-clique no arquivo), precisamos de URL absoluta apontando pro servidor.
+// Detecta o caso e ajusta + mostra banner alertando o usuário.
+const URL_BASE = (location.protocol === 'file:' || location.protocol === 'about:')
+  ? 'http://localhost:3000'
+  : '';
+if (URL_BASE) {
+  document.getElementById('banner-file').style.display = 'block';
+}
+
+async function autenticarBling() {
+  try {
+    const r = await fetch(URL_BASE + '/bling/auth/start');
+    const d = await r.json();
+    if (d.authUrl) window.open(d.authUrl, '_blank');
+    else alert('Resposta inesperada do servidor.');
+  } catch(e) { alert('Erro ao iniciar autenticação: ' + e.message); }
+}
+
+function toggleRaw() {
+  const raw = document.getElementById('raw');
+  const btn = document.getElementById('btn-raw');
+  if (raw.style.display === 'none') {
+    raw.style.display = 'block';
+    btn.textContent = 'OCULTAR RESPOSTA';
+  } else {
+    raw.style.display = 'none';
+    btn.textContent = 'VER RESPOSTA COMPLETA';
+  }
+}
+
+async function atualizarDiagnostico() {
+  try {
+    const r = await fetch(URL_BASE + '/healthcheck');
+    const d = await r.json();
+
+    document.getElementById('raw').textContent = JSON.stringify(d, null, 2);
+
+    // Servidor
+    document.getElementById('d-srv').className = 'diag-dot on';
+    document.getElementById('dv-srv').textContent = 'online';
+
+    // Bling
+    const dotBling = document.getElementById('d-bling');
+    const valBling = document.getElementById('dv-bling');
+    if (d.bling && d.bling.autenticado) {
+      const min = d.bling.token_expira_em_s ? Math.round(d.bling.token_expira_em_s/60) : '?';
+      if (d.bling.simulacao) {
+        dotBling.className = 'diag-dot warn';
+        valBling.textContent = 'SIMULAÇÃO — não envia ao Bling';
+      } else {
+        dotBling.className = 'diag-dot on';
+        valBling.textContent = `OK (real) · renova em ${min}min`;
+      }
+    } else {
+      dotBling.className = 'diag-dot off';
+      valBling.textContent = 'NÃO AUTENTICADO';
+    }
+
+    // Balança
+    const dotBal = document.getElementById('d-bal');
+    const valBal = document.getElementById('dv-bal');
+    if (d.balanca && d.balanca.portaAberta) {
+      dotBal.className = 'diag-dot on';
+      valBal.textContent = `${d.balanca.porta || ''} · ${d.balanca.ultimoPeso !== null ? d.balanca.ultimoPeso.toFixed(1)+' kg' : 'aguardando'}`;
+    } else {
+      dotBal.className = 'diag-dot off';
+      valBal.textContent = `desconectada (${d.balanca?.porta || '?'})`;
+    }
+
+    // Impressora
+    const dotImp = document.getElementById('d-impr');
+    const valImp = document.getElementById('dv-impr');
+    if (d.impressora) {
+      dotImp.className = 'diag-dot on';
+      valImp.textContent = d.impressora;
+    } else if (d.impressao_simulada) {
+      dotImp.className = 'diag-dot warn';
+      valImp.textContent = 'nenhuma (modo simulação)';
+    } else {
+      dotImp.className = 'diag-dot off';
+      valImp.textContent = 'nenhuma';
+    }
+
+    // Banco
+    if (d.banco) {
+      document.getElementById('dv-db').textContent =
+        `${d.banco.etiquetas} etiq · ${d.banco.sessoes} sessões`;
+    }
+
+  } catch(e) {
+    document.getElementById('d-srv').className = 'diag-dot off';
+    document.getElementById('dv-srv').textContent = 'OFFLINE — ' + e.message;
+  }
+}
+
+async function atualizarSessoes() {
+  try {
+    const r = await fetch(URL_BASE + '/sessoes/abertas');
+    const d = await r.json();
+    if (!d.ok) return;
+    const ab = d.sessoes || [];
+    if (ab.length === 0) {
+      document.getElementById('dv-sess').textContent = 'nenhuma';
+    } else {
+      const resumo = ab.map(s => `#${s.id} ${s.tipo}`).join(' · ');
+      document.getElementById('dv-sess').textContent = resumo;
+    }
+  } catch(e) { /* silencioso */ }
+}
+
+atualizarDiagnostico();
+atualizarSessoes();
+setInterval(atualizarDiagnostico, 3000);
+setInterval(atualizarSessoes, 5000);
+
+// ── Reenviar ao Bling: lista sessões pendentes e reenvia com 1 clique ──
+async function carregarPendentesBling() {
+  const cont = document.getElementById('pend-lista');
+  if (!cont) return;
+  cont.innerHTML = '<div style="color:var(--muted); font-size:13px;">Carregando...</div>';
+  try {
+    const r = await fetch(URL_BASE + '/sessoes/pendentes-bling');
+    const d = await r.json();
+    if (!d.ok) throw new Error('resposta inesperada');
+    const ss = d.sessoes || [];
+    if (!ss.length) {
+      cont.innerHTML = '<div style="color:var(--devol); font-size:13px;">✓ Nenhuma sessão pendente — tudo enviado.</div>';
+      return;
+    }
+    cont.innerHTML = ss.map(s => {
+      const data = s.fim || s.inicio;
+      const dataFmt = data ? new Date(data).toLocaleString('pt-BR') : '—';
+      const statusLabel = s.bling_status === 'pendente_config' ? 'config faltando'
+                        : s.bling_status === 'erro' ? 'erro no envio' : 'pendente';
+      const corStatus = s.bling_status === 'erro' ? 'var(--danger)' : 'var(--warn)';
+      const detalhe = [
+        s.fornecedor ? 'Forn: ' + s.fornecedor : '',
+        s.total_etiquetas ? s.total_etiquetas + (s.total_etiquetas === 1 ? ' item' : ' itens') : '',
+        s.total_kg != null ? Number(s.total_kg).toFixed(1).replace('.', ',') + ' kg' : '',
+      ].filter(Boolean).join(' · ');
+      const erroSeguro = s.bling_erro ? String(s.bling_erro).replace(/</g, '&lt;') : '';
+      return `<div class="diag-item" style="flex-direction:column; align-items:stretch; gap:8px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+          <div style="min-width:0;">
+            <div style="font-size:13px; font-weight:800;">Sessão #${s.id} · ${s.tipo} <span style="color:${corStatus}; font-weight:700;">(${statusLabel})</span></div>
+            <div style="font-size:11px; color:var(--muted); font-family:'IBM Plex Mono',monospace; margin-top:3px;">${dataFmt}${detalhe ? ' · ' + detalhe : ''}</div>
+          </div>
+          <button class="btn btn-primary" id="rb-${s.id}" onclick="reenviarBling(${s.id})">↻ REENVIAR</button>
+        </div>
+        ${erroSeguro ? `<div style="font-size:11px; color:var(--muted); background:var(--bg); border:1px solid var(--border); border-radius:6px; padding:8px 10px; word-break:break-word;">${erroSeguro}</div>` : ''}
+        <div id="rb-msg-${s.id}" style="font-size:12px; min-height:0;"></div>
+      </div>`;
+    }).join('');
+  } catch(e) {
+    cont.innerHTML = '<div style="color:var(--danger); font-size:13px;">Erro ao carregar: ' + e.message + '</div>';
+  }
+}
+
+async function reenviarBling(id) {
+  const btn = document.getElementById('rb-' + id);
+  const msg = document.getElementById('rb-msg-' + id);
+  if (btn) { btn.disabled = true; btn.textContent = 'ENVIANDO...'; }
+  if (msg) { msg.style.color = 'var(--muted)'; msg.textContent = 'Reenviando ao Bling...'; }
+  try {
+    const r = await fetch(URL_BASE + '/sessoes/' + id + '/reenviar-bling', { method: 'POST' });
+    const d = await r.json();
+    const b = (d && d.bling) || {};
+    if (b.ok) {
+      if (msg) {
+        msg.style.color = '#16a34a';
+        msg.textContent = b.modo === 'simulacao' ? `✓ Enviado (simulação · ${b.bling_id})`
+                        : b.modo === 'sem_itens_bling' ? '✓ Concluído (sem itens p/ Bling)'
+                        : b.ja_enviado ? '✓ Já estava enviado'
+                        : `✓ Enviado ao Bling (pedido ${b.bling_id})`;
+      }
+      setTimeout(carregarPendentesBling, 1500);   // atualiza a lista (sessão sai dos pendentes)
+    } else {
+      if (msg) { msg.style.color = '#ff6b6b'; msg.textContent = '✗ ' + (b.erro || b.status || 'falhou'); }
+      if (btn) { btn.disabled = false; btn.textContent = '↻ REENVIAR'; }
+    }
+  } catch(e) {
+    if (msg) { msg.style.color = '#ff6b6b'; msg.textContent = 'Erro: ' + e.message; }
+    if (btn) { btn.disabled = false; btn.textContent = '↻ REENVIAR'; }
+  }
+}
+async function carregarRecentesBling() {
+  const cont = document.getElementById('rec-lista');
+  if (!cont) return;
+  cont.innerHTML = '<div style="color:var(--muted); font-size:13px;">Carregando...</div>';
+  try {
+    const r = await fetch(URL_BASE + '/sessoes/finalizadas-recentes?horas=48');
+    const d = await r.json();
+    if (!d.ok) throw new Error('resposta inesperada');
+    const ss = (d.sessoes || []).filter(s => s.bling_status === 'enviado');
+    if (!ss.length) {
+      cont.innerHTML = '<div style="color:var(--muted); font-size:13px;">Nenhuma sessão enviada nas últimas 48h.</div>';
+      return;
+    }
+    cont.innerHTML = ss.map(s => {
+      const data = s.fim || s.inicio;
+      const dataFmt = data ? new Date(data).toLocaleString('pt-BR') : '—';
+      // Mostra o que SERÁ enviado (total atual). Se for diferente do que foi
+      // enviado antes, avisa — é o caso do big bag retirado antes de finalizar.
+      const itensAgora = (s.total_atual_itens != null) ? s.total_atual_itens : s.total_etiquetas;
+      const kgAgora    = (s.total_atual_kg    != null) ? s.total_atual_kg    : s.total_kg;
+      const fmtKgBR = v => Number(v).toFixed(1).replace('.', ',') + ' kg';
+      const detalhe = [
+        s.fornecedor ? 'Forn: ' + s.fornecedor : (s.turno_codigo ? 'Turno: ' + s.turno_codigo : ''),
+        itensAgora ? itensAgora + (itensAgora === 1 ? ' item' : ' itens') : '',
+        kgAgora != null ? fmtKgBR(kgAgora) : '',
+      ].filter(Boolean).join(' · ');
+      const avisoDif = s.divergente
+        ? `<div style="font-size:12px; color:var(--warn); background:rgba(255,182,72,0.10);
+                       border:1px solid var(--warn); border-radius:8px; padding:8px 10px; margin-top:2px;">
+             ⚠ O pedido enviado tem <b>${s.total_etiquetas} ${s.total_etiquetas === 1 ? 'item' : 'itens'} ·
+             ${fmtKgBR(s.total_kg)}</b>, mas hoje a sessão soma
+             <b>${itensAgora} ${itensAgora === 1 ? 'item' : 'itens'} · ${fmtKgBR(kgAgora)}</b>.
+             Reenviando (após excluir o pedido no Bling), o novo pedido sai com o valor de hoje.
+           </div>`
+        : '';
+      const idTxt = s.bling_id ? ('pedido ' + s.bling_id) : '';
+      return `<div class="diag-item" style="flex-direction:column; align-items:stretch; gap:8px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+          <div style="min-width:0;">
+            <div style="font-size:13px; font-weight:800;">Sessão #${s.id} · ${s.tipo} <span style="color:var(--devol); font-weight:700;">(enviada${idTxt ? ' · ' + idTxt : ''})</span></div>
+            <div style="font-size:11px; color:var(--muted); font-family:'IBM Plex Mono',monospace; margin-top:3px;">${dataFmt}${detalhe ? ' · ' + detalhe : ''}</div>
+          </div>
+          <button class="btn btn-primary" id="rf-${s.id}" onclick="reenviarBlingForcar(${s.id})">↻ REENVIAR (FORÇAR)</button>
+        </div>
+        ${avisoDif}
+        <div id="rf-msg-${s.id}" style="font-size:12px; min-height:0;"></div>
+      </div>`;
+    }).join('');
+  } catch(e) {
+    cont.innerHTML = '<div style="color:var(--danger); font-size:13px;">Erro ao carregar: ' + e.message + '</div>';
+  }
+}
+
+async function reenviarBlingForcar(id) {
+  if (!confirm('Reenviar a sessão #' + id + ' ao Bling?\n\nUse APENAS depois de excluir o pedido antigo no Bling.\nIsso cria um NOVO pedido com os dados corrigidos.')) return;
+  const btn = document.getElementById('rf-' + id);
+  const msg = document.getElementById('rf-msg-' + id);
+  if (btn) { btn.disabled = true; btn.textContent = 'ENVIANDO...'; }
+  if (msg) { msg.style.color = 'var(--muted)'; msg.textContent = 'Reenviando ao Bling...'; }
+  try {
+    const r = await fetch(URL_BASE + '/sessoes/' + id + '/reenviar-bling', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ forcar: true }),
+    });
+    const d = await r.json();
+    const b = (d && d.bling) || {};
+    if (b.ok && !b.ja_enviado) {
+      if (msg) {
+        msg.style.color = '#16a34a';
+        msg.textContent = b.modo === 'simulacao' ? `✓ Novo pedido (simulação · ${b.bling_id})`
+                        : `✓ Reenviado ao Bling (novo pedido ${b.bling_id})`;
+      }
+      setTimeout(carregarRecentesBling, 1500);
+    } else if (b.ja_enviado) {
+      if (msg) { msg.style.color = '#ff6b6b'; msg.textContent = '✗ Continua marcada como enviada (não forçou)'; }
+      if (btn) { btn.disabled = false; btn.textContent = '↻ REENVIAR (FORÇAR)'; }
+    } else {
+      if (msg) { msg.style.color = '#ff6b6b'; msg.textContent = '✗ ' + (b.erro || b.status || 'falhou'); }
+      if (btn) { btn.disabled = false; btn.textContent = '↻ REENVIAR (FORÇAR)'; }
+    }
+  } catch(e) {
+    if (msg) { msg.style.color = '#ff6b6b'; msg.textContent = 'Erro: ' + e.message; }
+    if (btn) { btn.disabled = false; btn.textContent = '↻ REENVIAR (FORÇAR)'; }
+  }
+}
+carregarPendentesBling();
+carregarRecentesBling();
+
+// ── Troca da senha de supervisor ──
+async function trocarSenhaSupervisor() {
+  const msg = document.getElementById('snh-msg');
+  const atual = document.getElementById('snh-atual').value.trim();
+  const nova  = document.getElementById('snh-nova').value.trim();
+  const conf  = document.getElementById('snh-conf').value.trim();
+  msg.style.color = '#ff6b6b';
+  if (!atual || !nova) { msg.textContent = 'Preencha a senha atual e a nova.'; return; }
+  if (!/^\d{4,8}$/.test(nova)) { msg.textContent = 'A nova senha deve ter de 4 a 8 dígitos.'; return; }
+  if (nova !== conf) { msg.textContent = 'A confirmação não confere com a nova senha.'; return; }
+  try {
+    const r = await fetch(URL_BASE + '/seguranca/definir-senha', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ senhaAtual: atual, novaSenha: nova }),
+    });
+    const d = await r.json();
+    if (r.ok && d.ok) {
+      msg.style.color = '#16a34a';
+      msg.textContent = '✓ Senha alterada com sucesso. A nova senha já vale.';
+      document.getElementById('snh-atual').value = '';
+      document.getElementById('snh-nova').value = '';
+      document.getElementById('snh-conf').value = '';
+    } else {
+      msg.textContent = d.error || 'Não foi possível trocar a senha (a senha atual está correta?).';
+    }
+  } catch (e) {
+    msg.textContent = 'Erro de conexão ao trocar a senha.';
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   CÓDIGO GRAVIMÉTRICO — cadastro pela tela
+   Lê e grava o mesmo catálogo que a tela de Recebimento usa (no banco).
+   ══════════════════════════════════════════════════════════════════ */
+let _cgCat = { materiais: {}, fornecedores: {}, codigos: [] };
+
+function cgMsg(texto, classe) {
+  const el = document.getElementById('cg-msg');
+  el.innerHTML = texto ? `<span class="${classe || ''}">${texto}</span>` : '';
+}
+
+async function cgCarregar() {
+  try {
+    const r = await fetch(URL_BASE + '/catalogo-mp');
+    const d = await r.json();
+    if (!r.ok || !d.ok) throw new Error(d.erro || 'resposta inválida');
+    _cgCat = { materiais: d.materiais || {}, fornecedores: d.fornecedores || {}, codigos: d.codigos || [] };
+  } catch (e) {
+    cgMsg('Não consegui carregar o catálogo do servidor: ' + e.message, 'erro');
+    return;
+  }
+  const selM = document.getElementById('cg-mat');
+  selM.innerHTML = Object.keys(_cgCat.materiais)
+    .map(k => `<option value="${k}">${_cgCat.materiais[k].popular} (${k})</option>`).join('');
+  cgMaterialMudou();
+}
+
+function cgMaterialMudou() {
+  const mk = document.getElementById('cg-mat').value;
+  const mat = _cgCat.materiais[mk] || { cores: [] };
+  const cores = Array.isArray(mat.cores) ? mat.cores : [];
+  const selC = document.getElementById('cg-cor');
+  selC.innerHTML = cores.length
+    ? cores.map(c => `<option value="${c}">${c}</option>`).join('')
+    : '<option value="">— este material não usa cor —</option>';
+  selC.disabled = cores.length === 0;
+
+  const forns = Array.isArray(_cgCat.fornecedores[mk]) ? _cgCat.fornecedores[mk] : [];
+  const selF = document.getElementById('cg-forn');
+  selF.innerHTML = forns.map(f => `<option value="${f}">${f}</option>`).join('')
+    + '<option value="">— todos os fornecedores —</option>';
+
+  cgPreencherExistente();
+  cgRenderLista();
+}
+
+function cgSelecao() {
+  const mk = document.getElementById('cg-mat').value;
+  const cor = document.getElementById('cg-cor').value || null;
+  const forn = document.getElementById('cg-forn').value || null;
+  return { matKey: mk, cor, forn };
+}
+
+// Mostra o código que já existe para a combinação escolhida (se houver).
+function cgPreencherExistente() {
+  const s = cgSelecao();
+  const achou = _cgCat.codigos.find(c =>
+    c.matKey === s.matKey && (c.cor || null) === s.cor && (c.forn || null) === s.forn);
+  document.getElementById('cg-codigo').value = achou ? achou.codigo : '';
+  if (achou) cgMsg(`Esta combinação já tem o código <b>${achou.codigo}</b>. Salvar vai substituí-lo.`, 'aviso');
+  else cgMsg('');
+}
+
+function cgRenderLista() {
+  const mk = document.getElementById('cg-mat').value;
+  const lista = document.getElementById('cg-lista');
+  document.getElementById('cg-lista-tit').textContent =
+    `Códigos já cadastrados · ${(_cgCat.materiais[mk] || {}).popular || mk}`;
+  const itens = _cgCat.codigos.filter(c => c.matKey === mk);
+  lista.innerHTML = '';
+  if (!itens.length) {
+    lista.innerHTML = '<div class="cg-vazio">Nenhum código cadastrado para este material.</div>';
+    return;
+  }
+  for (const c of itens) {
+    const div = document.createElement('div');
+    div.className = 'cg-item';
+    const cod = document.createElement('span');
+    cod.className = 'cg-cod'; cod.textContent = c.codigo;
+    const desc = document.createElement('span');
+    desc.className = 'cg-desc';
+    desc.textContent = `${c.cor || 'sem cor'} · ${c.forn || 'todos os fornecedores'}`;
+    const del = document.createElement('button');
+    del.className = 'cg-del'; del.textContent = 'remover';
+    del.onclick = () => cgRemover(c);
+    div.appendChild(cod); div.appendChild(desc); div.appendChild(del);
+    lista.appendChild(div);
+  }
+}
+
+async function cgSalvar() {
+  const s = cgSelecao();
+  const codigo = (document.getElementById('cg-codigo').value || '').trim().toUpperCase();
+  if (!codigo) { cgMsg('Digite o código (toque no campo ou no botão TECLADO).', 'erro'); return; }
+  try {
+    const r = await fetch(URL_BASE + '/catalogo-mp/codigo', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...s, codigo })
+    });
+    const d = await r.json();
+    if (!r.ok || !d.ok) { cgMsg(d.erro || 'Não foi possível salvar.', 'erro'); return; }
+    _cgCat.codigos = d.codigos || _cgCat.codigos;
+    let msg = d.atualizado
+      ? `✓ Código atualizado para <b>${codigo}</b>${d.anterior ? ` (era ${d.anterior})` : ''}.`
+      : `✓ Código <b>${codigo}</b> cadastrado.`;
+    if (d.conflitos && d.conflitos.length) {
+      const onde = d.conflitos.map(c => `${c.cor || 'sem cor'}/${c.forn || 'todos'}`).join(', ');
+      msg += ` <b>Atenção:</b> este código também é usado em ${onde} — os dois vão puxar a mesma receita.`;
+      cgMsg(msg, 'aviso');
+    } else {
+      msg += ' Abra a tela de Recebimento para começar a usar.';
+      cgMsg(msg, 'ok');
+    }
+    cgRenderLista();
+  } catch (e) {
+    cgMsg('Erro de conexão ao salvar: ' + e.message, 'erro');
+  }
+}
+
+async function cgRemover(c) {
+  const alvo = `${c.codigo} (${c.cor || 'sem cor'} · ${c.forn || 'todos os fornecedores'})`;
+  if (!confirm(`Remover o código ${alvo}?\n\nDepois disso, essa combinação vai aparecer como "não cadastrado" na tela de Recebimento.`)) return;
+  try {
+    const r = await fetch(URL_BASE + '/catalogo-mp/codigo/remover', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ matKey: c.matKey, cor: c.cor, forn: c.forn })
+    });
+    const d = await r.json();
+    if (!r.ok || !d.ok) { cgMsg(d.erro || 'Não foi possível remover.', 'erro'); return; }
+    _cgCat.codigos = d.codigos || _cgCat.codigos;
+    cgMsg(`Código ${d.codigo} removido.`, 'ok');
+    cgPreencherExistente();
+    cgRenderLista();
+  } catch (e) {
+    cgMsg('Erro de conexão ao remover: ' + e.message, 'erro');
+  }
+}
+
+/* ── Teclado alfanumérico na tela ── */
+let _kbValor = '';
+let _kbCallback = null;
+// Cada tecla é identificada pela FUNÇÃO, não pelo texto. Antes, a tecla de
+// limpar era rotulada 'C' e a comparação `t === 'C'` pegava também a LETRA C
+// do teclado — digitar C apagava tudo. Agora a letra é uma tecla comum e a de
+// limpar tem ação própria (e rótulo que não se confunde com letra).
+const letras = txt => txt.split('').map(c => ({ txt: c, acao: 'letra' }));
+const KB_LINHAS = {
+  'kb-l1': letras('1234567890'),
+  'kb-l2': letras('QWERTYUIOP'),
+  'kb-l3': letras('ASDFGHJKL'),
+  'kb-l4': letras('ZXCVBNM').concat([
+    { txt: '⌫',     acao: 'apagar' },
+    { txt: 'LIMPAR', acao: 'limpar' },
+  ]),
+};
+
+function kbMontar() {
+  for (const [id, teclas] of Object.entries(KB_LINHAS)) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    el.innerHTML = '';
+    for (const tecla of teclas) {
+      const b = document.createElement('button');
+      b.textContent = tecla.txt;
+      if (tecla.acao !== 'letra') b.className = 'kb-aux';
+      b.onclick = () => {
+        if (tecla.acao === 'apagar')      _kbValor = _kbValor.slice(0, -1);
+        else if (tecla.acao === 'limpar') _kbValor = '';
+        else if (_kbValor.length < 10)    _kbValor += tecla.txt;
+        kbRender();
+      };
+      el.appendChild(b);
+    }
+  }
+}
+
+function kbRender() {
+  document.getElementById('kb-display').textContent = _kbValor || '\u00A0';
+}
+
+function kbAbrir(titulo, valorInicial, cb) {
+  _kbValor = (valorInicial || '').toUpperCase();
+  _kbCallback = cb;
+  document.getElementById('kb-titulo').textContent = titulo;
+  kbRender();
+  document.getElementById('kb-modal').classList.add('ativo');
+}
+
+function kbCancelar() {
+  document.getElementById('kb-modal').classList.remove('ativo');
+  _kbCallback = null;
+}
+
+function kbOk() {
+  const v = _kbValor.trim().toUpperCase();
+  document.getElementById('kb-modal').classList.remove('ativo');
+  const cb = _kbCallback; _kbCallback = null;
+  if (cb) cb(v);
+}
+
+function cgAbrirTeclado() {
+  const s = cgSelecao();
+  const titulo = `Código para ${s.matKey}${s.cor ? ' · ' + s.cor : ''} · ${s.forn || 'todos os fornecedores'}`;
+  kbAbrir(titulo, document.getElementById('cg-codigo').value, v => {
+    document.getElementById('cg-codigo').value = v;
+  });
+}
+
+kbMontar();
+cgCarregar();
+
+// ── Colaboradores (senha de acesso às telas de operação) ──────────────
+let COLAB_EDIT = null;   // id em edição (null = novo)
+const NOMES_TELA_COLAB = { mp:'Matéria-Prima', pa:'Produto Acabado', bobinas:'Bobinas' };
+
+async function carregarColaboradores() {
+  const el = document.getElementById('colab-lista');
+  if (!el) return;
+  try {
+    const r = await fetch('/colaboradores');
+    const d = await r.json();
+    const lista = (d && d.colaboradores) || [];
+    if (!lista.length) { el.innerHTML = '<div style="opacity:0.6; font-size:14px;">Nenhum colaborador cadastrado ainda.</div>'; return; }
+    el.innerHTML = lista.map(c =>
+      '<div style="display:flex; align-items:center; gap:10px; padding:10px 12px; background:rgba(0,0,0,0.22); border-radius:9px; margin-bottom:7px;">'
+      + '<div style="flex:1"><b>' + c.nome + '</b>'
+      + '<div style="font-size:12px; opacity:0.65">' + (c.telas||[]).map(t=>NOMES_TELA_COLAB[t]||t).join(' · ') + '</div></div>'
+      + '<button class="btn" style="padding:7px 12px; font-size:13px;" onclick="editarColaborador(\'' + c.id + '\')">editar</button>'
+      + '<button class="btn" style="padding:7px 12px; font-size:13px;" onclick="removerColaborador(\'' + c.id + '\',\'' + c.nome.replace(/'/g,"") + '\')">remover</button>'
+      + '</div>').join('');
+    window._COLABS = lista;
+  } catch(e) { el.innerHTML = '<div style="opacity:0.6">Erro ao carregar colaboradores</div>'; }
+}
+
+function editarColaborador(id) {
+  const c = (window._COLABS||[]).find(x => x.id === id);
+  if (!c) return;
+  COLAB_EDIT = id;
+  document.getElementById('colab-nome').value = c.nome;
+  document.getElementById('colab-pin').value = '';
+  document.getElementById('colab-pin').placeholder = 'Nova senha (deixe vazio para manter)';
+  document.querySelectorAll('.colab-tela').forEach(cb => { cb.checked = (c.telas||[]).includes(cb.value); });
+  document.getElementById('colab-msg').innerHTML = '<span style="color:#ffb648">Editando <b>' + c.nome + '</b> — salve para confirmar.</span>';
+}
+
+async function salvarColaborador() {
+  const nome = document.getElementById('colab-nome').value.trim();
+  const pin  = document.getElementById('colab-pin').value.trim();
+  const telas = [...document.querySelectorAll('.colab-tela')].filter(c=>c.checked).map(c=>c.value);
+  const msg = document.getElementById('colab-msg');
+  try {
+    const r = await fetch('/colaboradores/salvar', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ id: COLAB_EDIT, nome, pin, telas }),
+    });
+    const d = await r.json();
+    if (!r.ok || !d.ok) { msg.innerHTML = '<span style="color:#ff6b6b">' + ((d&&d.erro)||'Erro ao salvar') + '</span>'; return; }
+    msg.innerHTML = '<span style="color:#2ee6a6">✓ Salvo</span>';
+    COLAB_EDIT = null;
+    document.getElementById('colab-nome').value = '';
+    document.getElementById('colab-pin').value = '';
+    document.getElementById('colab-pin').placeholder = 'Senha (4 a 8 números)';
+    document.querySelectorAll('.colab-tela').forEach(cb => cb.checked = false);
+    
+  } catch(e) { msg.innerHTML = '<span style="color:#ff6b6b">Erro: ' + e.message + '</span>'; }
+}
+
+async function removerColaborador(id, nome) {
+  if (!confirm('Remover ' + nome + '? Ele perde o acesso às telas.')) return;
+  try {
+    await fetch('/colaboradores/remover', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ id }) });
+    carregarColaboradores();
+  } catch(e) {}
+}
+
+carregarColaboradores();
+
+// Categorias: abre uma por vez, para a tela não virar uma parede de cards.
+function alternarGrupo(id){
+  const alvo = document.getElementById('grp-' + id);
+  if (!alvo) return;
+  const abrindo = !alvo.classList.contains('aberto');
+  document.querySelectorAll('.grupo').forEach(g => g.classList.remove('aberto'));
+  if (abrindo) alvo.classList.add('aberto');
+}
+
+
+// ── Sincronizar matéria-prima com o Bling ────────────────────────────
+let SYNC_NOVOS = [];
+
+async function syncProcurar(){
+  const el=document.getElementById('sync-res');
+  el.innerHTML = '<div style="opacity:.7">Consultando o Bling… (pode levar alguns segundos)</div>';
+  try{
+    const r=await fetch('/sync/mp/procurar');
+    const d=await r.json();
+    if(!r.ok || !d.ok){ el.innerHTML = '<div style="color:#ff6b6b">'+((d&&d.erro)||'Falha na consulta')+'</div>'; return; }
+    SYNC_NOVOS = d.novos || [];
+    if(!SYNC_NOVOS.length){
+      el.innerHTML = `<div style="color:#2ee6a6">✓ Nada novo. ${d.ja_cadastrados} produto(s) de matéria-prima já estão no sistema.</div>`;
+      return;
+    }
+    el.innerHTML =
+      `<div style="margin-bottom:10px; font-size:14px;">
+         <b>${SYNC_NOVOS.length} produto(s) novo(s)</b> encontrados no Bling
+         <span style="opacity:.6">· ${d.ja_cadastrados} já estavam cadastrados</span>
+       </div>`
+      + SYNC_NOVOS.map((n,i) => `
+        <div style="background:rgba(0,0,0,0.22); border-radius:10px; padding:12px; margin-bottom:8px;">
+          <label style="display:flex; align-items:flex-start; gap:10px; cursor:pointer;">
+            <input type="checkbox" class="sync-ck" data-i="${i}" ${n.completo?'checked':''} style="margin-top:4px">
+            <div style="flex:1">
+              <div style="font-weight:800">${n.nome}</div>
+              <div style="font-size:12px; opacity:.65; font-family:monospace">${n.codigo||'(sem código)'} · id ${n.bling_id}${n.formato==='V'?' · com variação':''}</div>
+              <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;">
+                <input class="sync-in" data-c="material" data-i="${i}" value="${n.material||''}" placeholder="material" style="width:90px">
+                <input class="sync-in" data-c="cor" data-i="${i}" value="${n.cor||''}" placeholder="cor (se tiver)" style="width:120px">
+                <input class="sync-in" data-c="fornecedor" data-i="${i}" value="${n.fornecedor||''}" placeholder="fornecedor" style="width:170px">
+                <input class="sync-in" data-c="codigo_gravimetrico" data-i="${i}" value="" placeholder="cód. gravim." style="width:110px">
+              </div>
+              ${!n.fornecedor ? '<div style="font-size:12px; color:#ffb648; margin-top:6px">⚠ fornecedor não reconhecido — digite o nome exato</div>' : ''}
+            </div>
+          </label>
+        </div>`).join('')
+      + `<button class="btn btn-primary" style="margin-top:10px" onclick="syncConfirmar()">✓ CADASTRAR SELECIONADOS</button>`;
+  }catch(e){ el.innerHTML = '<div style="color:#ff6b6b">Erro: '+e.message+'</div>'; }
+}
+
+async function syncConfirmar(){
+  const el=document.getElementById('sync-res');
+  const itens=[];
+  document.querySelectorAll('.sync-ck').forEach(ck => {
+    if(!ck.checked) return;
+    const i=ck.dataset.i;
+    const val=c=>{ const el2=document.querySelector(`.sync-in[data-c="${c}"][data-i="${i}"]`); return el2?el2.value.trim():''; };
+    const base=SYNC_NOVOS[i];
+    itens.push({ bling_id:base.bling_id, codigo:base.codigo, formato:base.formato,
+                 material:val('material'), cor:val('cor')||null, fornecedor:val('fornecedor'),
+                 codigo_gravimetrico:val('codigo_gravimetrico')||null });
+  });
+  if(!itens.length){ alert('Marque ao menos um produto.'); return; }
+  const semForn=itens.filter(i=>!i.fornecedor);
+  if(semForn.length){ alert(semForn.length+' item(ns) sem fornecedor. Preencha antes de cadastrar.'); return; }
+
+  // o contato do fornecedor no Bling (necessário para o pedido de compra)
+  for(const it of itens){
+    try{
+      const r=await fetch('/sync/mp/contato?nome='+encodeURIComponent(it.fornecedor));
+      const d=await r.json();
+      if(r.ok && d.ok && d.contatos && d.contatos.length) it.contato_id=d.contatos[0].id;
+    }catch(e){}
+  }
+  const semContato=itens.filter(i=>!i.contato_id).map(i=>i.fornecedor);
+  if(semContato.length && !confirm('Não achei o contato no Bling para: '+[...new Set(semContato)].join(', ')
+      +'\n\nOK = cadastrar mesmo assim (o pedido de compra pode falhar até o contato existir)\nCancelar = revisar')) return;
+
+  try{
+    const r=await fetch('/sync/mp/confirmar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({itens})});
+    const d=await r.json();
+    if(!r.ok || !d.ok){ el.innerHTML='<div style="color:#ff6b6b">'+((d&&d.erro)||'Falha ao cadastrar')+'</div>'; return; }
+    el.innerHTML = `<div style="color:#2ee6a6">✓ ${d.cadastrados} produto(s) cadastrados. Já aparecem nas telas de matéria-prima.</div>`
+      + (d.erros && d.erros.length ? '<div style="color:#ffb648; margin-top:8px">'+d.erros.length+' com problema — confira os campos.</div>' : '');
+  }catch(e){ el.innerHTML='<div style="color:#ff6b6b">Erro: '+e.message+'</div>'; }
+}
+
+carregarColaboradores();
+</script>
+</body>
+</html>

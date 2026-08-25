@@ -1,0 +1,942 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<script src="/acesso-colaborador.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Produto Acabado — Ekoplastic</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;700&family=Inter:wght@400;600;700;800;900&display=swap');
+
+  :root {
+    --bg:       #0a0f0d;
+    --surface:  #10171400;
+    --panel:    #141d19;
+    --panel-hi: #1c2924;
+    --border:   #213029;
+    --accent:   #2ee6a6;       /* esmeralda — produto acabado */
+    --accent2:  #00ffc3;
+    --text:     #e8f1ec;
+    --muted:    #7e9389;
+    --danger:   #ff4d6a;
+    --warn:     #ffb648;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; }
+  body {
+    background:
+      radial-gradient(1100px 520px at 80% -10%, rgba(46,230,166,0.08), transparent 60%),
+      var(--bg);
+    color: var(--text);
+    font-family: 'Inter', system-ui, sans-serif;
+    overflow: hidden;
+    user-select: none;
+  }
+
+  /* ── Header ── */
+  header {
+    height: 56px; display: flex; align-items: center; justify-content: space-between;
+    padding: 0 18px; background: rgba(20,29,25,0.6); border-bottom: 2px solid var(--border);
+    backdrop-filter: blur(6px);
+  }
+  .logo { display: flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 900; letter-spacing: 2px; color: var(--accent); }
+  .logo-icon { width: 30px; height: 30px; border: 2px solid var(--accent); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 15px; }
+  .clock { font-family: 'IBM Plex Mono', monospace; font-size: 18px; font-weight: 700; color: var(--accent2); letter-spacing: 2px; }
+  .header-right { display: flex; align-items: center; gap: 10px; }
+  .btn-icon { background: transparent; border: 1px solid var(--border); color: var(--muted); width: 38px; height: 38px; border-radius: 9px; font-size: 17px; cursor: pointer; }
+  .btn-icon:hover { color: var(--text); border-color: var(--panel-hi); }
+  .srv-status { font-size: 10px; font-weight: 800; letter-spacing: 1px; padding: 6px 9px; border-radius: 7px; border: 1px solid var(--border); color: var(--muted); }
+  .srv-status.on  { color: var(--accent2); border-color: rgba(0,255,195,0.4); background: rgba(0,255,195,0.06); }
+  .srv-status.off { color: var(--danger);  border-color: rgba(255,77,106,0.4); background: rgba(255,77,106,0.06); }
+
+  /* ── Overlay de seleção de turno ── */
+  #overlay-turno {
+    position: fixed; inset: 56px 0 0 0; z-index: 40;
+    display: none; flex-direction: column; align-items: center; justify-content: center; gap: 26px;
+    background: var(--bg);
+  }
+  #overlay-turno.on { display: flex; }
+  #overlay-turno h2 { font-size: 26px; font-weight: 900; letter-spacing: 1px; }
+  #overlay-turno .sub { color: var(--muted); font-size: 14px; margin-top: -14px; }
+  .turno-grid { display: flex; gap: 20px; flex-wrap: wrap; justify-content: center; }
+  .turno-card {
+    width: 244px; border-radius: 20px; border: 2px solid var(--border);
+    background: var(--panel); display: flex; flex-direction: column; align-items: center; gap: 10px;
+    padding: 22px 18px;
+  }
+  .turno-card .tn { font-size: 38px; font-weight: 900; color: var(--accent); letter-spacing: 1px; line-height: 1; }
+  .turno-card .td { font-size: 12px; color: var(--muted); font-weight: 700; margin-top: -4px; }
+  .turno-card .dlabel { font-size: 12px; font-weight: 800; color: var(--text); letter-spacing: .3px; margin-top: 4px; }
+  .turno-data {
+    width: 100%; padding: 12px 10px; border-radius: 12px; border: 2px solid var(--accent);
+    background: var(--bg); color: var(--text); font-size: 20px; font-weight: 800;
+    font-family: 'IBM Plex Mono', monospace; text-align: center; cursor: pointer;
+  }
+  .turno-data::-webkit-calendar-picker-indicator { filter: invert(0.8); cursor: pointer; transform: scale(1.4); }
+  .turno-iniciar {
+    width: 100%; padding: 13px; border: none; border-radius: 12px; background: var(--accent);
+    color: #062018; font-size: 17px; font-weight: 900; letter-spacing: .5px; cursor: pointer;
+  }
+  .turno-iniciar:active { transform: translateY(1px); }
+
+  /* ── Layout principal ── */
+  .main { display: none; height: calc(100vh - 56px); grid-template-columns: 1.35fr 1fr; gap: 0; overflow: hidden; }
+  .main.on { display: grid; }
+  .col-sel  { padding: 8px 16px; overflow: hidden; display: flex; flex-direction: column; gap: 6px; }
+  .col-list { background: rgba(16,23,20,0.5); border-left: 2px solid var(--border); display: flex; flex-direction: column; min-height: 0; }
+
+  .step-lbl { font-size: 10px; font-weight: 800; letter-spacing: 1.2px; color: var(--muted); text-transform: uppercase; margin: 0 0 3px; display: flex; align-items: center; gap: 7px; }
+  .step-lbl .n { width: 17px; height: 17px; border-radius: 50%; background: var(--panel-hi); color: var(--accent); display: inline-flex; align-items: center; justify-content: center; font-size: 10px; }
+  .block { margin-bottom: 0; }
+
+  /* Máquina */
+  .maq-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .maq-btn {
+    padding: 8px 6px; border-radius: 11px; border: 2px solid var(--border); background: var(--panel);
+    color: var(--text); font-size: 18px; font-weight: 900; letter-spacing: 1px; cursor: pointer; text-align: center;
+  }
+  .maq-btn:hover { border-color: var(--panel-hi); }
+  .maq-btn.selected { border-color: var(--accent); background: rgba(46,230,166,0.14); color: var(--accent); }
+
+  /* Formato */
+  .fmt-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .fmt-btn {
+    padding: 7px 5px; border-radius: 10px; border: 2px solid var(--border); background: var(--panel);
+    color: var(--text); font-size: 15px; font-weight: 800; cursor: pointer; text-align: center; letter-spacing: .3px;
+  }
+  .fmt-btn:hover { border-color: var(--panel-hi); }
+  .fmt-btn.selected { border-color: var(--accent); background: rgba(46,230,166,0.12); color: var(--accent); }
+
+  /* Cor */
+  .cor-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .cor-btn {
+    padding: 6px 4px 5px; border-radius: 10px; border: 2px solid var(--border); background: var(--panel);
+    display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer;
+  }
+  .cor-btn:hover { border-color: var(--panel-hi); }
+  .cor-btn.selected { border-color: var(--accent); background: rgba(46,230,166,0.10); }
+  .cor-dot { width: 22px; height: 22px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.25); }
+  .cor-btn .cl { font-size: 11px; font-weight: 800; }
+  /* Botão preenchido com a cor do material (usado na etiqueta de gaiola) */
+  .cor-btn.cor-cheia { border-color: rgba(0,0,0,0.35); font-family: inherit; }
+  .cor-btn.cor-cheia .cl { font-size: 13px; }
+  .cor-btn.cor-cheia .cor-dot { display: none; }
+  .cor-btn.cor-cheia.selected { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(46,230,166,0.35); }
+
+  /* Fardos */
+  .fardos-card { background: var(--panel); border: 2px solid var(--border); border-radius: 12px; padding: 8px; }
+  .fardos-top { display: flex; align-items: center; justify-content: center; gap: 12px; }
+  .stepper { display: flex; align-items: center; gap: 14px; }
+  .step-btn { width: 40px; height: 40px; border-radius: 11px; border: 2px solid var(--border); background: var(--panel-hi); color: var(--text); font-size: 23px; font-weight: 800; cursor: pointer; line-height: 1; }
+  .step-btn:active { background: #263a32; }
+  .fardos-num { font-family: 'IBM Plex Mono', monospace; font-size: 30px; font-weight: 700; min-width: 88px; text-align: center; color: var(--accent); }
+  .fardos-num small { display:block; font-family:'Inter'; font-size: 9px; color: var(--muted); letter-spacing: 1px; font-weight: 800; margin-top: -2px; }
+  .quick-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 7px; }
+  .quick-btn { padding: 7px 4px; border-radius: 9px; border: 1px solid var(--border); background: var(--panel-hi); color: var(--text); font-size: 15px; font-weight: 800; cursor: pointer; }
+  .quick-btn:hover { border-color: var(--accent); }
+
+  .preview {
+    margin-top: 7px; border: 1px dashed var(--border); border-radius: 10px; padding: 7px 11px;
+    display: flex; align-items: center; justify-content: space-between; min-height: 32px;
+    color: var(--muted); font-size: 13px;
+  }
+  .preview b { color: var(--text); font-weight: 800; }
+  .preview .kg { font-family: 'IBM Plex Mono', monospace; font-size: 18px; font-weight: 700; color: var(--accent); }
+
+  .btn-add {
+    margin-top: 7px; width: 100%; padding: 11px; border: none; border-radius: 11px;
+    background: var(--accent); color: #062018; font-size: 16px; font-weight: 900; letter-spacing: .5px; cursor: pointer;
+  }
+  .btn-add:disabled { background: var(--panel-hi); color: var(--muted); cursor: not-allowed; }
+  .btn-add:not(:disabled):active { transform: translateY(1px); }
+
+  /* Lista lateral */
+  .list-head { padding: 14px 16px; border-bottom: 2px solid var(--border); }
+  .list-turno { font-size: 12px; font-weight: 800; letter-spacing: 1px; color: var(--accent); }
+  .list-resumo { font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: var(--muted); margin-top: 4px; }
+  .list-body { flex: 1; overflow-y: auto; padding: 10px 12px; }
+  .empty { color: var(--muted); text-align: center; padding: 40px 10px; font-size: 13px; }
+  .item {
+    display: grid; grid-template-columns: 1fr auto 44px; align-items: center; gap: 8px;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 11px; padding: 11px 12px; margin-bottom: 8px;
+  }
+  .item .nm { font-size: 14px; font-weight: 800; }
+  .maq-tag { display: inline-block; font-size: 10px; font-weight: 900; letter-spacing: .5px; color: var(--accent); background: rgba(46,230,166,0.14); border: 1px solid rgba(46,230,166,0.4); border-radius: 6px; padding: 1px 5px; margin-right: 4px; vertical-align: middle; }
+  .item .dt { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .item .kg { font-family: 'IBM Plex Mono', monospace; font-size: 15px; font-weight: 700; color: var(--accent); text-align: right; }
+  .item-x { width: 40px; height: 40px; border-radius: 10px; border: 1px solid rgba(255,77,106,0.4); background: rgba(255,77,106,0.08); color: var(--danger); font-size: 18px; font-weight: 800; cursor: pointer; }
+  .item-x:active { background: rgba(255,77,106,0.18); }
+  .list-foot { padding: 12px 14px; border-top: 2px solid var(--border); }
+  .btn-fim { width: 100%; padding: 18px; border: none; border-radius: 14px; background: linear-gradient(135deg, #1f8f6b, #2ee6a6); color: #062018; font-size: 17px; font-weight: 900; letter-spacing: .5px; cursor: pointer; }
+  .btn-fim:disabled { background: var(--panel-hi); color: var(--muted); cursor: not-allowed; }
+  .btn-fim:not(:disabled):active { transform: translateY(1px); }
+
+  /* Toasts */
+  #toast-area { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 8px; z-index: 90; align-items: center; }
+  .toast { padding: 12px 18px; border-radius: 11px; font-size: 14px; font-weight: 700; background: var(--panel-hi); border: 1px solid var(--border); color: var(--text); transition: opacity .3s; box-shadow: 0 8px 24px rgba(0,0,0,.4); }
+  .toast.success { border-color: rgba(46,230,166,0.5); color: var(--accent); }
+  .toast.error   { border-color: rgba(255,77,106,0.5); color: var(--danger); }
+  .toast.warn    { border-color: rgba(255,182,72,0.5); color: var(--warn); }
+  /* Modal de confirmação de envio */
+  .modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.72); z-index:1000; align-items:center; justify-content:center; padding:18px; }
+  .modal-overlay.on { display:flex; }
+  .modal { background:var(--panel); border:1px solid var(--border); border-radius:16px; padding:24px; max-width:520px; width:100%; max-height:88vh; overflow:auto; }
+  .modal-titulo { font-size:18px; font-weight:900; margin-bottom:12px; color:var(--text); }
+  .modal-corpo { font-size:14px; color:var(--text); margin-bottom:20px; line-height:1.5; }
+  .modal-acoes { display:flex; gap:10px; justify-content:flex-end; }
+  .btn-modal { padding:12px 22px; border-radius:9px; font-size:14px; font-weight:800; cursor:pointer; border:1px solid transparent; font-family:inherit; }
+  .btn-modal.primary { background:var(--accent); color:#053; }
+  .btn-modal.secundario { background:transparent; border-color:var(--border); color:var(--text); }
+  .btn-gaiola { width:100%; margin-top:10px; padding:14px; border-radius:11px; border:1.5px solid #7dd3fc;
+                background:transparent; color:#7dd3fc; font-size:14px; font-weight:800; cursor:pointer;
+                font-family:inherit; letter-spacing:0.3px; }
+  .btn-gaiola:active { transform:scale(0.99); }
+  .g-item { display:flex; justify-content:space-between; gap:10px; padding:8px 0;
+            border-bottom:1px solid var(--border); font-size:13px; }
+  .fmt-btn.indisponivel { opacity:0.28; border-style:dashed; }
+  .fmt-btn.indisponivel::after { content:' 🚫'; font-size:11px; }
+  .rev-item { display:flex; justify-content:space-between; gap:10px; padding:8px 0; border-bottom:1px solid var(--border); font-size:13px; }
+  .rev-kg { font-weight:800; white-space:nowrap; }
+</style>
+</head>
+<body data-tela="Produto Acabado">
+
+<header>
+  <div class="logo"><div class="logo-icon">📦</div> PRODUTO ACABADO</div>
+  <div class="clock" id="clock">--:--:--</div>
+  <div class="header-right">
+    <div class="srv-status off" id="srv-status">SERVIDOR…</div>
+    <button class="btn-icon" onclick="trocarTurno()" title="Trocar turno">⇄</button>
+    <button class="btn-icon" onclick="voltarPagina()" title="Voltar ao menu">🏠</button>
+  </div>
+</header>
+
+<!-- Seleção de turno -->
+<div id="overlay-turno">
+  <h2>Selecione o turno e a data</h2>
+  <div class="sub">Cada turno tem sua própria data de lançamento no Bling</div>
+  <div class="turno-grid" id="turno-grid"></div>
+</div>
+
+<!-- Tela principal -->
+<div class="main" id="main">
+  <div class="col-sel">
+    <div class="block">
+      <div class="step-lbl"><span class="n">1</span> Máquina</div>
+      <div class="maq-grid" id="maq-grid"></div>
+    </div>
+    <div class="block">
+      <div class="step-lbl"><span class="n">2</span> Formato da sacola</div>
+      <div class="fmt-grid" id="fmt-grid"></div>
+    </div>
+    <div class="block">
+      <div class="step-lbl"><span class="n">3</span> Cor</div>
+      <div class="cor-grid" id="cor-grid"></div>
+    </div>
+    <div class="block">
+      <div class="step-lbl"><span class="n">4</span> Fardos <span style="color:var(--muted);font-weight:700;letter-spacing:0;text-transform:none;">(1 fardo = 25 kg)</span></div>
+      <div class="fardos-card">
+        <div class="fardos-top">
+          <div class="stepper">
+            <button class="step-btn" onclick="incFardos(-1)">−</button>
+            <div class="fardos-num"><span id="fardos-num">0</span><small>FARDOS</small></div>
+            <button class="step-btn" onclick="incFardos(1)">+</button>
+          </div>
+        </div>
+        <div class="quick-grid" id="quick-grid"></div>
+      </div>
+      <div class="preview" id="preview"><span>Selecione máquina, formato, cor e fardos</span></div>
+      <button class="btn-add" id="btn-add" disabled onclick="adicionarItem()">➕ Adicionar à lista</button>
+    </div>
+  </div>
+
+  <div class="col-list">
+    <div class="list-head">
+      <div class="list-turno" id="list-turno">—</div>
+      <div class="list-resumo" id="list-resumo">0 itens · 0 fardos · 0 kg</div>
+    </div>
+    <div class="list-body" id="list-body"><div class="empty">Nenhum item adicionado ainda.</div></div>
+    <div class="list-foot">
+      <button class="btn-fim" id="btn-fim" disabled onclick="finalizar()">⏹ FINALIZAR E ENVIAR AO BLING</button>
+      <button class="btn-gaiola" onclick="abrirGaiola()">🏷️ ETIQUETA DE GAIOLA (QR)</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-gaiola">
+  <div class="modal" style="border:2px solid #7dd3fc; max-width:560px;">
+    <div class="modal-titulo" style="color:#7dd3fc;">🏷️ Etiqueta de gaiola (QR para contagem)</div>
+    <div class="modal-corpo">
+      <div style="font-size:13px; color:var(--muted); margin-bottom:16px; line-height:1.5;">
+        Gera a etiqueta com QR que o inventário vai ler. Não lança nada no Bling —
+        a produção continua sendo enviada pela lista ao lado.
+      </div>
+
+      <div class="step-lbl" style="margin-bottom:8px;"><span class="n">1</span> Formato</div>
+      <div class="fmt-grid" id="g-fmt-grid" style="margin-bottom:16px;"></div>
+
+      <div class="step-lbl" style="margin-bottom:8px;"><span class="n">2</span> Cor</div>
+      <div class="cor-grid" id="g-cor-grid" style="margin-bottom:16px;"></div>
+
+      <div class="step-lbl" style="margin-bottom:8px;"><span class="n">3</span> Fardos na gaiola</div>
+      <div class="fardos-card">
+        <div class="fardos-top">
+          <div class="stepper">
+            <button class="step-btn" onclick="gIncFardos(-1)">−</button>
+            <div class="fardos-num"><span id="g-fardos-num">0</span><small>FARDOS</small></div>
+            <button class="step-btn" onclick="gIncFardos(1)">+</button>
+          </div>
+        </div>
+        <div class="quick-grid" id="g-quick-grid"></div>
+      </div>
+
+      <div class="preview" id="g-preview" style="margin-top:14px;"><span>Escolha formato, cor e fardos</span></div>
+    </div>
+    <div class="modal-acoes">
+      <button class="btn-modal secundario" onclick="fecharGaiola()">Fechar</button>
+      <button class="btn-modal primary" id="g-btn-imprimir" disabled onclick="imprimirGaiola()">🖨️ Imprimir etiqueta</button>
+    </div>
+    <div id="g-hoje" style="margin-top:18px; padding-top:14px; border-top:1px solid var(--border);"></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-cor-incomum">
+  <div class="modal" style="border:2px solid var(--warn); max-width:440px;">
+    <div class="modal-titulo" style="color:var(--warn);">⚠ Confira a cor</div>
+    <div class="modal-corpo" id="cor-incomum-corpo"></div>
+    <div class="modal-acoes">
+      <button class="btn-modal secundario" onclick="window._resolverCorIncomum(false)">← Corrigir cor</button>
+      <button class="btn-modal primary" onclick="window._resolverCorIncomum(true)">Está certo, continuar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-confirmar-envio">
+  <div class="modal" style="border:2px solid var(--accent);">
+    <div class="modal-titulo">Confirmar lançamento</div>
+    <div class="modal-corpo">
+      <div style="margin-bottom:12px;">Revise antes de enviar ao Bling. Depois de enviado, não dá para desfazer por aqui.</div>
+      <div id="resumo-envio-cab" style="font-size:13px; color:var(--muted); margin-bottom:10px; font-weight:700;"></div>
+      <div id="resumo-envio-itens"></div>
+      <div id="resumo-envio-tot" style="font-weight:900; margin-top:12px; padding-top:12px; border-top:1px solid var(--border);"></div>
+    </div>
+    <div class="modal-acoes">
+      <button class="btn-modal secundario" onclick="fecharModalEnvio()">← Voltar</button>
+      <button class="btn-modal primary" onclick="confirmarEnvioBling()">✓ Confirmar e enviar</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-area"></div>
+
+<script>
+const URL_BASE = '';
+const KG_FARDO = 25;
+const TURNOS = {
+  A:     { nome: 'TURNO A - SACOLEIRAS EKOPLASTIC',     curto: 'TURNO A' },
+  C:     { nome: 'TURNO C - SACOLEIRAS EKOPLASTIC',     curto: 'TURNO C' },
+  EXTRA: { nome: 'TURNO EXTRA - SACOLEIRAS EKOPLASTIC', curto: 'TURNO EXTRA' },
+};
+const CORES = [
+  { key: 'AM',  nome: 'Amarela',  dot: '#f5c800', texto: '#231d00' },
+  { key: 'BC',  nome: 'Branca',   dot: '#eaeaea', texto: '#1a1a1a' },
+  { key: 'PT',  nome: 'Preta',    dot: '#3a3a3a', texto: '#f0f0f0' },
+  { key: 'REC', nome: 'Colorida', dot: '#2eb82e', texto: '#04220a' },   // colorida = verde
+];
+const FORMATOS = ['30x40','30x45','33x46','35x45','40x50','42x53','50x60','60x80','80x100'];
+const MAQUINAS = ['P1', 'P2'];
+// Trava máquina × formato: cada máquina só produz os formatos da sua lista.
+// 40x50 é o único formato comum às duas.
+const FORMATOS_POR_MAQUINA = {
+  P1: ['40x50', '50x60', '60x80', '80x100'],
+  P2: ['30x40', '30x45', '33x46', '35x45', '40x50', '42x53'],
+};
+function formatoPermitido(mq, f) {
+  if (!mq) return true;                     // sem máquina escolhida, não bloqueia ainda
+  return (FORMATOS_POR_MAQUINA[mq] || []).includes(f);
+}
+function maquinaDoFormato(f) {
+  return Object.keys(FORMATOS_POR_MAQUINA).filter(m => FORMATOS_POR_MAQUINA[m].includes(f));
+}
+const QUICK = [25, 50, 75, 100, 125, 150, 175, 200];
+
+const state = { sessaoId: null, turno: null, turnoPre: null, dataLanc: null, maquina: null, formato: null, cor: null, fardos: 0, itens: [], travado: false };
+
+const fmtKg = kg => Number(kg || 0).toLocaleString('pt-BR') + ' kg';
+const corNome = k => (CORES.find(c => c.key === k) || {}).nome || k;
+const corDot  = k => (CORES.find(c => c.key === k) || {}).dot  || '#888';
+// Bolinha da cor — num lançamento, o olho pega uma cor errada muito mais
+// rápido que a palavra escrita.
+const corBolinha = (k, tam) => `<span style="display:inline-block; width:${tam||14}px; height:${tam||14}px;
+  border-radius:50%; background:${corDot(k)}; border:1.5px solid rgba(255,255,255,0.35);
+  vertical-align:middle; margin-right:7px;"></span>`;
+
+// ── Render dos seletores ──
+function montarTurnos() {
+  const g = document.getElementById('turno-grid');
+  g.innerHTML = '';
+  Object.keys(TURNOS).forEach(k => {
+    const b = document.createElement('div');
+    b.className = 'turno-card'; b.id = 'turno-' + k;
+    b.innerHTML =
+      `<div class="tn">${k === 'EXTRA' ? 'EXTRA' : k}</div>` +
+      `<div class="td">SACOLEIRAS EKOPLASTIC</div>` +
+      `<div class="dlabel">📅 Data no Bling</div>` +
+      `<input type="date" class="turno-data" id="data-${k}" value="${dataSugerida(k)}">` +
+      `<button class="turno-iniciar" onclick="iniciarSessao('${k}')">Iniciar ▶</button>`;
+    g.appendChild(b);
+  });
+}
+function montarMaquinas() {
+  const g = document.getElementById('maq-grid');
+  g.innerHTML = '';
+  MAQUINAS.forEach(mq => {
+    const b = document.createElement('div');
+    b.className = 'maq-btn'; b.id = 'maq-' + mq; b.textContent = mq;
+    b.onclick = () => selMaquina(mq);
+    g.appendChild(b);
+  });
+}
+function montarFormatos() {
+  const g = document.getElementById('fmt-grid');
+  g.innerHTML = '';
+  FORMATOS.forEach(f => {
+    const b = document.createElement('div');
+    b.className = 'fmt-btn'; b.id = 'fmt-' + f; b.textContent = f.replace('x', ' × ');
+    b.onclick = () => selFormato(f);
+    g.appendChild(b);
+  });
+  marcarFormatosDaMaquina();
+}
+function montarCores() {
+  const g = document.getElementById('cor-grid');
+  g.innerHTML = '';
+  CORES.forEach(c => {
+    const b = document.createElement('div');
+    b.className = 'cor-btn'; b.id = 'cor-' + c.key;
+    b.onclick = () => selCor(c.key);
+    b.innerHTML = `<div class="cor-dot" style="background:${c.dot}"></div><div class="cl">${c.nome}</div>`;
+    g.appendChild(b);
+  });
+}
+function montarQuick() {
+  const g = document.getElementById('quick-grid');
+  g.innerHTML = '';
+  QUICK.forEach(n => {
+    const b = document.createElement('button');
+    b.className = 'quick-btn'; b.textContent = n;
+    b.onclick = () => setFardos(n);
+    g.appendChild(b);
+  });
+}
+
+// ── Seleções ──
+function selMaquina(mq) {
+  state.maquina = mq;
+  document.querySelectorAll('.maq-btn').forEach(e => e.classList.remove('selected'));
+  document.getElementById('maq-' + mq).classList.add('selected');
+  // Se o formato já escolhido não pertence a esta máquina, desmarca e avisa.
+  if (state.formato && !formatoPermitido(mq, state.formato)) {
+    const f = state.formato;
+    state.formato = null;
+    document.querySelectorAll('.fmt-btn').forEach(e => e.classList.remove('selected'));
+    toast(`⚠ ${f.replace('x',' × ')} não é produzido na ${mq} — escolha outro formato`, 'warn', 4500);
+  }
+  marcarFormatosDaMaquina();
+  atualizarPreview();
+}
+
+// Deixa visualmente claro quais formatos a máquina escolhida produz.
+function marcarFormatosDaMaquina() {
+  FORMATOS.forEach(f => {
+    const b = document.getElementById('fmt-' + f);
+    if (!b) return;
+    const ok = formatoPermitido(state.maquina, f);
+    b.classList.toggle('indisponivel', !ok);
+  });
+}
+function selFormato(f) {
+  // TRAVA: formato precisa ser produzido pela máquina escolhida.
+  if (state.maquina && !formatoPermitido(state.maquina, f)) {
+    const donos = maquinaDoFormato(f);
+    toast(`⛔ A ${state.maquina} não produz ${f.replace('x',' × ')}` + (donos.length ? ` — esse formato é da ${donos.join(' e ')}` : ''), 'error', 5000);
+    return;
+  }
+  if (!state.maquina) { toast('Escolha primeiro a máquina', 'warn', 3000); return; }
+  state.formato = f;
+  document.querySelectorAll('.fmt-btn').forEach(e => e.classList.remove('selected'));
+  document.getElementById('fmt-' + f).classList.add('selected');
+  atualizarPreview();
+}
+function selCor(k) {
+  state.cor = k;
+  document.querySelectorAll('.cor-btn').forEach(e => e.classList.remove('selected'));
+  document.getElementById('cor-' + k).classList.add('selected');
+  atualizarPreview();
+}
+function setFardos(n) { state.fardos = Math.max(0, n | 0); document.getElementById('fardos-num').textContent = state.fardos; atualizarPreview(); }
+function incFardos(d) { setFardos(state.fardos + d); }
+
+// Limpa as seleções do item (máquina, formato, cor, fardos) mantendo a sessão,
+// o turno e a data. Chamado após adicionar um item com sucesso, para o operador
+// escolher tudo de novo e não repetir a seleção anterior sem querer.
+function resetSelecao() {
+  state.maquina = null;
+  state.formato = null;
+  state.cor = null;
+  state.fardos = 0;
+  document.querySelectorAll('.maq-btn').forEach(e => e.classList.remove('selected'));
+  document.querySelectorAll('.fmt-btn').forEach(e => e.classList.remove('selected'));
+  document.querySelectorAll('.cor-btn').forEach(e => e.classList.remove('selected'));
+  document.getElementById('fardos-num').textContent = '0';
+  atualizarPreview();
+}
+
+function atualizarPreview() {
+  const pode = state.maquina && state.formato && state.cor && state.fardos >= 1;
+  const el = document.getElementById('preview');
+  if (!state.maquina && !state.formato && !state.cor && !state.fardos) {
+    el.innerHTML = '<span>Selecione máquina, formato, cor e fardos</span>';
+  } else {
+    const kg = state.fardos * KG_FARDO;
+    const desc = `<b>${state.maquina || '—'}</b> · <b>${state.formato ? state.formato.replace('x',' × ') : '— × —'}</b> · <b>${state.cor ? corNome(state.cor) : '—'}</b> · ${state.fardos || 0} fardo(s)`;
+    el.innerHTML = `<span>${desc}</span><span class="kg">${state.fardos ? fmtKg(kg) : '—'}</span>`;
+  }
+  document.getElementById('btn-add').disabled = !pode || state.travado;
+}
+
+// ── Sessão / turno ──
+// Abre a sessão do turno k usando a data escolhida no card daquele turno.
+// Cada turno tem seu próprio campo de data, independente dos demais.
+async function iniciarSessao(k) {
+  const inp = document.getElementById('data-' + k);
+  const data = inp ? inp.value : '';
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(data)) { toast(`Escolha uma data válida para o ${TURNOS[k] ? TURNOS[k].curto : 'turno'}`, 'error'); return; }
+  // Se já há uma sessão aberta vazia (ex.: veio de uma troca de turno), cancela antes de abrir outra.
+  if (state.sessaoId && state.itens.length === 0) {
+    try { await fetch(URL_BASE + `/sessoes/${state.sessaoId}/cancelar`, { method: 'POST' }); } catch (e) {}
+    state.sessaoId = null;
+  }
+  try {
+    const r = await fetch(URL_BASE + '/sessoes', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tipo: 'produto-acabado', turno_codigo: k, fornecedor: TURNOS[k].nome, data_lancamento: data, operador: (window.EKO_RESPONSAVEL || null) }),
+    });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.erro || 'Falha ao abrir sessão');
+    state.sessaoId = d.sessao_id; state.turno = k; state.dataLanc = data; state.itens = [];
+    document.getElementById('overlay-turno').classList.remove('on');
+    document.getElementById('main').classList.add('on');
+    document.getElementById('list-turno').textContent = `${TURNOS[k].nome} · ${fmtDataBR(data)}`;
+    renderLista();
+    atualizarBadgesPai();
+    toast(`✓ ${TURNOS[k].curto} · ${fmtDataBR(data)} · Sessão #${state.sessaoId}`, 'success');
+  } catch (e) { toast('Erro ao iniciar: ' + e.message, 'error'); }
+}
+
+// Data sugerida: turno A = hoje; turnos C e EXTRA = amanhã (D+1). Sempre editável.
+function ymdLocal(d) {
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+function dataSugerida(k) {
+  const d = new Date();
+  // O turno C atravessa a meia-noite: começa num dia e termina no seguinte,
+  // mas a produção é contabilizada no dia em que COMEÇOU. Como o lançamento é
+  // feito de madrugada (já no dia seguinte), a data sugerida é a de ontem —
+  // assim o operador não precisa mexer no calendário toda vez.
+  if (k === 'C') d.setDate(d.getDate() - 1);
+  return ymdLocal(d);
+}
+function fmtDataBR(iso) {
+  const p = String(iso).split('-');
+  return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : iso;
+}
+function trocarTurno() {
+  // Só permite trocar de turno com a lista vazia (senão finalize antes).
+  if (state.sessaoId && state.itens.length > 0) {
+    toast('Finalize ou remova os itens antes de trocar de turno.', 'warn', 4500);
+    return;
+  }
+  document.getElementById('overlay-turno').classList.add('on');
+  document.getElementById('main').classList.remove('on');
+}
+
+// ── Adicionar / remover item ──
+// Consulta o histórico daquela máquina+formato e, se a cor escolhida for
+// incomum (ou inédita), pede confirmação. Não é trava: o operador pode seguir,
+// mas de forma consciente.
+async function checarCorIncomum() {
+  try {
+    const r = await fetch(URL_BASE + `/produto-acabado/frequencia-cor?maquina=${encodeURIComponent(state.maquina)}&formato=${encodeURIComponent(state.formato)}`);
+    const d = await r.json();
+    if (!r.ok || !d.ok || d.semBase) return null;          // sem histórico: não opina
+    const info = d.porCor[state.cor];
+    const usual = Object.entries(d.porCor).sort((a,b) => b[1].qtd - a[1].qtd)[0];
+    if (!info) return { tipo: 'inedita', usual, total: d.total, dias: d.dias };
+    if (info.pct < 10 && d.total >= 20) return { tipo: 'rara', info, usual, total: d.total, dias: d.dias };
+    return null;
+  } catch(e) { return null; }                               // falha na consulta não bloqueia
+}
+
+function confirmarCorIncomum(aviso) {
+  return new Promise(resolve => {
+    const nomeUsual = aviso.usual ? corNome(aviso.usual[0]) : '—';
+    const pctUsual  = aviso.usual ? aviso.usual[1].pct : 0;
+    const linha = aviso.tipo === 'inedita'
+      ? `Nos últimos ${aviso.dias} dias, <b>${corNome(state.cor)}</b> nunca foi lançada
+         na <b>${state.maquina}</b> no formato <b>${state.formato.replace('x',' × ')}</b>.`
+      : `<b>${corNome(state.cor)}</b> representa apenas <b>${aviso.info.pct}%</b> dos lançamentos
+         dessa máquina/formato nos últimos ${aviso.dias} dias.`;
+    const el = document.getElementById('modal-cor-incomum');
+    document.getElementById('cor-incomum-corpo').innerHTML =
+      `<div style="text-align:center; margin-bottom:16px;">
+         ${corBolinha(state.cor, 44)}
+         <div style="font-size:26px; font-weight:900; margin-top:8px;">${corNome(state.cor)}</div>
+         <div style="font-size:14px; color:var(--muted); margin-top:4px;">
+           ${state.maquina} · ${state.formato.replace('x',' × ')} · ${state.fardos} fardo(s)</div>
+       </div>
+       <div style="font-size:14px; line-height:1.6;">${linha}</div>
+       <div style="font-size:13px; color:var(--muted); margin-top:10px;">
+         Mais comum aqui: ${corBolinha(aviso.usual ? aviso.usual[0] : '', 12)}<b>${nomeUsual}</b> (${pctUsual}%).
+         Confira se a cor está certa antes de continuar.</div>`;
+    el.classList.add('on');
+    window._resolverCorIncomum = v => { el.classList.remove('on'); resolve(v); };
+  });
+}
+
+async function adicionarItem() {
+  if (state.travado) return;
+  if (!(state.maquina && state.formato && state.cor && state.fardos >= 1)) return;
+  const aviso = await checarCorIncomum();
+  if (aviso) { const segue = await confirmarCorIncomum(aviso); if (!segue) return; }
+  state.travado = true; document.getElementById('btn-add').disabled = true;
+  try {
+    const r = await fetch(URL_BASE + '/produto-acabado/item', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessao_id: state.sessaoId, corKey: state.cor, formato: state.formato, fardos: state.fardos, maquina: state.maquina }),
+    });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.erro || 'Erro ao adicionar');
+    const e = d.etiqueta;
+    state.itens.unshift({ id: e.id, maquina: e.maquina, cor: e.material_key, nome: e.material_nome, formato: e.lote, fardos: e.qtd_sacos, peso: e.peso, sku: e.sku });
+    renderLista();
+    atualizarBadgesPai();
+    toast(`➕ ${state.maquina} · ${corNome(state.cor)} ${state.formato} · ${state.fardos} fardo(s)`, 'success', 2200);
+    resetSelecao();   // limpa máquina/formato/cor/fardos para o próximo item (evita repetir seleção por engano)
+  } catch (e) { toast('Erro: ' + e.message, 'error'); }
+  finally { state.travado = false; atualizarPreview(); }
+}
+async function removerItem(id) {
+  try {
+    const r = await fetch(URL_BASE + '/etiquetas/' + id + '/cancelar', { method: 'POST' });
+    const d = await r.json().catch(() => ({}));
+    if (r.ok && (d.ok !== false)) {
+      state.itens = state.itens.filter(i => i.id !== id);
+      renderLista();
+      atualizarBadgesPai();
+      await cancelarSessaoSeVazia();
+    } else { toast('Não foi possível remover.', 'error'); }
+  } catch (e) { toast('Erro ao remover: ' + e.message, 'error'); }
+}
+
+function renderLista() {
+  const body = document.getElementById('list-body');
+  if (!state.itens.length) {
+    body.innerHTML = '<div class="empty">Nenhum item adicionado ainda.</div>';
+  } else {
+    body.innerHTML = state.itens.map(i => `
+      <div class="item">
+        <div>
+          <div class="nm"><span class="maq-tag">${i.maquina || '?'}</span> ${i.nome} · ${String(i.formato).replace('x',' × ')}</div>
+          <div class="dt">${i.fardos} fardo(s) × ${KG_FARDO}kg · ${i.sku}</div>
+        </div>
+        <div class="kg">${fmtKg(i.peso)}</div>
+        <button class="item-x" onclick="removerItem('${i.id}')" title="Remover">✕</button>
+      </div>`).join('');
+  }
+  atualizarResumo();
+}
+function atualizarResumo() {
+  const nItens  = state.itens.length;
+  const fardos  = state.itens.reduce((a, i) => a + Number(i.fardos || 0), 0);
+  const kg      = state.itens.reduce((a, i) => a + Number(i.peso || 0), 0);
+  document.getElementById('list-resumo').textContent = `${nItens} ${nItens === 1 ? 'item' : 'itens'} · ${fardos} fardo(s) · ${fmtKg(kg)}`;
+  document.getElementById('btn-fim').disabled = nItens === 0;
+}
+
+// ── Finalizar ──
+// Abre o resumo de confirmação. O envio ao Bling só acontece depois que o
+// operador confirmar — trava contra lançamento errado ou duplicado.
+function finalizar() {
+  if (!state.sessaoId || !state.itens.length) return;
+  const t = TURNOS[state.turno];
+  document.getElementById('resumo-envio-cab').textContent =
+    `${t ? t.nome : state.turno} · 📅 ${fmtDataBR(state.dataLanc)}`;
+  document.getElementById('resumo-envio-itens').innerHTML = state.itens.map(i =>
+    `<div class="rev-item">
+       <span><span class="maq-tag">${i.maquina || '?'}</span> ${corBolinha(i.cor)}${i.nome} · ${String(i.formato).replace('x',' × ')} · ${i.fardos} fardo(s)</span>
+       <span class="rev-kg">${fmtKg(i.peso)}</span>
+     </div>`).join('');
+  const fardos = state.itens.reduce((a, i) => a + Number(i.fardos || 0), 0);
+  const kg     = state.itens.reduce((a, i) => a + Number(i.peso || 0), 0);
+  document.getElementById('resumo-envio-tot').textContent =
+    `${state.itens.length} ${state.itens.length === 1 ? 'item' : 'itens'} · ${fardos} fardo(s) · ${fmtKg(kg)}`;
+  document.getElementById('modal-confirmar-envio').classList.add('on');
+}
+function fecharModalEnvio() {
+  document.getElementById('modal-confirmar-envio').classList.remove('on');
+}
+// Envio de verdade — só é chamado pelo botão "Confirmar e enviar" do resumo.
+async function confirmarEnvioBling() {
+  fecharModalEnvio();
+  if (!state.sessaoId || !state.itens.length) return;
+  document.getElementById('btn-fim').disabled = true;
+  try {
+    const r = await fetch(URL_BASE + `/sessoes/${state.sessaoId}/finalizar`, { method: 'POST' });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.erro || 'Erro ao finalizar');
+    if (d.resumo && d.resumo.ok) toast(`✓ Finalizado · resumo impresso (${d.resumo.itens} ${d.resumo.itens === 1 ? 'item' : 'itens'})`, 'success', 4000);
+    else toast('✓ Finalizado', 'success', 3000);
+    if (d.bling) {
+      if (d.bling.modo === 'simulacao')   toast(`Bling: simulado (${d.bling.bling_id})`, 'warn', 4500);
+      else if (d.bling.ok)                toast(`Bling: enviado (${d.bling.bling_id})`, 'success', 4500);
+      else if (d.bling.erro)              toast(`Bling: ${d.bling.erro}`, 'error', 6000);
+    }
+    // limpa e volta pra seleção de turno (próximo turno)
+    resetSessao();
+  } catch (e) { toast('Erro: ' + e.message, 'error'); atualizarResumo(); }
+}
+
+async function cancelarSessaoSeVazia() {
+  if (state.sessaoId && state.itens.length === 0) {
+    try { await fetch(URL_BASE + `/sessoes/${state.sessaoId}/cancelar`, { method: 'POST' }); } catch (e) {}
+    atualizarBadgesPai();
+    resetSessao();
+  }
+}
+function resetSessao() {
+  state.sessaoId = null; state.turno = null; state.turnoPre = null; state.dataLanc = null; state.maquina = null; state.formato = null; state.cor = null; state.fardos = 0; state.itens = [];
+  document.querySelectorAll('.maq-btn, .fmt-btn, .cor-btn').forEach(e => e.classList.remove('selected'));
+  document.getElementById('fardos-num').textContent = '0';
+  atualizarPreview();
+  renderLista();
+  document.getElementById('main').classList.remove('on');
+  document.getElementById('overlay-turno').classList.add('on');
+}
+
+// ── Avisa o shell (badge "em andamento") ──
+function atualizarBadgesPai() {
+  try { if (window.parent && window.parent.checarSessoesAbertas) window.parent.checarSessoesAbertas(); } catch (e) {}
+  try { if (window.parent && window.parent.parent && window.parent.parent.checarSessoesAbertas) window.parent.parent.checarSessoesAbertas(); } catch (e) {}
+}
+
+// ── Restaurar sessão aberta (reload/voltar) ──
+// Cancela sessões órfãs (abertas sem itens ativos) e retoma a 1ª que tiver
+// itens. Sem isso, sessões vazias de testes anteriores mantêm o badge aceso.
+async function restaurarSessaoAberta() {
+  try {
+    const r = await fetch(URL_BASE + '/sessoes/abertas?tipo=produto-acabado');
+    if (!r.ok) return;
+    const d = await r.json();
+    if (!d.ok || !d.sessoes) return;
+    let orfasCanceladas = 0, ativa = null;
+    for (const s of d.sessoes) {
+      const temItens = s.etiquetas && s.etiquetas.length > 0;
+      if (!temItens) {
+        try { await fetch(URL_BASE + `/sessoes/${s.id}/cancelar`, { method: 'POST' }); orfasCanceladas++; } catch (e) {}
+      } else if (!ativa) {
+        ativa = s;
+      }
+    }
+    if (orfasCanceladas > 0) atualizarBadgesPai();
+    if (!ativa) return;   // nada a retomar → permanece na seleção de turno
+    state.sessaoId = ativa.id; state.turno = ativa.turno_codigo; state.dataLanc = ativa.data_lancamento || null;
+    state.itens = (ativa.etiquetas || []).slice().reverse().map(e => ({
+      id: e.id, maquina: e.maquina, cor: e.material_key, nome: e.material_nome, formato: e.lote, fardos: e.qtd_sacos, peso: e.peso, sku: e.sku,
+    }));
+    if (ativa.turno_codigo && TURNOS[ativa.turno_codigo]) {
+      const nm = TURNOS[ativa.turno_codigo].nome;
+      document.getElementById('list-turno').textContent = ativa.data_lancamento ? `${nm} · ${fmtDataBR(ativa.data_lancamento)}` : nm;
+    }
+    document.getElementById('overlay-turno').classList.remove('on');
+    document.getElementById('main').classList.add('on');
+    renderLista();
+    toast(`↩ Retomando · ${state.itens.length} ${state.itens.length === 1 ? 'item' : 'itens'}`, 'success');
+  } catch (e) { console.warn('Falha ao restaurar produto acabado:', e.message); }
+}
+
+// ── Infra ──
+function toast(msg, tipo = 'info', dur = 3500) {
+  const wrap = document.getElementById('toast-area');
+  const t = document.createElement('div');
+  t.className = 'toast ' + tipo; t.textContent = msg;
+  wrap.appendChild(t);
+  setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, dur);
+}
+function tick() {
+  const d = new Date();
+  document.getElementById('clock').textContent = d.toLocaleTimeString('pt-BR', { hour12: false });
+}
+async function pingServidor() {
+  const el = document.getElementById('srv-status');
+  try {
+    const r = await fetch(URL_BASE + '/healthcheck');
+    if (r.ok) { el.className = 'srv-status on'; el.textContent = 'ONLINE'; }
+    else throw 0;
+  } catch (e) { el.className = 'srv-status off'; el.textContent = 'OFFLINE'; }
+}
+function voltarPagina() {
+  try { if (window.parent && window.parent.ekoHome) { window.parent.ekoHome(); return; } } catch (e) {}
+  location.href = '/';
+}
+
+function init() {
+  montarTurnos(); montarMaquinas(); montarFormatos(); montarCores(); montarQuick();
+  tick(); setInterval(tick, 1000);
+  pingServidor(); setInterval(pingServidor, 5000);
+  restaurarSessaoAberta().then(() => {
+    // se não havia sessão aberta, mostra a seleção de turno
+    if (!state.sessaoId) document.getElementById('overlay-turno').classList.add('on');
+  });
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  ETIQUETA DE GAIOLA (QR) — só para contagem no inventário.
+//  Fluxo separado do lançamento: nada aqui vai para o Bling.
+// ══════════════════════════════════════════════════════════════════
+const gState = { formato: null, cor: null, fardos: 0 };
+
+function abrirGaiola() {
+  document.getElementById('modal-gaiola').classList.add('on');
+  gRenderFormatos(); gRenderCores(); gRenderRapidos(); gAtualizar();
+  gCarregarHoje();
+}
+function fecharGaiola() { document.getElementById('modal-gaiola').classList.remove('on'); }
+
+function gRenderFormatos() {
+  const g = document.getElementById('g-fmt-grid');
+  g.innerHTML = '';
+  FORMATOS.forEach(f => {
+    const b = document.createElement('button');
+    b.className = 'fmt-btn' + (gState.formato === f ? ' selected' : '');
+    b.id = 'g-fmt-' + f;
+    b.textContent = f.replace('x', ' × ');
+    b.onclick = () => { gState.formato = f; gRenderFormatos(); gAtualizar(); };
+    g.appendChild(b);
+  });
+}
+function gRenderCores() {
+  const g = document.getElementById('g-cor-grid');
+  g.innerHTML = '';
+  CORES.forEach(c => {
+    const b = document.createElement('button');
+    b.className = 'cor-btn cor-cheia' + (gState.cor === c.key ? ' selected' : '');
+    // fundo na própria cor do material — o operador reconhece pelo olho, não
+    // só pela palavra (Colorida = verde, como na produção)
+    b.style.background = c.dot;
+    b.style.color = c.texto || '#111';
+    b.innerHTML = `<div class="cor-dot" style="background:${c.dot}"></div><div class="cl">${c.nome}</div>`;
+    b.onclick = () => { gState.cor = c.key; gRenderCores(); gAtualizar(); };
+    g.appendChild(b);
+  });
+}
+function gRenderRapidos() {
+  const g = document.getElementById('g-quick-grid');
+  if (!g) return;
+  g.innerHTML = '';
+  [10, 20, 30, 40, 50].forEach(n => {
+    const b = document.createElement('button');
+    b.className = 'quick-btn';
+    b.textContent = n;
+    b.onclick = () => { gState.fardos = n; gAtualizar(); };
+    g.appendChild(b);
+  });
+}
+function gIncFardos(d) { gState.fardos = Math.max(0, gState.fardos + d); gAtualizar(); }
+
+function gAtualizar() {
+  document.getElementById('g-fardos-num').textContent = gState.fardos;
+  const pronto = !!(gState.formato && gState.cor && gState.fardos >= 1);
+  document.getElementById('g-btn-imprimir').disabled = !pronto;
+  const p = document.getElementById('g-preview');
+  if (!pronto) { p.innerHTML = '<span>Escolha formato, cor e fardos</span>'; return; }
+  const kg = gState.fardos * 25;
+  p.innerHTML = `${corBolinha(gState.cor, 18)}<b>${gState.formato.replace('x',' × ')} ${corNome(gState.cor)}</b>
+     · <b>${gState.fardos} fardos</b> · ${kg.toLocaleString('pt-BR')} kg`;
+}
+
+async function imprimirGaiola() {
+  const btn = document.getElementById('g-btn-imprimir');
+  btn.disabled = true; const txt = btn.textContent; btn.textContent = 'Imprimindo…';
+  try {
+    const r = await fetch(URL_BASE + '/produto-acabado/etiqueta-gaiola', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ corKey: gState.cor, formato: gState.formato, fardos: gState.fardos,
+                             operador: (window.EKO_RESPONSAVEL || null) }),
+    });
+    const d = await r.json();
+    if (!r.ok || !d.ok) { toast((d && d.erro) || 'Falha ao gerar', 'error', 5000); }
+    else if (d.impressao && d.impressao.ok === false) {
+      toast(`Etiqueta ${d.id} gerada, mas a impressão falhou: ${d.impressao.erro || '?'}`, 'warn', 6000);
+    } else {
+      toast(`✓ Etiqueta ${d.id} impressa · ${d.fardos} fardos (${d.kg} kg)`, 'success', 4000);
+    }
+    gCarregarHoje();
+  } catch (e) { toast('Erro: ' + e.message, 'error', 5000); }
+  btn.textContent = txt; gAtualizar();
+}
+
+async function gCarregarHoje() {
+  const el = document.getElementById('g-hoje');
+  try {
+    const r = await fetch(URL_BASE + '/produto-acabado/gaiolas-hoje');
+    const d = await r.json();
+    const lista = (d && d.gaiolas) || [];
+    if (!lista.length) { el.innerHTML = '<div style="font-size:12px;color:var(--muted)">Nenhuma gaiola etiquetada hoje.</div>'; return; }
+    el.innerHTML =
+      `<div style="font-size:11px;font-weight:800;letter-spacing:1px;color:var(--muted);text-transform:uppercase;margin-bottom:8px;">
+         Gaiolas de hoje · ${d.qtd} · ${d.total_fardos} fardos · ${(d.total_kg||0).toLocaleString('pt-BR')} kg</div>`
+      + lista.slice(0, 12).map(g => `
+        <div class="g-item">
+          <span>${corBolinha(g.corKey)}<b>${g.formato.replace('x',' × ')}</b> · ${g.fardos} fardos
+            <span style="color:var(--muted);font-family:monospace;font-size:11px;"> ${g.id}</span></span>
+          <button class="btn-modal secundario" style="padding:4px 10px;font-size:11px;"
+                  onclick="gReimprimir('${g.id}')">reimprimir</button>
+        </div>`).join('');
+  } catch (e) { el.innerHTML = ''; }
+}
+
+async function gReimprimir(id) {
+  try {
+    const r = await fetch(URL_BASE + '/produto-acabado/gaiola-reimprimir', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }),
+    });
+    const d = await r.json();
+    if (!r.ok || !d.ok) toast((d && d.erro) || 'Falha ao reimprimir', 'error', 4000);
+    else toast(`✓ ${id} reimpressa`, 'success', 3000);
+  } catch (e) { toast('Erro: ' + e.message, 'error', 4000); }
+}
+
+// Só inicia depois que o colaborador entrar com a senha dele.
+function mostrarResponsavelPA() {
+  if (!window.EKO_RESPONSAVEL) return;
+  const el = document.createElement('div');
+  el.style.cssText = 'position:fixed; top:8px; right:12px; z-index:900; background:rgba(0,0,0,0.55);'
+    + 'border:1px solid rgba(255,255,255,0.18); color:#cfe3ff; padding:6px 12px; border-radius:20px;'
+    + 'font-size:12px; font-weight:800; pointer-events:none;';
+  el.textContent = '👤 ' + window.EKO_RESPONSAVEL;
+  document.body.appendChild(el);
+}
+// Rede de segurança: se o componente de acesso não carregar por algum motivo,
+// a tela ABRE mesmo assim (sem identificação) em vez de ficar morta. Numa
+// fábrica, tela travada para a produção; falta de identificação, não.
+function comAcesso(tela, aoEntrar) {
+  if (window.EkoAcesso && typeof EkoAcesso.exigir === 'function') return EkoAcesso.exigir(tela, aoEntrar);
+  console.warn('acesso-colaborador.js não carregou — abrindo a tela sem identificação');
+  try { aoEntrar(); } catch (e) { console.error(e); }
+}
+comAcesso('pa', () => { init(); mostrarResponsavelPA(); });
+</script>
+<script src="/seguranca-saida.js"></script>
+</body>
+</html>

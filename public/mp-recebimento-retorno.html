@@ -1,0 +1,3942 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<script src="/acesso-colaborador.js"></script>
+<title>Matéria-Prima · Recebimento + Retorno · v2</title>
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;700&family=Nunito:wght@600;700;800;900&display=swap');
+
+:root {
+  --bg:        #0d0f14;
+  --surface:   #161a23;
+  --panel:     #1e2330;
+  --panel-hi:  #252b3d;
+  --border:    #2a3045;
+  --text:      #e8eaf0;
+  --muted:     #6b7490;
+  --entrada:   #00d4ff;
+  --saida:     #f07040;
+  --devol:     #00ff9d;
+  --danger:    #ff4466;
+  --warn:      #ffaa00;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  height: 100vh;
+  overflow: hidden;
+  font-family: 'Nunito', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+  user-select: none;
+}
+
+/* ─── MODO EMBED (quando dentro de um iframe do shell unificado) ─── */
+body.embed > header,
+body.embed > .layout > .menu,
+body.embed .abas-modo { display: none !important; }
+body.embed > .layout {
+  height: 100vh;
+  grid-template-columns: 1fr 340px;
+}
+
+/* ─── HEADER ─── */
+header {
+  height: 44px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 20px;
+  flex-shrink: 0;
+}
+.logo {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px; font-weight: 700; letter-spacing: 3px;
+  color: var(--entrada);
+}
+.crumb { font-size: 11px; color: var(--muted); letter-spacing: 1px; }
+.crumb b { color: var(--text); font-weight: 800; }
+.header-right { display: flex; align-items: center; gap: 16px; }
+.info-lote {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  color: var(--muted);
+  display: flex; align-items: center; gap: 6px;
+  padding: 5px 10px;
+  background: var(--panel);
+  border-radius: 6px;
+  border: 1px solid var(--border);
+}
+.info-lote b {
+  color: var(--warn);
+  font-weight: 700;
+  letter-spacing: 1.5px;
+}
+.info-lote .lbl {
+  font-size: 9px; letter-spacing: 1.5px;
+  text-transform: uppercase;
+}
+.clock {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 15px; font-weight: 700;
+  color: var(--devol); letter-spacing: 2px;
+}
+.srv-status {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+.srv-status.on  { color: var(--devol);  border-color: rgba(0,255,157,0.4); background: rgba(0,255,157,0.08); }
+.srv-status.off { color: var(--danger); border-color: rgba(255,68,102,0.4); background: rgba(255,68,102,0.08); }
+.btn-icon {
+  background: transparent; border: 1px solid var(--border);
+  border-radius: 6px; width: 32px; height: 32px;
+  color: var(--muted); font-size: 14px; cursor: pointer;
+}
+.btn-icon:hover { color: var(--text); border-color: var(--panel-hi); }
+
+/* ─── LAYOUT ─── */
+.layout {
+  height: calc(100vh - 44px);
+  display: grid;
+  grid-template-columns: 1fr 340px;
+}
+
+/* ─── MENU ─── */
+.menu {
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  padding: 14px 12px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.menu-titulo {
+  font-size: 10px; font-weight: 800; letter-spacing: 2px;
+  color: var(--muted); padding: 0 4px; margin-bottom: 4px;
+}
+.menu-item {
+  background: var(--panel);
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 10px;
+  cursor: pointer;
+  display: flex; align-items: center; gap: 10px;
+  transition: all 0.15s;
+}
+.menu-item .icone { font-size: 20px; width: 24px; text-align: center; }
+.menu-item .nome { font-size: 13px; font-weight: 800; letter-spacing: 0.3px; }
+.menu-item:hover { border-color: var(--panel-hi); background: var(--panel-hi); }
+.menu-item.active {
+  background: rgba(0, 212, 255, 0.10);
+  border-color: var(--entrada);
+}
+.menu-item.active .nome { color: var(--entrada); }
+.menu-rodape {
+  margin-top: auto; padding-top: 12px;
+  border-top: 1px solid var(--border);
+  font-size: 10px; color: var(--muted);
+  font-family: 'IBM Plex Mono', monospace;
+  letter-spacing: 1px; text-align: center;
+}
+
+/* ─── ÁREA CENTRAL ─── */
+.central {
+  padding: 12px 16px;
+  display: flex; flex-direction: column; gap: 9px;
+  overflow: hidden;
+}
+
+.banner-recebimento {
+  background: linear-gradient(135deg, rgba(0,212,255,0.10), rgba(0,212,255,0.04));
+  border: 1.5px solid var(--entrada);
+  border-radius: 8px;
+  padding: 8px 14px;
+  display: none;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+}
+.banner-recebimento.ativo { display: flex; }
+.banner-recebimento .pulse {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--entrada);
+  animation: pulse 1.5s infinite;
+  flex-shrink: 0;
+}
+.banner-recebimento .txt { flex: 1; }
+.banner-recebimento .txt b { color: var(--entrada); letter-spacing: 1px; }
+.banner-recebimento .info {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 700;
+}
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+.bloco {
+  background: var(--panel);
+  border: 1.5px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 14px;
+  transition: all 0.2s;
+  position: relative;
+}
+.bloco.locked { opacity: 0.42; pointer-events: none; }
+.bloco.fixed { border-color: var(--entrada); background: rgba(0,212,255,0.06); }
+.bloco.done { border-color: var(--devol); background: rgba(0,255,157,0.04); }
+.bloco.active { border-color: var(--entrada); box-shadow: 0 0 0 2px rgba(0,212,255,0.15); }
+
+.bloco-head {
+  display: flex; align-items: center; gap: 10px; margin-bottom: 8px;
+}
+.bloco-num {
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  background: var(--border);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 800;
+  color: var(--muted);
+  font-family: 'IBM Plex Mono', monospace;
+  flex-shrink: 0;
+}
+.bloco.done .bloco-num, .bloco.fixed .bloco-num { background: var(--devol); color: #001a10; }
+.bloco.active .bloco-num { background: var(--entrada); color: #001a20; }
+.bloco-titulo {
+  font-size: 12px; font-weight: 800; letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--muted); flex: 1;
+}
+.bloco.done .bloco-titulo, .bloco.fixed .bloco-titulo { color: var(--devol); }
+.bloco.active .bloco-titulo { color: var(--entrada); }
+.bloco-valor { font-size: 14px; font-weight: 800; color: var(--text); }
+.bloco-valor.cinza { color: var(--muted); font-weight: 600; font-style: italic; }
+.bloco-cadeado { font-size: 11px; color: var(--entrada); margin-left: 8px; opacity: 0.8; }
+
+.opcoes { display: flex; gap: 6px; flex-wrap: wrap; }
+.opt {
+  background: var(--bg);
+  border: 1.5px solid var(--border);
+  border-radius: 7px;
+  padding: 8px 14px;
+  cursor: pointer;
+  font-family: 'Nunito', sans-serif;
+  font-size: 14px; font-weight: 700;
+  color: var(--text);
+  transition: all 0.12s;
+  min-height: 38px;
+  display: flex; align-items: center; gap: 8px;
+}
+.opt:hover { border-color: var(--panel-hi); background: var(--panel-hi); }
+.opt.sel { background: rgba(0,212,255,0.12); border-color: var(--entrada); color: var(--entrada); }
+.opt .sub {
+  font-size: 9px; color: var(--muted);
+  letter-spacing: 1px; font-weight: 600;
+}
+.opt.sel .sub { color: rgba(0,212,255,0.6); }
+.opt.disabled { opacity: 0.35; cursor: not-allowed; }
+.opt.disabled:hover { background: var(--bg); border-color: var(--border); }
+.opt-vazio {
+  padding: 10px 12px;
+  font-size: 11px;
+  color: var(--muted);
+  font-style: italic;
+  text-align: center;
+}
+
+/* ─── Bloco PESAGEM ─── */
+.peso-row {
+  display: grid; grid-template-columns: 1fr 100px;
+  gap: 10px; align-items: end;
+}
+.peso-input-wrap { display: flex; flex-direction: column; }
+.peso-label {
+  font-size: 10px; font-weight: 800; letter-spacing: 1.5px;
+  color: var(--muted); margin-bottom: 4px;
+  text-transform: uppercase;
+}
+.peso-input {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 26px; font-weight: 700;
+  color: var(--entrada);
+  background: var(--bg);
+  border: 1.5px solid var(--border);
+  border-radius: 7px;
+  padding: 5px 12px;
+  width: 100%; text-align: right;
+}
+.peso-input:focus { border-color: var(--entrada); outline: none; }
+.peso-input.tara { font-size: 16px; color: var(--text); }
+.peso-acoes { display: flex; gap: 6px; margin-top: 8px; }
+.btn-bal {
+  flex: 1;
+  font-family: 'Nunito', sans-serif;
+  font-size: 11px; font-weight: 800;
+  letter-spacing: 1px; text-transform: uppercase;
+  padding: 8px;
+  background: transparent;
+  border: 1.5px solid var(--border);
+  border-radius: 6px;
+  color: var(--text); cursor: pointer;
+}
+.btn-bal:hover { border-color: var(--entrada); color: var(--entrada); }
+.btn-bal.sim {
+  border-style: dashed;
+  color: var(--muted); font-size: 10px;
+}
+.btn-bal.sim:hover { color: var(--warn); border-color: var(--warn); }
+.btn-bal.conectada { border-color: var(--devol); color: var(--devol); border-style: solid; }
+.btn-bal.conectada:hover { border-color: var(--devol); color: var(--devol); }
+.btn-ret-inteiro {
+  width: 100%; padding: 15px; margin-bottom: 8px;
+  background: var(--devol); color: #062916; border: none; border-radius: 10px;
+  font-weight: 800; font-size: 15px; letter-spacing: 0.3px; cursor: pointer;
+}
+.btn-ret-inteiro:active { transform: scale(0.99); }
+.ret-pesagem-ou { text-align: center; font-size: 11px; opacity: 0.55; margin: 2px 0 8px; }
+
+.bal-status-mini {
+  font-size: 10px; font-weight: 800; letter-spacing: 1px;
+  color: var(--muted);
+  display: flex; align-items: center; gap: 6px;
+  text-transform: uppercase;
+}
+.bal-status-mini .dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--muted);
+}
+.bal-status-mini.on .dot {
+  background: var(--devol);
+  animation: pulse 1.5s infinite;
+}
+.bal-status-mini.on { color: var(--devol); }
+.bal-status-mini.estabilizando .dot { background: var(--warn); }
+.bal-status-mini.estabilizando { color: var(--warn); }
+
+/* Peso instável pisca laranja */
+.peso-input.instavel {
+  color: var(--warn) !important;
+  animation: piscaInstavel 1.2s infinite;
+}
+@keyframes piscaInstavel {
+  0%, 100% { background: var(--bg); }
+  50%      { background: rgba(255,170,0,0.08); }
+}
+
+/* Botões pequenos para Zerar/Tarar na balança */
+.bal-cmd-row {
+  display: flex; gap: 6px; margin-top: 6px;
+}
+.btn-bal-cmd {
+  flex: 1;
+  font-family: 'Nunito', sans-serif;
+  font-size: 11px; font-weight: 800;
+  letter-spacing: 1px; text-transform: uppercase;
+  padding: 7px;
+  background: rgba(0,212,255,0.05);
+  border: 1px solid rgba(0,212,255,0.25);
+  border-radius: 6px;
+  color: var(--entrada);
+  cursor: pointer;
+}
+.btn-bal-cmd:hover { background: rgba(0,212,255,0.12); }
+.btn-bal-cmd:disabled { opacity: 0.3; cursor: not-allowed; }
+
+/* Aviso de configuração da balança */
+.aviso-bal {
+  background: rgba(255,170,0,0.08);
+  border: 1px solid rgba(255,170,0,0.4);
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--warn);
+  display: none;
+  line-height: 1.5;
+}
+.aviso-bal.ativo { display: block; }
+.aviso-bal b { color: #ffd060; }
+
+.liquido-display {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 9px 14px;
+  background: rgba(0,212,255,0.06);
+  border: 1.5px dashed var(--entrada);
+  border-radius: 8px;
+  margin-top: 8px;
+}
+.liquido-display .lbl {
+  font-size: 11px; font-weight: 800; letter-spacing: 1.5px;
+  color: var(--entrada); text-transform: uppercase;
+}
+.liquido-display .val {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 22px; font-weight: 700;
+  color: var(--entrada);
+}
+
+/* ─── Bloco QUANTIDADE ─── */
+.qtd-area {
+  display: flex; align-items: center; justify-content: center;
+  gap: 14px; padding: 4px 0;
+}
+.btn-qtd {
+  width: 48px; height: 48px;
+  border-radius: 50%;
+  background: var(--bg);
+  border: 2px solid var(--border);
+  font-size: 22px; font-weight: 700;
+  color: var(--text);
+  cursor: pointer;
+  transition: all 0.12s;
+  display: flex; align-items: center; justify-content: center;
+}
+.btn-qtd:hover { border-color: var(--entrada); color: var(--entrada); }
+.btn-qtd:active { transform: scale(0.94); }
+
+.qtd-input {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 36px;
+  font-weight: 700;
+  color: var(--entrada);
+  background: var(--bg);
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  padding: 2px 14px;
+  width: 130px;
+  text-align: center;
+}
+.qtd-input:focus { border-color: var(--entrada); outline: none; }
+
+.qtd-sub {
+  text-align: center;
+  font-size: 10px; font-weight: 800; letter-spacing: 1.5px;
+  color: var(--muted); text-transform: uppercase;
+  margin-top: 0;
+}
+
+.atalhos {
+  display: grid; grid-template-columns: repeat(8, 1fr);
+  gap: 4px; margin-top: 6px;
+}
+.atalho {
+  background: var(--bg);
+  border: 1.5px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 4px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px; font-weight: 700;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.12s;
+}
+.atalho:hover { color: var(--entrada); border-color: var(--entrada); }
+.atalho.sel { color: var(--entrada); border-color: var(--entrada); background: rgba(0,212,255,0.08); }
+
+.qtd-calc {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 14px;
+  background: rgba(0,212,255,0.06);
+  border: 1.5px dashed var(--entrada);
+  border-radius: 8px;
+  margin-top: 8px;
+}
+.qtd-calc .lbl {
+  font-size: 11px; font-weight: 800; letter-spacing: 1px;
+  color: var(--entrada); text-transform: uppercase;
+}
+.qtd-calc .val {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 18px; font-weight: 700;
+  color: var(--entrada);
+}
+
+/* ─── COLUNA DIREITA ─── */
+.coluna-direita {
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  padding: 14px 14px;
+  display: flex; flex-direction: column;
+  gap: 9px;
+  overflow: hidden;
+}
+
+.etiqueta-wrap {
+  display: flex; justify-content: center;
+  flex-shrink: 0;
+}
+
+/* Etiqueta 100x100mm — preview em escala (200x200px) */
+.etiqueta-box {
+  background: #f8f8f8;
+  color: #111;
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-family: 'IBM Plex Mono', monospace;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  width: 240px;
+  min-height: 260px;
+  display: flex; flex-direction: column;
+  gap: 4px;
+  position: relative;
+}
+.etiqueta-box .e-sep {
+  border: none; border-top: 1.5px solid #111; margin: 4px 0;
+  width: 100%;
+}
+.etiqueta-box .e-linha {
+  font-size: 10px; font-weight: 700;
+  line-height: 1.3;
+}
+.etiqueta-box .e-linha .e-lbl {
+  font-weight: 800;
+}
+.etiqueta-box .e-row {
+  font-size: 9px;
+}
+.etiqueta-box .e-row .e-lbl {
+  font-weight: 800;
+}
+.etiqueta-box .e-peso {
+  text-align: center;
+  font-size: 16px;
+  font-weight: 900;
+  letter-spacing: 1px;
+  padding: 2px 0;
+}
+.etiqueta-box .e-cod-label {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+}
+.etiqueta-box .e-cod-valor {
+  text-align: center;
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: 2px;
+  padding: 2px 0;
+}
+.etiqueta-box .e-bc-svg {
+  display: block;
+  width: 100%;
+  height: 28px;
+  margin-top: 2px;
+}
+.etiqueta-box .e-sku {
+  text-align: center;
+  font-size: 9px;
+  font-weight: 800;
+  margin-top: 2px;
+  letter-spacing: 0.3px;
+}
+
+.etiqueta-vazia {
+  text-align: center;
+  width: 220px;
+  height: 220px;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  color: #999;
+  background: #f8f8f8;
+  border-radius: 6px;
+}
+.etiqueta-vazia .txt {
+  font-size: 11px; font-weight: 700;
+  letter-spacing: 1px; text-transform: uppercase;
+  color: #555; padding: 0 16px;
+}
+
+.btn-imprimir {
+  background: linear-gradient(135deg, var(--devol), #00b86e);
+  border: none;
+  border-radius: 8px;
+  padding: 11px;
+  color: #001a10;
+  font-family: 'Nunito', sans-serif;
+  font-size: 14px; font-weight: 900;
+  letter-spacing: 1.5px;
+  cursor: pointer;
+  transition: all 0.15s;
+  box-shadow: 0 4px 12px rgba(0,255,157,0.2);
+  flex-shrink: 0;
+}
+.btn-imprimir:hover { transform: translateY(-1px); box-shadow: 0 8px 16px rgba(0,255,157,0.3); }
+.btn-imprimir:active { transform: translateY(0) scale(0.99); }
+.btn-imprimir:disabled {
+  background: var(--border); color: var(--muted);
+  cursor: not-allowed; box-shadow: none; transform: none;
+}
+
+/* Recebimento atual */
+.recebimento-atual {
+  flex: 1;
+  display: flex; flex-direction: column;
+  min-height: 0;
+}
+.recebimento-head {
+  display: flex; justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 5px; padding: 0 2px;
+}
+.recebimento-head .titulo {
+  font-size: 10px; font-weight: 800; letter-spacing: 2px;
+  color: var(--muted); text-transform: uppercase;
+}
+.totais {
+  display: flex; gap: 8px; flex-direction: column; align-items: flex-end;
+}
+.totais .linha {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  font-weight: 700;
+}
+.totais .bipadas { color: var(--devol); }
+.totais .pendentes { color: var(--warn); }
+
+.itens-lista {
+  flex: 1;
+  overflow-y: auto;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px;
+  display: flex; flex-direction: column; gap: 4px;
+  min-height: 80px;
+}
+.itens-lista::-webkit-scrollbar { width: 6px; }
+.itens-lista::-webkit-scrollbar-track { background: transparent; }
+.itens-lista::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+.item {
+  background: var(--bg);
+  border-radius: 6px;
+  padding: 7px 10px;
+  display: grid;
+  grid-template-columns: 28px 1fr auto auto auto;
+  gap: 8px;
+  align-items: center;
+  font-size: 11px;
+  border-left: 2px solid var(--devol);
+  transition: all 0.2s;
+}
+.item.pendente {
+  border-left-color: var(--warn);
+  background: rgba(255, 170, 0, 0.04);
+}
+.item .n {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px; font-weight: 700; color: var(--muted);
+}
+.item .desc {
+  font-weight: 700; font-size: 11px;
+  line-height: 1.2;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.item .desc .small {
+  font-size: 9px; color: var(--muted);
+  font-weight: 600; letter-spacing: 0.5px;
+}
+.item .peso {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px; font-weight: 800;
+}
+.item.bipada .peso { color: var(--devol); }
+.item.pendente .peso { color: var(--warn); }
+
+.item .acao {
+  font-size: 10px; font-weight: 800;
+  padding: 4px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+  border: 1.5px solid var(--warn);
+  background: rgba(255,170,0,0.12);
+  color: var(--warn);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  transition: all 0.12s;
+}
+.item .acao:hover { background: var(--warn); color: #1a0f00; }
+.item .check {
+  font-size: 14px; color: var(--devol);
+  font-weight: 800;
+}
+.item .acao-del {
+  width: 26px; height: 26px; padding: 0;
+  border: 1px solid var(--border); border-radius: 6px;
+  background: transparent; color: var(--muted);
+  font-size: 13px; font-weight: 800; line-height: 1;
+  cursor: pointer; transition: all 0.12s;
+}
+.item .acao-del:hover { background: rgba(239,68,68,0.12); color: var(--danger); border-color: var(--danger); }
+
+.item-vazio {
+  text-align: center;
+  padding: 24px 8px;
+  color: var(--muted);
+  font-size: 11px;
+  margin: auto 0;
+}
+.item-vazio .ico { font-size: 28px; opacity: 0.3; margin-bottom: 6px; }
+
+.acoes-recebimento {
+  display: flex; gap: 6px; flex-shrink: 0;
+}
+.btn-relatorio {
+  width: 100%; margin-bottom: 10px; padding: 9px 12px;
+  border: 1.5px solid var(--border); border-radius: 10px; background: transparent;
+  color: var(--muted); font-size: 13px; font-weight: 800; letter-spacing: .3px; cursor: pointer;
+}
+.btn-relatorio:hover:not(:disabled) { border-color: var(--text); color: var(--text); }
+.btn-relatorio:active:not(:disabled) { transform: translateY(1px); }
+.btn-relatorio:disabled { opacity: .4; cursor: not-allowed; }
+.linha-sec { display: flex; gap: 8px; margin-bottom: 10px; }
+.linha-sec .btn-relatorio { width: auto; flex: 1; margin-bottom: 0; }
+body.modo-retorno #btn-corrigir { display: none; }
+
+.ov-correcao { position: fixed; inset: 0; background: rgba(5,8,12,0.82); display: none; align-items: center; justify-content: center; z-index: 9000; }
+.ov-correcao.on { display: flex; }
+.corr-card { width: min(560px, 94vw); max-height: 92vh; overflow-y: auto; background: var(--panel, #131922); border: 1px solid var(--line, rgba(255,255,255,0.12)); border-radius: 16px; padding: 22px; }
+.corr-head { display: flex; align-items: center; justify-content: space-between; font-size: 19px; font-weight: 900; color: var(--text, #eef3f8); }
+.corr-x { background: transparent; border: none; color: var(--muted, #9fb3c8); font-size: 20px; cursor: pointer; }
+.corr-sub { font-size: 13px; color: var(--muted, #9fb3c8); margin: 6px 0 16px; }
+.corr-busca { display: flex; gap: 10px; }
+#corr-cod { flex: 1; padding: 14px 16px; border-radius: 10px; border: 2px solid var(--accent, #00ff9d); background: var(--bg, #0d0f14); color: var(--text, #fff); font-size: 20px; font-weight: 800; font-family: 'IBM Plex Mono', monospace; }
+.corr-btn-buscar { padding: 0 20px; border: none; border-radius: 10px; background: var(--accent, #00ff9d); color: #04140c; font-size: 15px; font-weight: 900; cursor: pointer; }
+.corr-edit { display: none; margin-top: 18px; }
+.corr-info { background: var(--bg, #0d0f14); border-radius: 10px; padding: 12px 14px; font-size: 14px; line-height: 1.7; color: var(--text, #fff); }
+.corr-peso-l b { color: var(--accent, #00ff9d); font-size: 18px; }
+.corr-trava { font-size: 11px; color: var(--muted, #9fb3c8); }
+.corr-antes { color: var(--muted, #9fb3c8); font-size: 13px; }
+.corr-campos { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin: 16px 0; }
+.corr-campos label { display: block; font-size: 11px; font-weight: 800; color: var(--muted, #9fb3c8); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 5px; }
+.corr-campos select { width: 100%; padding: 11px 10px; border-radius: 9px; border: 1.5px solid var(--line, rgba(255,255,255,0.18)); background: var(--bg, #0d0f14); color: var(--text, #fff); font-size: 15px; font-weight: 700; }
+.corr-campos select:disabled { opacity: .5; }
+.corr-resumo { background: var(--bg, #0d0f14); border: 1px dashed var(--line, rgba(255,255,255,0.2)); border-radius: 9px; padding: 11px 14px; font-size: 14px; margin-bottom: 16px; color: var(--text, #fff); }
+.corr-resumo b { color: var(--accent, #00ff9d); }
+.corr-btn-ok { width: 100%; padding: 15px; border: none; border-radius: 11px; background: var(--accent, #00ff9d); color: #04140c; font-size: 17px; font-weight: 900; letter-spacing: .5px; cursor: pointer; }
+.corr-btn-ok:disabled { opacity: .4; cursor: not-allowed; }
+.corr-btn-ok:active:not(:disabled) { transform: translateY(1px); }
+
+.btn-finalizar {
+  flex: 1;
+  background: linear-gradient(135deg, var(--entrada), #0090b0);
+  border: none;
+  border-radius: 8px;
+  padding: 13px;
+  color: #001a20;
+  font-family: 'Nunito', sans-serif;
+  font-size: 13px; font-weight: 900;
+  letter-spacing: 1.5px;
+  cursor: pointer;
+  transition: all 0.15s;
+  box-shadow: 0 4px 12px rgba(0,212,255,0.2);
+  text-transform: uppercase;
+}
+.btn-finalizar:hover { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(0,212,255,0.3); }
+.btn-finalizar:active { transform: translateY(0) scale(0.99); }
+.btn-finalizar:disabled {
+  background: var(--border); color: var(--muted);
+  cursor: not-allowed; box-shadow: none; transform: none;
+}
+.btn-cancelar {
+  background: transparent;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  padding: 13px 16px;
+  color: var(--muted);
+  font-family: 'Nunito', sans-serif;
+  font-size: 12px; font-weight: 800;
+  cursor: pointer;
+  transition: all 0.15s;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+.btn-cancelar:hover { color: var(--danger); border-color: var(--danger); }
+.btn-cancelar:disabled { opacity: 0.3; cursor: not-allowed; }
+.btn-cancelar.armado {
+  color: #fff; background: var(--danger); border-color: var(--danger);
+  animation: pulsaCancelar 0.6s ease-in-out infinite alternate;
+}
+@keyframes pulsaCancelar { from { opacity: 1; } to { opacity: 0.72; } }
+
+.toast {
+  position: fixed;
+  bottom: 20px; right: 20px;
+  padding: 12px 20px;
+  border-radius: 8px;
+  font-weight: 800;
+  font-size: 13px;
+  letter-spacing: 0.5px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  display: none;
+  align-items: center; gap: 10px;
+  z-index: 200;
+  animation: slideIn 0.3s ease;
+}
+.toast.ativo { display: flex; }
+.toast.sucesso { background: var(--devol); color: #001a10; }
+.toast.info    { background: var(--entrada); color: #001a20; }
+.toast.warn    { background: var(--warn); color: #1a0f00; }
+.toast.erro    { background: var(--danger); color: white; }
+@keyframes slideIn {
+  from { transform: translateX(20px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+/* ═══════════════════════════════════════════════════
+   ABAS DE MODO (Recebimento / Retorno)
+   ═══════════════════════════════════════════════════ */
+.abas-modo {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+  border-bottom: 2px solid var(--border);
+  padding-bottom: 0;
+}
+.aba-modo {
+  flex: 1;
+  background: var(--panel);
+  border: 1.5px solid var(--border);
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  padding: 10px 14px;
+  font-family: 'Nunito', sans-serif;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--muted);
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  transition: all 0.15s;
+  position: relative;
+  top: 2px;
+}
+.aba-modo .ico { font-size: 16px; }
+.aba-modo:hover { background: var(--panel-hi); color: var(--text); }
+.aba-modo.ativa {
+  background: var(--bg);
+  border-color: var(--entrada);
+  border-bottom: 2px solid var(--bg);
+  color: var(--entrada);
+}
+.aba-modo[data-modo="retorno"].ativa {
+  border-color: var(--devol);
+  color: var(--devol);
+}
+
+/* Quando aba Retorno está ativa, troca cor temática do sistema */
+body.modo-retorno .menu-item.active .nome { color: var(--devol); }
+body.modo-retorno .menu-item.active { border-color: var(--devol); background: rgba(0,255,157,0.10); }
+
+/* ═══════════════════════════════════════════════════
+   CONTEÚDO DO MODO RETORNO
+   ═══════════════════════════════════════════════════ */
+.modo-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1;
+  min-height: 0;
+}
+
+.ret-intro {
+  display: flex; gap: 14px; align-items: center;
+  padding: 14px 18px;
+  background: rgba(0,255,157,0.06);
+  border: 1.5px solid var(--devol);
+  border-radius: 10px;
+}
+.ret-intro .pulse {
+  width: 12px; height: 12px; border-radius: 50%;
+  background: var(--devol);
+  animation: pulse 1.5s infinite;
+  flex-shrink: 0;
+}
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+.ret-titulo {
+  font-size: 14px; font-weight: 900;
+  letter-spacing: 1px;
+  color: var(--devol);
+}
+.ret-sub {
+  font-size: 11px; color: var(--muted);
+  margin-top: 2px;
+}
+
+.ret-bipa-display {
+  background: var(--panel);
+  border: 2px dashed var(--border);
+  border-radius: 12px;
+  padding: 40px 24px;
+  text-align: center;
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+}
+.ret-bipa-display .ret-icone {
+  font-size: 56px; opacity: 0.4;
+}
+.ret-bipa-display .ret-msg-grande {
+  font-size: 16px; font-weight: 800;
+  letter-spacing: 1px;
+  color: var(--text);
+  text-transform: uppercase;
+}
+.ret-bipa-display .ret-msg-sub {
+  font-size: 12px; color: var(--muted);
+  max-width: 400px; line-height: 1.5;
+}
+.btn-sim-bipe {
+  margin-top: 10px;
+  background: transparent;
+  border: 1.5px dashed var(--muted);
+  border-radius: 6px;
+  padding: 8px 18px;
+  color: var(--muted);
+  font-family: 'Nunito', sans-serif;
+  font-size: 11px; font-weight: 800;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.btn-sim-bipe:hover { color: var(--warn); border-color: var(--warn); }
+
+/* ─── Sub-abas do RETORNO (Grãos / Aditivos) ─── */
+.reto-tabs {
+  display: flex; gap: 6px;
+  background: var(--panel);
+  padding: 4px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+}
+
+/* Containers de sub-fluxos: SEMPRE column pra empilhar verticalmente */
+.reto-flow {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.reto-sub {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+/* Agrupador horizontal de blocos compactos (Pigmento+Fornecedor, Material+Fornecedor) */
+.reto-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  align-items: start;
+}
+.reto-tab {
+  flex: 1;
+  background: transparent;
+  border: none;
+  padding: 10px 14px;
+  font-family: 'Nunito', sans-serif;
+  font-size: 13px; font-weight: 800;
+  letter-spacing: 1px;
+  color: var(--muted);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.reto-tab:hover { color: var(--text); }
+.reto-tab.ativa {
+  background: rgba(0,255,157,0.15);
+  color: var(--devol);
+  box-shadow: 0 0 0 1px rgba(0,255,157,0.3);
+}
+
+/* ─── Toggle Origem (Com etiqueta / Sem etiqueta) ─── */
+.reto-origem-toggle {
+  display: flex; gap: 6px;
+  padding: 4px;
+  background: var(--bg);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+.reto-orig-btn {
+  flex: 1;
+  background: transparent;
+  border: none;
+  padding: 11px 14px;
+  font-family: 'Nunito', sans-serif;
+  font-size: 12px; font-weight: 800;
+  letter-spacing: 1px;
+  color: var(--muted);
+  border-radius: 5px;
+  cursor: pointer;
+  text-transform: uppercase;
+}
+.reto-orig-btn:hover { color: var(--text); }
+.reto-orig-btn.ativa {
+  background: rgba(0,255,157,0.10);
+  color: var(--devol);
+}
+.reto-orig-btn[data-origem="sem-etiqueta"].ativa {
+  background: rgba(255,170,0,0.10);
+  color: var(--warn);
+}
+
+/* ─── Alertas inline ─── */
+.reto-alerta {
+  background: rgba(255,170,0,0.08);
+  border: 1px solid rgba(255,170,0,0.3);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 12px;
+  color: var(--warn);
+}
+.reto-alerta b { color: #ffd060; }
+.reto-alerta.info {
+  background: rgba(0,255,157,0.06);
+  border-color: rgba(0,255,157,0.25);
+  color: var(--devol);
+}
+.reto-alerta.info b { color: #66ffc8; }
+
+/* ─── Contador de sacos ─── */
+.reto-contador-bloco {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+.contador-row {
+  display: flex; gap: 10px;
+  align-items: center;
+  justify-content: center;
+  margin-top: 6px;
+}
+.btn-cont {
+  width: 42px; height: 42px;
+  font-size: 22px; font-weight: 700;
+  background: rgba(0,255,157,0.12);
+  color: var(--devol);
+  border: 1.5px solid rgba(0,255,157,0.4);
+  border-radius: 8px;
+  cursor: pointer;
+  line-height: 1;
+}
+.btn-cont:hover { background: rgba(0,255,157,0.22); }
+.cont-input {
+  width: 84px;
+  text-align: center;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 24px;
+  font-weight: 700;
+  padding: 6px;
+  background: var(--bg);
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+}
+.reto-contador-info {
+  display: none;   /* informação já fica no resumo abaixo, evita ruído */
+}
+
+/* ─── Sacos parciais ─── */
+.reto-parciais-bloco {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+.reto-parciais-lista {
+  margin-top: 6px;
+  margin-bottom: 8px;
+  max-height: 100px;
+  overflow-y: auto;
+  display: flex; flex-direction: column;
+  gap: 4px;
+}
+.reto-parcial-item {
+  display: flex; justify-content: space-between;
+  align-items: center;
+  padding: 6px 10px;
+  background: rgba(0,255,157,0.06);
+  border-radius: 5px;
+  border-left: 3px solid var(--devol);
+  font-size: 12px;
+}
+.reto-parcial-item .id { font-family: 'IBM Plex Mono', monospace; color: var(--devol); font-weight: 700; }
+.reto-parcial-item .peso { font-weight: 800; }
+.reto-parciais-vazio {
+  text-align: center;
+  font-size: 11px;
+  color: var(--muted);
+  font-style: italic;
+  padding: 8px 0;
+}
+.btn-pesar-saco {
+  width: 100%;
+  background: rgba(0,255,157,0.10);
+  color: var(--devol);
+  border: 1.5px dashed rgba(0,255,157,0.5);
+  padding: 10px;
+  border-radius: 8px;
+  font-family: 'Nunito', sans-serif;
+  font-size: 12px; font-weight: 800;
+  letter-spacing: 1px;
+  cursor: pointer;
+  text-transform: uppercase;
+}
+.btn-pesar-saco:hover { background: rgba(0,255,157,0.18); }
+.btn-add-aditivo {
+  width: 100%;
+  margin-top: 10px;
+  background: var(--devol, #00ff9d);
+  color: #08120c;
+  border: none;
+  padding: 13px;
+  border-radius: 8px;
+  font-family: 'Nunito', sans-serif;
+  font-size: 14px; font-weight: 900;
+  letter-spacing: 1px;
+  cursor: pointer;
+  text-transform: uppercase;
+}
+.btn-add-aditivo:hover { filter: brightness(1.08); }
+.btn-add-aditivo:disabled { opacity: 0.5; cursor: default; }
+.reto-pesagem-inline {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+  margin-top: 8px;
+}
+.reto-pesagem-acoes { display: flex; gap: 6px; margin-top: 6px; }
+.btn-imp-parcial {
+  flex: 1;
+  background: rgba(0,255,157,0.18);
+  color: var(--devol);
+  border: 1.5px solid rgba(0,255,157,0.5);
+  border-radius: 6px;
+  font-weight: 800; font-size: 11px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  padding: 8px;
+  cursor: pointer;
+}
+.btn-imp-parcial:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn-imp-parcial:hover:not(:disabled) { background: rgba(0,255,157,0.28); }
+
+/* ─── Resumo aditivos ─── */
+.reto-resumo-aditivos {
+  background: linear-gradient(135deg, rgba(0,255,157,0.05), rgba(0,255,157,0.02));
+  border: 1.5px solid rgba(0,255,157,0.4);
+  border-radius: 10px;
+  padding: 12px 16px;
+}
+.resumo-linha {
+  display: flex; justify-content: space-between;
+  font-size: 12px;
+  padding: 3px 0;
+}
+.resumo-linha .lbl { color: var(--muted); font-weight: 700; }
+.resumo-linha .val { font-family: 'IBM Plex Mono', monospace; font-weight: 800; color: var(--text); }
+.resumo-linha.total {
+  border-top: 1px solid rgba(0,255,157,0.3);
+  margin-top: 6px;
+  padding-top: 10px;
+}
+.resumo-linha.total .lbl { color: var(--devol); letter-spacing: 1.5px; font-size: 13px; }
+.resumo-linha.total .val { color: var(--devol); font-size: 22px; }
+
+/* ─── Pesagem manual no RETORNO SEM ETIQUETA ─── */
+.reto-pesagem-bloco {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+.ret-etiqueta-card {
+  background: var(--panel);
+  border: 1.5px solid var(--devol);
+  border-radius: 10px;
+  padding: 14px 18px;
+}
+.ret-card-head {
+  display: flex; justify-content: space-between; align-items: center;
+  padding-bottom: 8px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+.ret-card-tag {
+  background: var(--devol);
+  color: #001a10;
+  padding: 3px 8px;
+  font-size: 10px; font-weight: 800;
+  letter-spacing: 1.5px;
+  border-radius: 4px;
+}
+.ret-card-seq {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 18px; font-weight: 800;
+  color: var(--devol);
+}
+.ret-card-btn-trocar {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 10px;
+  color: var(--muted);
+  font-size: 10px; font-weight: 800;
+  cursor: pointer;
+}
+.ret-card-btn-trocar:hover { color: var(--danger); border-color: var(--danger); }
+.ret-card-corpo {
+  display: flex; flex-direction: column; gap: 6px;
+}
+.ret-card-linha {
+  font-size: 13px;
+  display: flex; gap: 10px;
+}
+.ret-card-linha .lbl {
+  font-weight: 800;
+  color: var(--muted);
+  min-width: 110px;
+}
+
+.ret-pesagem {
+  background: var(--panel);
+  border: 1.5px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 18px;
+}
+.ret-pesagem-titulo {
+  font-size: 11px; font-weight: 800;
+  letter-spacing: 2px;
+  color: var(--muted);
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+.ret-peso-input { border-color: var(--devol) !important; }
+.ret-peso-input:focus { border-color: var(--devol) !important; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">MATÉRIA-PRIMA</div>
+  <div class="crumb">› <b id="crumb-modo">Recebimento</b></div>
+  <div class="header-right">
+    <div class="info-lote">
+      <span class="lbl">LOTE DE HOJE</span>
+      <b id="lote-hoje">—</b>
+    </div>
+    <div class="clock" id="clock">--:--:--</div>
+    <div id="srv-status" class="srv-status">● Conectando ao servidor...</div>
+    <button class="btn-icon" onclick="location.href='/materia-prima.html'" title="Voltar para Matéria-Prima">📦</button>
+    <button class="btn-icon" onclick="location.href='/'" title="Início">🏠</button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <section class="central">
+
+    <div class="abas-modo">
+      <button class="aba-modo ativa" data-modo="recebimento" onclick="trocarModo('recebimento')">
+        <span class="ico">📥</span> RECEBIMENTO
+      </button>
+      <button class="aba-modo" data-modo="retorno" onclick="trocarModo('retorno')">
+        <span class="ico">↩</span> RETORNO DE PRODUÇÃO
+      </button>
+    </div>
+
+    <div class="modo-content" id="modo-recebimento">
+
+    <div class="banner-recebimento" id="banner-receb">
+      <span class="pulse"></span>
+      <span class="txt"><b>RECEBIMENTO EM ANDAMENTO</b> · Fornecedor travado: <b id="banner-forn">—</b></span>
+      <span class="info" id="banner-stats">0 bipadas · 0,0 kg</span>
+    </div>
+
+    <div class="bloco active" id="bloco-mat">
+      <div class="bloco-head">
+        <div class="bloco-num">1</div>
+        <div class="bloco-titulo">Material</div>
+        <div class="bloco-valor cinza" id="val-mat">selecione</div>
+      </div>
+      <div class="opcoes" id="grid-mat"></div>
+    </div>
+
+    <div class="bloco locked" id="bloco-forn">
+      <div class="bloco-head">
+        <div class="bloco-num">2</div>
+        <div class="bloco-titulo">Fornecedor</div>
+        <div class="bloco-valor cinza" id="val-forn">—</div>
+        <span class="bloco-cadeado" id="forn-lock" style="display:none">🔒</span>
+      </div>
+      <div class="opcoes" id="grid-forn"></div>
+    </div>
+
+    <div class="bloco locked" id="bloco-cor">
+      <div class="bloco-head">
+        <div class="bloco-num">3</div>
+        <div class="bloco-titulo">Cor</div>
+        <div class="bloco-valor cinza" id="val-cor">—</div>
+      </div>
+      <div class="opcoes" id="grid-cor"></div>
+    </div>
+
+    <!-- BLOCO 4-PESO (GBD/POLI) -->
+    <div class="bloco locked" id="bloco-peso">
+      <div class="bloco-head">
+        <div class="bloco-num">4</div>
+        <div class="bloco-titulo">Peso</div>
+        <div class="bal-status-mini" id="bal-status">
+          <span class="dot"></span>
+          <span id="bal-status-txt">Balança desconectada</span>
+        </div>
+      </div>
+      <div class="peso-row">
+        <div class="peso-input-wrap">
+          <div class="peso-label">Peso (kg)</div>
+          <input class="peso-input" type="number" id="peso-bruto" value="" placeholder="0,0" step="0.1" oninput="atualizarLiquido()">
+        </div>
+      </div>
+      <div class="peso-acoes">
+        <button class="btn-bal" onclick="conectarBalanca()">⚡ Conectar Balança</button>
+        <button class="btn-bal sim" onclick="simularPeso()">↻ Simular</button>
+      </div>
+      <div class="bal-cmd-row" id="bal-cmd-row" style="display:none">
+        <button class="btn-bal-cmd" onclick="balancaZerar()">⊘ Zerar Balança</button>
+      </div>
+      <div class="aviso-bal" id="aviso-bal">
+        ⚠ <b>Porta aberta mas sem dados da balança.</b><br>
+        No painel da balança: pressione <b>F + Bruto/Líquido + Zero</b> juntos → <b>03 rS1</b> → <b>rS1-04</b> → <b>StrEAn</b> → confirmar.
+      </div>
+      <div class="liquido-display">
+        <span class="lbl">PESO</span>
+        <span class="val" id="peso-liq">— kg</span>
+      </div>
+    </div>
+
+    <!-- BLOCO 4-QTD (CARBO/PIG/DESSEC) -->
+    <div class="bloco locked" id="bloco-qtd" style="display:none">
+      <div class="bloco-head">
+        <div class="bloco-num">4</div>
+        <div class="bloco-titulo">Quantidade de Sacos no Palete</div>
+        <span class="bal-status-mini" style="color:var(--muted)">25 KG / SACO</span>
+      </div>
+      <div class="qtd-area">
+        <button class="btn-qtd" onclick="ajustarQtd(-1)">−</button>
+        <div>
+          <input class="qtd-input" type="number" id="qtd-input" min="0" step="1" value="0" oninput="atualizarQtd()">
+          <div class="qtd-sub">SACOS</div>
+        </div>
+        <button class="btn-qtd" onclick="ajustarQtd(1)">+</button>
+      </div>
+      <div class="atalhos">
+        <button class="atalho" onclick="setQtd(10)">10</button>
+        <button class="atalho" onclick="setQtd(20)">20</button>
+        <button class="atalho" onclick="setQtd(30)">30</button>
+        <button class="atalho" onclick="setQtd(40)">40</button>
+        <button class="atalho" onclick="setQtd(50)">50</button>
+        <button class="atalho" onclick="setQtd(60)">60</button>
+        <button class="atalho" onclick="setQtd(70)">70</button>
+        <button class="atalho" onclick="setQtd(80)">80</button>
+      </div>
+      <div class="qtd-calc">
+        <span class="lbl" id="qtd-calc-lbl">— SACOS × 25 KG</span>
+        <span class="val" id="qtd-calc-val">— kg</span>
+      </div>
+    </div>
+
+    </div><!-- /modo-recebimento -->
+
+    <div class="modo-content" id="modo-retorno" style="display:none">
+
+      <!-- Sub-abas: GRÃOS vs ADITIVOS -->
+      <div class="reto-tabs">
+        <button class="reto-tab ativa" data-tipo="graos" onclick="setRetoTipo('graos')">
+          🌾 GRÃOS
+        </button>
+        <button class="reto-tab" data-tipo="aditivos" onclick="setRetoTipo('aditivos')">
+          🧪 ADITIVOS
+        </button>
+      </div>
+
+      <!-- ═══════════════════════════════════════════════════ -->
+      <!-- SUB-FLUXO: GRÃOS                                     -->
+      <!-- ═══════════════════════════════════════════════════ -->
+      <div class="reto-flow" id="reto-graos-flow">
+
+        <!-- Toggle Origem: COM ETIQUETA / SEM ETIQUETA -->
+        <div class="reto-origem-toggle">
+          <button class="reto-orig-btn ativa" data-origem="com-etiqueta" onclick="setRetoOrigem('com-etiqueta')">
+            🏷️ COM ETIQUETA ORIGINAL
+          </button>
+          <button class="reto-orig-btn" data-origem="sem-etiqueta" onclick="setRetoOrigem('sem-etiqueta')">
+            ⚠️ SEM ETIQUETA
+          </button>
+        </div>
+
+        <!-- ─── COM ETIQUETA (fluxo de bipar) ─── -->
+        <div class="reto-sub" id="reto-com-etiq">
+
+          <div class="ret-bipa-display" id="ret-bipa-display">
+            <div class="ret-icone">🏷️</div>
+            <div class="ret-msg-grande">Aguardando bipagem da etiqueta original</div>
+            <div class="ret-msg-sub">Posicione o leitor sobre o código de barras da etiqueta que voltou da produção</div>
+            <button class="btn-sim-bipe" onclick="simBipeRetorno()">↻ SIMULAR BIPAGEM</button>
+          </div>
+
+          <div class="ret-etiqueta-card" id="ret-etiqueta-card" style="display:none">
+            <div class="ret-card-head">
+              <div class="ret-card-tag" id="ret-card-tag">ETIQUETA ORIGINAL</div>
+              <div class="ret-card-seq" id="ret-orig-seq">#0000</div>
+              <button class="ret-card-btn-trocar" onclick="resetarRetorno()">✕ Trocar</button>
+            </div>
+            <div class="ret-card-corpo">
+              <div class="ret-card-linha"><span class="lbl">MATERIAL:</span> <span id="ret-orig-mat">—</span></div>
+              <div class="ret-card-linha"><span class="lbl">FORNECEDOR:</span> <span id="ret-orig-forn">—</span></div>
+              <div class="ret-card-linha"><span class="lbl">LOTE:</span> <span id="ret-orig-lote">—</span></div>
+              <div class="ret-card-linha"><span class="lbl">Peso original:</span> <span id="ret-orig-peso">—</span></div>
+              <div class="reto-alerta" id="ret-orig-aviso" style="display:none; margin-top:10px;"></div>
+            </div>
+          </div>
+
+          <div class="ret-pesagem" id="ret-pesagem" style="display:none">
+            <div class="ret-pesagem-titulo">PESO RETORNANDO</div>
+            <button class="btn-ret-inteiro" id="btn-ret-inteiro" onclick="retornarInteiro()">↩ MATERIAL INTEIRO · usar o peso original</button>
+            <div class="ret-pesagem-ou">— ou pese a sobra parcial —</div>
+            <div class="peso-row">
+              <label>Peso medido (kg)</label>
+              <input type="number" id="ret-peso-input" class="peso-input ret-peso-input" step="0.1" min="0" oninput="atualizarRetornoPeso()" placeholder="0.0">
+            </div>
+            <div class="peso-acoes">
+              <button class="btn-bal" onclick="conectarBalancaRet(this)">⚡ Conectar Balança</button>
+              <button class="btn-bal sim" onclick="simularPesoRet()">↻ Simular</button>
+            </div>
+          </div>
+
+        </div><!-- /reto-com-etiq -->
+
+        <!-- ─── SEM ETIQUETA (seleção manual) ─── -->
+        <div class="reto-sub" id="reto-sem-etiq" style="display:none">
+
+          <div class="reto-alerta">
+            ⚠ <b>Sem etiqueta original</b> · Lote será marcado como <b>S/L</b>
+          </div>
+
+          <div class="reto-pair">
+            <div class="bloco">
+              <div class="bloco-titulo">MATERIAL</div>
+              <div class="opcoes" id="reto-se-mat-opts"></div>
+            </div>
+            <div class="bloco">
+              <div class="bloco-titulo">FORNECEDOR</div>
+              <div class="opcoes" id="reto-se-forn-opts"></div>
+            </div>
+          </div>
+
+          <div class="bloco" id="reto-se-cor-bloco" style="display:none">
+            <div class="bloco-titulo">COR</div>
+            <div class="opcoes" id="reto-se-cor-opts"></div>
+          </div>
+
+          <div class="reto-pesagem-bloco">
+            <div class="bloco-titulo">PESO</div>
+            <div class="peso-row">
+              <label>Peso medido (kg)</label>
+              <input type="number" id="reto-se-peso-input" class="peso-input" step="0.1" min="0" oninput="atualizarRetoSeManual()" placeholder="0.0">
+            </div>
+            <div class="peso-acoes">
+              <button class="btn-bal" onclick="conectarBalancaRet(this)">⚡ Conectar Balança</button>
+              <button class="btn-bal sim" onclick="simularPesoRetoSe()">↻ Simular</button>
+            </div>
+          </div>
+
+        </div><!-- /reto-sem-etiq -->
+
+      </div><!-- /reto-graos-flow -->
+
+      <!-- ═══════════════════════════════════════════════════ -->
+      <!-- SUB-FLUXO: ADITIVOS                                  -->
+      <!-- ═══════════════════════════════════════════════════ -->
+      <div class="reto-flow" id="reto-aditivos-flow" style="display:none">
+
+        <div class="reto-alerta info">
+          🧪 <b>Aditivos</b> · Escolha material, fornecedor e a quantidade de sacos (25 kg) e toque em <b>➕ Adicionar à lista</b>. Pode somar vários lotes (pigmento e dessecante). A lista aparece à direita.
+        </div>
+
+        <div class="bloco">
+          <div class="bloco-titulo">MATERIAL</div>
+          <div class="opcoes" id="reto-ad-mat-opts"></div>
+        </div>
+
+        <div class="reto-pair">
+          <div class="bloco" id="reto-ad-cor-bloco">
+            <div class="bloco-titulo">COR</div>
+            <div class="opcoes" id="reto-ad-cor-opts"></div>
+          </div>
+          <div class="bloco">
+            <div class="bloco-titulo">FORNECEDOR</div>
+            <div class="opcoes" id="reto-ad-forn-opts"></div>
+          </div>
+        </div>
+
+        <!-- Contador de sacos fechados -->
+        <div class="reto-contador-bloco">
+          <div class="bloco-titulo">SACOS FECHADOS · 25 KG CADA</div>
+          <div class="contador-row">
+            <button class="btn-cont" onclick="ajustarRetoSacos(-1)">−</button>
+            <input type="number" id="reto-sacos-input" class="cont-input" value="0" min="0" oninput="ajustarRetoSacos(0)">
+            <button class="btn-cont" onclick="ajustarRetoSacos(1)">+</button>
+          </div>
+          <div class="reto-contador-info" id="reto-sacos-info">0 sacos · 0 kg</div>
+          <button class="btn-add-aditivo" id="btn-add-aditivo" onclick="adicionarRetoAditivo()">➕ ADICIONAR À LISTA</button>
+        </div>
+
+        <!-- Saco parcial pesado (só pigmento) -->
+        <div class="reto-parciais-bloco" id="reto-parcial-bloco">
+          <div class="bloco-titulo">SACO PARCIAL (JÁ UTILIZADO) · só pigmento</div>
+          <button class="btn-pesar-saco" id="btn-pesar-saco" onclick="iniciarPesagemSacoParcial()">
+            ⚖ PESAR SACO USADO
+          </button>
+          <!-- Pesagem inline (aparece quando pesando) -->
+          <div class="reto-pesagem-inline" id="reto-pesagem-inline" style="display:none">
+            <div class="peso-row">
+              <label>Peso do saco parcial (kg)</label>
+              <input type="number" id="reto-saco-peso-input" class="peso-input" step="0.1" min="0" max="25" oninput="atualizarPesoSacoParcial()" placeholder="0.0">
+            </div>
+            <div class="reto-pesagem-acoes">
+              <button class="btn-bal" onclick="conectarBalancaRet(this)">⚡ Conectar Balança</button>
+              <button class="btn-bal sim" onclick="simularPesoSacoParcial()">↻ Simular</button>
+              <button class="btn-bal" onclick="cancelarPesagemSacoParcial()">✕ Cancelar</button>
+              <button class="btn-imp-parcial" id="btn-imp-parcial" onclick="imprimirEtiquetaSacoParcial()" disabled>
+                ⎙ Imprimir Etiqueta
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Resumo: total da lista -->
+        <div class="reto-resumo-aditivos" id="reto-resumo-aditivos">
+          <div class="resumo-linha total">
+            <span class="lbl">TOTAL NA LISTA:</span>
+            <span class="val" id="resumo-total">0,0 kg</span>
+          </div>
+        </div>
+
+      </div><!-- /reto-aditivos-flow -->
+
+    </div><!-- /modo-retorno -->
+
+  </section>
+
+  <aside class="coluna-direita">
+
+    <div class="etiqueta-wrap">
+      <div class="etiqueta-box" id="etiqueta" style="display:none;">
+        <hr class="e-sep"/>
+        <div class="e-linha"><span class="e-lbl">MATERIAL:</span> <span id="et-mat">—</span></div>
+        <div class="e-linha"><span class="e-lbl">FORNECEDOR:</span> <span id="et-forn">—</span></div>
+        <div class="e-linha"><span id="et-lote">LOTE —</span></div>
+        <div class="e-row" id="et-sacos-row" style="display:none">
+          <span class="e-lbl">SACOS:</span> <span id="et-sacos">—</span>
+        </div>
+        <hr class="e-sep"/>
+        <div class="e-peso" id="et-peso">PESO —</div>
+        <hr class="e-sep"/>
+        <div class="e-cod-label">CÓDIGO PARA EXTRUSÃO</div>
+        <div class="e-cod-valor" id="et-codigo">—</div>
+        <hr class="e-sep"/>
+        <div class="e-bottom">
+          <svg id="et-barcode" class="e-bc-svg"></svg>
+          <div class="e-sku" id="et-sku">—</div>
+        </div>
+      </div>
+      <div class="etiqueta-vazia" id="etiqueta-vazia">
+        <div class="txt">Preencha ao lado<br>para gerar a etiqueta<br><span style="font-size:9px;opacity:0.7;display:block;margin-top:6px;">100mm × 100mm</span></div>
+      </div>
+    </div>
+
+    <button class="btn-imprimir" id="btn-imprimir" onclick="imprimir()" disabled>
+      ⎙ IMPRIMIR ETIQUETA
+    </button>
+
+    <div class="recebimento-atual">
+      <div class="recebimento-head">
+        <span class="titulo">Recebimento atual</span>
+        <div class="totais">
+          <span class="linha bipadas" id="tot-bipadas">0 bipadas · 0,0 kg</span>
+          <span class="linha pendentes" id="tot-pendentes" style="display:none">0 pendentes de bipe</span>
+        </div>
+      </div>
+      <div class="itens-lista" id="hist-lista">
+        <div class="item-vazio">
+          <div class="ico">📋</div>
+          Nenhuma etiqueta ainda
+        </div>
+      </div>
+    </div>
+
+    <div class="linha-sec">
+      <button class="btn-relatorio" id="btn-corrigir" onclick="abrirCorrecao()" title="Corrigir as informações de uma etiqueta de recebimento sem repesar">✎ Corrigir etiqueta</button>
+      <button class="btn-relatorio" id="btn-relatorio" onclick="relatorioAtual()" disabled>🧾 Relatório atual</button>
+    </div>
+    <div class="acoes-recebimento">
+      <button class="btn-finalizar" id="btn-finalizar" onclick="finalizar()" disabled>
+        ✓ FINALIZAR · ENVIAR AO BLING
+      </button>
+      <button class="btn-cancelar" id="btn-cancelar" onclick="cancelar()" disabled title="Cancelar e descartar">
+        ✕
+      </button>
+    </div>
+
+  </aside>
+
+</div>
+
+<div class="ov-correcao" id="ov-correcao">
+  <div class="corr-card">
+    <div class="corr-head">
+      <span>✎ Corrigir etiqueta de recebimento</span>
+      <button class="corr-x" onclick="fecharCorrecao()">✕</button>
+    </div>
+    <div class="corr-sub">Bipe a etiqueta, mantém o peso já pesado e corrige as informações.</div>
+    <div class="corr-busca">
+      <input type="text" id="corr-cod" placeholder="Bipe ou digite o código (ex: R0000123)" autocomplete="off" onkeydown="if(event.key==='Enter')corrBuscar()">
+      <button class="corr-btn-buscar" onclick="corrBuscar()">Buscar</button>
+    </div>
+    <div class="corr-edit" id="corr-edit">
+      <div class="corr-info">
+        <div>Etiqueta <b id="corr-id">—</b></div>
+        <div class="corr-peso-l">Peso resgatado: <b id="corr-peso">—</b> <span class="corr-trava">🔒 não será repesado</span></div>
+        <div class="corr-antes">Atual: <span id="corr-antes">—</span></div>
+      </div>
+      <div class="corr-campos">
+        <div><label>Material</label><select id="corr-mat" onchange="corrMatChange()"></select></div>
+        <div><label>Cor</label><select id="corr-cor" onchange="corrCalc()"></select></div>
+        <div><label>Fornecedor</label><select id="corr-forn" onchange="corrCalc()"></select></div>
+      </div>
+      <div class="corr-resumo" id="corr-resumo">—</div>
+      <button class="corr-btn-ok" id="corr-ok" onclick="corrConfirmar()">🖨 Reimprimir corrigida</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast">
+  <span id="toast-ico">✓</span>
+  <span id="toast-txt"></span>
+</div>
+
+<script>
+// Modo EMBED — quando carregado dentro do shell unificado
+(function detectarEmbed() {
+  try {
+    const p = new URLSearchParams(location.search);
+    if (p.get('embed') === '1') document.body.classList.add('embed');
+  } catch(e) {}
+})();
+
+const KG_SACO = 25;
+const COMPOSTOS = ['CARBO', 'PIG', 'DESSEC'];
+
+const MATERIAIS = {
+  GBD:    { popular: 'Grão Baixa', nomeEtiqueta: 'BAIXA DENSIDADE',
+            cores: ['Colorido','Canela','Preto','Leitoso'],
+            corLabel: { 'Colorido':'COL','Canela':'CAN','Preto':'PTO','Leitoso':'LEI' },
+            forn: ['Cedro','Ecorafia','Ecolog','Forcoplast','Gold Green','Piquiri','Redeplast','Tupaciguara','WT dos Santos'] },
+  POLI:   { popular: 'Polinylon', nomeEtiqueta: 'POLINYLON',
+            cores: ['Colorido','Canela','Cristal','Leitoso'],
+            corLabel: { 'Colorido':'COL','Canela':'CAN','Cristal':'CRIS','Leitoso':'LEI' },
+            forn: ['Ecolog','Tallpack','Valgroup','Ycaro'] },
+  CARBO:  { popular: 'Carbonato', nomeEtiqueta: 'CARBONATO', cores: [], corLabel: {},
+            forn: ['Cristal Master','FG','Karina','SecMil','W R'] },
+  PIG:    { popular: 'Pigmento', nomeEtiqueta: 'PIGMENTO',
+            cores: ['Amarelo','Branco','Preto','Verde'],
+            corLabel: { 'Amarelo':'AMA','Branco':'BRA','Preto':'PRE','Verde':'VER' },
+            forn: ['Cristal Master','FG','Karina'] },
+  DESSEC: { popular: 'Dessecante', nomeEtiqueta: 'DESSECANTE', cores: [], corLabel: {},
+            forn: ['Cristal Master','FG','Karina','SecMil'] },
+};
+
+// ─── BANCO DE CÓDIGOS GRAVIMÉTRICOS ───
+// Baseado no Excel "Códigos_Gravimétricos.xlsx" + correções do usuário
+// (pigmentos P1-P4 são por cor, qualquer fornecedor)
+// Para adicionar nova combinação, basta acrescentar uma entrada aqui.
+let CODIGOS_GRAVIMETRICOS = [
+  // Pigmentos: por cor (fornecedor independente)
+  { matKey: 'PIG',    cor: 'Amarelo',  forn: null,            codigo: 'P1' },
+  { matKey: 'PIG',    cor: 'Verde',    forn: null,            codigo: 'P2' },
+  { matKey: 'PIG',    cor: 'Preto',    forn: null,            codigo: 'P3' },
+  { matKey: 'PIG',    cor: 'Branco',   forn: null,            codigo: 'P4' },
+  // Carbonato: por fornecedor (sem cor)
+  { matKey: 'CARBO',  cor: null,       forn: 'Cristal Master', codigo: 'C1' },
+  { matKey: 'CARBO',  cor: null,       forn: 'FG',            codigo: 'C2' },
+  { matKey: 'CARBO',  cor: null,       forn: 'Karina',        codigo: 'C3' },
+  { matKey: 'CARBO',  cor: null,       forn: 'W R',           codigo: 'C4' },
+  // Dessecante: por fornecedor (sem cor)
+  { matKey: 'DESSEC', cor: null,       forn: 'Cristal Master', codigo: 'D1' },
+  // Grão Baixa: por cor + fornecedor
+  { matKey: 'GBD', cor: 'Canela',   forn: 'Cedro',          codigo: 'CAN1' },
+  { matKey: 'GBD', cor: 'Canela',   forn: 'Tupaciguara',    codigo: 'CAN2' },
+  { matKey: 'GBD', cor: 'Canela',   forn: 'WT dos Santos',  codigo: 'CAN3' },
+  { matKey: 'GBD', cor: 'Canela',   forn: 'Piquiri',        codigo: 'CAN4' },
+  { matKey: 'GBD', cor: 'Colorido', forn: 'Cedro',          codigo: 'COL1' },
+  { matKey: 'GBD', cor: 'Colorido', forn: 'Forcoplast',     codigo: 'COL2' },
+  { matKey: 'GBD', cor: 'Colorido', forn: 'Piquiri',        codigo: 'COL3' },
+  { matKey: 'GBD', cor: 'Colorido', forn: 'Tupaciguara',    codigo: 'COL4' },
+  { matKey: 'GBD', cor: 'Colorido', forn: 'WT dos Santos',  codigo: 'COL5' },
+  { matKey: 'GBD', cor: 'Preto',    forn: 'Cedro',          codigo: 'PT1'  },
+  { matKey: 'GBD', cor: 'Preto',    forn: 'Forcoplast',     codigo: 'PT2'  },
+  { matKey: 'GBD', cor: 'Preto',    forn: 'Tupaciguara',    codigo: 'PT3'  },
+  { matKey: 'GBD', cor: 'Preto',    forn: 'Piquiri',        codigo: 'PT4'  },
+  { matKey: 'GBD', cor: 'Colorido', forn: 'Ecorafia',       codigo: 'COL6' },
+  { matKey: 'GBD', cor: 'Canela',   forn: 'Ecorafia',       codigo: 'CAN4' },
+  { matKey: 'GBD', cor: 'Leitoso',  forn: 'Ecorafia',       codigo: 'LEI1' },
+  { matKey: 'GBD', cor: 'Colorido', forn: 'Gold Green',     codigo: 'COL7' },
+  { matKey: 'GBD', cor: 'Preto',    forn: 'Gold Green',     codigo: 'PT5'  },
+  { matKey: 'GBD', cor: 'Leitoso',  forn: 'Gold Green',     codigo: 'LEI2' },
+  { matKey: 'GBD', cor: 'Canela',   forn: 'Gold Green',     codigo: 'CAN5' },
+  // Polinylon: por cor + fornecedor
+  { matKey: 'POLI', cor: 'Canela',   forn: 'Ycaro',     codigo: 'NCAN1'  },
+  { matKey: 'POLI', cor: 'Canela',   forn: 'Ecolog',    codigo: 'NCAN2'  },
+  { matKey: 'POLI', cor: 'Colorido', forn: 'Ecolog',    codigo: 'NCOL1'  },
+  { matKey: 'POLI', cor: 'Colorido', forn: 'Ycaro',     codigo: 'NCOL2'  },
+  { matKey: 'POLI', cor: 'Colorido', forn: 'Tallpack',  codigo: 'NCOL3'  },
+  { matKey: 'POLI', cor: 'Cristal',  forn: 'Ycaro',     codigo: 'NCRIS1' },
+  { matKey: 'POLI', cor: 'Leitoso',  forn: 'Ecolog',    codigo: 'NLEI1'  },
+  { matKey: 'POLI', cor: 'Leitoso',  forn: 'Tallpack',  codigo: 'NLEI2'  },
+  { matKey: 'POLI', cor: 'Leitoso',  forn: 'Valgroup',  codigo: 'NLEI3'  },
+  { matKey: 'POLI', cor: 'Leitoso',  forn: 'Ycaro',     codigo: 'NLEI4'  },
+];
+
+// Busca código gravimétrico para (material, cor, fornecedor).
+// Para pigmentos: o fornecedor é ignorado (basta a cor).
+// Retorna o código (ex: "COL1") ou null se a combinação não está cadastrada.
+function buscarCodigo(matKey, cor, fornecedor) {
+  for (const c of CODIGOS_GRAVIMETRICOS) {
+    if (c.matKey !== matKey) continue;
+    if ((c.cor || null) !== (cor || null)) continue;
+    if (c.forn === null) return c.codigo;          // pigmento — ignora fornecedor
+    if (c.forn === fornecedor) return c.codigo;    // demais — exige match
+  }
+  return null;
+}
+
+const isComposto = mat => COMPOSTOS.includes(mat);
+
+// ─── ESTADO ───
+// Cada item tem: status = 'aguardando_bipe' | 'bipada'
+// Totalizador e log consideram APENAS 'bipada'
+let estado = {
+  modo: 'recebimento',          // 'recebimento' ou 'retorno'
+  // — Recebimento —
+  material: null, fornecedor: null, cor: null,
+  pesoBruto: 0, tara: 0, qtdSacos: 0,
+  balancaConectada: false,
+  itens: [],
+  // SEQ separado por modo (carregado do servidor ao iniciar)
+  seq: { recebimento: 1, retorno: 1 },
+  // — Retorno (com etiqueta original — fluxo antigo) —
+  retEtiquetaOriginal: null,
+  retPeso: 0,
+  retItens: [],
+  // — Retorno (NOVOS sub-fluxos) —
+  retoTipo: 'graos',              // 'graos' | 'aditivos'
+  retoOrigem: 'com-etiqueta',     // 'com-etiqueta' | 'sem-etiqueta' (só pra graos)
+  // Sem etiqueta original (grãos):
+  retoMatManual: null,            // material selecionado manualmente
+  retoCorManual: null,
+  retoFornManual: null,
+  retoPesoManual: 0,
+  // Aditivos:
+  retoAditivoCor: null,           // qual pigmento (Amarelo/Verde/Preto/Branco)
+  retoAditivoMat: 'PIG',          // material do aditivo: 'PIG' | 'DESSEC'
+  retoAditivoForn: 'Cristal Master',  // fornecedor (default)
+  retoSacosFechados: 0,           // contador de sacos de 25 kg fechados
+  retoPesandoSaco: false,         // flag UI (modo pesar saco parcial)
+  retoPesoSacoParcial: 0,         // peso atual sendo medido pra saco parcial
+  // — Servidor —
+  servidorOnline: false,
+  // — Sessões (vinculadas ao backend) —
+  // Cada modo tem sua própria sessão; abre-se na 1ª impressão, fecha ao finalizar/cancelar
+  sessaoRecebimento: null,        // ID da sessão no banco (ou null se nenhuma aberta)
+  sessaoRetorno: null,
+};
+
+const KG_SACO_PIGMENTO = 25;    // peso fixo de saco fechado de pigmento
+
+// URLs do servidor de impressão
+const URL_BASE     = '';
+const URL_PRINT    = URL_BASE + '/print/etiqueta';
+const URL_STATUS   = URL_BASE + '/status';
+const URL_PROX_SEQ = URL_BASE + '/proximo-seq';
+const URL_ETIQUETA = URL_BASE + '/etiqueta';
+const URL_SESSAO   = URL_BASE + '/sessoes';
+
+// Token de idempotência pra impressão (C3). crypto.randomUUID em contexto
+// seguro (localhost); fallback simples caso indisponível.
+function gerarTokenMP() {
+  try { if (window.crypto && crypto.randomUUID) return crypto.randomUUID(); } catch(e) {}
+  return 'tok-' + Date.now() + '-' + Math.random().toString(36).slice(2, 10);
+}
+
+// Garante que existe uma sessão aberta pro modo atual. Cria se não tiver.
+async function garantirSessao(tipo, fornecedor) {
+  const key = tipo === 'retorno' ? 'sessaoRetorno' : 'sessaoRecebimento';
+  if (estado[key]) return estado[key];
+  try {
+    const r = await fetch(URL_SESSAO, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tipo, fornecedor: fornecedor || null, operador: (window.EKO_RESPONSAVEL || null) }),
+    });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.erro || 'falha ao abrir sessão');
+    estado[key] = d.sessao_id;
+    console.log(`Sessão ${tipo} aberta: #${d.sessao_id}`);
+    return d.sessao_id;
+  } catch(e) {
+    console.warn('Erro ao abrir sessão:', e.message);
+    return null;   // sistema continua, mas a sessão não será vinculada
+  }
+}
+
+// Carrega SEQ inicial e estado do servidor
+async function inicializarServidor() {
+  try {
+    const r = await fetch(URL_STATUS);
+    const s = await r.json();
+    if (!s.ok) throw new Error('Servidor não OK');
+    estado.servidorOnline = true;
+    estado.seq.recebimento = s.proximoSeq.recebimento;
+    estado.seq.retorno     = s.proximoSeq.retorno;
+    document.getElementById('srv-status').textContent = '● Servidor online';
+    document.getElementById('srv-status').classList.add('on');
+    console.log('Servidor de impressão online. SEQs:', s.proximoSeq);
+    atualizarEtiqueta();
+  } catch(e) {
+    estado.servidorOnline = false;
+    document.getElementById('srv-status').textContent = '● Servidor OFFLINE';
+    document.getElementById('srv-status').classList.add('off');
+    console.error('Servidor offline:', e.message);
+    showToast('erro', '✗', 'Servidor de impressão offline. Rode INICIAR_IMPRESSORA.bat');
+  }
+}
+
+// As etiquetas originais para Retorno vêm do banco do servidor (não do mock).
+// Quando o operador bipa uma etiqueta no modo Retorno, frontend faz GET /etiqueta/:id
+
+// ─── LOTE / RELÓGIO ───
+function getLote() {
+  const d = new Date();
+  return String(d.getDate()).padStart(2,'0')
+       + String(d.getMonth()+1).padStart(2,'0')
+       + String(d.getFullYear()).slice(-2);
+}
+function tickRel() {
+  const d = new Date();
+  document.getElementById('clock').textContent =
+    String(d.getHours()).padStart(2,'0') + ':' +
+    String(d.getMinutes()).padStart(2,'0') + ':' +
+    String(d.getSeconds()).padStart(2,'0');
+  document.getElementById('lote-hoje').textContent = getLote();
+}
+setInterval(tickRel, 1000); tickRel();
+
+// ─── ÁUDIO ───
+let audioCtx = null;
+function beep(freq, dur, vol=0.04) {
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.type = 'sine'; o.frequency.value = freq; g.gain.value = vol;
+    o.connect(g); g.connect(audioCtx.destination);
+    o.start();
+    g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+    o.stop(audioCtx.currentTime + dur);
+  } catch(e) {}
+}
+const beepCk = () => beep(800, 0.05);
+const beepOk = () => { beep(660, 0.08); setTimeout(()=>beep(880,0.1), 70); };
+const beepBipe = () => { beep(1200, 0.06); setTimeout(()=>beep(1500,0.08), 50); };
+const beepWarn = () => beep(440, 0.15, 0.06);
+const beepErro = () => { beep(300, 0.15, 0.06); setTimeout(()=>beep(200,0.2,0.06), 100); };
+
+// ─── RENDER ───
+function renderMateriais() {
+  document.getElementById('grid-mat').innerHTML = Object.keys(MATERIAIS).map(k => {
+    const m = MATERIAIS[k];
+    const sel = estado.material === k ? 'sel' : '';
+    return `<div class="opt ${sel}" onclick="selMat('${k}')">${m.popular}<span class="sub">${k}</span></div>`;
+  }).join('');
+}
+function renderFornecedores() {
+  const grid = document.getElementById('grid-forn');
+  if (!estado.material) { grid.innerHTML = ''; return; }
+  const m = MATERIAIS[estado.material];
+  const travado = estado.itens.length > 0;
+  grid.innerHTML = m.forn.map(f => {
+    const sel = estado.fornecedor === f ? 'sel' : '';
+    const dis = travado && estado.fornecedor !== f ? 'disabled' : '';
+    return `<div class="opt ${sel} ${dis}" onclick="${dis ? 'avisoForneTravado()' : `selForn('${f}')`}">${f}</div>`;
+  }).join('');
+}
+function renderCores() {
+  const grid = document.getElementById('grid-cor');
+  if (!estado.material) { grid.innerHTML = ''; return; }
+  const m = MATERIAIS[estado.material];
+  grid.innerHTML = m.cores.map(c => {
+    const sel = estado.cor === c ? 'sel' : '';
+    return `<div class="opt ${sel}" onclick="selCor('${c}')">${c}</div>`;
+  }).join('');
+}
+
+function alternarBlocoPesagem() {
+  const comp = isComposto(estado.material);
+  document.getElementById('bloco-peso').style.display = comp ? 'none' : 'block';
+  document.getElementById('bloco-qtd').style.display  = comp ? 'block' : 'none';
+}
+
+function setBloco(id, est) {
+  const el = document.getElementById(id);
+  el.classList.remove('active','done','locked','fixed');
+  el.classList.add(est);
+}
+
+function atualizarEstadoBlocos() {
+  const m = estado.material ? MATERIAIS[estado.material] : null;
+  const temCor = m && m.cores.length > 0;
+  const fornFixo = estado.itens.length > 0;
+  const comp = isComposto(estado.material);
+
+  setBloco('bloco-mat', estado.material ? 'done' : 'active');
+  document.getElementById('val-mat').textContent = m ? m.popular : 'selecione';
+  document.getElementById('val-mat').className = m ? 'bloco-valor' : 'bloco-valor cinza';
+
+  if (!estado.material) {
+    setBloco('bloco-forn', 'locked');
+    document.getElementById('val-forn').textContent = '—';
+    document.getElementById('forn-lock').style.display = 'none';
+  } else if (estado.fornecedor) {
+    setBloco('bloco-forn', fornFixo ? 'fixed' : 'done');
+    document.getElementById('val-forn').textContent = estado.fornecedor;
+    document.getElementById('val-forn').className = 'bloco-valor';
+    document.getElementById('forn-lock').style.display = fornFixo ? 'inline' : 'none';
+  } else {
+    setBloco('bloco-forn', 'active');
+    document.getElementById('val-forn').textContent = 'selecione';
+    document.getElementById('val-forn').className = 'bloco-valor cinza';
+    document.getElementById('forn-lock').style.display = 'none';
+  }
+
+  if (!estado.material) {
+    setBloco('bloco-cor', 'locked');
+    document.getElementById('val-cor').textContent = '—';
+  } else if (!temCor) {
+    setBloco('bloco-cor', 'done');
+    document.getElementById('val-cor').textContent = 'não se aplica';
+    document.getElementById('val-cor').className = 'bloco-valor cinza';
+  } else if (estado.cor) {
+    setBloco('bloco-cor', 'done');
+    document.getElementById('val-cor').textContent = estado.cor;
+    document.getElementById('val-cor').className = 'bloco-valor';
+  } else if (estado.fornecedor) {
+    setBloco('bloco-cor', 'active');
+    document.getElementById('val-cor').textContent = 'selecione';
+    document.getElementById('val-cor').className = 'bloco-valor cinza';
+  } else {
+    setBloco('bloco-cor', 'locked');
+  }
+
+  alternarBlocoPesagem();
+  const corOk = !temCor || estado.cor;
+  if (estado.fornecedor && corOk) {
+    if (comp) {
+      setBloco('bloco-qtd', estado.qtdSacos > 0 ? 'done' : 'active');
+    } else {
+      const liq = estado.pesoBruto;
+      setBloco('bloco-peso', (estado.pesoBruto > 0 && liq > 0) ? 'done' : 'active');
+    }
+  } else {
+    setBloco('bloco-peso', 'locked');
+    setBloco('bloco-qtd', 'locked');
+  }
+
+  // Banner com totais. Mesma regra do envio ao Bling: big bag já retirado
+  // ('consumida') continua contando nesta entrada.
+  const bipadas = estado.itens.filter(it => it.status === 'bipada' || it.status === 'consumida');
+  const pendentes = estado.itens.filter(it => it.status === 'aguardando_bipe');
+  const banner = document.getElementById('banner-receb');
+  if (estado.itens.length > 0) {
+    banner.classList.add('ativo');
+    document.getElementById('banner-forn').textContent = estado.fornecedor.toUpperCase();
+    const totalKg = bipadas.reduce((s, it) => s + it.peso, 0);
+    let info = `${bipadas.length} ${bipadas.length === 1 ? 'bipada' : 'bipadas'} · ${totalKg.toFixed(1)} kg`;
+    if (pendentes.length > 0) info += ` · ${pendentes.length} pendente${pendentes.length>1?'s':''}`;
+    document.getElementById('banner-stats').textContent = info;
+  } else {
+    banner.classList.remove('ativo');
+  }
+
+  atualizarEtiqueta();
+  atualizarAcoes();
+}
+
+function atualizarLiquido() {
+  estado.pesoBruto = parseFloat(document.getElementById('peso-bruto').value || '0');
+  estado.tara = 0;   // tara é feita manualmente na balança; o programa lê o valor já tarado
+  const liq = estado.pesoBruto;
+  // Mostra o peso lido inclusive quando NEGATIVO (espelha o indicador, pra não
+  // confundir o operador). "— kg" só quando não há leitura (zero/vazio).
+  const temLeitura = Number.isFinite(liq) && liq !== 0;
+  document.getElementById('peso-liq').textContent = temLeitura ? liq.toFixed(1) + ' kg' : '— kg';
+  atualizarEstadoBlocos();
+}
+function atualizarQtd() {
+  estado.qtdSacos = parseInt(document.getElementById('qtd-input').value || '0', 10);
+  if (estado.qtdSacos < 0) { estado.qtdSacos = 0; document.getElementById('qtd-input').value = 0; }
+  const kg = estado.qtdSacos * KG_SACO;
+  document.getElementById('qtd-calc-lbl').textContent = `${estado.qtdSacos} SACOS × ${KG_SACO} KG`;
+  document.getElementById('qtd-calc-val').textContent = kg > 0 ? kg.toFixed(0) + ' kg' : '— kg';
+  atualizarEstadoBlocos();
+}
+
+function atualizarEtiqueta() {
+  // Decide a fonte dos dados conforme o modo ativo + sub-fluxo
+  let dados;
+  if (estado.modo === 'retorno') {
+    // Aditivos: preview não usa o botão central (parciais imprimem individual)
+    if (estado.retoTipo === 'aditivos') {
+      document.getElementById('etiqueta').style.display      = 'none';
+      document.getElementById('etiqueta-vazia').style.display = 'flex';
+      document.getElementById('btn-imprimir').disabled = true;
+      document.getElementById('btn-imprimir').textContent = 'ADITIVOS · ➕ ADICIONE À LISTA';
+      return;
+    }
+    // Grãos: depende da origem
+    if (estado.retoOrigem === 'com-etiqueta') {
+      const orig = estado.retEtiquetaOriginal;
+      if (!orig) {
+        document.getElementById('etiqueta').style.display      = 'none';
+        document.getElementById('etiqueta-vazia').style.display = 'flex';
+        document.getElementById('btn-imprimir').disabled = true;
+        document.getElementById('btn-imprimir').textContent = '⎙ IMPRIMIR ETIQUETA';
+        return;
+      }
+      dados = {
+        materialKey: orig.materialKey,
+        cor: orig.cor,
+        fornecedor: orig.fornecedor,
+        lote: orig.lote,
+        peso: estado.retPeso,
+        comp: false,
+        qtdSacos: null,
+      };
+    } else {
+      // SEM ETIQUETA
+      dados = {
+        materialKey: estado.retoMatManual,
+        cor: estado.retoCorManual,
+        fornecedor: estado.retoFornManual,
+        lote: 'S/L',
+        peso: estado.retoPesoManual,
+        comp: false,
+        qtdSacos: null,
+      };
+    }
+  } else {
+    const m = estado.material ? MATERIAIS[estado.material] : null;
+    const comp = isComposto(estado.material);
+    const peso = comp ? estado.qtdSacos * KG_SACO : estado.pesoBruto;
+    dados = {
+      materialKey: estado.material,
+      cor: estado.cor,
+      fornecedor: estado.fornecedor,
+      lote: getLote(),
+      peso: peso,
+      comp: comp,
+      qtdSacos: comp ? estado.qtdSacos : null,
+    };
+  }
+
+  const m = dados.materialKey ? MATERIAIS[dados.materialKey] : null;
+  const temCor = m && m.cores.length > 0;
+  const corOk = !temCor || dados.cor;
+  const baseOk = m && dados.fornecedor && corOk && dados.peso > 0 && (!dados.comp || dados.qtdSacos > 0);
+
+  // Estabilidade só para Recebimento c/ balança real
+  const pesoEstavel = (estado.modo === 'retorno' || dados.comp) ? true : bal_estavel;
+  // Trava de re-impressão só para Recebimento c/ balança real
+  const cicloLiberado = (estado.modo === 'retorno' || dados.comp) ? true : !mp_aguardandoZero;
+  const completo = baseOk && pesoEstavel && cicloLiberado;
+
+  document.getElementById('etiqueta').style.display      = baseOk ? 'flex' : 'none';
+  document.getElementById('etiqueta-vazia').style.display = baseOk ? 'none' : 'flex';
+  document.getElementById('btn-imprimir').disabled       = !completo;
+  const btnImp = document.getElementById('btn-imprimir');
+  if (baseOk && estado.modo === 'recebimento' && !dados.comp && mp_aguardandoZero) {
+    btnImp.textContent = '⏳ RETIRE O BIG BAG / PALETE';
+  } else if (baseOk && estado.modo === 'recebimento' && !dados.comp && !bal_estavel) {
+    btnImp.textContent = '⏳ AGUARDANDO ESTABILIDADE...';
+  } else if (estado.modo === 'retorno') {
+    btnImp.textContent = estado.retoOrigem === 'sem-etiqueta'
+      ? '⎙ IMPRIMIR RETORNO (S/L)'
+      : '⎙ IMPRIMIR ETIQUETA DE RETORNO';
+  } else {
+    btnImp.textContent = '⎙ IMPRIMIR ETIQUETA';
+  }
+
+  if (baseOk) {
+    const matLabel = dados.cor
+      ? `${dados.cor.toUpperCase()} - ${m.nomeEtiqueta}`
+      : m.nomeEtiqueta;
+    document.getElementById('et-mat').textContent  = matLabel;
+    document.getElementById('et-forn').textContent = dados.fornecedor.toUpperCase();
+    document.getElementById('et-lote').textContent = `LOTE ${dados.lote}`;
+    document.getElementById('et-peso').textContent = `PESO ${dados.peso.toFixed(dados.comp ? 0 : 1)} KG`;
+    document.getElementById('et-sacos-row').style.display = dados.comp ? 'block' : 'none';
+    if (dados.comp) document.getElementById('et-sacos').textContent = `${dados.qtdSacos} × ${KG_SACO} kg`;
+
+    // Código gravimétrico
+    const codigo = buscarCodigo(dados.materialKey, dados.cor, dados.fornecedor);
+    const elCodigo = document.getElementById('et-codigo');
+    if (codigo) {
+      elCodigo.textContent = codigo;
+      elCodigo.style.color = '#111';
+    } else {
+      elCodigo.textContent = '??? não cadastrado';
+      elCodigo.style.color = '#c54300';
+    }
+
+    // SKU
+    const skuCor = temCor ? '.' + (m.corLabel[dados.cor] || dados.cor.substring(0,3).toUpperCase()) : '';
+    const skuForn = '.' + dados.fornecedor.replace(/[^A-Za-z0-9]/g,'').substring(0, 6).toUpperCase();
+    document.getElementById('et-sku').textContent  = `${dados.materialKey}${skuCor}${skuForn} | ${dados.peso.toFixed(0)} | L${dados.lote}`;
+
+    // Barcode CODE128 com prefixo R (recebimento) ou T (retorno) + SEQ 7 dígitos
+    const prefix = estado.modo === 'retorno' ? 'T' : 'R';
+    const seqAtual = estado.seq[estado.modo];
+    const idBarcode = prefix + String(seqAtual).padStart(7, '0');
+    try {
+      JsBarcode('#et-barcode', idBarcode, {
+        format: 'CODE128',
+        width: 2,
+        height: 40,
+        displayValue: false,
+        margin: 0,
+        background: 'transparent',
+        lineColor: '#000000'
+      });
+    } catch(e) {
+      console.error('Erro gerando barcode:', e);
+    }
+  }
+}
+
+function atualizarAcoes() {
+  let temConteudo;
+  if (estado.modo === 'retorno' && estado.retoTipo === 'aditivos') {
+    // Aditivos: tem conteúdo se há itens na lista (fechados ou parciais)
+    const itensAd = estado.retItens.filter(it => it.subTipo === 'aditivo-fechado' || it.subTipo === 'aditivo-parcial');
+    temConteudo = itensAd.length > 0;
+  } else {
+    const lista = estado.modo === 'retorno' ? estado.retItens : estado.itens;
+    // Para Retorno grãos, ignoramos parciais (que vão pra aditivos)
+    const filtrada = estado.modo === 'retorno'
+      ? lista.filter(it => it.subTipo !== 'aditivo-parcial')
+      : lista;
+    temConteudo = filtrada.length > 0;
+  }
+  document.getElementById('btn-finalizar').disabled = !temConteudo;
+  document.getElementById('btn-cancelar').disabled  = !temConteudo;
+  document.getElementById('btn-relatorio').disabled = !temConteudo;
+}
+
+// ─── AÇÕES ───
+function selMat(k) {
+  estado.material = k;
+  estado.cor = null;
+  if (isComposto(k)) {
+    estado.pesoBruto = 0;
+    document.getElementById('peso-bruto').value = '';
+  } else {
+    estado.qtdSacos = 0;
+    document.getElementById('qtd-input').value = 0;
+  }
+  beepCk();
+  renderMateriais(); renderFornecedores(); renderCores();
+  atualizarEstadoBlocos();
+  atualizarLiquido(); atualizarQtd();
+}
+function selForn(f) {
+  estado.fornecedor = f;
+  beepCk();
+  renderFornecedores();
+  atualizarEstadoBlocos();
+}
+function selCor(c) {
+  estado.cor = c;
+  beepCk();
+  renderCores();
+  atualizarEstadoBlocos();
+}
+function avisoForneTravado() {
+  beepWarn();
+  showToast('warn', '⚠', 'Para trocar de fornecedor, finalize ou cancele o recebimento atual');
+}
+
+// ─── BALANÇA REAL via /balanca/raw ────────────────────────────
+// Arquitetura: servidor Node.js mantém COM3 aberta e expõe HTTP.
+// Frontend faz polling a cada 500ms.
+const URL_BALANCA = 'http://localhost:3000/balanca/raw';
+const URL_BAL_ZERAR = 'http://localhost:3000/balanca/zerar';
+const URL_BAL_TARAR = 'http://localhost:3000/balanca/tarar';
+const POLLING_MS = 500;
+const ESTAB_MS = 1500;          // peso parado por 1.5s = estável
+const ESTAB_TOL_KG = 0.2;       // variação máxima permitida em kg
+const LIMIAR_ZERO_KG = 2;       // peso abaixo disso libera nova impressão (descarga)
+
+let bal_polling = null;
+let bal_historico = [];          // [{peso, ts}, ...]
+let bal_semDadosCount = 0;
+let bal_estavel = false;
+let mp_aguardandoZero = false;   // true após uma impressão (modo recebimento balança);
+                                  // libera quando peso cair abaixo de LIMIAR_ZERO_KG
+
+async function conectarBalanca() {
+  if (bal_polling) return;
+  try {
+    const r = await fetch(URL_BALANCA);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+
+    if (!d.portaAberta) {
+      showToast('warn', '⚠', `Servidor OK, mas porta ${d.porta || 'COM'} não está aberta`);
+      return;
+    }
+
+    estado.balancaConectada = true;
+    document.getElementById('bal-status').classList.add('on');
+    document.getElementById('bal-status-txt').textContent =
+      `Conectada · ${d.porta || 'COM3'} · aguardando peso`;
+    document.getElementById('bal-cmd-row').style.display = 'flex';
+    beepOk();
+
+    bal_polling = setInterval(lerPeso, POLLING_MS);
+  } catch(e) {
+    showToast('erro', '✗', 'Servidor não responde — INICIAR.bat está rodando?');
+    beepErro();
+  }
+}
+
+async function lerPeso() {
+  try {
+    const r = await fetch(URL_BALANCA);
+    const d = await r.json();
+    const agora = Date.now();
+    const idadeUltimoByte = d.ultimoByteTs ? (agora - d.ultimoByteTs) : 999999;
+
+    // Detecta "porta aberta mas balança não transmite"
+    if (d.portaAberta && idadeUltimoByte > 3000) {
+      bal_semDadosCount++;
+      if (bal_semDadosCount === 6) {
+        document.getElementById('aviso-bal').classList.add('ativo');
+      }
+    } else {
+      bal_semDadosCount = 0;
+      document.getElementById('aviso-bal').classList.remove('ativo');
+    }
+
+    if (d.peso !== null && d.peso !== undefined && idadeUltimoByte < 3000) {
+      // Atualiza histórico para detectar estabilidade
+      bal_historico.push({ peso: d.peso, ts: agora });
+      while (bal_historico.length > 0 && bal_historico[0].ts < agora - 2000) {
+        bal_historico.shift();
+      }
+
+      // ── Trava de re-impressão: libera quando operador descarrega ──
+      if (mp_aguardandoZero && d.peso < LIMIAR_ZERO_KG) {
+        mp_aguardandoZero = false;
+        atualizarEtiqueta();   // re-renderiza o botão liberado
+      }
+
+      // Reflete o peso atual no input (a menos que esteja aguardando descarga)
+      if (!mp_aguardandoZero) {
+        document.getElementById('peso-bruto').value = d.peso.toFixed(1);
+        atualizarLiquido();
+      }
+
+      // Avalia estabilidade
+      const estavelAgora = avaliarEstabilidade();
+      if (estavelAgora !== bal_estavel) {
+        bal_estavel = estavelAgora;
+        const elInput = document.getElementById('peso-bruto');
+        const elStatusTxt = document.getElementById('bal-status-txt');
+        const elStatus = document.getElementById('bal-status');
+        if (estavelAgora) {
+          elInput.classList.remove('instavel');
+          elStatus.classList.remove('estabilizando');
+          elStatus.classList.add('on');
+          elStatusTxt.textContent = `Conectada · estável · ${d.peso.toFixed(1)} kg`;
+          beepCk();   // beep curto sinalizando estabilidade
+        } else {
+          elInput.classList.add('instavel');
+          elStatus.classList.remove('on');
+          elStatus.classList.add('estabilizando');
+          elStatusTxt.textContent = 'Conectada · estabilizando...';
+        }
+        atualizarEstadoBlocos();
+      }
+    }
+  } catch(e) {
+    document.getElementById('bal-status').classList.remove('on', 'estabilizando');
+    document.getElementById('bal-status-txt').textContent = 'Servidor offline';
+    document.getElementById('peso-bruto').classList.remove('instavel');
+    bal_estavel = false;
+  }
+}
+
+function avaliarEstabilidade() {
+  if (bal_historico.length < 3) return false;
+  const primeiro = bal_historico[0];
+  const ultimo = bal_historico[bal_historico.length - 1];
+  if (ultimo.ts - primeiro.ts < ESTAB_MS) return false;
+  const pesos = bal_historico.map(h => h.peso);
+  return (Math.max(...pesos) - Math.min(...pesos)) <= ESTAB_TOL_KG;
+}
+
+async function balancaZerar() {
+  try {
+    const r = await fetch(URL_BAL_ZERAR, { method: 'POST' });
+    if (r.status === 404) {
+      showToast('warn', '⚠', 'Endpoint /balanca/zerar não existe no servidor (pedir para adicionar)');
+      return;
+    }
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    showToast('info', '⊘', 'Comando zerar enviado à balança');
+    beepCk();
+  } catch(e) {
+    showToast('erro', '✗', 'Erro ao zerar: ' + e.message);
+    beepErro();
+  }
+}
+
+async function balancaTarar() {
+  try {
+    const r = await fetch(URL_BAL_TARAR, { method: 'POST' });
+    if (r.status === 404) {
+      showToast('warn', '⚠', 'Endpoint /balanca/tarar não existe no servidor (pedir para adicionar)');
+      return;
+    }
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    showToast('info', '⊟', 'Comando tarar enviado à balança');
+    beepCk();
+  } catch(e) {
+    showToast('erro', '✗', 'Erro ao tarar: ' + e.message);
+    beepErro();
+  }
+}
+
+// SIMULAR — mantido como fallback de teste (balança desligada)
+function simularPeso() {
+  const p = (800 + Math.random() * 400).toFixed(1);
+  document.getElementById('peso-bruto').value = p;
+  // Simula estabilidade imediata para testar fluxo sem balança real
+  bal_estavel = true;
+  document.getElementById('peso-bruto').classList.remove('instavel');
+  // Simular um novo peso equivale a "retirei o big bag/palete anterior e
+  // coloquei um novo" — libera a trava de descarga (que, sem balança real
+  // transmitindo, o polling nunca zeraria). Sem isto, após imprimir+bipar
+  // a tela ficaria presa em "RETIRE O BIG BAG / PALETE".
+  if (mp_aguardandoZero) mp_aguardandoZero = false;
+  beepCk();
+  atualizarLiquido();
+  atualizarEtiqueta();   // re-renderiza o botão (sai de "RETIRE O BIG BAG")
+}
+
+function ajustarQtd(d) {
+  const n = Math.max(0, estado.qtdSacos + d);
+  document.getElementById('qtd-input').value = n;
+  beepCk();
+  atualizarQtd();
+}
+function setQtd(n) {
+  document.getElementById('qtd-input').value = n;
+  beepCk();
+  atualizarQtd();
+}
+
+// ─── IMPRIMIR — envia EPL2 ao servidor de impressão local ───
+
+async function imprimir() {
+  // Decide a fonte dos dados conforme o modo + sub-fluxo
+  let dadosImpr;
+  if (estado.modo === 'retorno') {
+    // Aditivos não usa este botão IMPRIMIR — usa imprimirEtiquetaSacoParcial
+    if (estado.retoTipo === 'aditivos') {
+      showToast('info', 'ℹ', 'Aditivos: use o botão ⚖ PESAR SACO USADO para imprimir saco parcial');
+      return;
+    }
+    // GRÃOS com etiqueta original
+    if (estado.retoOrigem === 'com-etiqueta') {
+      const orig = estado.retEtiquetaOriginal;
+      if (!orig) {
+        showToast('warn', '⚠', 'Bipe a etiqueta original primeiro');
+        return;
+      }
+      if (estado.retPeso <= 0) {
+        showToast('warn', '⚠', 'Pese a sobra antes de imprimir');
+        return;
+      }
+      dadosImpr = {
+        materialKey: orig.materialKey,
+        cor: orig.cor,
+        fornecedor: orig.fornecedor,
+        lote: orig.lote,           // mantém lote original
+        peso: estado.retPeso,
+        comp: false,
+        qtdSacos: null,
+        subTipo: 'graos-com-etiq',
+      };
+    }
+    // GRÃOS sem etiqueta original
+    else {
+      if (!estado.retoMatManual) {
+        showToast('warn', '⚠', 'Selecione o material'); return;
+      }
+      if (!estado.retoFornManual) {
+        showToast('warn', '⚠', 'Selecione o fornecedor'); return;
+      }
+      const m = MATERIAIS[estado.retoMatManual];
+      if (m.cores.length > 0 && !estado.retoCorManual) {
+        showToast('warn', '⚠', 'Selecione a cor'); return;
+      }
+      if (estado.retoPesoManual <= 0) {
+        showToast('warn', '⚠', 'Pese antes de imprimir'); return;
+      }
+      dadosImpr = {
+        materialKey: estado.retoMatManual,
+        cor: estado.retoCorManual,
+        fornecedor: estado.retoFornManual,
+        lote: 'S/L',               // sem rastreabilidade
+        peso: estado.retoPesoManual,
+        comp: false,
+        qtdSacos: null,
+        subTipo: 'graos-sem-etiq',
+      };
+    }
+  } else {
+    const comp = isComposto(estado.material);
+    dadosImpr = {
+      materialKey: estado.material,
+      cor: estado.cor,
+      fornecedor: estado.fornecedor,
+      lote: getLote(),
+      peso: comp ? estado.qtdSacos * KG_SACO : estado.pesoBruto,
+      comp: comp,
+      qtdSacos: comp ? estado.qtdSacos : null,
+      subTipo: null,
+    };
+  }
+
+  const m = MATERIAIS[dadosImpr.materialKey];
+  const codigo = buscarCodigo(dadosImpr.materialKey, dadosImpr.cor, dadosImpr.fornecedor);
+  if (!codigo) {
+    showToast('erro', '✗', `Combinação ${dadosImpr.materialKey}/${dadosImpr.cor || '-'}/${dadosImpr.fornecedor} sem código cadastrado`);
+    beepErro();
+    return;
+  }
+
+  // Monta SKU
+  const skuCor = (m.cores.length > 0 && dadosImpr.cor) ? '.' + (m.corLabel[dadosImpr.cor] || dadosImpr.cor.substring(0,3).toUpperCase()) : '';
+  const skuForn = '.' + dadosImpr.fornecedor.replace(/[^A-Za-z0-9]/g,'').substring(0, 6).toUpperCase();
+  const sku = `${dadosImpr.materialKey}${skuCor}${skuForn} | ${dadosImpr.peso.toFixed(0)} | L${dadosImpr.lote}`;
+
+  const item = {
+    n: estado.seq[estado.modo],
+    id: (estado.modo === 'retorno' ? 'T' : 'R') + String(estado.seq[estado.modo]).padStart(7,'0'),
+    tipo: estado.modo,              // 'recebimento' ou 'retorno'
+    subTipo: dadosImpr.subTipo,
+    material: m.popular,
+    materialKey: dadosImpr.materialKey,
+    cor: dadosImpr.cor || null,
+    fornecedor: dadosImpr.fornecedor,
+    peso: dadosImpr.peso,
+    qtdSacos: dadosImpr.comp ? dadosImpr.qtdSacos : null,
+    lote: dadosImpr.lote,
+    codigo: codigo,
+    sku: sku,
+    origId: (estado.modo === 'retorno' && estado.retEtiquetaOriginal) ? estado.retEtiquetaOriginal.id : null,
+    origSeq: (estado.modo === 'retorno' && estado.retEtiquetaOriginal) ? estado.retEtiquetaOriginal.seq : null,
+    hora: new Date().toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'}),
+    status: estado.modo === 'retorno' ? 'bipada' : 'aguardando_bipe'
+  };
+
+  // Feedback visual
+  const btnImp = document.getElementById('btn-imprimir');
+  btnImp.disabled = true;
+  const btnTextoOriginal = btnImp.textContent;
+  btnImp.textContent = '⏳ ENVIANDO À IMPRESSORA...';
+  showToast('info', '🖨', `Imprimindo etiqueta ${item.id}...`);
+
+  // Garante sessão aberta (cria se for a 1ª etiqueta do modo)
+  const fornSessao = estado.modo === 'recebimento' ? dadosImpr.fornecedor : null;
+  const sessaoId = await garantirSessao(estado.modo, fornSessao);
+
+  // Token de idempotência (C3): gera por tentativa, reusa em retry, limpa no sucesso.
+  if (!estado.tokenPendente) estado.tokenPendente = gerarTokenMP();
+
+  try {
+    const resp = await fetch(URL_PRINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        clientToken: estado.tokenPendente,
+        tipo: estado.modo,              // servidor usa pra adicionar selo "RETORNO" no EPL se for o caso
+        materialKey: dadosImpr.materialKey,
+        materialNomeEt: m.nomeEtiqueta,
+        cor: dadosImpr.cor,
+        fornecedor: dadosImpr.fornecedor,
+        peso: dadosImpr.peso,
+        lote: dadosImpr.lote,
+        codigo: codigo,
+        sku: sku,
+        sessao_id: sessaoId,                              // vincula à sessão
+        ref_id: item.origId || null,                      // se retorno: lote original
+      })
+    });
+    const result = await resp.json();
+    if (!resp.ok || !result.ok) {
+      throw new Error(result.error || result.erro || `HTTP ${resp.status}`);
+    }
+    // O número é atribuído pelo SERVIDOR (C2). Usa o id/seq retornados como verdade.
+    estado.tokenPendente = null;   // sucesso → próxima usa token novo
+    if (result.id)  { item.id = result.id; }
+    if (result.seq) { item.n  = result.seq; }
+    if (result.seq_sessao) { item.seqSessao = result.seq_sessao; }
+  } catch(e) {
+    btnImp.disabled = false;
+    btnImp.textContent = btnTextoOriginal;
+    showToast('erro', '✗', 'Falha na impressão: ' + e.message + ' — Servidor INICIAR_IMPRESSORA.bat rodando?');
+    beepErro();
+    return;
+  }
+
+  // Sucesso — registra no histórico apropriado e prossegue
+  if (estado.modo === 'retorno') {
+    estado.retItens.unshift(item);
+  } else {
+    estado.itens.unshift(item);
+  }
+  estado.seq[estado.modo]++;
+
+  beepOk();
+  if (estado.modo === 'retorno') {
+    showToast('sucesso', '✓', `Retorno ${item.id} impresso · saldo registrado no estoque`);
+  } else {
+    showToast('warn', '🖨', `Etiqueta ${item.id} impressa · BIPE PARA REGISTRAR`);
+  }
+
+  // Limpeza pós-impressão
+  if (estado.modo === 'retorno') {
+    if (estado.retoOrigem === 'com-etiqueta') {
+      estado.retEtiquetaOriginal = null;
+      estado.retPeso = 0;
+      document.getElementById('ret-peso-input').value = '';
+      renderRetornoCard();
+    } else {
+      // SEM ETIQUETA: limpa só o peso, mantém material/cor/fornecedor pra próxima
+      estado.retoPesoManual = 0;
+      document.getElementById('reto-se-peso-input').value = '';
+    }
+  } else if (dadosImpr.comp) {
+    estado.qtdSacos = 0;
+    document.getElementById('qtd-input').value = 0;
+  } else {
+    estado.pesoBruto = 0;
+    document.getElementById('peso-bruto').value = '';
+    bal_historico = [];
+    bal_estavel = false;
+    document.getElementById('peso-bruto').classList.remove('instavel');
+    // Trava ciclo de pesagem — modo recebimento c/ balança real apenas.
+    // Próxima impressão liberada quando peso cair abaixo de LIMIAR_ZERO_KG
+    // (operador retira o big bag/palete). Aplica só fora de complementação.
+    if (estado.modo === 'recebimento') mp_aguardandoZero = true;
+  }
+
+  btnImp.disabled = false;
+  btnImp.textContent = btnTextoOriginal;
+
+  renderHistorico();
+  renderFornecedores();
+  atualizarLiquido(); atualizarQtd();
+  atualizarEtiqueta();
+}
+
+// ─── BIPAR — captura global do leitor (Comtac HS-960 envia como teclado) ───
+// O leitor digita os caracteres da etiqueta + Enter como se fosse teclado.
+// Capturamos no nível da janela, ignorando quando o foco está em algum input.
+let bipeBuffer = '';
+let bipeTimer = null;
+window.addEventListener('keydown', (e) => {
+  // Ignora se está digitando em algum input (peso, tara, qtd)
+  const ae = document.activeElement;
+  if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA')) return;
+
+  if (e.key === 'Enter') {
+    if (bipeBuffer) {
+      processarBipeRaw(bipeBuffer);
+      bipeBuffer = '';
+    }
+  } else if (e.key.length === 1) {
+    // Caracteres normais (números, letras do SKU)
+    bipeBuffer += e.key;
+    // Timeout de segurança: limpa buffer se ninguém apertar Enter em 1s
+    clearTimeout(bipeTimer);
+    bipeTimer = setTimeout(() => { bipeBuffer = ''; }, 1000);
+  } else if (e.key === 'Backspace') {
+    bipeBuffer = bipeBuffer.slice(0, -1);
+  }
+});
+
+function processarBipeRaw(raw) {
+  // Aceita formatos:
+  //   "R0000101", "T0000005"  ← do leitor de barcode (formato oficial)
+  //   "0001", "#0001", "1"    ← digitação manual (assume modo ativo)
+  let id = null;
+  let num = null;
+
+  const mFull = raw.match(/^([RT])(\d+)$/i);
+  if (mFull) {
+    id  = mFull[1].toUpperCase() + mFull[2].padStart(7, '0');
+    num = parseInt(mFull[2], 10);
+  } else {
+    const m1 = raw.match(/^#?0*(\d+)$/);
+    if (m1) {
+      num = parseInt(m1[1], 10);
+      id  = (estado.modo === 'retorno' ? 'T' : 'R') + String(num).padStart(7, '0');
+    }
+  }
+
+  if (id === null) {
+    beepErro();
+    showToast('erro', '✗', `Código não reconhecido: ${raw}`);
+    return;
+  }
+
+  // Roteia conforme contexto.
+  // Em modo RETORNO com sub-aba "com etiqueta", a bipagem de R (recebimento) ou
+  // de T (retorno anterior) define a etiqueta original da vez — uma etiqueta de
+  // retorno pode voltar à produção e retornar de novo (2ª volta).
+  // Exceção: a etiqueta impressa nesta MESMA sessão não deve ser bipada (já está
+  // registrada); quase sempre é o operador bipando o que saiu da impressora.
+  if (estado.modo === 'retorno') {
+    if (estado.retItens.some(i => i.id === id)) {
+      showToast('warn', '⚠', `${id} acabou de sair da impressora nesta sessão — já está registrada, não precisa bipar`);
+      beepWarn();
+    } else if (estado.retoOrigem === 'com-etiqueta' && (id.startsWith('R') || id.startsWith('T'))) {
+      processarBipeRetorno(id);
+    } else if (!estado.retEtiquetaOriginal) {
+      processarBipeRetorno(id);
+    } else {
+      showToast('warn', '⚠', `Já há uma etiqueta selecionada (${estado.retEtiquetaOriginal.id}). Cancele ou imprima antes de bipar outra.`);
+      beepWarn();
+    }
+  } else {
+    // Confirmação de bipagem de etiqueta do recebimento ativo
+    bipar(num, id);
+  }
+}
+
+// Exclui (cancela) uma pesagem do histórico — soft-delete no servidor + remove da lista local.
+// Atualiza os indicadores "em andamento" no shell pai (aba) e na tela inicial
+// (avô) imediatamente, sem esperar o polling de 8-10s. Best-effort.
+function atualizarBadgesPai() {
+  try { if (window.parent && window.parent !== window && window.parent.atualizarBadges) window.parent.atualizarBadges(); } catch(e) {}
+  try { const avo = window.parent && window.parent.parent; if (avo && avo !== window.parent && avo.checarSessoesAbertas) avo.checarSessoesAbertas(); } catch(e) {}
+}
+
+// Se a lista do modo atual ficou vazia, a sessão não tem mais itens — cancela a
+// sessão no backend para que a tela inicial e a aba parem de mostrar "em andamento".
+async function cancelarSessaoSeVazia() {
+  const lista = estado.modo === 'retorno' ? estado.retItens : estado.itens;
+  if (lista.length > 0) return false;
+  const key = estado.modo === 'retorno' ? 'sessaoRetorno' : 'sessaoRecebimento';
+  const sid = estado[key];
+  if (sid) {
+    try { await fetch(`${URL_SESSAO}/${sid}/cancelar`, { method: 'POST' }); } catch(e) {}
+    estado[key] = null;
+  }
+  atualizarBadgesPai();
+  return true;
+}
+
+async function excluirItem(seq, id) {
+  if (id) { try { await fetch(URL_ETIQUETA + '/' + id + '/cancelar', { method: 'POST' }); } catch(e) {} }
+  const lista = estado.modo === 'retorno' ? estado.retItens : estado.itens;
+  const idx = lista.findIndex(it => it.n === seq);
+  if (idx >= 0) lista.splice(idx, 1);
+  renderHistorico();
+  atualizarEstadoBlocos();
+  // Se foi o último item, encerra a sessão (some o "em andamento" da tela/aba)
+  const encerrou = await cancelarSessaoSeVazia();
+  showToast('info', '🗑', encerrou ? 'Item removido · sessão encerrada (lista vazia)' : 'Pesagem excluída');
+}
+
+function bipar(seq, id) {
+  if (id && id.startsWith('T')) {
+    showToast('warn', '⚠', `${id} é etiqueta de Retorno — já fica registrada na impressão, não precisa bipar`);
+    beepWarn();
+    return;
+  }
+  const item = estado.itens.find(it => it.n === seq);
+  if (!item) {
+    beepErro();
+    showToast('erro', '✗', `Etiqueta ${id || '#'+seq} não encontrada neste recebimento`);
+    return;
+  }
+  if (item.status === 'bipada') {
+    beepWarn();
+    showToast('warn', '⚠', `Etiqueta ${id} já foi bipada`);
+    return;
+  }
+  item.status = 'bipada';
+  item.horaBipe = new Date().toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'});
+  beepBipe();
+  showToast('sucesso', '✓', `Bipagem OK · ${id} · ${item.peso.toFixed(item.qtdSacos?0:1)} kg registrado`);
+
+  // Persiste no backend (não bloqueia se falhar)
+  fetch(`${URL_ETIQUETA}/${id}/bipar`, { method: 'POST' })
+    .catch(e => console.warn('Falha ao persistir bipagem no backend:', e));
+
+  renderHistorico();
+  atualizarEstadoBlocos();
+}
+
+// ─── FINALIZAR ───
+async function finalizar() {
+  // Caso especial: ADITIVOS (sacos fechados + parciais)
+  if (estado.modo === 'retorno' && estado.retoTipo === 'aditivos') {
+    return finalizarAditivos();
+  }
+
+  const lista = estado.modo === 'retorno' ? estado.retItens : estado.itens;
+  if (lista.length === 0) return;
+  // O que será enviado: bipadas + as já retiradas para a produção. Essa é a
+  // mesma regra do servidor — a confirmação precisa mostrar o número real.
+  const bipadas = lista.filter(it => it.status === 'bipada' || it.status === 'consumida');
+  const retiradas = lista.filter(it => it.status === 'consumida');
+  const pendentes = lista.filter(it => it.status === 'aguardando_bipe');
+  const totalKg = bipadas.reduce((s, it) => s + it.peso, 0);
+
+  if (bipadas.length === 0) {
+    showToast('warn', '⚠', 'Nenhuma etiqueta bipada ainda. Bipe ao menos uma antes de finalizar.');
+    beepWarn();
+    return;
+  }
+
+  const tipoLabel = estado.modo === 'retorno' ? 'retorno' : 'recebimento';
+  let msg = `Enviar ${tipoLabel} ao Bling?\n\n`
+          + `✓ ${bipadas.length} ${bipadas.length === 1 ? 'etiqueta bipada' : 'etiquetas bipadas'} · ${totalKg.toFixed(1)} kg\n`;
+  if (estado.modo === 'recebimento' && estado.fornecedor) {
+    msg += `Fornecedor: ${estado.fornecedor}\n`;
+    msg += `Lote: ${getLote()}`;
+  }
+  if (retiradas.length > 0) {
+    msg += `\n(inclui ${retiradas.length} big bag${retiradas.length > 1 ? 's' : ''} já retirado${retiradas.length > 1 ? 's' : ''} para a produção)`;
+  }
+  if (pendentes.length > 0) {
+    msg += `\n\n⚠ ATENÇÃO: ${pendentes.length} ${pendentes.length === 1 ? 'etiqueta NÃO BIPADA será descartada' : 'etiquetas NÃO BIPADAS serão descartadas'}.`;
+  }
+
+  // Envio ao Bling AUTOMÁTICO (sem caixa de confirmação — não tira do fullscreen).
+  await enviarSessaoParaBling(estado.modo, bipadas.length, totalKg);
+}
+
+async function finalizarAditivos() {
+  // Os aditivos já foram persistidos como etiquetas 'T' bipadas ao "Adicionar à
+  // lista" (sacos fechados) e ao imprimir saco parcial. Aqui só percorremos os
+  // itens da lista e enviamos a sessão ao Bling (compra).
+  const itens = estado.retItens.filter(it => it.subTipo === 'aditivo-fechado' || it.subTipo === 'aditivo-parcial');
+  if (itens.length === 0) {
+    showToast('warn', '⚠', 'Nenhum aditivo na lista. Adicione ao menos um lote (➕ Adicionar à lista) ou pese um saco parcial.');
+    beepWarn();
+    return;
+  }
+  const total = itens.reduce((s, it) => s + it.peso, 0);
+  // Envio ao Bling AUTOMÁTICO (sem caixa de confirmação — não tira do fullscreen).
+  await enviarSessaoParaBling('retorno', itens.length, total);
+}
+
+// Imprime o relatório PARCIAL (momentâneo) sem finalizar a sessão.
+async function relatorioAtual() {
+  const key = estado.modo === 'retorno' ? 'sessaoRetorno' : 'sessaoRecebimento';
+  const sessaoId = estado[key];
+  if (!sessaoId) { showToast('warn', '⚠', 'Nenhuma sessão aberta. Imprima ao menos uma etiqueta.'); beepWarn(); return; }
+  try {
+    const r = await fetch(`${URL_BASE}/sessoes/${sessaoId}/relatorio-atual`, { method: 'POST' });
+    const d = await r.json();
+    if (!d.ok) { showToast('warn', '⚠', d.erro || 'Não foi possível imprimir o relatório'); beepWarn(); return; }
+    showToast('ok', '🧾', 'Relatório atual enviado para impressão');
+  } catch (e) { showToast('err', '✕', 'Erro: ' + e.message); }
+}
+
+// Helper único: finaliza sessão no backend e mostra resultado
+async function enviarSessaoParaBling(modo, qtdEt, totalKg) {
+  const key = modo === 'retorno' ? 'sessaoRetorno' : 'sessaoRecebimento';
+  const sessaoId = estado[key];
+  if (!sessaoId) {
+    // Não tem sessão (nenhuma impressão ainda) — só reseta local
+    beepWarn();
+    showToast('warn', '⚠', 'Nenhuma sessão aberta. Imprima ao menos uma etiqueta.');
+    return;
+  }
+
+  beepOk();
+  showToast('info', '📤', `Enviando ao Bling...`);
+
+  try {
+    const resp = await fetch(`${URL_SESSAO}/${sessaoId}/finalizar`, { method: 'POST' });
+    const d = await resp.json();
+    if (!d.ok) throw new Error(d.erro || 'falha ao finalizar sessão');
+
+    setTimeout(() => beep(1100, 0.18), 180);
+    const blingResp = d.bling || {};
+    const notaResumo = (d.resumo && d.resumo.ok) ? ` · 🧾 resumo impresso (${d.resumo.itens})` : '';
+    if (blingResp.ok) {
+      const modoLabel = blingResp.modo === 'simulacao' ? '🧪 SIMULAÇÃO' : '';
+      showToast('sucesso', '✓', `${modoLabel} ${modo === 'retorno' ? 'Retorno' : 'Recebimento'} enviado · ${qtdEt} ${qtdEt === 1 ? 'item' : 'itens'} · ${totalKg.toFixed(1)} kg · Bling: ${blingResp.bling_id || 'OK'}${notaResumo}`);
+    } else if (blingResp.status === 'pendente_config') {
+      showToast('warn', '⚠', `Sessão #${sessaoId} salva, mas pendente: ${blingResp.erro || 'config Bling incompleta'}`);
+    } else {
+      showToast('warn', '⚠', `Sessão salva, mas envio ao Bling falhou: ${blingResp.erro || 'erro'}`);
+    }
+  } catch(e) {
+    beepErro();
+    showToast('erro', '✗', 'Falha ao finalizar: ' + e.message);
+    return;
+  } finally {
+    estado[key] = null;       // zera referência (próxima impressão abre nova sessão)
+    atualizarBadgesPai();      // some o "em andamento" na tela/aba na hora
+  }
+
+  // Reseta UI local
+  if (modo === 'retorno') {
+    if (estado.retoTipo === 'aditivos') resetarAditivos();
+    else resetarRetornoCompleto();
+  } else {
+    resetarRecebimento();
+  }
+}
+
+function resetarAditivos() {
+  estado.retoAditivoMat = 'PIG';
+  estado.retoAditivoCor = null;
+  estado.retoSacosFechados = 0;
+  estado.retoPesandoSaco = false;
+  estado.retoPesoSacoParcial = 0;
+  // Remove os itens de aditivo (sacos fechados E parciais) do histórico
+  estado.retItens = estado.retItens.filter(it => it.subTipo !== 'aditivo-parcial' && it.subTipo !== 'aditivo-fechado');
+  const inp = document.getElementById('reto-sacos-input'); if (inp) inp.value = 0;
+  const inpP = document.getElementById('reto-saco-peso-input'); if (inpP) inpP.value = '';
+  cancelarPesagemSacoParcial();
+  renderRetoAditivos();
+  renderHistorico();
+  atualizarAcoes();
+}
+
+let _cancelArmado = false, _cancelTimer = null;
+async function cancelar() {
+  const lista = estado.modo === 'retorno' ? estado.retItens : estado.itens;
+  const fechadosAdt = (estado.modo === 'retorno' && estado.retoTipo === 'aditivos') ? estado.retoSacosFechados : 0;
+  const hasContent = lista.length > 0 || fechadosAdt > 0;
+  if (!hasContent && !estado[estado.modo === 'retorno' ? 'sessaoRetorno' : 'sessaoRecebimento']) return;
+  const tipoLabel = estado.modo === 'retorno' ? 'retorno' : 'recebimento';
+
+  // Confirmação de DOIS TOQUES (sem caixa nativa, que tiraria do modo cheio):
+  // 1º toque arma e avisa; 2º toque (em até 4s) descarta de fato.
+  const btnC = document.getElementById('btn-cancelar');
+  if (!_cancelArmado) {
+    _cancelArmado = true;
+    btnC.dataset.orig = btnC.innerHTML;
+    btnC.innerHTML = '✕ Confirmar descarte?';
+    btnC.classList.add('armado');
+    showToast('warn', '⚠', 'Toque novamente para descartar tudo');
+    _cancelTimer = setTimeout(() => {
+      _cancelArmado = false;
+      btnC.innerHTML = btnC.dataset.orig || '✕ Cancelar';
+      btnC.classList.remove('armado');
+    }, 4000);
+    return;
+  }
+  clearTimeout(_cancelTimer);
+  _cancelArmado = false;
+  btnC.classList.remove('armado');
+  btnC.innerHTML = btnC.dataset.orig || '✕ Cancelar';
+
+  // Cancela sessão no backend (se houver)
+  const key = estado.modo === 'retorno' ? 'sessaoRetorno' : 'sessaoRecebimento';
+  const sessaoId = estado[key];
+  if (sessaoId) {
+    try {
+      await fetch(`${URL_SESSAO}/${sessaoId}/cancelar`, { method: 'POST' });
+    } catch(e) { console.warn('Falha ao cancelar sessão no backend:', e.message); }
+    estado[key] = null;
+  }
+  atualizarBadgesPai();   // some o "em andamento" na tela/aba na hora
+
+  beepWarn();
+  showToast('warn', '✕', `${estado.modo === 'retorno' ? 'Retorno' : 'Recebimento'} cancelado`);
+  if (estado.modo === 'retorno') {
+    if (estado.retoTipo === 'aditivos') resetarAditivos();
+    else resetarRetornoCompleto();
+  } else {
+    resetarRecebimento();
+  }
+}
+
+function resetarRetornoCompleto() {
+  estado.retEtiquetaOriginal = null;
+  estado.retPeso = 0;
+  estado.retItens = [];
+  document.getElementById('ret-peso-input').value = '';
+  renderRetornoCard();
+  renderHistorico();
+  atualizarEstadoBlocos();
+}
+
+function resetarRecebimento() {
+  estado.material = null; estado.fornecedor = null; estado.cor = null;
+  estado.pesoBruto = 0; estado.tara = 0; estado.qtdSacos = 0;
+  estado.itens = [];
+  document.getElementById('peso-bruto').value = '';
+  document.getElementById('qtd-input').value = 0;
+  // Limpa o estado de estabilidade — próxima carga começa zerada
+  bal_historico = [];
+  bal_estavel = false;
+  document.getElementById('peso-bruto').classList.remove('instavel');
+  // NÃO desconecta a balança — o operador continuará pesando a próxima
+  renderMateriais(); renderFornecedores(); renderCores(); renderHistorico();
+  atualizarEstadoBlocos(); atualizarQtd();
+}
+
+// ─── HISTÓRICO (com status visual + clique para bipar) ───
+function renderHistorico() {
+  const cont = document.getElementById('hist-lista');
+  const lista = estado.modo === 'retorno' ? estado.retItens : estado.itens;
+
+  if (lista.length === 0) {
+    const vazioMsg = estado.modo === 'retorno' ? 'Nenhum retorno ainda' : 'Nenhuma etiqueta ainda';
+    cont.innerHTML = `<div class="item-vazio"><div class="ico">📋</div>${vazioMsg}</div>`;
+    document.getElementById('tot-bipadas').textContent = '0 bipadas · 0,0 kg';
+    document.getElementById('tot-pendentes').style.display = 'none';
+    return;
+  }
+
+  // O total tem que ser o MESMO que vai ao Bling. Um big bag retirado antes de
+  // finalizar fica 'consumida', mas continua fazendo parte desta entrada — se
+  // ele sumisse da conta aqui, a tela mostraria menos do que será enviado.
+  const contadas  = lista.filter(it => it.status === 'bipada' || it.status === 'consumida');
+  const retiradas = lista.filter(it => it.status === 'consumida');
+  const pendentes = lista.filter(it => it.status === 'aguardando_bipe');
+  const totalKg = contadas.reduce((s, it) => s + it.peso, 0);
+  document.getElementById('tot-bipadas').textContent =
+    `${contadas.length} ${contadas.length === 1 ? 'bipada' : 'bipadas'} · ${totalKg.toFixed(1)} kg`
+    + (retiradas.length ? `  (${retiradas.length} já retirado${retiradas.length > 1 ? 's' : ''})` : '');
+  if (pendentes.length > 0) {
+    document.getElementById('tot-pendentes').style.display = 'block';
+    document.getElementById('tot-pendentes').textContent =
+      `${pendentes.length} ${pendentes.length === 1 ? 'pendente' : 'pendentes'} de bipe`;
+  } else {
+    document.getElementById('tot-pendentes').style.display = 'none';
+  }
+
+  cont.innerHTML = lista.map(it => {
+    const desc = it.material + (it.cor ? ' · ' + it.cor : '');
+    const refOrig = it.origId ? ` · de ${it.origId}` : '';
+    const extra = it.qtdSacos ? `${it.qtdSacos} sacos · ${it.hora}${refOrig}` : `${it.hora}${refOrig}`;
+    const cls = (it.status === 'bipada' || it.status === 'consumida') ? 'bipada' : 'pendente';
+    const acao = it.status === 'aguardando_bipe'
+      ? `<button class="acao" onclick="bipar(${it.n}, '${it.id}')">BIPAR</button>`
+      : `<span class="check">✓</span>`;
+    return `<div class="item ${cls}">
+      <span class="n">${it.id || ('#'+String(it.n).padStart(4,'0'))}</span>
+      <span class="desc">${desc}<br><span class="small">${extra}</span></span>
+      <span class="peso">${it.peso.toFixed(it.qtdSacos ? 0 : 1)} kg</span>
+      ${acao}
+      <button class="acao-del" title="Excluir pesagem" onclick="excluirItem(${it.n}, '${it.id||''}')">✕</button>
+    </div>`;
+  }).join('');
+}
+
+// ─── CORREÇÃO DE ETIQUETA (recebimento) ───
+// Resgata o peso já pesado de uma etiqueta, permite trocar material/cor/fornecedor
+// e reimprime com o MESMO número — sem pesar de novo.
+let corrEtiqueta = null;
+
+function abrirCorrecao() {
+  corrEtiqueta = null;
+  document.getElementById('corr-cod').value = '';
+  document.getElementById('corr-edit').style.display = 'none';
+  document.getElementById('ov-correcao').classList.add('on');
+  setTimeout(() => { try { document.getElementById('corr-cod').focus(); } catch(e){} }, 100);
+}
+function fecharCorrecao() {
+  document.getElementById('ov-correcao').classList.remove('on');
+}
+
+async function corrBuscar() {
+  const cod = document.getElementById('corr-cod').value.trim().toUpperCase();
+  if (!cod) return;
+  try {
+    const r = await fetch(URL_BASE + '/etiquetas/' + encodeURIComponent(cod));
+    const d = await r.json();
+    const et = (d && d.etiqueta) ? d.etiqueta : d;
+    if (!et || !et.id) { showToast('warn', '⚠', `Etiqueta ${cod} não encontrada`); beepErro(); return; }
+    if (et.tipo !== 'recebimento') { showToast('warn', '⚠', `Só recebimento pode ser corrigido (${et.id} é ${et.tipo})`); beepErro(); return; }
+    if (et.status === 'cancelada') { showToast('warn', '⚠', `Etiqueta ${et.id} está cancelada`); beepErro(); return; }
+    corrEtiqueta = et;
+    document.getElementById('corr-id').textContent = et.id;
+    document.getElementById('corr-peso').textContent = Number(et.peso).toFixed(1) + ' kg';
+    document.getElementById('corr-antes').textContent =
+      `${et.material_key || '?'}${et.cor ? ' / ' + et.cor : ''} / ${et.fornecedor || '?'} (cód ${et.codigo || '—'})`;
+    corrPopular(et);
+    document.getElementById('corr-edit').style.display = 'block';
+    corrCalc();
+  } catch (e) { showToast('err', '✕', 'Erro: ' + e.message); }
+}
+
+function corrPopular(et) {
+  const selM = document.getElementById('corr-mat');
+  selM.innerHTML = Object.keys(MATERIAIS).map(k => `<option value="${k}">${MATERIAIS[k].popular} (${k})</option>`).join('');
+  selM.value = (et.material_key && MATERIAIS[et.material_key]) ? et.material_key : Object.keys(MATERIAIS)[0];
+  corrMatChange(et.cor, et.fornecedor);
+}
+function corrMatChange(corPre, fornPre) {
+  const k = document.getElementById('corr-mat').value;
+  const m = MATERIAIS[k];
+  const selC = document.getElementById('corr-cor');
+  const selF = document.getElementById('corr-forn');
+  if (m.cores.length) {
+    selC.innerHTML = m.cores.map(c => `<option value="${c}">${c}</option>`).join('');
+    selC.disabled = false;
+    if (corPre && m.cores.includes(corPre)) selC.value = corPre;
+  } else {
+    selC.innerHTML = '<option value="">(sem cor)</option>';
+    selC.disabled = true;
+  }
+  selF.innerHTML = m.forn.map(f => `<option value="${f}">${f}</option>`).join('');
+  if (fornPre && m.forn.includes(fornPre)) selF.value = fornPre;
+  corrCalc();
+}
+function corrDados() {
+  const k = document.getElementById('corr-mat').value;
+  const m = MATERIAIS[k];
+  const cor = m.cores.length ? document.getElementById('corr-cor').value : '';
+  const forn = document.getElementById('corr-forn').value;
+  const codigo = buscarCodigo(k, cor || null, forn);
+  const skuCor = (m.cores.length && cor) ? '.' + (m.corLabel[cor] || cor.substring(0,3).toUpperCase()) : '';
+  const skuForn = '.' + forn.replace(/[^A-Za-z0-9]/g,'').substring(0,6).toUpperCase();
+  const peso = Number(corrEtiqueta.peso);
+  const sku = `${k}${skuCor}${skuForn} | ${peso.toFixed(0)} | L${corrEtiqueta.lote}`;
+  return { k, m, cor, forn, codigo, sku };
+}
+function corrCalc() {
+  if (!corrEtiqueta) return;
+  const { k, cor, forn, codigo, sku } = corrDados();
+  const resumo = document.getElementById('corr-resumo');
+  if (!codigo) {
+    resumo.innerHTML = `<span style="color:#ff7043">Combinação ${k}/${cor || '-'}/${forn} sem código gravimétrico cadastrado</span>`;
+    document.getElementById('corr-ok').disabled = true;
+  } else {
+    resumo.innerHTML = `Código: <b>${codigo}</b> &nbsp;·&nbsp; SKU: <b>${sku}</b>`;
+    document.getElementById('corr-ok').disabled = false;
+  }
+}
+async function corrConfirmar() {
+  if (!corrEtiqueta) return;
+  const { m, cor, forn, codigo, sku } = corrDados();
+  if (!codigo) { showToast('warn', '⚠', 'Sem código gravimétrico para essa combinação'); beepErro(); return; }
+  document.getElementById('corr-ok').disabled = true;
+  try {
+    const r = await fetch(URL_BASE + '/etiquetas/' + corrEtiqueta.id + '/corrigir', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ materialKey: document.getElementById('corr-mat').value, materialNomeEt: m.nomeEtiqueta, cor: cor || null, fornecedor: forn, codigo, sku }),
+    });
+    const d = await r.json();
+    if (!d.ok) { showToast('warn', '⚠', d.erro || 'Falha na correção'); beepErro(); document.getElementById('corr-ok').disabled = false; return; }
+    showToast('ok', '✓', `${corrEtiqueta.id} corrigida e reimpressa`);
+    beepOk();
+    fecharCorrecao();
+  } catch (e) { showToast('err', '✕', 'Erro: ' + e.message); document.getElementById('corr-ok').disabled = false; }
+}
+
+function showToast(tipo, ico, txt) {
+  const t = document.getElementById('toast');
+  t.className = 'toast ' + tipo + ' ativo';
+  document.getElementById('toast-ico').textContent = ico;
+  document.getElementById('toast-txt').textContent = txt;
+  clearTimeout(t._tm);
+  t._tm = setTimeout(() => t.classList.remove('ativo'), 2500);
+}
+
+// ═══════════════════════════════════════════════════════════
+// MODO RECEBIMENTO ↔ RETORNO
+// ═══════════════════════════════════════════════════════════
+
+function trocarModo(novoModo) {
+  if (novoModo === estado.modo) return;
+
+  // Limpa qualquer seleção pendente do RETORNO ao sair dele,
+  // para não vazar estado entre as sessões.
+  if (estado.modo === 'retorno' && novoModo !== 'retorno') {
+    estado.retEtiquetaOriginal = null;
+    estado.retPeso = 0;
+  }
+  // Idem ao ENTRAR no retorno (limpa o que pode ter sobrado)
+  if (novoModo === 'retorno') {
+    estado.retEtiquetaOriginal = null;
+    estado.retPeso = 0;
+  }
+
+  estado.modo = novoModo;
+
+  // UI: abas
+  document.querySelectorAll('.aba-modo').forEach(a => {
+    a.classList.toggle('ativa', a.dataset.modo === novoModo);
+  });
+
+  // UI: conteúdo
+  document.getElementById('modo-recebimento').style.display = novoModo === 'recebimento' ? 'flex' : 'none';
+  document.getElementById('modo-retorno').style.display = novoModo === 'retorno' ? 'flex' : 'none';
+
+  // UI: breadcrumb
+  document.getElementById('crumb-modo').textContent = novoModo === 'recebimento' ? 'Recebimento' : 'Retorno de Produção';
+
+  // UI: classe global pro body (troca cor temática)
+  document.body.classList.toggle('modo-retorno', novoModo === 'retorno');
+
+  // Quando entra no retorno, inicializa sub-fluxos
+  if (novoModo === 'retorno') {
+    // Garante que sub-tab e origem reflitam o estado
+    document.querySelectorAll('.reto-tab').forEach(b => {
+      b.classList.toggle('ativa', b.dataset.tipo === estado.retoTipo);
+    });
+    document.getElementById('reto-graos-flow').style.display = estado.retoTipo === 'graos' ? 'flex' : 'none';
+    document.getElementById('reto-aditivos-flow').style.display = estado.retoTipo === 'aditivos' ? 'flex' : 'none';
+    document.querySelectorAll('.reto-orig-btn').forEach(b => {
+      b.classList.toggle('ativa', b.dataset.origem === estado.retoOrigem);
+    });
+    document.getElementById('reto-com-etiq').style.display = estado.retoOrigem === 'com-etiqueta' ? 'flex' : 'none';
+    document.getElementById('reto-sem-etiq').style.display = estado.retoOrigem === 'sem-etiqueta' ? 'flex' : 'none';
+    if (estado.retoTipo === 'aditivos') {
+      renderRetoAditivos();
+    } else if (estado.retoOrigem === 'sem-etiqueta') {
+      renderRetoSemEtiqMateriais();
+      renderRetoSemEtiqFornecedores();
+      renderRetoSemEtiqCores();
+    }
+  }
+
+  // Renderiza preview da etiqueta e histórico conforme modo ativo
+  atualizarEtiqueta();
+  renderHistorico();
+  atualizarAcoes();
+  beepCk();
+}
+
+// ═══════════════════════════════════════════════════════════
+// FLUXO DO RETORNO
+// ═══════════════════════════════════════════════════════════
+
+// Operador bipa uma etiqueta original (etiqueta de Recebimento).
+// O barcode tem formato R0000101 (R + SEQ 7 dígitos).
+// Aceita também SEQ puro (ex: "101") para conveniência.
+async function processarBipeRetorno(input) {
+  // Normaliza: aceita "R0000101", "101", "0000101"
+  let id;
+  if (typeof input === 'number') {
+    id = 'R' + String(input).padStart(7, '0');
+  } else {
+    const str = String(input).trim();
+    if (/^[RT]\d+$/i.test(str)) {
+      id = str.toUpperCase();
+    } else if (/^\d+$/.test(str)) {
+      id = 'R' + str.padStart(7, '0');
+    } else {
+      showToast('erro', '✗', `Código inválido: ${input}`);
+      beepErro();
+      return;
+    }
+  }
+
+  // Não pode retornar a mesma etiqueta duas vezes na mesma sessão
+  if (estado.retItens.some(i => i.origId === id)) {
+    showToast('warn', '⚠', `Etiqueta ${id} já foi retornada nesta sessão`);
+    beepWarn();
+    return;
+  }
+
+  // Consulta backend
+  try {
+    const r = await fetch(`${URL_ETIQUETA}/${id}`);
+    if (r.status === 404) {
+      showToast('erro', '✗', `Etiqueta ${id} não encontrada no sistema`);
+      beepErro();
+      return;
+    }
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const data = await r.json();
+    if (!data.ok) throw new Error(data.error);
+
+    const e = data.etiqueta;
+    // Origem válida: Recebimento (1ª volta) ou Retorno (material que já havia
+    // voltado, foi de novo à produção e retorna outra vez — 2ª volta em diante).
+    if (e.tipo !== 'recebimento' && e.tipo !== 'retorno') {
+      showToast('warn', '⚠', `${id} é etiqueta de ${e.tipo} — só Recebimento ou Retorno podem ser retornados`);
+      beepWarn();
+      return;
+    }
+    if (e.status === 'cancelada') {
+      showToast('erro', '✗', `${id} está cancelada — não pode ser retornada`);
+      beepErro();
+      return;
+    }
+
+    estado.retEtiquetaOriginal = {
+      id: e.id,
+      seq: e.seq,
+      materialKey: e.material_key || e.materialKey,   // backend usa snake_case
+      cor: e.cor,
+      fornecedor: e.fornecedor,
+      lote: e.lote,
+      pesoOriginal: e.peso,
+      tipoOrigem: e.tipo,        // 'recebimento' ou 'retorno' (2ª volta)
+      statusOrigem: e.status,    // 'consumida' = saiu para produção (esperado)
+    };
+    estado.retPeso = 0;
+    document.getElementById('ret-peso-input').value = '';
+    renderRetornoCard();
+    beepBipe();
+    showToast('sucesso', '✓', `Etiqueta ${id} identificada`);
+  } catch(e) {
+    showToast('erro', '✗', 'Erro ao consultar servidor: ' + e.message);
+    beepErro();
+  }
+}
+
+// Simula bipagem (para teste sem leitor físico).
+// Tenta SEQ 1, 2, 3 (que são os do seed do backend).
+async function simBipeRetorno() {
+  const jaUsados = new Set(estado.retItens.map(i => i.origId));
+  for (const seq of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]) {
+    const id = 'R' + String(seq).padStart(7, '0');
+    if (!jaUsados.has(id)) {
+      await processarBipeRetorno(seq);
+      return;
+    }
+  }
+  showToast('warn', '⚠', 'Esgotaram-se as etiquetas de teste. Imprima novos Recebimentos para gerar mais.');
+  beepWarn();
+}
+
+function renderRetornoCard() {
+  const orig = estado.retEtiquetaOriginal;
+  const elBipa = document.getElementById('ret-bipa-display');
+  const elCard = document.getElementById('ret-etiqueta-card');
+  const elPesa = document.getElementById('ret-pesagem');
+  if (!orig) {
+    elBipa.style.display = 'flex';
+    elCard.style.display = 'none';
+    elPesa.style.display = 'none';
+    return;
+  }
+  elBipa.style.display = 'none';
+  elCard.style.display = 'block';
+  elPesa.style.display = 'block';
+  const m = MATERIAIS[orig.materialKey];
+  const matLabel = orig.cor
+    ? `${orig.cor.toUpperCase()} - ${m.nomeEtiqueta}`
+    : m.nomeEtiqueta;
+  document.getElementById('ret-orig-seq').textContent  = orig.id || ('#' + String(orig.seq).padStart(4,'0'));
+  document.getElementById('ret-orig-mat').textContent  = matLabel;
+  document.getElementById('ret-orig-forn').textContent = orig.fornecedor.toUpperCase();
+  document.getElementById('ret-orig-lote').textContent = orig.lote;
+  document.getElementById('ret-orig-peso').textContent = orig.pesoOriginal.toFixed(1) + ' kg';
+
+  // Deixa claro o que foi bipado: recebimento (1ª volta) ou um retorno anterior.
+  const elTag = document.getElementById('ret-card-tag');
+  if (elTag) elTag.textContent = orig.tipoOrigem === 'retorno' ? 'RETORNO ANTERIOR · 2ª VOLTA' : 'ETIQUETA ORIGINAL';
+
+  // Aviso (não bloqueia): retorno pressupõe que o material saiu para produção.
+  // Se a etiqueta ainda consta em estoque, registrar o retorno duplicaria o saldo.
+  const elAviso = document.getElementById('ret-orig-aviso');
+  if (elAviso) {
+    if (orig.statusOrigem && orig.statusOrigem !== 'consumida') {
+      elAviso.innerHTML = '⚠ Esta etiqueta ainda consta <b>EM ESTOQUE</b> (não há retirada registrada). Se este material não saiu para a produção, o retorno vai duplicar o saldo.';
+      elAviso.style.display = 'block';
+    } else {
+      elAviso.style.display = 'none';
+      elAviso.innerHTML = '';
+    }
+  }
+  atualizarEtiqueta();
+}
+
+function resetarRetorno() {
+  estado.retEtiquetaOriginal = null;
+  estado.retPeso = 0;
+  document.getElementById('ret-peso-input').value = '';
+  renderRetornoCard();
+  atualizarEtiqueta();
+}
+
+function atualizarRetornoPeso() {
+  estado.retPeso = parseFloat(document.getElementById('ret-peso-input').value) || 0;
+  atualizarEtiqueta();
+}
+
+// Retorno com etiqueta original: material NÃO consumido volta INTEIRO. Usa o
+// peso original da própria etiqueta (sem pesar de novo), preenche o campo e
+// habilita o botão de imprimir o retorno.
+function retornarInteiro() {
+  const orig = estado.retEtiquetaOriginal;
+  if (!orig) { showToast('warn', '⚠', 'Bipe a etiqueta original primeiro'); return; }
+  document.getElementById('ret-peso-input').value = orig.pesoOriginal.toFixed(1);
+  atualizarRetornoPeso();
+  beepCk();
+  showToast('sucesso', '✓', `Peso original de ${orig.pesoOriginal.toFixed(1)} kg aplicado — toque em IMPRIMIR ETIQUETA DE RETORNO`);
+}
+
+function simularPesoRet() {
+  // Sobras são tipicamente pequenas em relação ao original
+  const orig = estado.retEtiquetaOriginal;
+  if (!orig) {
+    showToast('warn', '⚠', 'Bipe a etiqueta primeiro');
+    return;
+  }
+  const p = (orig.pesoOriginal * (0.05 + Math.random() * 0.3)).toFixed(1);
+  document.getElementById('ret-peso-input').value = p;
+  estado.retPeso = parseFloat(p);
+  beepCk();
+  atualizarEtiqueta();
+}
+
+// ─── BALANÇA NO RETORNO (real) ───────────────────────────────────
+// Usa o MESMO endpoint da balança do Recebimento. Conecta uma vez e fica
+// lendo o peso ao vivo, jogando no campo do sub-fluxo de retorno ativo
+// (com etiqueta / sem etiqueta / saco parcial de aditivos).
+let bal_pollingRet = null;
+
+// Descobre o campo de peso do sub-fluxo de retorno atualmente VISÍVEL.
+function alvoBalancaRet() {
+  const aditivos = document.getElementById('reto-aditivos-flow');
+  if (aditivos && aditivos.style.display !== 'none') {
+    const inline = document.getElementById('reto-pesagem-inline');
+    if (inline && inline.style.display !== 'none')
+      return { input: 'reto-saco-peso-input', update: atualizarPesoSacoParcial };
+    return null;   // em aditivos mas sem pesagem de saco parcial aberta
+  }
+  const semEtiq = document.getElementById('reto-sem-etiq');
+  if (semEtiq && semEtiq.style.display !== 'none')
+    return { input: 'reto-se-peso-input', update: atualizarRetoSeManual };
+  return { input: 'ret-peso-input', update: atualizarRetornoPeso };   // com etiqueta
+}
+
+async function conectarBalancaRet(btn) {
+  if (bal_pollingRet) {
+    showToast('info', '⚡', 'Balança já conectada — o peso vai pro campo ativo');
+    return;
+  }
+  try {
+    const r = await fetch(URL_BALANCA);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    if (!d.portaAberta) {
+      showToast('warn', '⚠', `Servidor OK, mas porta ${d.porta || 'COM'} não está aberta`);
+      return;
+    }
+    estado.balancaConectada = true;
+    beepOk();
+    showToast('sucesso', '⚡', `Balança conectada (${d.porta || 'COM3'}) — o peso aparece no campo`);
+    if (btn && btn.classList) { btn.textContent = '⚡ Conectada'; btn.classList.add('conectada'); }
+    bal_pollingRet = setInterval(lerPesoRet, POLLING_MS);
+    lerPesoRet();
+  } catch(e) {
+    showToast('erro', '✗', 'Servidor não responde — INICIAR.bat está rodando?');
+    beepErro();
+  }
+}
+
+async function lerPesoRet() {
+  try {
+    const r = await fetch(URL_BALANCA);
+    const d = await r.json();
+    const agora = Date.now();
+    const idade = d.ultimoByteTs ? (agora - d.ultimoByteTs) : 999999;
+    if (d.peso == null || d.peso === undefined || idade >= 3000) return;
+    const alvo = alvoBalancaRet();
+    if (!alvo) return;
+    const el = document.getElementById(alvo.input);
+    if (el) {
+      el.value = d.peso.toFixed(1);
+      if (typeof alvo.update === 'function') alvo.update();
+    }
+  } catch(e) { /* servidor offline — silencioso */ }
+}
+
+// ═══════════════════════════════════════════════════════════
+// SUB-FLUXOS NOVOS DO RETORNO (v2)
+// ═══════════════════════════════════════════════════════════
+
+// ─── Troca entre sub-abas GRÃOS / ADITIVOS ───
+function setRetoTipo(tipo) {
+  if (estado.retoTipo === tipo) return;
+  estado.retoTipo = tipo;
+  document.querySelectorAll('.reto-tab').forEach(b => {
+    b.classList.toggle('ativa', b.dataset.tipo === tipo);
+  });
+  document.getElementById('reto-graos-flow').style.display = tipo === 'graos' ? 'flex' : 'none';
+  document.getElementById('reto-aditivos-flow').style.display = tipo === 'aditivos' ? 'flex' : 'none';
+  if (tipo === 'aditivos') {
+    renderRetoAditivos();
+  }
+  atualizarEtiqueta();
+  atualizarAcoes();
+  beepCk();
+}
+
+// ─── Toggle origem: COM ETIQUETA / SEM ETIQUETA ───
+function setRetoOrigem(origem) {
+  if (estado.retoOrigem === origem) return;
+  estado.retoOrigem = origem;
+  document.querySelectorAll('.reto-orig-btn').forEach(b => {
+    b.classList.toggle('ativa', b.dataset.origem === origem);
+  });
+  document.getElementById('reto-com-etiq').style.display = origem === 'com-etiqueta' ? 'flex' : 'none';
+  document.getElementById('reto-sem-etiq').style.display = origem === 'sem-etiqueta' ? 'flex' : 'none';
+  if (origem === 'sem-etiqueta') {
+    renderRetoSemEtiqMateriais();
+    renderRetoSemEtiqFornecedores();
+    renderRetoSemEtiqCores();
+  }
+  atualizarEtiqueta();
+  beepCk();
+}
+
+// ─── SEM ETIQUETA: render dos seletores (só GBD e POLI) ───
+function renderRetoSemEtiqMateriais() {
+  const cont = document.getElementById('reto-se-mat-opts');
+  // Só grãos voltam de produção — GBD e POLI
+  const matsValidos = ['GBD', 'POLI'];
+  cont.innerHTML = matsValidos.map(k => {
+    const m = MATERIAIS[k];
+    const cls = estado.retoMatManual === k ? 'opt sel' : 'opt';
+    return `<button class="${cls}" onclick="selRetoSeMat('${k}')">${m.popular}</button>`;
+  }).join('');
+}
+
+function selRetoSeMat(k) {
+  estado.retoMatManual = k;
+  estado.retoCorManual = null;   // reset
+  estado.retoFornManual = null;  // reset
+  renderRetoSemEtiqMateriais();
+  renderRetoSemEtiqFornecedores();
+  renderRetoSemEtiqCores();
+  atualizarEtiqueta();
+  beepCk();
+}
+
+function renderRetoSemEtiqFornecedores() {
+  const cont = document.getElementById('reto-se-forn-opts');
+  if (!estado.retoMatManual) {
+    cont.innerHTML = '<div class="opt-vazio">Selecione um material primeiro</div>';
+    return;
+  }
+  const fornecedores = MATERIAIS[estado.retoMatManual].forn;
+  cont.innerHTML = fornecedores.map(f => {
+    const cls = estado.retoFornManual === f ? 'opt sel' : 'opt';
+    return `<button class="${cls}" onclick="selRetoSeForn('${f}')">${f}</button>`;
+  }).join('');
+}
+
+function selRetoSeForn(f) {
+  estado.retoFornManual = f;
+  renderRetoSemEtiqFornecedores();
+  atualizarEtiqueta();
+  beepCk();
+}
+
+function renderRetoSemEtiqCores() {
+  const blocoCor = document.getElementById('reto-se-cor-bloco');
+  const cont = document.getElementById('reto-se-cor-opts');
+  if (!estado.retoMatManual) {
+    blocoCor.style.display = 'none';
+    return;
+  }
+  const cores = MATERIAIS[estado.retoMatManual].cores;
+  if (cores.length === 0) {
+    blocoCor.style.display = 'none';
+    return;
+  }
+  blocoCor.style.display = 'block';
+  cont.innerHTML = cores.map(c => {
+    const cls = estado.retoCorManual === c ? 'opt sel' : 'opt';
+    return `<button class="${cls}" onclick="selRetoSeCor('${c}')">${c}</button>`;
+  }).join('');
+}
+
+function selRetoSeCor(c) {
+  estado.retoCorManual = c;
+  renderRetoSemEtiqCores();
+  atualizarEtiqueta();
+  beepCk();
+}
+
+function atualizarRetoSeManual() {
+  estado.retoPesoManual = parseFloat(document.getElementById('reto-se-peso-input').value) || 0;
+  atualizarEtiqueta();
+}
+
+function simularPesoRetoSe() {
+  const p = (300 + Math.random() * 600).toFixed(1);
+  document.getElementById('reto-se-peso-input').value = p;
+  estado.retoPesoManual = parseFloat(p);
+  beepCk();
+  atualizarEtiqueta();
+}
+
+// ─── ADITIVOS: render dos seletores (só PIG) ───
+function renderRetoAditivos() {
+  const mat = estado.retoAditivoMat || 'PIG';
+  const m = MATERIAIS[mat];
+  // Seletor de material (Pigmento | Dessecante)
+  const contMat = document.getElementById('reto-ad-mat-opts');
+  if (contMat) {
+    contMat.innerHTML = ['PIG','DESSEC'].map(k => {
+      const cls = mat === k ? 'opt sel' : 'opt';
+      return `<button class="${cls}" onclick="selRetoAditivoMat('${k}')">${MATERIAIS[k].popular}</button>`;
+    }).join('');
+  }
+  // Cor — só para pigmento (dessecante não tem cor)
+  const blocoCor = document.getElementById('reto-ad-cor-bloco');
+  if (blocoCor) blocoCor.style.display = (mat === 'PIG') ? '' : 'none';
+  const cont = document.getElementById('reto-ad-cor-opts');
+  if (cont) {
+    cont.innerHTML = (mat === 'PIG' ? m.cores : []).map(c => {
+      const codigo = buscarCodigo('PIG', c, null);
+      const cls = estado.retoAditivoCor === c ? 'opt sel' : 'opt';
+      return `<button class="${cls}" onclick="selRetoAditivoCor('${c}')">${c} <span style="opacity:0.6;font-size:10px;margin-left:4px">${codigo || ''}</span></button>`;
+    }).join('');
+  }
+  // Fornecedores do material selecionado
+  const contF = document.getElementById('reto-ad-forn-opts');
+  if (contF) {
+    contF.innerHTML = m.forn.map(f => {
+      const cls = estado.retoAditivoForn === f ? 'opt sel' : 'opt';
+      return `<button class="${cls}" onclick="selRetoAditivoForn('${f}')">${f}</button>`;
+    }).join('');
+  }
+  // Saco parcial pesado só faz sentido para pigmento
+  const blocoParcial = document.getElementById('reto-parcial-bloco');
+  if (blocoParcial) blocoParcial.style.display = (mat === 'PIG') ? '' : 'none';
+  // Contador do lote atual
+  const inp = document.getElementById('reto-sacos-input');
+  if (inp) inp.value = estado.retoSacosFechados;
+  atualizarResumoAditivos();
+  renderRetoParciaisLista();
+}
+
+// Seleciona o material do aditivo (Pigmento ou Dessecante)
+function selRetoAditivoMat(k) {
+  estado.retoAditivoMat = k;
+  estado.retoAditivoCor = null;
+  if (!MATERIAIS[k].forn.includes(estado.retoAditivoForn)) estado.retoAditivoForn = MATERIAIS[k].forn[0];
+  renderRetoAditivos();
+  atualizarEtiqueta();
+  beepCk();
+}
+
+// Adiciona o lote atual (material + cor + fornecedor + sacos) à lista de retorno.
+// Cada lote vira uma etiqueta 'T' bipada (entra na compra do Bling) e um item na
+// lista da direita. Pode somar vários lotes. O ✕ da lista cancela/remove o item.
+async function adicionarRetoAditivo() {
+  const mat = estado.retoAditivoMat || 'PIG';
+  const cor = mat === 'PIG' ? estado.retoAditivoCor : null;
+  const forn = estado.retoAditivoForn;
+  const sacos = estado.retoSacosFechados;
+  if (mat === 'PIG' && !cor) { showToast('warn', '⚠', 'Selecione a cor do pigmento'); beepWarn(); return; }
+  if (!forn) { showToast('warn', '⚠', 'Selecione o fornecedor'); beepWarn(); return; }
+  if (!sacos || sacos < 1) { showToast('warn', '⚠', 'Indique a quantidade de sacos'); beepWarn(); return; }
+  const btn = document.getElementById('btn-add-aditivo');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Adicionando...'; }
+  try {
+    const sessaoId = await garantirSessao('retorno', null);
+    const codigo = buscarCodigo(mat, cor, forn);
+    const r = await fetch(URL_BASE + '/retorno/aditivo', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessao_id: sessaoId, materialKey: mat, cor, fornecedor: forn, qtd_sacos: sacos, codigo })
+    });
+    const d = await r.json();
+    if (!r.ok || !d.ok) throw new Error(d.erro || `HTTP ${r.status}`);
+    const e = d.etiqueta;
+    estado.retItens.unshift({
+      n: e.seq, id: e.id, tipo: 'retorno', subTipo: 'aditivo-fechado',
+      material: MATERIAIS[mat].popular, materialKey: mat, cor: cor, fornecedor: forn,
+      qtdSacos: sacos, peso: e.peso, lote: 'SACOS', codigo: e.codigo, sku: e.sku,
+      hora: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+      status: 'bipada'
+    });
+    estado.retoSacosFechados = 0;
+    const inp = document.getElementById('reto-sacos-input'); if (inp) inp.value = 0;
+    renderHistorico();
+    atualizarResumoAditivos();
+    atualizarAcoes();
+    beepOk();
+    showToast('sucesso', '✓', `${e.id} adicionado · ${MATERIAIS[mat].popular}${cor ? ' ' + cor : ''} · ${e.peso} kg`);
+  } catch(err) {
+    showToast('erro', '✗', 'Falha ao adicionar: ' + err.message);
+    beepErro();
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '➕ ADICIONAR À LISTA'; }
+  }
+}
+
+function selRetoAditivoCor(c) {
+  estado.retoAditivoCor = c;
+  renderRetoAditivos();
+  atualizarEtiqueta();
+  beepCk();
+}
+
+function selRetoAditivoForn(f) {
+  estado.retoAditivoForn = f;
+  renderRetoAditivos();
+  atualizarEtiqueta();
+  beepCk();
+}
+
+function ajustarRetoSacos(delta) {
+  const elInput = document.getElementById('reto-sacos-input');
+  if (delta === 0) {
+    // chamado por input
+    estado.retoSacosFechados = Math.max(0, parseInt(elInput.value) || 0);
+  } else {
+    estado.retoSacosFechados = Math.max(0, estado.retoSacosFechados + delta);
+    elInput.value = estado.retoSacosFechados;
+  }
+  atualizarResumoAditivos();
+  atualizarAcoes();
+}
+
+function atualizarResumoAditivos() {
+  const fechados = estado.retoSacosFechados;
+  const kgFechados = fechados * KG_SACO_PIGMENTO;
+  // Total da LISTA já adicionada (sacos fechados + parciais persistidos)
+  const itens = estado.retItens.filter(it => it.subTipo === 'aditivo-fechado' || it.subTipo === 'aditivo-parcial');
+  const totalLista = itens.reduce((s, it) => s + it.peso, 0);
+
+  const elInfo = document.getElementById('reto-sacos-info');
+  if (elInfo) elInfo.textContent = `${fechados} ${fechados === 1 ? 'saco' : 'sacos'} · ${kgFechados} kg`;
+  const elTot = document.getElementById('resumo-total');
+  if (elTot) elTot.textContent = `${totalLista.toFixed(1)} kg`;
+  // Elementos antigos (podem não existir mais) — guardados por segurança
+  const elF = document.getElementById('resumo-sacos-fechados');
+  if (elF) elF.textContent = `${fechados} × ${KG_SACO_PIGMENTO} kg = ${kgFechados} kg`;
+  const elP = document.getElementById('resumo-parciais');
+  if (elP) {
+    const parciais = itens.filter(it => it.subTipo === 'aditivo-parcial');
+    elP.textContent = `${parciais.length} ${parciais.length === 1 ? 'saco' : 'sacos'} = ${parciais.reduce((s, it) => s + it.peso, 0).toFixed(1)} kg`;
+  }
+}
+
+function renderRetoParciaisLista() {
+  const cont = document.getElementById('reto-parciais-lista');
+  if (!cont) return;   // a lista separada foi removida — a coluna da direita já mostra tudo
+  const parciais = estado.retItens.filter(it => it.subTipo === 'aditivo-parcial');
+  if (parciais.length === 0) {
+    cont.innerHTML = '<div class="reto-parciais-vazio">Nenhum saco parcial registrado</div>';
+    return;
+  }
+  cont.innerHTML = parciais.map(it => `
+    <div class="reto-parcial-item">
+      <span class="id">${it.id}</span>
+      <span class="peso">${it.peso.toFixed(1)} kg</span>
+    </div>
+  `).join('');
+}
+
+// ─── Pesagem de saco parcial (modo pesar inline) ───
+function iniciarPesagemSacoParcial() {
+  if (!estado.retoAditivoCor) {
+    showToast('warn', '⚠', 'Selecione o pigmento primeiro');
+    beepWarn();
+    return;
+  }
+  estado.retoPesandoSaco = true;
+  estado.retoPesoSacoParcial = 0;
+  document.getElementById('reto-saco-peso-input').value = '';
+  document.getElementById('reto-pesagem-inline').style.display = 'block';
+  document.getElementById('btn-pesar-saco').style.display = 'none';
+  document.getElementById('btn-imp-parcial').disabled = true;
+}
+
+function cancelarPesagemSacoParcial() {
+  estado.retoPesandoSaco = false;
+  estado.retoPesoSacoParcial = 0;
+  document.getElementById('reto-pesagem-inline').style.display = 'none';
+  document.getElementById('btn-pesar-saco').style.display = 'block';
+}
+
+function atualizarPesoSacoParcial() {
+  const v = parseFloat(document.getElementById('reto-saco-peso-input').value) || 0;
+  estado.retoPesoSacoParcial = v;
+  document.getElementById('btn-imp-parcial').disabled = !(v > 0 && v < KG_SACO_PIGMENTO);
+}
+
+function simularPesoSacoParcial() {
+  // Saco parcial é menor que 25 kg
+  const p = (1 + Math.random() * 20).toFixed(1);
+  document.getElementById('reto-saco-peso-input').value = p;
+  estado.retoPesoSacoParcial = parseFloat(p);
+  document.getElementById('btn-imp-parcial').disabled = false;
+  beepCk();
+}
+
+async function imprimirEtiquetaSacoParcial() {
+  const peso = estado.retoPesoSacoParcial;
+  if (peso <= 0) return;
+  if (!estado.retoAditivoCor) {
+    showToast('warn', '⚠', 'Selecione o pigmento primeiro');
+    return;
+  }
+
+  const m = MATERIAIS.PIG;
+  const codigo = buscarCodigo('PIG', estado.retoAditivoCor, null);
+  if (!codigo) {
+    showToast('erro', '✗', 'Código gravimétrico não encontrado');
+    return;
+  }
+  const corLabel = m.corLabel[estado.retoAditivoCor] || estado.retoAditivoCor.substring(0,3).toUpperCase();
+  const skuForn = '.' + estado.retoAditivoForn.replace(/[^A-Za-z0-9]/g,'').substring(0, 6).toUpperCase();
+  const sku = `PIG.${corLabel}${skuForn} | ${peso.toFixed(0)} | LS/L`;
+  const lote = 'S/L';
+
+  const seqAtual = estado.seq.retorno;
+  const id = 'T' + String(seqAtual).padStart(7, '0');
+
+  const item = {
+    n: seqAtual, id, tipo: 'retorno', subTipo: 'aditivo-parcial',
+    material: m.popular, materialKey: 'PIG',
+    cor: estado.retoAditivoCor, fornecedor: estado.retoAditivoForn,
+    peso, lote, codigo, sku,
+    hora: new Date().toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'}),
+    status: 'bipada'
+  };
+
+  const btn = document.getElementById('btn-imp-parcial');
+  btn.disabled = true;
+  btn.textContent = '⏳ Imprimindo...';
+
+  // Garante sessão de retorno aberta
+  const sessaoId = await garantirSessao('retorno', null);
+
+  try {
+    const resp = await fetch(URL_PRINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        seq: seqAtual, tipo: 'retorno',
+        materialKey: 'PIG', materialNomeEt: m.nomeEtiqueta,
+        cor: estado.retoAditivoCor, fornecedor: estado.retoAditivoForn,
+        peso, lote, codigo, sku,
+        sub_tipo: 'aditivo-parcial',
+        sessao_id: sessaoId
+      })
+    });
+    const result = await resp.json();
+    if (!resp.ok || !result.ok) throw new Error(result.error || `HTTP ${resp.status}`);
+  } catch(e) {
+    btn.disabled = false;
+    btn.textContent = '⎙ Imprimir Etiqueta';
+    showToast('erro', '✗', 'Falha na impressão: ' + e.message);
+    beepErro();
+    return;
+  }
+
+  estado.retItens.unshift(item);
+  estado.seq.retorno++;
+  beepOk();
+  showToast('sucesso', '✓', `Saco parcial ${id} impresso · ${peso.toFixed(1)} kg`);
+
+  // Reset pesagem
+  cancelarPesagemSacoParcial();
+  btn.textContent = '⎙ Imprimir Etiqueta';
+  renderRetoParciaisLista();
+  atualizarResumoAditivos();
+  renderHistorico();
+  atualizarAcoes();
+}
+
+// ════════════════════════════════════════════════════════════════════
+//   RESTAURAR SESSÕES ABERTAS (continuar de onde parou)
+// ════════════════════════════════════════════════════════════════════
+// Quando o operador sai sem finalizar (ex: vai pesar bobina na Extrusão
+// e volta depois), recuperamos sessão + itens direto do servidor.
+async function restaurarSessoesAbertas() {
+  try {
+    const r = await fetch('/sessoes/abertas');
+    if (!r.ok) return;
+    const d = await r.json();
+    if (!d.ok || !d.sessoes || !d.sessoes.length) return;
+
+    let temRec = false, temRet = false, orfasCanceladas = 0;
+
+    for (const s of d.sessoes) {
+      if (s.tipo !== 'recebimento' && s.tipo !== 'retorno') continue;
+
+      // Sessão órfã: aberta mas sem itens ativos (todos excluídos/cancelados).
+      // Não dá pra "retomar" o nada — cancela pra sumir o "em andamento".
+      if (!s.etiquetas || s.etiquetas.length === 0) {
+        try { await fetch(`${URL_SESSAO}/${s.id}/cancelar`, { method: 'POST' }); } catch(e) {}
+        orfasCanceladas++;
+        continue;
+      }
+
+      const itens = (s.etiquetas || []).map(e => ({
+        n:           e.seq,
+        id:          e.id,
+        tipo:        e.tipo,
+        subTipo:     e.sub_tipo,
+        material:    (MATERIAIS[e.material_key] && MATERIAIS[e.material_key].popular) || e.material_key || '',
+        materialKey: e.material_key,
+        cor:         e.cor,
+        fornecedor:  e.fornecedor,
+        peso:        e.peso,
+        qtdSacos:    e.qtd_sacos,
+        lote:        e.lote,
+        codigo:      e.codigo,
+        sku:         e.sku,
+        origId:      e.ref_id,
+        origSeq:     null,
+        hora:        e.hora_impressao
+          ? new Date(e.hora_impressao).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})
+          : '--:--',
+        status:      e.status,
+      }));
+
+      // estado.itens / retItens usam unshift (mais recente no topo)
+      // Como o servidor devolveu por seq_sessao crescente, invertemos.
+      const itensTopo = itens.slice().reverse();
+
+      if (s.tipo === 'recebimento') {
+        estado.sessaoRecebimento = s.id;
+        estado.itens = itensTopo;
+        temRec = true;
+        if (itens.length > 0) {
+          const primeiro = itens[0];   // mais antigo cronologicamente
+          estado.material   = primeiro.materialKey;
+          estado.fornecedor = primeiro.fornecedor;
+          estado.cor        = primeiro.cor;
+        }
+      } else {  // retorno
+        estado.sessaoRetorno = s.id;
+        estado.retItens = itensTopo;
+        temRet = true;
+      }
+    }
+
+    if (temRec || temRet) {
+      atualizarEstadoBlocos();
+      atualizarQtd();
+      renderHistorico();
+      const tags = [];
+      if (temRec) tags.push(`Recebimento #${estado.sessaoRecebimento} (${estado.itens.length})`);
+      if (temRet) tags.push(`Retorno #${estado.sessaoRetorno} (${estado.retItens.length})`);
+      showToast('info', '↩', `Retomando ${tags.join(' + ')}`, 5000);
+    }
+    // Se cancelei órfãs, atualiza os indicadores "em andamento" na hora
+    if (orfasCanceladas > 0) atualizarBadgesPai();
+  } catch(e) {
+    console.warn('Falha ao restaurar sessões:', e.message);
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════
+//   DETECTAR PARÂMETRO ?aba= NA URL
+// ════════════════════════════════════════════════════════════════════
+function detectarAbaURL() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const aba = params.get('aba');
+    if (aba === 'retorno' && estado.modo !== 'retorno') {
+      trocarModo('retorno');
+    }
+  } catch(e) { /* silencioso */ }
+}
+
+// Etapa 1: fornecedores e códigos gravimétricos passam a vir do banco (fonte
+// única). Se o /catalogo-mp falhar, mantemos os valores embutidos acima (fallback),
+// então a tela nunca fica sem dados.
+async function carregarCatalogoMP() {
+  try {
+    const r = await fetch('/catalogo-mp');
+    if (!r.ok) return;
+    const cat = await r.json();
+    if (cat && cat.fornecedores && typeof cat.fornecedores === 'object') {
+      for (const k of Object.keys(MATERIAIS)) {
+        if (Array.isArray(cat.fornecedores[k])) MATERIAIS[k].forn = cat.fornecedores[k];
+      }
+    }
+    if (cat && Array.isArray(cat.codigos) && cat.codigos.length) {
+      CODIGOS_GRAVIMETRICOS = cat.codigos;
+    }
+  } catch(e) { /* fallback: mantém os valores embutidos acima */ }
+}
+
+// INIT — só depois que o colaborador entrar com a senha dele. O nome fica em
+// window.EKO_RESPONSAVEL e vai como `operador` na sessão (sai no resumo).
+function iniciarTelaMP() {
+  renderMateriais();
+  atualizarEstadoBlocos();
+  atualizarQtd();
+  renderRetornoCard();
+  carregarCatalogoMP().then(() => { renderMateriais(); if (estado.material) renderFornecedores(); });
+  inicializarServidor()
+    .then(() => {
+      detectarAbaURL();
+      return restaurarSessoesAbertas();
+    })
+    .catch(e => console.warn('Erro no init:', e.message));
+  mostrarResponsavel();
+}
+function mostrarResponsavel() {
+  if (!window.EKO_RESPONSAVEL) return;
+  let el = document.getElementById('eko-resp-tag');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'eko-resp-tag';
+    el.style.cssText = 'position:fixed; top:8px; right:12px; z-index:900; background:rgba(0,0,0,0.55);'
+      + 'border:1px solid rgba(255,255,255,0.18); color:#cfe3ff; padding:6px 12px; border-radius:20px;'
+      + 'font-size:12px; font-weight:800; letter-spacing:0.4px; pointer-events:none;';
+    document.body.appendChild(el);
+  }
+  el.textContent = '👤 ' + window.EKO_RESPONSAVEL;
+}
+// Rede de segurança: se o componente de acesso não carregar por algum motivo,
+// a tela ABRE mesmo assim (sem identificação) em vez de ficar morta. Numa
+// fábrica, tela travada para a produção; falta de identificação, não.
+function comAcesso(tela, aoEntrar) {
+  if (window.EkoAcesso && typeof EkoAcesso.exigir === 'function') return EkoAcesso.exigir(tela, aoEntrar);
+  console.warn('acesso-colaborador.js não carregou — abrindo a tela sem identificação');
+  try { aoEntrar(); } catch (e) { console.error(e); }
+}
+comAcesso('mp', iniciarTelaMP);
+</script>
+
+</body>
+</html>

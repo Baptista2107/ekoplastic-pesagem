@@ -1,0 +1,65 @@
+============================================================
+ INICIO AUTOMATICO DO SISTEMA EKOPLASTIC
+============================================================
+
+O QUE E ISTO
+------------
+Faz o sistema (servidor + tela de bipagem) abrir SOZINHO
+toda vez que o Mini PC ligar ou reiniciar - por atualizacao
+do Windows, queda de energia, ou qualquer outro motivo.
+Assim nao existe mais o risco de ficar um periodo sem bipar
+as bobinas porque o sistema estava fechado.
+
+
+COMO ATIVAR (so precisa fazer UMA vez)
+--------------------------------------
+1) Abra a pasta do sistema no Mini PC.
+2) De um duplo clique em:  ATIVAR-INICIO-AUTOMATICO.bat
+3) Sigas as instrucoes na tela.
+
+Isso cria um atalho na pasta "Inicializar" do Windows
+apontando para o INICIAR.bat.
+
+
+PASSO QUE NAO PODE FALTAR: LOGIN AUTOMATICO
+-------------------------------------------
+Se o Windows pede senha ao ligar, o sistema NAO vai abrir
+sozinho (a tela fica parada no login, e o Mini PC nao tem
+teclado). Para o Windows entrar sozinho na conta:
+
+   1) Aperte as teclas   Windows + R
+   2) Digite:   netplwiz     e clique OK
+   3) DESMARQUE a caixa:
+      "Os usuarios devem digitar um nome e senha para usar
+       este computador"
+   4) Clique OK e informe a senha da conta quando pedir
+
+(Provavelmente ja esta assim, mas vale conferir.)
+
+
+COMO TESTAR
+-----------
+Reinicie o Mini PC. Em alguns segundos apos ligar, o sistema
+deve abrir sozinho, em tela cheia, pronto para bipar.
+
+
+O QUE JA ERA PROTEGIDO (continua valendo)
+-----------------------------------------
+- Se o SERVIDOR travar/cair, ele reinicia sozinho (o
+  INICIAR.bat fica vigiando e sobe de novo em 5 segundos).
+- Se o sistema ja estiver aberto e alguem rodar o INICIAR.bat
+  de novo, ele nao abre um segundo servidor - so mostra a tela.
+
+
+COMO DESLIGAR O INICIO AUTOMATICO (se um dia precisar)
+-----------------------------------------------------
+De um duplo clique em:  DESATIVAR-INICIO-AUTOMATICO.bat
+
+
+OBSERVACAO
+----------
+Ao trocar os arquivos do sistema numa atualizacao futura, o
+atalho de inicio automatico continua funcionando - ele aponta
+para a PASTA do sistema, nao para uma versao especifica. Nao
+precisa ativar de novo a cada atualizacao.
+============================================================

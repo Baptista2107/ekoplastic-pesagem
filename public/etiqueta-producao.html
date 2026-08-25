@@ -1,0 +1,2150 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Ekoplastic · Extrusão</title>
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=Nunito:wght@600;700;800;900&display=swap');
+
+:root {
+  --bg:       #0a0c10;
+  --surface:  #13161e;
+  --panel:    #1a1e28;
+  --panel-hi: #232838;
+  --border:   #252b3b;
+  --accent:   #a880ff;       /* roxo extrusão */
+  --accent2:  #00ff9d;
+  --warn:     #ffaa00;
+  --text:     #eef0f6;
+  --muted:    #5a6080;
+  --danger:   #ff4466;
+  --radius:   14px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+html, body {
+  height: 100vh;
+  overflow: hidden;
+  font-family: 'Nunito', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  user-select: none;
+}
+
+/* Modo embed (futuro shell unificado) */
+body.embed > header,
+body.embed > #banner-turno { display: none !important; }
+body.embed > .layout-content { height: 100vh !important; }
+
+/* ─── HEADER ─── */
+header {
+  background: var(--surface);
+  border-bottom: 2px solid var(--border);
+  padding: 0 24px;
+  height: 56px;
+  display: flex; align-items: center; justify-content: space-between;
+  flex-shrink: 0;
+}
+.logo { display: flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 900; letter-spacing: 2px; color: var(--accent); }
+.logo-icon { width: 30px; height: 30px; border: 2px solid var(--accent); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 15px; }
+.header-center { display: flex; align-items: center; gap: 12px; }
+.turno-badge {
+  font-size: 11px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase;
+  padding: 5px 14px; border-radius: 20px;
+  background: rgba(168,128,255,0.12); color: var(--accent);
+  border: 1px solid rgba(168,128,255,0.3);
+}
+.clock { font-family: 'IBM Plex Mono', monospace; font-size: 18px; font-weight: 700; color: var(--accent2); letter-spacing: 2px; }
+.header-right { display: flex; align-items: center; gap: 10px; }
+.btn-icon {
+  background: transparent; border: 1px solid var(--border);
+  border-radius: 6px; width: 32px; height: 32px;
+  color: var(--muted); font-size: 14px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.15s;
+}
+.btn-icon:hover { color: var(--text); border-color: var(--panel-hi); }
+.srv-status {
+  font-size: 10px; font-weight: 700; letter-spacing: 1.5px;
+  padding: 5px 10px; border-radius: 6px;
+  border: 1px solid var(--border);
+}
+.srv-status.on  { color: var(--accent2); border-color: rgba(0,255,157,0.4); background: rgba(0,255,157,0.06); }
+.srv-status.off { color: var(--danger);  border-color: rgba(255,68,102,0.4); background: rgba(255,68,102,0.06); }
+
+/* ─── BANNER TURNO ─── */
+#banner-turno {
+  display: none;
+  background: rgba(168,128,255,0.07);
+  border-bottom: 1px solid rgba(168,128,255,0.25);
+  padding: 10px 24px;
+  align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  flex-shrink: 0;
+}
+#banner-turno.on { display: flex; }
+.banner-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 8px var(--accent); animation: pulse 2s infinite; }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+.banner-info { font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600; color: var(--text); }
+.banner-label { font-size: 9px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; color: var(--accent); }
+.banner-resumo { font-size: 11px; color: var(--muted); font-family: 'IBM Plex Mono', monospace; padding-left: 14px; border-left: 1px solid var(--border); }
+
+.btn-relatorio {
+  background: transparent;
+  border: 2px solid var(--line, rgba(255,255,255,0.18));
+  color: var(--muted, #9fb3c8);
+  border-radius: 10px;
+  font-size: 12px; font-weight: 900; letter-spacing: 1px; text-transform: uppercase;
+  padding: 8px 14px; margin-right: 8px;
+  cursor: pointer;
+  font-family: 'Nunito', sans-serif;
+}
+.btn-relatorio:hover { filter: brightness(1.15); border-color: var(--text, #fff); color: var(--text, #fff); }
+.btn-relatorio:active { transform: translateY(1px); }
+
+.btn-finalizar {
+  background: rgba(255,68,102,0.12);
+  border: 2px solid rgba(255,68,102,0.4);
+  color: var(--danger);
+  border-radius: 10px;
+  font-size: 12px; font-weight: 900; letter-spacing: 1.5px; text-transform: uppercase;
+  padding: 8px 14px;
+  cursor: pointer;
+  font-family: 'Nunito', sans-serif;
+}
+.btn-finalizar:hover { filter: brightness(1.1); }
+
+/* ─── TABS ─── */
+.tabs {
+  background: var(--surface);
+  padding: 0 20px;
+  display: flex; gap: 4px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.tab {
+  padding: 12px 22px;
+  font-size: 12px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase;
+  color: var(--muted); cursor: pointer;
+  border-bottom: 2.5px solid transparent;
+  transition: all 0.15s;
+}
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+/* ─── LAYOUT GERAL ─── */
+.layout-content {
+  flex: 1; height: calc(100vh - 56px);
+  overflow: hidden;
+}
+#banner-turno.on ~ .layout-content { height: calc(100vh - 56px - 56px); }
+
+.page { height: 100%; overflow: hidden; padding: 12px 18px; display: none; }
+.page.active { display: flex; gap: 12px; }
+
+/* ─── EMISSÃO ─── */
+.touch-panel {
+  flex: 1;
+  overflow: hidden;            /* sem scroll em 15" touch */
+  display: flex; flex-direction: column; gap: 9px;
+}
+.section-label {
+  font-size: 9px; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase;
+  color: var(--muted); margin-bottom: 4px;
+}
+.touch-grid {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;
+}
+.touch-grid.cols-2 { grid-template-columns: repeat(2, 1fr); }
+.touch-grid.cols-3 { grid-template-columns: repeat(3, 1fr); }
+
+.touch-btn {
+  padding: 9px 6px;
+  background: var(--panel);
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-family: 'Nunito', sans-serif;
+  font-size: 12px; font-weight: 800; letter-spacing: 0.5px;
+  cursor: pointer;
+  transition: all 0.15s;
+  text-align: center;
+}
+.touch-btn:hover  { background: var(--panel-hi); border-color: var(--muted); }
+.touch-btn:active { transform: scale(0.96); }
+.touch-btn.selected {
+  border-color: var(--accent);
+  background: rgba(168,128,255,0.12);
+  color: var(--accent);
+  box-shadow: 0 0 12px rgba(168,128,255,0.18);
+}
+
+/* Cores — compactas com círculo menor */
+.cor-btn {
+  display: flex; flex-direction: row; align-items: center; gap: 8px;
+  padding: 8px 10px;
+  background: var(--panel);
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.cor-btn:active { transform: scale(0.96); }
+.cor-circulo { width: 26px; height: 26px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.15); flex-shrink: 0; }
+.cor-label { font-size: 11px; font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase; }
+.cor-preta    .cor-circulo { background: #111; border-color: #555; }
+.cor-branca   .cor-circulo { background: #f0f0f0; border-color: #aaa; }
+.cor-amarela  .cor-circulo { background: #f5c800; border-color: #d4a800; }
+.cor-colorida .cor-circulo { background: #2eb82e; border-color: #1a8c1a; }
+.cor-preta.selected    { border-color: #888; background: rgba(80,80,80,0.15); }
+.cor-branca.selected   { border-color: #ccc; background: rgba(200,200,200,0.1); }
+.cor-amarela.selected  { border-color: #f5c800; background: rgba(245,200,0,0.12); }
+.cor-colorida.selected { border-color: #2eb82e; background: rgba(46,184,46,0.12); }
+
+/* Tipo (LEVE/REFORÇADA) — botão alto com info de espessura */
+.tipo-btn {
+  padding: 10px 8px;
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 1px;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  line-height: 1.1;
+}
+.tipo-btn .esp-info { font-size: 10px; font-weight: 600; opacity: 0.7; letter-spacing: 0; }
+.tipo-btn.selected { background: rgba(168,128,255,0.15); }
+.tipo-btn.selected .esp-info { opacity: 0.95; }
+
+/* Operadores */
+.op-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.op-vazio { color: var(--muted); font-size: 11px; padding: 6px; grid-column: 1/-1; text-align: center; }
+.op-capa-display {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+  padding: 12px 14px; font-size: 15px; font-weight: 700; color: var(--accent);
+  font-family: 'IBM Plex Mono', monospace;
+}
+.op-capa-display.vazio { color: var(--muted); font-weight: 500; font-size: 12px; }
+.capa-btn .esp-info { display:block; font-size: 10px; font-weight: 600; opacity: 0.7; margin-top: 2px; }
+.capa-btn.selected .esp-info { opacity: 0.95; }
+
+/* Máquina */
+.maq-btn { font-size: 16px; font-weight: 900; padding: 11px; }
+
+/* Linha tipo + largura lado a lado (economiza altura) */
+.row-2col { display: grid; grid-template-columns: 1fr 1.4fr; gap: 12px; }
+
+/* Balança compacta */
+.balanca-card {
+  background: var(--panel);
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+}
+.balanca-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.balanca-label { font-size: 10px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; color: var(--muted); }
+.balanca-status {
+  font-size: 9px; font-weight: 800; letter-spacing: 1px;
+  padding: 2px 9px; border-radius: 20px;
+  text-transform: uppercase;
+}
+.balanca-status.connected    { background: rgba(0,255,157,0.1); color: var(--accent2); border: 1px solid rgba(0,255,157,0.3); }
+.balanca-status.disconnected { background: rgba(255,68,102,0.1); color: var(--danger);  border: 1px solid rgba(255,68,102,0.3); }
+.balanca-status.aguardando   { background: rgba(255,170,0,0.1);  color: var(--warn);    border: 1px solid rgba(255,170,0,0.3); }
+.balanca-status.simulada     { background: rgba(168,128,255,0.12); color: var(--accent); border: 1px solid rgba(168,128,255,0.3); }
+.balanca-status.instavel     { background: rgba(255,170,0,0.18); color: var(--warn);    border: 1px solid rgba(255,170,0,0.55); animation: pulse-warn 1.4s ease-in-out infinite; }
+.balanca-status.descarga     { background: rgba(255,170,0,0.22); color: var(--warn);    border: 1px solid rgba(255,170,0,0.6);  animation: pulse-warn 1.4s ease-in-out infinite; font-weight: 900; }
+@keyframes pulse-warn { 0%,100%{ opacity: 1; } 50%{ opacity: 0.55; } }
+.peso-display {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 36px; font-weight: 600;
+  color: var(--accent);
+  text-align: center;
+  letter-spacing: 1.5px;
+  line-height: 1;
+}
+.peso-unit { font-size: 14px; color: var(--muted); }
+.peso-sub {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px; color: var(--muted);
+  text-align: center;
+  margin-top: 4px;
+  letter-spacing: 0.5px;
+}
+
+.peso-manual-wrap { display: flex; gap: 6px; margin-top: 8px; }
+.peso-manual-input {
+  flex: 1;
+  background: var(--bg);
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 14px;
+  font-family: 'IBM Plex Mono', monospace;
+  padding: 8px 10px;
+  outline: none;
+  text-align: center;
+}
+.peso-manual-input:focus { border-color: var(--accent); }
+.btn-peso-ok {
+  background: var(--accent);
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  font-size: 11px; font-weight: 900;
+  padding: 8px 14px;
+  cursor: pointer;
+  font-family: 'Nunito', sans-serif;
+  letter-spacing: 1px;
+}
+.btn-peso-sim {
+  background: rgba(255,170,0,0.12);
+  border: 1px solid rgba(255,170,0,0.35);
+  border-radius: 8px;
+  color: var(--warn);
+  font-size: 10px; font-weight: 900;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-family: 'Nunito', sans-serif;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+.btn-peso-sim:hover { background: rgba(255,170,0,0.18); }
+
+/* Botão imprimir */
+.btn-imprimir {
+  width: 100%; padding: 16px;
+  background: linear-gradient(135deg, var(--accent), #7860d0);
+  border: none; border-radius: 12px;
+  color: #fff;
+  font-family: 'Nunito', sans-serif;
+  font-size: 16px; font-weight: 900;
+  letter-spacing: 2px; text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 4px 18px rgba(168,128,255,0.3);
+}
+.btn-imprimir:hover  { filter: brightness(1.08); transform: translateY(-1px); }
+.btn-imprimir:active { transform: scale(0.98); }
+.btn-imprimir:disabled { opacity: 0.25; cursor: not-allowed; transform: none; box-shadow: none; filter: grayscale(0.5); }
+
+/* Preview etiqueta (lateral direita) */
+.preview-col {
+  width: 360px;
+  flex-shrink: 0;
+  display: flex; flex-direction: column;
+  gap: 10px;
+  overflow: hidden;
+}
+.preview-wrap {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
+  display: flex; flex-direction: column;
+  gap: 9px;
+}
+.preview-label {
+  font-size: 10px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase;
+  color: var(--muted);
+}
+
+.preview-etiqueta {
+  background: #fff; color: #000;
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 6px;
+  border: 1px solid #ddd;
+  font-family: 'IBM Plex Mono', monospace;
+  font-weight: 600;
+}
+.pe-turno { font-size: 9px; color: #666; text-align: right; letter-spacing: 1px; }
+.pe-prod { font-size: 15px; font-weight: 700; color: #000; text-align: center; margin: 6px 0 2px; }
+.pe-info { font-size: 10px; color: #444; text-align: center; }
+.pe-peso { font-size: 28px; font-weight: 700; color: #000; text-align: center; margin: 8px 0; border-top: 1.5px solid #222; border-bottom: 1.5px solid #222; padding: 8px 0; }
+.pe-sku  { font-size: 11px; font-weight: 700; text-align: center; color: #111; margin: 4px 0 2px; letter-spacing: 0.5px; }
+.pe-bc-wrap { padding: 4px 6px 2px; }
+.pe-bc-svg  { display: block; width: 100%; height: 38px; }
+.pe-id   { font-family: 'IBM Plex Mono', monospace; font-size: 14px; font-weight: 700; color: #000; text-align: center; letter-spacing: 2px; margin-top: 2px; }
+.pe-vazio { color: #888; text-align: center; padding: 40px 0; font-size: 12px; }
+
+/* Histórico turno — padrão MP (id · desc · peso · ação BIPAR) */
+.hist-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  display: flex; flex-direction: column; gap: 6px;
+  min-height: 0;
+  flex: 1;
+}
+.hist-head { display: flex; justify-content: space-between; align-items: baseline; }
+.hist-titulo { font-size: 10px; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); }
+.hist-totais { font-size: 10px; font-family: 'IBM Plex Mono', monospace; color: var(--muted); }
+.hist-totais b { color: var(--accent2); }
+.hist-lista {
+  flex: 1;
+  overflow-y: auto;
+  display: flex; flex-direction: column; gap: 3px;
+  min-height: 60px;
+}
+.hist-item {
+  background: rgba(255,255,255,0.02);
+  border-radius: 6px;
+  padding: 6px 9px;
+  display: grid;
+  grid-template-columns: 70px 1fr auto 60px 32px;
+  gap: 8px;
+  align-items: center;
+  font-family: 'IBM Plex Mono', monospace;
+  border-left: 2px solid var(--accent);
+  transition: all 0.2s;
+}
+.hist-item.pendente   { border-left-color: var(--warn); background: rgba(255,170,0,0.05); }
+.hist-item.bipada     { border-left-color: var(--accent2); }
+.hist-item.cancelada  { border-left-color: var(--danger); opacity: 0.5; }
+.hist-id    { font-size: 10px; font-weight: 700; color: var(--accent); }
+.hist-desc  { font-size: 11px; font-weight: 700; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hist-small { font-size: 9px; color: var(--muted); font-weight: 600; letter-spacing: 0.5px; }
+.hist-peso  { font-size: 12px; font-weight: 800; text-align: right; }
+.hist-item.bipada   .hist-peso { color: var(--accent2); }
+.hist-item.pendente .hist-peso { color: var(--warn); }
+.hist-acao {
+  font-size: 10px; font-weight: 800;
+  padding: 5px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+  border: 1.5px solid var(--warn);
+  background: rgba(255,170,0,0.12);
+  color: var(--warn);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-family: 'Nunito', sans-serif;
+  transition: all 0.12s;
+}
+.hist-acao:hover  { background: var(--warn); color: #1a0f00; }
+.hist-acao:active { transform: scale(0.96); }
+.hist-check {
+  font-size: 16px; color: var(--accent2);
+  font-weight: 800;
+  text-align: center;
+}
+.hist-del {
+  width: 26px; height: 26px; padding: 0;
+  border: 1px solid var(--border); border-radius: 6px;
+  background: transparent; color: var(--muted);
+  font-size: 13px; font-weight: 800; line-height: 1;
+  cursor: pointer; transition: all 0.12s;
+}
+.hist-del:hover { background: rgba(239,68,68,0.12); color: var(--danger); border-color: var(--danger); }
+.hist-vazio { color: var(--muted); text-align: center; padding: 30px 0; font-size: 12px; }
+.hist-item.bipada      { border-left-color: var(--accent2); }
+.hist-item.cancelada   { border-left-color: var(--danger); opacity: 0.5; }
+.hist-vazio { color: var(--muted); text-align: center; padding: 30px 0; font-size: 12px; }
+
+/* ─── CONFIG ─── */
+.config-wrap {
+  flex: 1;
+  display: flex; flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+}
+.config-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+}
+.config-titulo { font-size: 11px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; color: var(--muted); margin-bottom: 12px; }
+.input-row { display: flex; gap: 8px; }
+.input-text {
+  flex: 1;
+  background: var(--bg);
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 14px;
+  font-family: 'Nunito', sans-serif;
+  padding: 10px 14px;
+  outline: none;
+}
+.input-text:focus { border-color: var(--accent); }
+.btn-add {
+  background: var(--accent);
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  font-size: 12px; font-weight: 900;
+  padding: 10px 18px;
+  letter-spacing: 1px;
+  cursor: pointer;
+  font-family: 'Nunito', sans-serif;
+}
+.op-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.op-pill {
+  padding: 8px 14px;
+  background: rgba(168,128,255,0.08);
+  border: 1px solid rgba(168,128,255,0.3);
+  border-radius: 16px;
+  font-size: 12px; font-weight: 700;
+  color: var(--accent);
+  display: flex; align-items: center; gap: 8px;
+}
+.op-pill .x {
+  cursor: pointer; opacity: 0.5; transition: opacity 0.15s;
+}
+.op-pill .x:hover { opacity: 1; color: var(--danger); }
+
+/* ─── TOAST ─── */
+#toast-area {
+  position: fixed; top: 80px; right: 20px;
+  display: flex; flex-direction: column; gap: 8px;
+  z-index: 9999; pointer-events: none;
+}
+.toast {
+  background: var(--panel); border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 8px; padding: 12px 16px;
+  font-size: 13px; min-width: 280px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  animation: tslide 0.25s ease;
+}
+.toast.success { border-left-color: var(--accent2); }
+.toast.error   { border-left-color: var(--danger); }
+.toast.warn    { border-left-color: var(--warn); }
+@keyframes tslide { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+/* ─── MODAL ─── */
+.modal-overlay {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.7);
+  z-index: 1000;
+  align-items: center; justify-content: center;
+  padding: 20px;
+}
+.modal-overlay.on { display: flex; }
+.modal {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 26px 28px;
+  max-width: 480px;
+  width: 100%;
+}
+.modal-titulo { font-size: 18px; font-weight: 900; margin-bottom: 12px; }
+.modal-corpo { font-size: 14px; color: var(--text); margin-bottom: 20px; line-height: 1.5; }
+.modal-acoes { display: flex; gap: 10px; justify-content: flex-end; }
+.btn-modal {
+  padding: 10px 22px;
+  border-radius: 8px;
+  font-size: 13px; font-weight: 800;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  font-family: 'Nunito', sans-serif;
+  border: 1px solid transparent;
+}
+.btn-modal.primary  { background: var(--accent); color: #fff; }
+.btn-modal.secundario { background: transparent; border-color: var(--border); color: var(--text); }
+.btn-modal.danger { background: var(--danger); color: #fff; }
+
+/* Inputs do modal de início de turno */
+.modal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 18px 0; }
+.modal-field { display: flex; flex-direction: column; gap: 6px; }
+.modal-field .lbl { font-size: 10px; font-weight: 800; letter-spacing: 1px; color: var(--muted); text-transform: uppercase; }
+.modal-select-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.modal-select-grid .touch-btn { padding: 10px 6px; font-size: 12px; }
+
+  .rev-item { display:flex; justify-content:space-between; gap:10px; padding:8px 0; border-bottom:1px solid var(--border); font-size:13px; }
+  .rev-kg { font-weight:800; white-space:nowrap; }
+</style>
+</head>
+<body data-tela="Extrusão">
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">⚙</div>
+    EXTRUSÃO
+  </div>
+  <div class="header-center">
+    <div class="turno-badge" id="turno-badge">—</div>
+    <div class="clock" id="clock">--:--:--</div>
+  </div>
+  <div class="header-right">
+    <div class="srv-status off" id="srv-status">SERVIDOR…</div>
+    <button class="btn-icon" onclick="voltarPagina()" title="Voltar">←</button>
+    <button class="btn-icon" onclick="location.href='/'" title="Voltar ao menu inicial">🏠</button>
+  </div>
+</header>
+
+<!-- Banner de turno ativo -->
+<div id="banner-turno">
+  <div style="display:flex;align-items:center;gap:14px;">
+    <div class="banner-dot"></div>
+    <div>
+      <div class="banner-label">TURNO EM ANDAMENTO</div>
+      <div class="banner-info" id="banner-info"></div>
+    </div>
+    <div class="banner-resumo" id="banner-resumo">0 bobinas · 0,0 kg</div>
+  </div>
+  <button class="btn-relatorio" onclick="relatorioAtual()">🧾 Relatório atual</button>
+  <button class="btn-finalizar" onclick="finalizarTurno()">⏹ FINALIZAR TURNO</button>
+</div>
+
+<!-- Tabs -->
+<div class="tabs">
+  <div class="tab active" onclick="setAba('emissao')" data-aba="emissao">⬡ Bobinas</div>
+  <div class="tab"        onclick="setAba('capas')"   data-aba="capas">⬡ Capas</div>
+  <div class="tab"        onclick="setAba('config')"  data-aba="config">⬡ Configurações</div>
+</div>
+
+<div class="layout-content">
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- EMISSÃO                                      -->
+  <!-- ═══════════════════════════════════════════ -->
+  <div class="page active" id="page-emissao">
+
+    <div class="touch-panel">
+
+      <div>
+        <div class="section-label">Operador</div>
+        <div class="op-grid" id="grid-operadores">
+          <div class="op-vazio">Adicione operadores em Configurações →</div>
+        </div>
+      </div>
+
+      <div>
+        <div class="section-label">Máquina</div>
+        <div class="touch-grid cols-2">
+          <div class="touch-btn maq-btn" id="maq-C1" onclick="selecionarMaquina('C1')">C1</div>
+          <div class="touch-btn maq-btn" id="maq-C2" onclick="selecionarMaquina('C2')">C2</div>
+        </div>
+      </div>
+
+      <div>
+        <div class="section-label">Cor da Bobina</div>
+        <div class="touch-grid">
+          <div class="cor-btn cor-amarela"  id="cor-Amarela"  onclick="selecionarCor('Amarela')"><div class="cor-circulo"></div><div class="cor-label" style="color:#f5c800;">Amarela</div></div>
+          <div class="cor-btn cor-branca"   id="cor-Branca"   onclick="selecionarCor('Branca')"><div class="cor-circulo"></div><div class="cor-label" style="color:#e0e0e0;">Branca</div></div>
+          <div class="cor-btn cor-colorida" id="cor-Colorida" onclick="selecionarCor('Colorida')"><div class="cor-circulo"></div><div class="cor-label" style="color:#2eb82e;">Colorida</div></div>
+          <div class="cor-btn cor-preta"    id="cor-Preta"    onclick="selecionarCor('Preta')"><div class="cor-circulo"></div><div class="cor-label" style="color:#aaa;">Preta</div></div>
+        </div>
+      </div>
+
+      <div>
+        <div class="section-label">Tipo</div>
+        <div class="touch-grid cols-2">
+          <div class="touch-btn tipo-btn" id="tipo-LEVE" onclick="selecionarTipo('LEVE')">
+            <span>LEVE</span>
+            <span class="esp-info">µ 0,6 e 0,65</span>
+          </div>
+          <div class="touch-btn tipo-btn" id="tipo-REFORCADA" onclick="selecionarTipo('REFORCADA')">
+            <span>REFORÇADA</span>
+            <span class="esp-info">µ 0,7 e 0,10</span>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="section-label">Largura</div>
+        <div class="touch-grid cols-3" id="grid-larguras">
+          <div class="op-vazio">Selecione o tipo primeiro</div>
+        </div>
+      </div>
+
+      <div class="balanca-card">
+        <div class="balanca-top">
+          <span class="balanca-label">Peso</span>
+          <span class="balanca-status disconnected" id="balanca-status">Desconectada</span>
+        </div>
+        <div class="peso-display"><span id="peso-val">0.0</span><span class="peso-unit"> kg</span></div>
+        <div class="peso-sub" id="peso-sub" style="visibility:hidden;">—</div>
+        <div class="peso-manual-wrap">
+          <input type="number" class="peso-manual-input" id="peso-manual"
+            placeholder="Digite o peso manual..." step="0.1" min="0"
+            onkeydown="if(event.key==='Enter') confirmarPesoManual()">
+          <button class="btn-peso-ok" onclick="confirmarPesoManual()">OK</button>
+          <button class="btn-peso-sim" onclick="simularPeso()" title="Gera peso aleatório entre 18-32 kg pra testes">⟳ SIM</button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Coluna direita: preview + histórico -->
+    <div class="preview-col">
+
+      <div class="preview-wrap">
+        <div class="preview-label">PREVIEW DA ETIQUETA</div>
+        <div class="preview-etiqueta" id="preview-etiqueta">
+          <div class="pe-vazio">Complete a seleção e o peso<br>para imprimir</div>
+        </div>
+        <button class="btn-imprimir" id="btn-imprimir" onclick="imprimirEtiqueta()" disabled>
+          ⎙ IMPRIMIR ETIQUETA
+        </button>
+      </div>
+
+      <div class="hist-card">
+        <div class="hist-head">
+          <span class="hist-titulo">BOBINAS DO TURNO</span>
+          <div class="hist-totais"><span id="hist-tot-n">0 itens</span> · <b id="hist-tot-kg">0,0 kg</b></div>
+        </div>
+        <div class="hist-lista" id="hist-lista">
+          <div class="hist-vazio">Nenhuma bobina emitida ainda</div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /page-emissao -->
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- CAPAS                                        -->
+  <!-- ═══════════════════════════════════════════ -->
+  <div class="page" id="page-capas">
+
+    <div class="touch-panel">
+
+      <div>
+        <div class="section-label">Operador</div>
+        <div class="op-capa-display" id="op-capa-display">Selecione o operador na aba Bobinas</div>
+      </div>
+
+      <div>
+        <div class="section-label">Máquina</div>
+        <div class="touch-grid cols-2">
+          <div class="touch-btn maq-capa-btn" id="maqc-C1" onclick="selecionarMaquinaCapa('C1')">C1</div>
+          <div class="touch-btn maq-capa-btn" id="maqc-C2" onclick="selecionarMaquinaCapa('C2')">C2</div>
+        </div>
+      </div>
+
+      <div>
+        <div class="section-label">Tipo de Capa</div>
+        <div class="touch-grid" id="grid-capas"><!-- preenchido por JS --></div>
+      </div>
+
+      <div class="balanca-card">
+        <div class="balanca-top">
+          <span class="balanca-label">Peso</span>
+          <span class="balanca-status disconnected" id="balanca-status-capa">Desconectada</span>
+        </div>
+        <div class="peso-display"><span id="peso-val-capa">0.0</span><span class="peso-unit"> kg</span></div>
+        <div class="peso-sub" id="peso-sub-capa" style="visibility:hidden;">—</div>
+        <div class="peso-manual-wrap">
+          <input type="number" class="peso-manual-input" id="peso-manual-capa"
+            placeholder="Digite o peso manual..." step="0.1" min="0"
+            onkeydown="if(event.key==='Enter') confirmarPesoManualCapa()">
+          <button class="btn-peso-ok" onclick="confirmarPesoManualCapa()">OK</button>
+          <button class="btn-peso-sim" onclick="simularPesoCapa()" title="Gera peso aleatório entre 18-32 kg pra testes">⟳ SIM</button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Coluna direita: preview + histórico de capas -->
+    <div class="preview-col">
+
+      <div class="preview-wrap">
+        <div class="preview-label">PREVIEW DA ETIQUETA</div>
+        <div class="preview-etiqueta" id="preview-etiqueta-capa">
+          <div class="pe-vazio">Complete a seleção e o peso<br>para imprimir</div>
+        </div>
+        <button class="btn-imprimir" id="btn-imprimir-capa" onclick="imprimirCapa()" disabled>
+          ⎙ IMPRIMIR ETIQUETA
+        </button>
+      </div>
+
+      <div class="hist-card">
+        <div class="hist-head">
+          <span class="hist-titulo">CAPAS DO TURNO</span>
+          <div class="hist-totais"><span id="hist-tot-n-capa">0 itens</span> · <b id="hist-tot-kg-capa">0,0 kg</b></div>
+        </div>
+        <div class="hist-lista" id="hist-lista-capa">
+          <div class="hist-vazio">Nenhuma capa emitida ainda</div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /page-capas -->
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- CONFIG                                       -->
+  <!-- ═══════════════════════════════════════════ -->
+  <div class="page" id="page-config">
+    <div class="config-wrap">
+
+      <div class="config-card">
+        <div class="config-titulo">Operadores Cadastrados</div>
+        <div class="input-row">
+          <input type="text" class="input-text" id="novo-operador" placeholder="Nome do operador" maxlength="40"
+            onkeydown="if(event.key==='Enter') adicionarOperador()">
+          <button class="btn-add" onclick="adicionarOperador()">ADICIONAR</button>
+        </div>
+        <div class="op-list" id="op-list-config"></div>
+      </div>
+
+      <div class="config-card">
+        <div class="config-titulo">Sobre o Sistema</div>
+        <div style="font-size:12px;color:var(--muted);line-height:1.6;font-family:'IBM Plex Mono',monospace;">
+          Servidor: <span id="cfg-srv">—</span><br>
+          Modo Bling Extrusão: <span id="cfg-modo">—</span><br>
+          Bobinas cadastradas: <span id="cfg-nbobinas">—</span> · Turnos: <span id="cfg-nturnos">—</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</div><!-- /layout-content -->
+
+<!-- Modal: confirmação -->
+<div class="modal-overlay" id="modal-confirm">
+  <div class="modal">
+    <div class="modal-titulo" id="confirm-titulo">Confirmar</div>
+    <div class="modal-corpo" id="confirm-corpo">…</div>
+    <div class="modal-acoes">
+      <button class="btn-modal secundario" onclick="fecharConfirm(false)">Cancelar</button>
+      <button class="btn-modal danger"     onclick="fecharConfirm(true)" id="confirm-ok">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: bipagem pendente (bloqueante) -->
+<div class="modal-overlay" id="modal-bipagem-pendente">
+  <div class="modal" style="border-color: var(--warn);">
+    <div class="modal-titulo" style="color: var(--warn);">⚠ Bipagem pendente</div>
+    <div class="modal-corpo">
+      <div style="margin-bottom:14px;">
+        Antes de produzir a próxima bobina, é necessário <b>bipar</b> a(s) bobina(s)
+        abaixo. Confira a etiqueta impressa e bipe (leitor ou botão):
+      </div>
+      <div id="lista-pendentes-modal"></div>
+    </div>
+    <div class="modal-acoes">
+      <button class="btn-modal secundario" onclick="fecharModalBipagemPendente()">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-confirmar-etiqueta">
+  <div class="modal" style="border:2px solid var(--accent);">
+    <div class="modal-titulo">Confira a etiqueta que saiu</div>
+    <div class="modal-corpo">
+      <div style="margin-bottom:14px;">Compare com a etiqueta impressa. Se estiver tudo certo, confirme para liberar a bipagem. Se algo estiver errado — máquina, cor, tipo — corrija e imprima de novo.</div>
+      <div id="conf-maquina" style="font-size:26px; font-weight:900; text-align:center; padding:14px; margin-bottom:14px; border-radius:10px; background:rgba(255,255,255,0.06); border:1px solid var(--border); letter-spacing:1px;">MÁQUINA —</div>
+      <div id="conf-dados" style="font-size:14px; line-height:1.9;"></div>
+    </div>
+    <div class="modal-acoes">
+      <button class="btn-modal danger" onclick="corrigirEtiqueta()">✗ Corrigir / reimprimir</button>
+      <button class="btn-modal primary" onclick="confirmarEtiqueta()">✓ Confirmar e liberar bipagem</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-confirmar-turno">
+  <div class="modal" style="border:2px solid var(--accent); max-width:520px;">
+    <div class="modal-titulo">Confirmar fechamento do turno</div>
+    <div class="modal-corpo">
+      <div style="margin-bottom:14px;">Revise as bobinas do turno antes de enviar ao Bling. Depois de enviado, não dá para desfazer por aqui.</div>
+      <div id="resumo-turno-itens"></div>
+      <div id="resumo-turno-tot" style="font-weight:900; margin-top:12px; padding-top:12px; border-top:1px solid var(--border);"></div>
+    </div>
+    <div class="modal-acoes">
+      <button class="btn-modal secundario" onclick="fecharModalTurno()">← Voltar</button>
+      <button class="btn-modal primary" onclick="confirmarEnvioTurno()">✓ Confirmar e enviar ao Bling</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-area"></div>
+
+<script>
+// ════════════════════════════════════════════════════════════════════
+//  EXTRUSÃO — FRONTEND v2 (integrado ao servidor)
+// ════════════════════════════════════════════════════════════════════
+
+const URL_BASE = window.location.origin;
+
+// Detecta modo embed (se carregado dentro de iframe de shell)
+(function() {
+  try {
+    const p = new URLSearchParams(location.search);
+    if (p.get('embed') === '1') document.body.classList.add('embed');
+  } catch(e) {}
+})();
+
+// Larguras válidas por tipo (ordem crescente real: 80cm < 1,20m < 1,60m < 1,68m < 1,75m)
+const LARGURAS = {
+  LEVE:      ['1,60', '1,68', '1,75'],
+  REFORCADA: ['80', '1,20', '1,60'],
+};
+
+// Taras fixas por largura (peso do tubete/eixo, em kg).
+// O peso bruto medido na balança é descontado por essa tara automaticamente
+// — a etiqueta impressa carrega só o peso LÍQUIDO (sem o tubete).
+const TARAS = {
+  '80':   4,
+  '1,20': 6,
+  '1,60': 8,
+  '1,68': 8,
+  '1,75': 9,
+};
+
+// Catálogo de BOBINAS CAPA (aba Capas). tubete = tara fixa (peso do eixo) por
+// capa. SKU/ID Bling resolvidos no servidor (CAPAS_CATALOGO).
+const CAPAS = [
+  { sku: 'CAPA.70X90',      nome: 'Bobina Capa 70 x 90',  dim: '70 x 90',  tubete: 3 },
+  { sku: 'CAPA.60X90',      nome: 'Bobina Capa 60 x 90',  dim: '60 x 90',  tubete: 3 },
+  { sku: 'BOB.CAPA.92x0,5', nome: 'Bobina Capa 92 x 0,5', dim: '92 x 0,5', tubete: 2 },
+];
+
+// Limiar de "zero" da balança em kg. Após uma impressão, a próxima só é
+// liberada quando o peso medido cair abaixo desse valor (operador
+// efetivamente removeu a bobina). Evita re-impressão acidental da mesma
+// pesagem. Override automático quando peso é manual ou simulado.
+const LIMIAR_ZERO_KG = 2;
+
+// ─── ESTADO ───
+const state = {
+  sessaoId:     null,
+  turno:        null,        // EXT-A1 etc
+  operador:     '',
+  maquina:      '',
+  cor:          '',
+  tipoBobina:   '',
+  largura:      '',
+  pesoAtual:    0,
+  pesoBruto:    0,
+  tara:         0,
+  itens:        [],          // etiquetas do turno atual
+  operadores:   loadLocal('operadores', []),
+  proximoSeq:   1,           // próx. seq de extrusão (pra preview do ID/barcode)
+  balancaEstavel:  true,     // se a balança reporta peso estável (false = oscilando)
+  aguardandoZero:  false,    // true após uma impressão; libera quando peso < LIMIAR_ZERO_KG
+
+  // ── Capas (aba Capas) ── operador, sessão e itens são COMPARTILHADOS com
+  // a aba Bobinas; aqui só a seleção/peso próprios das capas.
+  capaSku:         '',
+  capaMaquina:     '',
+  capaPesoBruto:   0,
+  capaPesoAtual:   0,
+  capaTara:        0,
+  tokenPendente:     null,   // idempotência impressão bobina
+  capaTokenPendente: null,   // idempotência impressão capa
+};
+
+// Aba atualmente visível ('emissao' | 'capas' | 'config'). A balança (única)
+// é roteada por ela: peso da leitura vai pro fluxo da aba ativa.
+let ABA_ATIVA = 'emissao';
+
+// Mapa de turnos (será sobrescrito pelo /healthcheck se houver atualização no servidor)
+const TURNOS = {
+  'EXT-A1': { label: 'Turno A-1 (Diurno · Par)',    periodo: 'diurno',  paridade: 'par'   },
+  'EXT-C1': { label: 'Turno C-1 (Noturno · Par)',   periodo: 'noturno', paridade: 'par'   },
+  'EXT-A2': { label: 'Turno A-2 (Diurno · Ímpar)',  periodo: 'diurno',  paridade: 'impar' },
+  'EXT-C2': { label: 'Turno C-2 (Noturno · Ímpar)', periodo: 'noturno', paridade: 'impar' },
+};
+
+function loadLocal(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch(e) { return d; } }
+function saveLocal(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch(e) {} }
+
+// Token de idempotência pra impressão (C3). Usa crypto.randomUUID quando
+// disponível (localhost é contexto seguro); senão, fallback simples.
+function gerarToken() {
+  try { if (crypto && crypto.randomUUID) return crypto.randomUUID(); } catch(e) {}
+  return 'tok-' + Date.now() + '-' + Math.random().toString(36).slice(2, 10);
+}
+
+// Voltar pra página anterior. Se não houver histórico (operador entrou
+// direto pela URL), cai pro menu inicial como fallback seguro.
+// Navegação interna é livre — a trava de senha só vale pra sair da tela cheia.
+function voltarPagina() {
+  // Dentro da casca (iframe), history.back() cairia no about:blank (tela
+  // preta). Como a Extrusão é uma tela única, "voltar" = menu — e a casca
+  // mostra o menu corretamente ao navegar para '/'.
+  if (window.self !== window.top) { location.href = '/'; return; }
+  if (window.history.length > 1) {
+    window.history.back();
+  } else {
+    location.href = '/';
+  }
+}
+
+// ─── TURNO ATUAL (lógica do antigo) ───
+function getTurnoAtual() {
+  const agora = new Date();
+  const dia = agora.getDate();
+  const hora = agora.getHours();
+  const ehPar = dia % 2 === 0;
+  const ehDiurno = hora >= 6 && hora < 18;
+  if (ehPar)  return ehDiurno ? 'EXT-A2' : 'EXT-C2';
+  else        return ehDiurno ? 'EXT-A1' : 'EXT-C1';
+}
+
+// ─── RELÓGIO ───
+function tickClock() {
+  const d = new Date();
+  document.getElementById('clock').textContent = d.toLocaleTimeString('pt-BR');
+  document.getElementById('turno-badge').textContent = getTurnoAtual();
+}
+tickClock();
+setInterval(tickClock, 1000);
+
+// ─── SERVIDOR HEALTHCHECK ───
+async function pingServidor() {
+  try {
+    const r = await fetch(URL_BASE + '/healthcheck');
+    const d = await r.json();
+    const el = document.getElementById('srv-status');
+    if (d.ok) {
+      el.className = 'srv-status on';
+      el.textContent = 'SERVIDOR OK';
+      // Atualiza próximo seq de extrusão pra preview do ID/barcode
+      if (d.proximoSeq && d.proximoSeq.extrusao) {
+        const novoSeq = d.proximoSeq.extrusao;
+        if (novoSeq !== state.proximoSeq) {
+          state.proximoSeq = novoSeq;
+          // Refaz preview se já estiver montado (atualiza barcode)
+          if (state.cor && state.tipoBobina && state.largura && state.pesoAtual) {
+            atualizarPreview();
+          }
+        }
+      }
+    } else {
+      el.className = 'srv-status off';
+      el.textContent = 'SRV ERRO';
+    }
+  } catch(e) {
+    const el = document.getElementById('srv-status');
+    el.className = 'srv-status off';
+    el.textContent = 'SRV OFFLINE';
+  }
+}
+
+// ─── BALANÇA (polling, igual MP) ───
+async function pollBalanca() {
+  if (document.visibilityState !== 'visible') return;
+  try {
+    const r = await fetch(URL_BASE + '/balanca/peso');
+    if (!r.ok) throw new Error();
+    const d = await r.json();
+    // Status é mostrado nos DOIS cards (bobinas + capas) — é a mesma balança.
+    const setStatus = (cls, txt) => {
+      ['balanca-status', 'balanca-status-capa'].forEach(idEl => {
+        const el = document.getElementById(idEl);
+        if (el) { el.className = 'balanca-status ' + cls; el.textContent = txt; }
+      });
+    };
+    const refreshBotoes = () => { atualizarBotaoImprimir(); atualizarBotaoImprimirCapa(); };
+
+    // Balança sem leitura VÁLIDA (porta fechada ou peso ausente). O servidor
+    // responde ok:true mesmo desconectada, então NÃO dá pra usar d.ok aqui.
+    // Sem leitura válida: mostra "Desconectada" e PRESERVA o peso atual.
+    const semLeitura = d.peso == null || d.portaAberta === false;
+    if (semLeitura) {
+      setStatus('disconnected', 'Desconectada');
+      refreshBotoes();
+      return;
+    }
+
+    const pesoAtualBalanca = d.peso;
+    state.balancaEstavel = d.estavel !== false;   // default true se ausente
+
+    // Liberação da trava de re-impressão (compartilhada — mesma balança).
+    if (state.aguardandoZero && pesoAtualBalanca < LIMIAR_ZERO_KG) {
+      state.aguardandoZero = false;
+      logI('Pronto pra próxima (balança zerou)');
+    }
+
+    // Aplica o peso no fluxo da ABA ATIVA (uma balança, destinos diferentes).
+    // Se aguardando zero, mantém o valor anterior (só muda o status).
+    if (!state.aguardandoZero) {
+      if (ABA_ATIVA === 'capas') definirPesoBrutoCapa(pesoAtualBalanca, '', '');
+      else                       definirPesoBruto(pesoAtualBalanca, '', '');
+    }
+
+    if (state.aguardandoZero) {
+      setStatus('descarga', '⚠ Retire a bobina');
+    } else if (pesoAtualBalanca < LIMIAR_ZERO_KG) {
+      setStatus('aguardando', 'Aguardando bobina');
+    } else if (!state.balancaEstavel) {
+      setStatus('instavel', '~ Instável');
+    } else {
+      setStatus('connected', 'Estável');
+    }
+    refreshBotoes();
+  } catch(e) {
+    // servidor offline — não atualiza
+  }
+}
+
+// Helper de log local (toast curto sem ser intrusivo)
+function logI(msg) { console.log('[ext]', msg); }
+setInterval(pollBalanca, 1000);
+
+// ─── PESO BRUTO / LÍQUIDO ───
+// O peso lido da balança ou inserido manualmente é sempre BRUTO (com tubete).
+// A largura selecionada define a tara fixa (peso do eixo) e o líquido é
+// calculado automaticamente. A etiqueta carrega só o líquido — sem expor
+// tara/bruto pro operador (premissa: o eixo é sempre o mesmo p/ cada largura).
+function definirPesoBruto(bruto, statusCls, statusText) {
+  state.pesoBruto = bruto;
+  // Atualiza status visual só se solicitado (chamadas manuais/simular)
+  if (statusCls && statusText) {
+    const status = document.getElementById('balanca-status');
+    status.className = 'balanca-status ' + statusCls;
+    status.textContent = statusText;
+  }
+  recalcularPesoLiquido();
+}
+
+function recalcularPesoLiquido() {
+  const bruto = state.pesoBruto || 0;
+  const tara  = (state.largura && TARAS[state.largura]) || 0;
+  state.tara = tara;
+  const liq = bruto > 0 && tara > 0 ? Math.max(0, bruto - tara) : bruto;
+  state.pesoAtual = liq;
+  document.getElementById('peso-val').textContent = liq.toFixed(1);
+  // Linha informativa abaixo do display
+  const sub = document.getElementById('peso-sub');
+  if (sub) {
+    if (bruto > 0 && tara > 0) {
+      sub.textContent = `Bruto ${bruto.toFixed(1)} − Tara ${tara} (eixo ${state.largura})`;
+      sub.style.visibility = 'visible';
+    } else if (bruto > 0) {
+      sub.textContent = 'Selecione a largura para descontar o tubete';
+      sub.style.visibility = 'visible';
+    } else {
+      sub.style.visibility = 'hidden';
+    }
+  }
+  atualizarBotaoImprimir();
+  atualizarPreview();
+}
+
+function confirmarPesoManual() {
+  const v = parseFloat(document.getElementById('peso-manual').value);
+  if (!v || v <= 0) { toast('Informe um peso válido.', 'error'); return; }
+  // Override de testes: peso manual é deliberado → estável + sem trava
+  state.balancaEstavel = true;
+  state.aguardandoZero = false;
+  definirPesoBruto(v, 'aguardando', 'Manual');
+  document.getElementById('peso-manual').value = '';
+  atualizarBotaoImprimir();
+}
+
+// Simulador de peso pra fase de testes (sem balança real conectada).
+// Gera valor aleatório entre 18 e 32 kg com 1 decimal — faixa típica do
+// PESO BRUTO da bobina (com tubete).
+function simularPeso() {
+  const min = 18, max = 32;
+  const v = Math.round((Math.random() * (max - min) + min) * 10) / 10;
+  // Override de testes: simulação é deliberada → estável + sem trava
+  state.balancaEstavel = true;
+  state.aguardandoZero = false;
+  definirPesoBruto(v, 'simulada', 'Simulado');
+  document.getElementById('peso-manual').value = '';
+  atualizarBotaoImprimir();
+}
+
+// ─── SELEÇÕES (touch) ───
+// ─── TRAVA DE BIPAGEM PENDENTE ───
+// Premissa de segurança: uma nova bobina só pode ser impressa se NÃO houver
+// nenhuma bobina aguardando bipagem. Garante que toda bobina seja bipada
+// (e portanto enviada ao Bling), reduzindo perda ao máximo de 1 (a última).
+function pendentesBipagem() {
+  return state.itens.filter(i => i.status === 'aguardando_bipe');
+}
+
+// Renderiza a lista de pendentes dentro do modal, com botão BIPAR por item.
+function renderListaPendentesModal() {
+  const pend = pendentesBipagem();
+  const cont = document.getElementById('lista-pendentes-modal');
+  if (!pend.length) { cont.innerHTML = ''; return; }
+  cont.innerHTML = pend.map(it => `
+    <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;
+                background: rgba(255,170,0,0.08); border:1px solid rgba(255,170,0,0.3);
+                border-radius:8px; padding:10px 12px; margin-bottom:8px; font-family:'IBM Plex Mono',monospace;">
+      <div>
+        <div style="font-size:13px; font-weight:800; color:var(--warn);">${it.id}</div>
+        <div style="font-size:11px; color:var(--muted); margin-top:2px;">
+          ${it.subTipo === 'capa'
+            ? `Capa #${String(it.seq_sessao||'-').padStart(2,'0')} · ${it.capaDim || it.sku} · ${it.peso.toFixed(1)} kg`
+            : `Bobina #${String(it.seq_sessao||'-').padStart(2,'0')} · ${it.cor} · ${it.tipo_bobina} · ${it.largura} · ${it.peso.toFixed(1)} kg`}
+        </div>
+      </div>
+      <button class="hist-acao" onclick="biparItem('${it.id}')">BIPAR</button>
+    </div>
+  `).join('');
+}
+
+// Mostra o modal bloqueante. Chamado quando o operador tenta interagir
+// (selecionar máquina/cor/tipo/largura ou imprimir) tendo pendência.
+function abrirModalBipagemPendente() {
+  renderListaPendentesModal();
+  document.getElementById('modal-bipagem-pendente').classList.add('on');
+}
+
+function fecharModalBipagemPendente() {
+  document.getElementById('modal-bipagem-pendente').classList.remove('on');
+}
+
+// Retorna true (e abre o modal) se há pendência bloqueando uma nova bobina.
+// Usado como guarda no início das ações de seleção e impressão.
+// ─── CENÁRIO 01: confirmação obrigatória após imprimir ───
+// O operador confere os dados (máquina sobretudo) contra a etiqueta física.
+// Enquanto este modal está aberto, o leitor é ignorado pelo listener global
+// (que só aceita bipe com o modal de bipagem pendente), então a bipagem só é
+// liberada depois de confirmar. "Corrigir" cancela a etiqueta pra reimpressão.
+let _confirmandoId = null;
+function abrirConfirmacaoEtiqueta(id, dados) {
+  _confirmandoId = id;
+  document.getElementById('conf-maquina').textContent = 'MÁQUINA ' + (dados.maquina || '—');
+  document.getElementById('conf-dados').innerHTML =
+    `<div><b>Etiqueta:</b> ${id} &nbsp;·&nbsp; <b>Bobina</b> #${String(dados.seq||'-').padStart(2,'0')}</div>` +
+    `<div><b>Cor:</b> ${dados.cor || '—'}</div>` +
+    `<div><b>Tipo:</b> ${dados.tipo || '—'}</div>` +
+    `<div><b>Largura:</b> ${dados.largura || '—'}</div>` +
+    `<div><b>Peso:</b> ${Number(dados.peso||0).toFixed(1)} kg</div>`;
+  document.getElementById('modal-confirmar-etiqueta').classList.add('on');
+}
+function confirmarEtiqueta() {
+  document.getElementById('modal-confirmar-etiqueta').classList.remove('on');
+  _confirmandoId = null;
+  toast('Informações confirmadas · pode bipar', 'success');
+}
+async function corrigirEtiqueta() {
+  const id = _confirmandoId;
+  _confirmandoId = null;
+  document.getElementById('modal-confirmar-etiqueta').classList.remove('on');
+  if (id) await excluirItem(id);   // cancela a etiqueta errada; operador reseleciona e reimprime
+  toast('Etiqueta descartada · ajuste os dados e imprima de novo', 'warn');
+}
+
+function bloqueadoPorBipagem() {
+  if (pendentesBipagem().length > 0) {
+    abrirModalBipagemPendente();
+    return true;
+  }
+  return false;
+}
+
+function selecionarOperador(nome) {
+  state.operador = nome;
+  document.querySelectorAll('#grid-operadores .touch-btn').forEach(b => {
+    b.classList.toggle('selected', b.dataset.nome === nome);
+  });
+  saveLocal('operador_atual', nome);
+  atualizarBotaoImprimir();
+  atualizarPreview();
+  atualizarOperadorCapa();
+  atualizarBotaoImprimirCapa();
+}
+
+function selecionarMaquina(maq) {
+  if (bloqueadoPorBipagem()) return;
+  state.maquina = maq;
+  document.getElementById('maq-C1').classList.toggle('selected', maq === 'C1');
+  document.getElementById('maq-C2').classList.toggle('selected', maq === 'C2');
+  saveLocal('maquina_atual', maq);
+  atualizarBotaoImprimir();
+  atualizarPreview();
+}
+
+function selecionarCor(cor) {
+  if (bloqueadoPorBipagem()) return;
+  state.cor = cor;
+  ['Amarela','Branca','Colorida','Preta'].forEach(c => {
+    document.getElementById('cor-' + c).classList.toggle('selected', c === cor);
+  });
+  atualizarBotaoImprimir();
+  atualizarPreview();
+}
+
+function selecionarLargura(l) {
+  if (bloqueadoPorBipagem()) return;
+  state.largura = l;
+  document.querySelectorAll('#grid-larguras .touch-btn').forEach(b => {
+    b.classList.toggle('selected', b.dataset.largura === l);
+  });
+  recalcularPesoLiquido();   // aplica tara fixa do mapa TARAS
+}
+
+function selecionarTipo(tipo) {
+  if (bloqueadoPorBipagem()) return;
+  state.tipoBobina = tipo;
+  state.largura = '';
+  document.getElementById('tipo-LEVE').classList.toggle('selected', tipo === 'LEVE');
+  document.getElementById('tipo-REFORCADA').classList.toggle('selected', tipo === 'REFORCADA');
+  renderLarguras();
+  recalcularPesoLiquido();   // tara some até nova largura
+}
+
+function renderLarguras() {
+  const grid = document.getElementById('grid-larguras');
+  if (!state.tipoBobina) {
+    grid.innerHTML = '<div class="op-vazio">Selecione o tipo primeiro</div>';
+    return;
+  }
+  const opts = LARGURAS[state.tipoBobina] || [];
+  grid.innerHTML = opts.map(l =>
+    `<div class="touch-btn ${state.largura === l ? 'selected' : ''}" data-largura="${l}" onclick="selecionarLargura('${l}')">${l}</div>`
+  ).join('');
+}
+
+// ─── PREVIEW ───
+function atualizarPreview() {
+  const div = document.getElementById('preview-etiqueta');
+  if (!state.cor || !state.tipoBobina || !state.largura || !state.pesoAtual) {
+    div.innerHTML = '<div class="pe-vazio">Complete a seleção e o peso<br>para imprimir</div>';
+    return;
+  }
+  const turno = state.turno || getTurnoAtual();
+  const sku = montarSKU(state.cor, state.tipoBobina, state.largura);
+  // ID estimado pra preview (próximo seq de extrusão conhecido pelo servidor)
+  const idPreview = 'E' + String(state.proximoSeq || 1).padStart(7, '0');
+  div.innerHTML = `
+    <div class="pe-turno">TURNO ${turno}</div>
+    <div class="pe-prod">${state.cor.toUpperCase()} · ${state.tipoBobina} · ${state.largura}</div>
+    <div class="pe-info">OPERADOR: ${(state.operador||'—').toUpperCase()} &nbsp;·&nbsp; MAQ ${state.maquina || '—'}</div>
+    <div class="pe-peso">${state.pesoAtual.toFixed(1)} kg</div>
+    <div class="pe-sku">${sku}</div>
+    <div class="pe-bc-wrap"><svg id="pe-barcode" class="pe-bc-svg"></svg></div>
+    <div class="pe-id">${idPreview}</div>
+  `;
+  // Renderiza código de barras CODE128 (igual MP)
+  try {
+    JsBarcode('#pe-barcode', idPreview, {
+      format: 'CODE128',
+      width: 2,
+      height: 38,
+      displayValue: false,
+      margin: 0,
+      background: 'transparent',
+      lineColor: '#000',
+    });
+  } catch(e) {
+    console.error('Erro JsBarcode:', e);
+  }
+}
+
+function montarSKU(cor, tipo, largura) {
+  const corSig = { 'Amarela':'AM','Branca':'BC','Colorida':'COL','Preta':'PT' }[cor] || cor;
+  const tipoSig = tipo === 'LEVE' ? 'LEV' : 'REF';
+  return `BOB.${corSig}.${tipoSig}.${largura}`;
+}
+
+// ─── BOTÃO IMPRIMIR ───
+// Habilita assim que todos os campos estão preenchidos + balança estável
+// + sem trava de descarga pendente. A sessão é criada automaticamente
+// no servidor no momento da impressão (lazy), sem modal de início.
+function atualizarBotaoImprimir() {
+  const btn = document.getElementById('btn-imprimir');
+  if (!btn) return;
+  const camposOk = !!state.operador
+                && !!state.maquina
+                && !!state.cor
+                && !!state.tipoBobina
+                && !!state.largura
+                && state.pesoAtual > 0;
+
+  const pend = pendentesBipagem();
+
+  // Label muda conforme o motivo do bloqueio (ordem de prioridade)
+  if (pend.length > 0) {
+    const ult = pend[0];   // mais recente (unshift coloca no topo)
+    btn.textContent = `⚠ BIPE A BOBINA #${String(ult.seq_sessao||'-').padStart(2,'0')} PRIMEIRO`;
+    btn.disabled = true;
+  } else if (state.aguardandoZero) {
+    btn.textContent = '⏳ RETIRE A BOBINA';
+    btn.disabled = true;
+  } else if (camposOk && !state.balancaEstavel) {
+    btn.textContent = '⏳ AGUARDANDO ESTABILIDADE...';
+    btn.disabled = true;
+  } else {
+    btn.textContent = '⎙ IMPRIMIR ETIQUETA';
+    btn.disabled = !(camposOk && state.balancaEstavel);
+  }
+}
+
+// ─── IMPRIMIR ───
+async function imprimirEtiqueta() {
+  // TRAVA: não imprime nova bobina se há pendência de bipagem
+  if (bloqueadoPorBipagem()) return;
+
+  // Cria sessão de turno automaticamente se ainda não houver
+  const ok = await garantirSessaoAberta();
+  if (!ok) return;
+
+  const btn = document.getElementById('btn-imprimir');
+  btn.disabled = true;
+  // Token de idempotência (C3): gera um por tentativa e REUSA em retry.
+  // Só é renovado após sucesso confirmado — assim, se a resposta se perder
+  // e o operador reimprimir, o servidor reconhece e não duplica.
+  if (!state.tokenPendente) state.tokenPendente = gerarToken();
+  try {
+    const r = await fetch(URL_BASE + '/etiquetas/extrusao', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        clientToken: state.tokenPendente,
+        sessao_id:   state.sessaoId,
+        cor:         state.cor,
+        tipo_bobina: state.tipoBobina,
+        largura:     state.largura,
+        operador:    state.operador,
+        maquina:     state.maquina,
+        turno_codigo: state.turno,
+        peso:        state.pesoAtual,
+        peso_bruto:  state.pesoBruto || null,
+        tara:        state.tara || null,
+      }),
+    });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.erro || 'Falha na impressão');
+    state.tokenPendente = null;   // sucesso confirmado → próxima usa token novo
+    toast(`✓ Etiqueta ${d.id} impressa (Bobina #${d.seq_sessao})`, 'success');
+    if (d.seq) state.proximoSeq = d.seq + 1;
+
+    state.itens.unshift({
+      id:           d.id,
+      seq_sessao:   d.seq_sessao,
+      cor:          state.cor,
+      tipo_bobina:  state.tipoBobina,
+      largura:      state.largura,
+      peso:         state.pesoAtual,
+      sku:          d.bobina?.sku || '—',
+      status:       'aguardando_bipe',
+      hora:         new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+    });
+    renderHistorico();
+
+    // Cenário 01: exige conferência dos dados antes de liberar a bipagem.
+    // Captura os valores agora (antes do reset abaixo).
+    abrirConfirmacaoEtiqueta(d.id, {
+      maquina: state.maquina,
+      cor:     state.cor,
+      tipo:    state.tipoBobina,
+      largura: state.largura,
+      peso:    state.pesoAtual,
+      seq:     d.seq_sessao,
+    });
+
+    // Trava ciclo de pesagem — próxima impressão só após operador remover
+    // a bobina (peso cair abaixo de LIMIAR_ZERO_KG).
+    state.aguardandoZero = true;
+
+    // Reseta seleções de produto + peso, mantém operador/máquina
+    setTimeout(() => {
+      state.pesoBruto = 0;
+      state.tara      = 0;
+      state.pesoAtual = 0;
+      document.getElementById('peso-val').textContent = '0.0';
+      document.getElementById('peso-sub').style.visibility = 'hidden';
+      atualizarBotaoImprimir();
+      atualizarPreview();
+    }, 800);
+  } catch(e) {
+    toast('Erro ao imprimir: ' + e.message, 'error');
+    btn.disabled = false;
+  }
+}
+
+// ─── HISTÓRICO ───
+// Layout no estilo MP: id · descrição/hora · peso · botão BIPAR ou ✓
+function renderHistorico() {
+  const lista = document.getElementById('hist-lista');
+  const bobinas = state.itens.filter(i => i.subTipo !== 'capa');
+  if (!bobinas.length) {
+    lista.innerHTML = '<div class="hist-vazio">Nenhuma bobina emitida ainda</div>';
+  } else {
+    lista.innerHTML = bobinas.map(it => {
+      const cls   = it.status === 'bipada' ? 'bipada'
+                  : it.status === 'cancelada' ? 'cancelada'
+                  : 'pendente';
+      const desc  = `${it.cor} · ${it.tipo_bobina} · ${it.largura}`;
+      const acao  = it.status === 'aguardando_bipe'
+                  ? `<button class="hist-acao" onclick="biparItem('${it.id}')">BIPAR</button>`
+                  : it.status === 'bipada'
+                  ? '<span class="hist-check" title="bipada">✓</span>'
+                  : '<span class="hist-check" style="color:var(--danger);" title="cancelada">✕</span>';
+      return `<div class="hist-item ${cls}">
+        <span class="hist-id">${it.id}</span>
+        <span class="hist-desc">${desc}<br><span class="hist-small">Bobina #${String(it.seq_sessao||'-').padStart(2,'0')} · ${it.hora}</span></span>
+        <span class="hist-peso">${it.peso.toFixed(1)} kg</span>
+        ${acao}
+        <button class="hist-del" title="Excluir pesagem" onclick="excluirItem('${it.id}')">✕</button>
+      </div>`;
+    }).join('');
+  }
+  const validas = bobinas.filter(i => i.status !== 'cancelada');
+  document.getElementById('hist-tot-n').textContent =
+    validas.length + (validas.length === 1 ? ' item' : ' itens');
+  const totKg = validas.reduce((a, b) => a + (b.peso || 0), 0);
+  document.getElementById('hist-tot-kg').textContent = totKg.toFixed(1).replace('.', ',') + ' kg';
+  atualizarBanner();
+}
+
+// Banner do topo: total combinado da sessão (bobinas + capas).
+function atualizarBanner() {
+  if (!state.sessaoId) return;
+  const el = document.getElementById('banner-resumo');
+  if (!el) return;
+  const validas = state.itens.filter(i => i.status !== 'cancelada');
+  const nBob = validas.filter(i => i.subTipo !== 'capa').length;
+  const nCap = validas.filter(i => i.subTipo === 'capa').length;
+  const totKg = validas.reduce((a, b) => a + (b.peso || 0), 0);
+  let txt = `${nBob} ${nBob === 1 ? 'bobina' : 'bobinas'}`;
+  if (nCap > 0) txt += ` · ${nCap} ${nCap === 1 ? 'capa' : 'capas'}`;
+  txt += ` · ${totKg.toFixed(1).replace('.', ',')} kg`;
+  el.textContent = txt;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ─── CAPAS (aba Capas) ───
+// Mesmo fluxo das bobinas, mas: sem cor; operador/sessão/itens herdados da
+// aba Bobinas; tara = tubete fixo da capa (catálogo CAPAS); produto próprio.
+// ═══════════════════════════════════════════════════════════════
+function capaSel() { return CAPAS.find(c => c.sku === state.capaSku) || null; }
+
+function renderCapas() {
+  const grid = document.getElementById('grid-capas');
+  if (!grid) return;
+  grid.innerHTML = CAPAS.map(c =>
+    `<div class="touch-btn capa-btn ${state.capaSku === c.sku ? 'selected' : ''}" data-sku="${c.sku}" onclick="selecionarCapa('${c.sku}')">
+       ${c.nome}<span class="esp-info">tubete ${c.tubete} kg</span>
+     </div>`
+  ).join('');
+}
+
+function selecionarMaquinaCapa(maq) {
+  if (bloqueadoPorBipagem()) return;
+  state.capaMaquina = maq;
+  document.getElementById('maqc-C1').classList.toggle('selected', maq === 'C1');
+  document.getElementById('maqc-C2').classList.toggle('selected', maq === 'C2');
+  atualizarBotaoImprimirCapa();
+  atualizarPreviewCapa();
+}
+
+function selecionarCapa(sku) {
+  if (bloqueadoPorBipagem()) return;
+  state.capaSku = sku;
+  renderCapas();
+  recalcularPesoLiquidoCapa();   // aplica tubete da capa
+}
+
+function definirPesoBrutoCapa(bruto, statusCls, statusText) {
+  state.capaPesoBruto = bruto;
+  if (statusCls && statusText) {
+    const st = document.getElementById('balanca-status-capa');
+    if (st) { st.className = 'balanca-status ' + statusCls; st.textContent = statusText; }
+  }
+  recalcularPesoLiquidoCapa();
+}
+
+function recalcularPesoLiquidoCapa() {
+  const bruto = state.capaPesoBruto || 0;
+  const capa  = capaSel();
+  const tara  = capa ? capa.tubete : 0;
+  state.capaTara = tara;
+  const liq = bruto > 0 && tara > 0 ? Math.max(0, bruto - tara) : bruto;
+  state.capaPesoAtual = liq;
+  const val = document.getElementById('peso-val-capa');
+  if (val) val.textContent = liq.toFixed(1);
+  const sub = document.getElementById('peso-sub-capa');
+  if (sub) {
+    if (bruto > 0 && tara > 0) {
+      sub.textContent = `Bruto ${bruto.toFixed(1)} − Tubete ${tara} (${capa.dim})`;
+      sub.style.visibility = 'visible';
+    } else if (bruto > 0) {
+      sub.textContent = 'Selecione o tipo de capa para descontar o tubete';
+      sub.style.visibility = 'visible';
+    } else {
+      sub.style.visibility = 'hidden';
+    }
+  }
+  atualizarBotaoImprimirCapa();
+  atualizarPreviewCapa();
+}
+
+function confirmarPesoManualCapa() {
+  const v = parseFloat(document.getElementById('peso-manual-capa').value);
+  if (!v || v <= 0) { toast('Informe um peso válido.', 'error'); return; }
+  state.balancaEstavel = true;
+  state.aguardandoZero = false;
+  definirPesoBrutoCapa(v, 'aguardando', 'Manual');
+  document.getElementById('peso-manual-capa').value = '';
+  atualizarBotaoImprimirCapa();
+}
+
+function simularPesoCapa() {
+  const min = 18, max = 32;
+  const v = Math.round((Math.random() * (max - min) + min) * 10) / 10;
+  state.balancaEstavel = true;
+  state.aguardandoZero = false;
+  definirPesoBrutoCapa(v, 'simulada', 'Simulado');
+  document.getElementById('peso-manual-capa').value = '';
+  atualizarBotaoImprimirCapa();
+}
+
+function atualizarOperadorCapa() {
+  const el = document.getElementById('op-capa-display');
+  if (!el) return;
+  if (state.operador) { el.textContent = state.operador; el.classList.remove('vazio'); }
+  else { el.textContent = 'Selecione o operador na aba Bobinas'; el.classList.add('vazio'); }
+}
+
+function atualizarPreviewCapa() {
+  const div = document.getElementById('preview-etiqueta-capa');
+  if (!div) return;
+  const capa = capaSel();
+  if (!capa || !state.capaPesoAtual) {
+    div.innerHTML = '<div class="pe-vazio">Complete a seleção e o peso<br>para imprimir</div>';
+    return;
+  }
+  const turno = state.turno || getTurnoAtual();
+  const idPreview = 'E' + String(state.proximoSeq || 1).padStart(7, '0');
+  div.innerHTML = `
+    <div class="pe-turno">TURNO ${turno}</div>
+    <div class="pe-prod">CAPA · ${capa.dim}</div>
+    <div class="pe-info">OPERADOR: ${(state.operador||'—').toUpperCase()} &nbsp;·&nbsp; MAQ ${state.capaMaquina || '—'}</div>
+    <div class="pe-peso">${state.capaPesoAtual.toFixed(1)} kg</div>
+    <div class="pe-sku">${capa.sku}</div>
+    <div class="pe-bc-wrap"><svg id="pe-barcode-capa" class="pe-bc-svg"></svg></div>
+    <div class="pe-id">${idPreview}</div>
+  `;
+  try {
+    JsBarcode('#pe-barcode-capa', idPreview, { format:'CODE128', width:2, height:38, displayValue:false, margin:0, background:'transparent', lineColor:'#000' });
+  } catch(e) { console.error('Erro JsBarcode capa:', e); }
+}
+
+function atualizarBotaoImprimirCapa() {
+  const btn = document.getElementById('btn-imprimir-capa');
+  if (!btn) return;
+  const camposOk = !!state.operador && !!state.capaMaquina && !!state.capaSku && state.capaPesoAtual > 0;
+  const pend = pendentesBipagem();
+  if (pend.length > 0) {
+    const ult = pend[0];
+    btn.textContent = `⚠ BIPE A ETIQUETA #${String(ult.seq_sessao||'-').padStart(2,'0')} PRIMEIRO`;
+    btn.disabled = true;
+  } else if (state.aguardandoZero) {
+    btn.textContent = '⏳ RETIRE A BOBINA';
+    btn.disabled = true;
+  } else if (!state.operador && state.capaMaquina && state.capaSku && state.capaPesoAtual > 0) {
+    btn.textContent = '⚠ SELECIONE O OPERADOR (ABA BOBINAS)';
+    btn.disabled = true;
+  } else if (camposOk && !state.balancaEstavel) {
+    btn.textContent = '⏳ AGUARDANDO ESTABILIDADE...';
+    btn.disabled = true;
+  } else {
+    btn.textContent = '⎙ IMPRIMIR ETIQUETA';
+    btn.disabled = !(camposOk && state.balancaEstavel);
+  }
+}
+
+async function imprimirCapa() {
+  if (bloqueadoPorBipagem()) return;
+  if (!state.operador)    { toast('Selecione o operador na aba Bobinas.', 'error'); return; }
+  if (!state.capaMaquina) { toast('Selecione a máquina.', 'error'); return; }
+  if (!state.capaSku)     { toast('Selecione o tipo de capa.', 'error'); return; }
+  const ok = await garantirSessaoAberta(state.capaMaquina);
+  if (!ok) return;
+
+  const btn = document.getElementById('btn-imprimir-capa');
+  btn.disabled = true;
+  if (!state.capaTokenPendente) state.capaTokenPendente = gerarToken();
+  try {
+    const r = await fetch(URL_BASE + '/etiquetas/capa', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        clientToken:  state.capaTokenPendente,
+        sessao_id:    state.sessaoId,
+        capa_sku:     state.capaSku,
+        operador:     state.operador,
+        maquina:      state.capaMaquina,
+        turno_codigo: state.turno,
+        peso:         state.capaPesoAtual,
+        peso_bruto:   state.capaPesoBruto || null,
+        tara:         state.capaTara || null,
+      }),
+    });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.erro || 'Falha na impressão');
+    state.capaTokenPendente = null;
+    toast(`✓ Etiqueta ${d.id} impressa (Capa #${d.seq_sessao})`, 'success');
+    if (d.seq) state.proximoSeq = d.seq + 1;
+
+    const capa = capaSel();
+    state.itens.unshift({
+      id:         d.id,
+      seq_sessao: d.seq_sessao,
+      subTipo:    'capa',
+      capaDim:    capa ? capa.dim : '',
+      peso:       state.capaPesoAtual,
+      sku:        d.capa?.sku || state.capaSku,
+      status:     'aguardando_bipe',
+      hora:       new Date().toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' }),
+    });
+    renderHistoricoCapa();
+    atualizarBanner();
+
+    // Trava de descarga compartilhada (mesma balança).
+    state.aguardandoZero = true;
+    setTimeout(() => {
+      state.capaPesoBruto = 0;
+      state.capaTara = 0;
+      state.capaPesoAtual = 0;
+      const v = document.getElementById('peso-val-capa'); if (v) v.textContent = '0.0';
+      const s = document.getElementById('peso-sub-capa'); if (s) s.style.visibility = 'hidden';
+      atualizarBotaoImprimirCapa();
+      atualizarPreviewCapa();
+    }, 800);
+  } catch(e) {
+    toast('Erro ao imprimir: ' + e.message, 'error');
+    btn.disabled = false;
+  }
+}
+
+function renderHistoricoCapa() {
+  const lista = document.getElementById('hist-lista-capa');
+  if (!lista) return;
+  const capas = state.itens.filter(i => i.subTipo === 'capa');
+  if (!capas.length) {
+    lista.innerHTML = '<div class="hist-vazio">Nenhuma capa emitida ainda</div>';
+  } else {
+    lista.innerHTML = capas.map(it => {
+      const cls = it.status === 'bipada' ? 'bipada' : it.status === 'cancelada' ? 'cancelada' : 'pendente';
+      const desc = `CAPA · ${it.capaDim || it.sku}`;
+      const acao = it.status === 'aguardando_bipe'
+        ? `<button class="hist-acao" onclick="biparItem('${it.id}')">BIPAR</button>`
+        : it.status === 'bipada'
+        ? '<span class="hist-check" title="bipada">✓</span>'
+        : '<span class="hist-check" style="color:var(--danger);" title="cancelada">✕</span>';
+      return `<div class="hist-item ${cls}">
+        <span class="hist-id">${it.id}</span>
+        <span class="hist-desc">${desc}<br><span class="hist-small">Capa #${String(it.seq_sessao||'-').padStart(2,'0')} · ${it.hora}</span></span>
+        <span class="hist-peso">${it.peso.toFixed(1)} kg</span>
+        ${acao}
+        <button class="hist-del" title="Excluir pesagem" onclick="excluirItem('${it.id}')">✕</button>
+      </div>`;
+    }).join('');
+  }
+  const validas = capas.filter(i => i.status !== 'cancelada');
+  const elN = document.getElementById('hist-tot-n-capa');
+  const elKg = document.getElementById('hist-tot-kg-capa');
+  if (elN) elN.textContent = validas.length + (validas.length === 1 ? ' item' : ' itens');
+  if (elKg) elKg.textContent = validas.reduce((a,b)=>a+(b.peso||0),0).toFixed(1).replace('.', ',') + ' kg';
+}
+
+// ─── BIPAGEM ───
+// Duas formas de bipar:
+//   1) Leitor de código de barras (capturado globalmente via keydown listener
+//      lá embaixo) — operador encosta o leitor na etiqueta, ele "digita" o
+//      ID + Enter como se fosse teclado.
+//   2) Botão BIPAR ao lado de cada etiqueta pendente no histórico (backup
+//      pro caso de coletor com defeito ou bipagem manual posterior).
+// Exclui (cancela) uma pesagem do histórico — soft-delete no servidor + remove da lista local.
+async function excluirItem(id) {
+  try { await fetch(URL_BASE + '/etiquetas/' + id + '/cancelar', { method: 'POST' }); } catch(e) {}
+  const idx = state.itens.findIndex(it => it.id === id);
+  if (idx >= 0) state.itens.splice(idx, 1);
+  renderHistorico();
+  renderHistoricoCapa();
+  atualizarBotaoImprimir();
+  atualizarBotaoImprimirCapa();
+  toast('Pesagem excluída', 'info');
+}
+
+async function biparItem(id) {
+  if (!/^E\d+$/.test(id)) {
+    toast(`ID inválido: ${id} (esperado E0000000)`, 'error');
+    return;
+  }
+  try {
+    const r = await fetch(URL_BASE + '/etiquetas/' + id + '/bipar', { method: 'POST' });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.erro || 'Erro');
+    const item = state.itens.find(i => i.id === id);
+    if (item) {
+      item.status = 'bipada';
+      renderHistorico();
+      renderHistoricoCapa();
+    }
+    // Atualiza a trava: se não há mais pendentes, fecha o modal e libera os botões
+    if (pendentesBipagem().length === 0) {
+      fecharModalBipagemPendente();
+    } else {
+      renderListaPendentesModal();   // atualiza a lista no modal (se aberto)
+    }
+    atualizarBotaoImprimir();
+    atualizarBotaoImprimirCapa();
+    if (d.bling && d.bling.ok) {
+      const modoLabel = d.bling.modo === 'simulacao' ? ' (simulação)' : '';
+      toast(`✓ ${id} bipada · Pedido Bling ${d.bling.bling_id}${modoLabel}`, 'success');
+    } else if (d.bling && !d.bling.ok) {
+      toast(`⚠ ${id} bipada, mas Bling falhou: ${d.bling.erro}`, 'warn');
+    } else {
+      toast(`✓ ${id} bipada`, 'success');
+    }
+  } catch(e) {
+    toast('Erro ao bipar: ' + e.message, 'error');
+  }
+}
+
+// ─── CAPTURA GLOBAL DO LEITOR DE CÓDIGO DE BARRAS ───
+// O leitor (Comtac HS-960 ou similar) envia os caracteres da etiqueta + Enter
+// como se fosse teclado. Capturamos no nível da janela, ignorando quando o
+// foco está em algum input/textarea (peso manual, operador novo, etc).
+let _bipeBuffer = '';
+let _bipeTimer  = null;
+let _bipeInicio = 0;     // M8: timestamp do 1º caractere da sequência
+window.addEventListener('keydown', (e) => {
+  // Ignora se está digitando em algum campo
+  const ae = document.activeElement;
+  if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.tagName === 'SELECT')) return;
+  // Ignora se há modal aberto — EXCETO o de bipagem pendente, onde o
+  // operador justamente precisa bipar com o leitor.
+  const modalAberto = document.querySelector('.modal-overlay.on');
+  if (modalAberto && modalAberto.id !== 'modal-bipagem-pendente') return;
+
+  if (e.key === 'Enter') {
+    if (_bipeBuffer) {
+      const raw = _bipeBuffer.toUpperCase();
+      const decorrido = Date.now() - _bipeInicio;
+      _bipeBuffer = '';
+      // M8: só aceita se a sequência foi digitada com cadência de LEITOR
+      // (rápida). Leitor digita ~8 chars em <300ms; humano leva segundos.
+      // Sequências lentas são digitação acidental e são descartadas.
+      const cadenciaDeLeitor = raw.length >= 4 && decorrido < 300;
+      if (!cadenciaDeLeitor) return;
+      let id = null;
+      if (/^E\d+$/.test(raw))      id = raw;
+      else if (/^\d+$/.test(raw))  id = 'E' + raw.padStart(7, '0');
+      if (id) biparItem(id);
+    }
+  } else if (e.key.length === 1) {
+    if (!_bipeBuffer) _bipeInicio = Date.now();   // marca início da sequência
+    _bipeBuffer += e.key;
+    clearTimeout(_bipeTimer);
+    _bipeTimer = setTimeout(() => { _bipeBuffer = ''; }, 1000);
+  } else if (e.key === 'Backspace') {
+    _bipeBuffer = _bipeBuffer.slice(0, -1);
+  }
+});
+
+// ─── GARANTIR SESSÃO ABERTA ───
+// Cria sessão "lazy" no servidor quando o operador for imprimir a primeira
+// bobina do turno (sem modal de início). O turno é detectado pela hora.
+// Retorna true se há sessão garantida; false se faltou operador/máquina.
+async function garantirSessaoAberta(maqOverride) {
+  if (state.sessaoId) return true;
+  if (!state.operador) { toast('Selecione o operador (na aba Bobinas).', 'error'); return false; }
+  const maq = maqOverride || state.maquina;
+  if (!maq)  { toast('Selecione a máquina.', 'error');  return false; }
+  state.turno = getTurnoAtual();
+  try {
+    const r = await fetch(URL_BASE + '/sessoes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        tipo: 'extrusao',
+        operador: state.operador,
+        maquina:  maq,
+        turno_codigo: state.turno,
+      }),
+    });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.erro || 'Falha ao abrir sessão');
+    state.sessaoId = d.sessao_id;
+    saveLocal('operador_atual', state.operador);
+    saveLocal('maquina_atual',  maq);
+    aplicarBannerTurno(true);
+    toast(`✓ Turno ${state.turno} iniciado · Sessão #${state.sessaoId}`, 'success');
+    return true;
+  } catch(e) {
+    toast('Erro ao iniciar turno: ' + e.message, 'error');
+    return false;
+  }
+}
+
+function aplicarBannerTurno(ativo) {
+  const b = document.getElementById('banner-turno');
+  b.classList.toggle('on', ativo);
+  if (ativo) {
+    document.getElementById('banner-info').textContent =
+      `${state.turno} — ${state.operador} (sessão #${state.sessaoId})`;
+  }
+}
+
+// ─── FINALIZAR TURNO ───
+// Envio ao Bling é AUTOMÁTICO — sem caixa de confirmação (que tirava do fullscreen).
+// Imprime o relatório PARCIAL (momentâneo) sem encerrar o turno.
+async function relatorioAtual() {
+  if (!state.sessaoId) { toast('Inicie o turno antes de imprimir o relatório', 'warn'); return; }
+  try {
+    const r = await fetch(URL_BASE + `/sessoes/${state.sessaoId}/relatorio-atual`, { method: 'POST' });
+    const d = await r.json();
+    if (!d.ok) { toast(d.erro || 'Não foi possível imprimir o relatório', 'warn'); return; }
+    toast('🧾 Relatório atual enviado para impressão', 'success');
+  } catch (e) { toast('Erro: ' + e.message, 'error'); }
+}
+
+// Abre o resumo do turno para conferência. O envio ao Bling só acontece
+// depois que o operador confirmar (trava contra envio errado).
+function finalizarTurno() {
+  if (!state.sessaoId) return;
+  const naoBipadas = state.itens.filter(i => i.status === 'aguardando_bipe');
+  if (naoBipadas.length) { abrirModalBipagemPendente(); toast('Há bobinas não bipadas — resolva antes de finalizar', 'warn'); return; }
+  const bipadas = state.itens.filter(i => i.status === 'bipada');
+  const corpo = document.getElementById('resumo-turno-itens');
+  if (!bipadas.length) {
+    corpo.innerHTML = '<div style="color:var(--muted); padding:10px 0;">Nenhuma bobina bipada neste turno.</div>';
+  } else {
+    corpo.innerHTML = bipadas.map(i =>
+      `<div class="rev-item">
+         <span><b>#${i.seq_sessao}</b> · ${i.cor} · ${i.tipo_bobina} · ${i.largura}</span>
+         <span class="rev-kg">${(Number(i.peso) || 0).toLocaleString('pt-BR')} kg</span>
+       </div>`).join('');
+  }
+  const kg = bipadas.reduce((a, i) => a + (Number(i.peso) || 0), 0);
+  document.getElementById('resumo-turno-tot').textContent =
+    `${bipadas.length} bobina(s) · ${kg.toLocaleString('pt-BR')} kg`;
+  document.getElementById('modal-confirmar-turno').classList.add('on');
+}
+function fecharModalTurno() {
+  document.getElementById('modal-confirmar-turno').classList.remove('on');
+}
+// Envio de verdade — só chamado pelo botão "Confirmar e enviar" do resumo.
+async function confirmarEnvioTurno() {
+  fecharModalTurno();
+  if (!state.sessaoId) return;
+  try {
+    const r = await fetch(URL_BASE + `/sessoes/${state.sessaoId}/finalizar`, { method: 'POST' });
+    const d = await r.json();
+    if (!d.ok) {
+      if (r.status === 409 && Array.isArray(d.pendentes)) {
+        // Cenário 02: o turno tem bobina impressa não bipada. Reabre o modal de
+        // bipagem pendente (lista as bobinas com botão BIPAR) pra o operador
+        // resolver antes de fechar. Não fecha o turno.
+        abrirModalBipagemPendente();
+        toast(d.erro || 'Há bobinas não bipadas', 'warn');
+        return;
+      }
+      throw new Error(d.erro || 'Erro');
+    }
+    if (d.resumo && d.resumo.ok) {
+      toast(`✓ Turno encerrado · resumo impresso (${d.resumo.itens} ${d.resumo.itens === 1 ? 'bobina' : 'bobinas'})`, 'success');
+    } else {
+      toast(`✓ Turno encerrado e enviado ao Bling`, 'success');
+    }
+    // limpa estado
+    state.sessaoId = null;
+    state.itens = [];
+    state.cor = state.tipoBobina = state.largura = '';
+    state.pesoAtual = 0;
+    document.getElementById('peso-val').textContent = '0.0';
+    // capas
+    state.capaSku = state.capaMaquina = '';
+    state.capaPesoBruto = state.capaPesoAtual = state.capaTara = 0;
+    const pvc = document.getElementById('peso-val-capa'); if (pvc) pvc.textContent = '0.0';
+    renderHistorico();
+    renderHistoricoCapa();
+    aplicarBannerTurno(false);
+    // limpa seleções visuais
+    document.querySelectorAll('.cor-btn, .tipo-btn, .maq-btn, .maq-capa-btn, .capa-btn, #grid-operadores .touch-btn, #grid-larguras .touch-btn').forEach(b => b.classList.remove('selected'));
+    atualizarBotaoImprimir();
+    atualizarPreview();
+    atualizarBotaoImprimirCapa();
+    atualizarPreviewCapa();
+  } catch(e) {
+    toast('Erro: ' + e.message, 'error');
+  }
+}
+
+// ─── ABAS ───
+function setAba(qual) {
+  ABA_ATIVA = qual;
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.aba === qual));
+  document.querySelectorAll('.page').forEach(p => p.classList.toggle('active', p.id === 'page-' + qual));
+  if (qual === 'capas') {
+    renderCapas();
+    atualizarOperadorCapa();
+    renderHistoricoCapa();
+    atualizarBotaoImprimirCapa();
+    atualizarPreviewCapa();
+  } else if (qual === 'emissao') {
+    atualizarBotaoImprimir();
+    atualizarPreview();
+  }
+}
+
+// ─── OPERADORES (cadastro) ───
+function adicionarOperador() {
+  const inp = document.getElementById('novo-operador');
+  const nome = inp.value.trim();
+  if (!nome) return;
+  if (state.operadores.includes(nome)) { toast('Operador já cadastrado.', 'warn'); return; }
+  state.operadores.push(nome);
+  saveLocal('operadores', state.operadores);
+  inp.value = '';
+  renderOperadores();
+  toast(`✓ Operador "${nome}" adicionado`, 'success');
+}
+
+function removerOperador(nome) {
+  state.operadores = state.operadores.filter(o => o !== nome);
+  saveLocal('operadores', state.operadores);
+  renderOperadores();
+}
+
+function renderOperadores() {
+  // Configurações
+  const lst = document.getElementById('op-list-config');
+  lst.innerHTML = state.operadores.length
+    ? state.operadores.map(o => `<span class="op-pill">${o} <span class="x" onclick="removerOperador('${o.replace(/'/g, "\\'")}')">×</span></span>`).join('')
+    : '<span style="color:var(--muted);font-size:12px;">Nenhum operador cadastrado.</span>';
+  // Emissão
+  const g = document.getElementById('grid-operadores');
+  if (!state.operadores.length) {
+    g.innerHTML = '<div class="op-vazio">Adicione operadores em Configurações →</div>';
+  } else {
+    g.innerHTML = state.operadores.map(o =>
+      `<div class="touch-btn ${state.operador === o ? 'selected' : ''}" data-nome="${o}" onclick="selecionarOperador('${o.replace(/'/g, "\\'")}')">${o}</div>`
+    ).join('');
+  }
+}
+
+// ─── TOAST ───
+function toast(msg, tipo = 'info', dur = 3500) {
+  const area = document.getElementById('toast-area');
+  const t = document.createElement('div');
+  t.className = 'toast ' + (tipo === 'success' ? 'success' : tipo === 'error' ? 'error' : tipo === 'warn' ? 'warn' : '');
+  t.textContent = msg;
+  area.appendChild(t);
+  setTimeout(() => { t.style.opacity = '0'; t.style.transition = 'opacity 0.3s'; setTimeout(() => t.remove(), 300); }, dur);
+}
+
+// ─── CONFIRM ───
+let _confirmCb = null;
+function abrirConfirm(titulo, corpo, cb) {
+  document.getElementById('confirm-titulo').textContent = titulo;
+  document.getElementById('confirm-corpo').textContent  = corpo;
+  _confirmCb = cb;
+  document.getElementById('modal-confirm').classList.add('on');
+}
+function fecharConfirm(ok) {
+  document.getElementById('modal-confirm').classList.remove('on');
+  if (ok && _confirmCb) _confirmCb();
+  _confirmCb = null;
+}
+
+// ─── RESTAURAR SESSÃO ABERTA ───
+async function restaurarSessaoAberta() {
+  try {
+    const r = await fetch(URL_BASE + '/sessoes/abertas?tipo=extrusao');
+    if (!r.ok) return;
+    const d = await r.json();
+    if (!d.ok || !d.sessoes.length) return;
+    const s = d.sessoes[0];     // mais recente
+    state.sessaoId = s.id;
+    state.turno    = s.turno_codigo;
+    state.operador = s.operador || '';
+    state.maquina  = s.maquina  || '';
+    state.itens = (s.etiquetas || []).slice().reverse().map(e => ({
+      id:          e.id,
+      seq_sessao:  e.seq_sessao,
+      subTipo:     e.sub_tipo || null,
+      cor:         e.cor || '',
+      tipo_bobina: e.tipo_bobina || '',
+      largura:     e.largura || '',
+      capaDim:     e.sub_tipo === 'capa' ? (e.largura || '') : '',
+      peso:        e.peso || 0,
+      sku:         e.sku || '',
+      status:      e.status,
+      hora:        e.hora_impressao ? new Date(e.hora_impressao).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '--:--',
+    }));
+    aplicarBannerTurno(true);
+    renderHistorico();
+    renderHistoricoCapa();
+    atualizarOperadorCapa();
+    if (state.operador) selecionarOperador(state.operador);
+    if (state.maquina)  selecionarMaquina(state.maquina);
+    const nCap = state.itens.filter(i => i.subTipo === 'capa').length;
+    const nBob = state.itens.length - nCap;
+    toast(`↩ Retomando turno ${state.turno} · ${nBob} ${nBob===1?'bobina':'bobinas'}${nCap?` · ${nCap} ${nCap===1?'capa':'capas'}`:''}`, 'success');
+  } catch(e) {
+    console.warn('Falha ao restaurar sessão de extrusão:', e.message);
+  }
+}
+
+// Avisa o operador se a sessão dele/anterior foi auto-finalizada recentemente
+async function verificarAutoFinalizacoesRecentes() {
+  try {
+    const r = await fetch(URL_BASE + '/sessoes/auto-finalizadas-recentes?tipo=extrusao&horas=4');
+    if (!r.ok) return;
+    const d = await r.json();
+    if (!d.ok || !d.sessoes.length) return;
+    const s = d.sessoes[0];   // mais recente
+    const fimDt = new Date(s.fim);
+    const horaFim = fimDt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    const dataFim = fimDt.toLocaleDateString('pt-BR');
+    const motivo = s.bling_erro || 'AUTO-FINALIZADA';
+    if (s.total_etiquetas > 0) {
+      toast(`⏰ Sessão #${s.id} (${s.turno_codigo}, ${s.operador||'—'}) foi auto-finalizada em ${dataFim} ${horaFim} — ${s.total_etiquetas} bobinas enviadas (${motivo.includes('vazia') ? 'cancelada' : 'Bling: ' + (s.bling_status || '?')})`, 'warn', 8000);
+    } else {
+      toast(`⏰ Sessão #${s.id} (${s.turno_codigo}) foi auto-cancelada em ${dataFim} ${horaFim} (vazia)`, 'warn', 8000);
+    }
+  } catch(e) {
+    console.warn('Falha ao verificar auto-finalizações:', e.message);
+  }
+}
+
+// ─── CONFIGURAÇÕES INFO ───
+async function carregarInfo() {
+  try {
+    const r = await fetch(URL_BASE + '/healthcheck');
+    const d = await r.json();
+    document.getElementById('cfg-srv').textContent  = `localhost:${location.port || '3000'}`;
+  } catch(e) {}
+}
+
+// ─── INIT ───
+function init() {
+  renderOperadores();
+  renderHistorico();
+  renderCapas();
+  atualizarOperadorCapa();
+  pingServidor();
+  setInterval(pingServidor, 5000);
+  carregarInfo();
+
+  restaurarSessaoAberta().then(() => {
+    if (!state.sessaoId) {
+      // Sem sessão aberta — apenas avisa se houve auto-finalização recente
+      verificarAutoFinalizacoesRecentes();
+      if (state.operadores.length === 0) {
+        toast('Cadastre operadores em Configurações antes de iniciar o turno', 'warn');
+        setAba('config');
+      } else {
+        // Restaura operador e máquina da última vez (localStorage) pra que
+        // o operador não precise reselecionar tudo a cada novo turno.
+        // A sessão será criada automaticamente na primeira impressão.
+        const opUltimo  = loadLocal('operador_atual', '');
+        const maqUltima = loadLocal('maquina_atual', '');
+        if (opUltimo && state.operadores.includes(opUltimo)) selecionarOperador(opUltimo);
+        if (maqUltima === 'C1' || maqUltima === 'C2')        selecionarMaquina(maqUltima);
+        state.turno = getTurnoAtual();
+      }
+    } else {
+      atualizarBotaoImprimir();
+      atualizarPreview();
+    }
+  });
+}
+init();
+</script>
+
+<script src="/seguranca-saida.js"></script>
+</body>
+</html>
+

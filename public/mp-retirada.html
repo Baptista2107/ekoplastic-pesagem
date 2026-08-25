@@ -1,0 +1,1584 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Matéria-Prima · Retirada · v1</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;700&family=Nunito:wght@600;700;800;900&display=swap');
+
+:root {
+  --bg:        #0d0f14;
+  --surface:   #161a23;
+  --panel:     #1e2330;
+  --panel-hi:  #252b3d;
+  --border:    #2a3045;
+  --text:      #e8eaf0;
+  --muted:     #6b7490;
+  --entrada:   #00d4ff;
+  --saida:     #f07040;
+  --devol:     #00ff9d;
+  --danger:    #ff4466;
+  --warn:      #ffaa00;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  height: 100vh;
+  overflow: hidden;
+  font-family: 'Nunito', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+  user-select: none;
+}
+
+/* ─── MODO EMBED (quando dentro de um iframe do shell unificado) ─── */
+body.embed > header,
+body.embed > .layout > .menu { display: none !important; }
+body.embed > .layout {
+  height: 100vh;
+  grid-template-columns: 1fr;
+}
+
+/* ─── HEADER ─── */
+header {
+  height: 44px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 20px;
+  flex-shrink: 0;
+}
+.logo {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px; font-weight: 700; letter-spacing: 3px;
+  color: var(--saida);
+}
+.crumb { font-size: 11px; color: var(--muted); letter-spacing: 1px; }
+.crumb b { color: var(--text); font-weight: 800; }
+.header-right { display: flex; align-items: center; gap: 16px; }
+.clock {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 15px; font-weight: 700;
+  color: var(--devol); letter-spacing: 2px;
+}
+.srv-status {
+  font-size: 11px; font-weight: 700; letter-spacing: 0.5px;
+  padding: 4px 10px; border-radius: 6px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid var(--border); color: var(--muted);
+}
+.srv-status.on  { color: var(--devol);  border-color: rgba(0,255,157,0.4); background: rgba(0,255,157,0.08); }
+.srv-status.off { color: var(--danger); border-color: rgba(255,68,102,0.4); background: rgba(255,68,102,0.08); }
+.btn-icon {
+  background: transparent; border: 1px solid var(--border);
+  border-radius: 6px; width: 32px; height: 32px;
+  color: var(--muted); font-size: 14px; cursor: pointer;
+}
+.btn-icon:hover { color: var(--text); border-color: var(--panel-hi); }
+
+/* ─── LAYOUT ─── */
+.layout {
+  height: calc(100vh - 44px);
+  display: grid;
+  grid-template-columns: 168px 1fr;
+}
+
+/* ─── MENU LATERAL ─── */
+.menu {
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  padding: 14px 12px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.menu-titulo {
+  font-size: 10px; font-weight: 800; letter-spacing: 2px;
+  color: var(--muted); padding: 0 4px; margin-bottom: 4px;
+}
+.menu-item {
+  background: var(--panel);
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 10px;
+  cursor: pointer;
+  display: flex; align-items: center; gap: 10px;
+  transition: all 0.15s;
+  text-decoration: none;
+  color: inherit;
+}
+.menu-item .icone { font-size: 20px; width: 24px; text-align: center; }
+.menu-item .nome { font-size: 13px; font-weight: 800; letter-spacing: 0.3px; }
+.menu-item:hover { border-color: var(--panel-hi); background: var(--panel-hi); }
+.menu-item.active {
+  background: rgba(240, 112, 64, 0.10);
+  border-color: var(--saida);
+}
+.menu-item.active .nome { color: var(--saida); }
+.menu-rodape {
+  margin-top: auto; padding-top: 12px;
+  border-top: 1px solid var(--border);
+  font-size: 10px; color: var(--muted);
+  font-family: 'IBM Plex Mono', monospace;
+  letter-spacing: 1px; text-align: center;
+}
+
+/* ─── ÁREA CENTRAL ─── */
+.central {
+  padding: 12px 16px;
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  grid-template-rows: auto 1fr auto;
+  gap: 10px 14px;
+  overflow: hidden;
+}
+.subtabs        { grid-column: 1; grid-row: 1; }
+.fluxo          { grid-column: 1; grid-row: 2; min-height: 0; overflow-y: auto; }
+.acoes          { grid-column: 1; grid-row: 3; }
+.historico-side { grid-column: 2; grid-row: 1 / -1; }
+
+/* Sub-tabs */
+.subtabs {
+  display: flex;
+  gap: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px;
+}
+.subtab {
+  flex: 1;
+  padding: 10px 16px;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 13px; font-weight: 800; letter-spacing: 0.5px;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: all 0.15s;
+}
+.subtab:hover { color: var(--text); background: rgba(255,255,255,0.03); }
+.subtab.ativa {
+  background: rgba(240,112,64,0.12);
+  color: var(--saida);
+}
+
+/* Conteúdo do sub-fluxo */
+.fluxo {
+  background: var(--panel);
+  border: 1.5px solid var(--border);
+  border-radius: 10px;
+  padding: 14px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.fluxo.scroll-hidden { overflow: hidden; }
+.fluxo-vazio { display: none; }
+
+/* ─── BIPAGEM ─── */
+.bipa-display {
+  background: rgba(240,112,64,0.06);
+  border: 2px dashed rgba(240,112,64,0.4);
+  border-radius: 10px;
+  padding: 32px 20px;
+  text-align: center;
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+}
+.bipa-display .icone { font-size: 56px; opacity: 0.7; }
+.bipa-display .titulo {
+  font-size: 18px; font-weight: 800; color: var(--saida);
+  letter-spacing: 0.5px;
+}
+.bipa-display .sub {
+  font-size: 12px; color: var(--muted); max-width: 380px;
+  line-height: 1.5;
+}
+.bipa-display .btn-simular {
+  margin-top: 6px;
+  background: transparent;
+  border: 1.5px solid var(--muted);
+  color: var(--muted);
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 11px; font-weight: 700; letter-spacing: 0.8px;
+  cursor: pointer;
+  font-family: 'IBM Plex Mono', monospace;
+}
+.bipa-display .btn-simular:hover { color: var(--text); border-color: var(--text); }
+
+/* Card da última retirada confirmada */
+.ultima-retirada {
+  background: linear-gradient(135deg, rgba(0,255,157,0.10), rgba(0,255,157,0.02));
+  border: 1.5px solid rgba(0,255,157,0.4);
+  border-radius: 10px;
+  padding: 14px 16px;
+  display: none;
+  align-items: center;
+  gap: 14px;
+  font-size: 12px;
+  animation: bounce-in 0.3s ease-out;
+}
+@keyframes bounce-in {
+  0%   { transform: scale(0.9); opacity: 0; }
+  60%  { transform: scale(1.02); }
+  100% { transform: scale(1); opacity: 1; }
+}
+.ultima-retirada.ativo { display: flex; }
+.ultima-retirada .ok-ico {
+  font-size: 28px;
+  flex-shrink: 0;
+}
+.ultima-retirada .corpo { flex: 1; }
+.ultima-retirada .titulo {
+  font-size: 11px; letter-spacing: 1.5px;
+  color: var(--devol); font-weight: 700; margin-bottom: 2px;
+}
+.ultima-retirada .det {
+  font-size: 13px; font-weight: 700; color: var(--text);
+}
+.ultima-retirada .meta {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px; color: var(--muted);
+  margin-top: 2px;
+}
+
+/* ─── SACOS (aditivos) ─── */
+.avulso-sec { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); }
+.avulso-lb { font-size: 11px; font-weight: 800; letter-spacing: 1px; color: var(--muted); margin-bottom: 9px; }
+.avulso-row { display: flex; align-items: center; gap: 12px; }
+.avulso-input { width: 150px; height: 52px; padding: 0 14px; border-radius: 10px;
+                border: 1.5px solid var(--warn); background: rgba(0,0,0,0.28); color: var(--txt);
+                font-size: 19px; font-weight: 800; text-align: center; font-family: inherit; }
+.avulso-dica { font-size: 12px; color: var(--muted); }
+.bloco {
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+.bloco-titulo {
+  font-size: 10px; letter-spacing: 2px; font-weight: 800;
+  color: var(--muted); text-transform: uppercase;
+  margin-bottom: 9px;
+}
+
+.opcoes {
+  display: flex; gap: 8px; flex-wrap: wrap;
+}
+.opc {
+  background: var(--panel);
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  cursor: pointer;
+  font-size: 13px; font-weight: 700;
+  color: var(--text);
+  transition: all 0.15s;
+}
+.opc:hover { border-color: var(--panel-hi); background: var(--panel-hi); }
+.opc.ativa {
+  background: rgba(240,112,64,0.12);
+  border-color: var(--saida);
+  color: var(--saida);
+}
+
+.par {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.par .bloco { margin: 0; }
+
+.contador-bloco { text-align: center; }
+.contador-row {
+  display: flex; align-items: center; justify-content: center; gap: 14px;
+  margin: 4px 0 8px;
+}
+.btn-cont {
+  width: 48px; height: 48px;
+  background: var(--panel);
+  border: 1.5px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  font-size: 24px; font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-cont:hover { background: var(--panel-hi); border-color: var(--saida); color: var(--saida); }
+.btn-cont:active { transform: scale(0.95); }
+.btn-cont:disabled { opacity: 0.3; cursor: not-allowed; }
+.cont-input {
+  width: 90px; height: 56px;
+  background: var(--panel);
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 28px; font-weight: 800;
+  text-align: center;
+  outline: none;
+}
+.cont-input:focus { border-color: var(--saida); }
+.contador-info {
+  font-size: 12px;
+  font-family: 'IBM Plex Mono', monospace;
+  color: var(--muted);
+  letter-spacing: 1px;
+}
+.contador-info b { color: var(--saida); font-weight: 700; }
+
+/* ─── ATALHOS DE QUANTIDADE ─── */
+.quantidades-rapidas {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 6px;
+  margin-top: 10px;
+}
+.btn-qtd-rapida {
+  background: var(--panel);
+  border: 1.5px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 0;
+  color: var(--text);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 15px; font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-qtd-rapida:hover {
+  border-color: var(--saida);
+  color: var(--saida);
+  background: var(--panel-hi);
+}
+.btn-qtd-rapida:active { transform: scale(0.95); }
+.btn-qtd-rapida.ativo {
+  border-color: var(--saida);
+  color: var(--saida);
+  background: rgba(240,112,64,0.12);
+}
+
+.btn-add {
+  background: linear-gradient(135deg, var(--saida), #e85a30);
+  border: none;
+  color: white;
+  padding: 12px 18px;
+  border-radius: 8px;
+  font-size: 13px; font-weight: 800; letter-spacing: 1px;
+  cursor: pointer;
+  transition: all 0.15s;
+  width: 100%;
+}
+.btn-add:hover { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(240,112,64,0.3); }
+.btn-add:disabled { opacity: 0.4; cursor: not-allowed; transform: none; box-shadow: none; }
+
+/* ─── HISTÓRICO DE ITENS (coluna lateral direita) ─── */
+.historico {
+  background: var(--panel);
+  border: 1.5px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+.hist-head {
+  display: flex; justify-content: space-between; align-items: center;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.hist-titulo {
+  font-size: 11px; letter-spacing: 1.5px; font-weight: 800;
+  color: var(--muted); text-transform: uppercase;
+}
+.hist-totais {
+  display: flex; gap: 12px; font-size: 11px;
+  font-family: 'IBM Plex Mono', monospace;
+  color: var(--muted);
+}
+.hist-totais b { color: var(--saida); font-weight: 700; }
+.itens-lista {
+  overflow-y: auto;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.item {
+  display: grid;
+  grid-template-columns: 60px 1fr auto auto;
+  gap: 10px;
+  padding: 8px 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 12px;
+  align-items: center;
+}
+.item .id-tag {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  color: var(--saida);
+  font-weight: 700;
+}
+.item .det { color: var(--text); }
+.item .det b { font-weight: 700; }
+.item .det .sub-info {
+  font-size: 10px; color: var(--muted);
+  margin-top: 1px;
+  font-family: 'IBM Plex Mono', monospace;
+  letter-spacing: 0.5px;
+}
+.item .peso {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px; font-weight: 700;
+  color: var(--saida);
+  text-align: right;
+}
+.item .hora {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px; color: var(--muted);
+  margin-top: 1px;
+  text-align: right;
+}
+.item.aditivo { border-left: 3px solid var(--warn); }
+.item.bipagem { border-left: 3px solid var(--saida); }
+.item-x {
+  width: 40px; height: 40px;
+  background: rgba(255,80,80,0.12);
+  color: #ff6b6b;
+  border: 1px solid rgba(255,80,80,0.45);
+  border-radius: 6px;
+  font-size: 16px; font-weight: 800; line-height: 1;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.item-x:active { background: rgba(255,80,80,0.28); }
+.item-vazio {
+  text-align: center;
+  color: var(--muted);
+  padding: 24px;
+  font-size: 12px;
+}
+.item-vazio .ico { font-size: 32px; opacity: 0.4; display: block; margin-bottom: 6px; }
+
+/* ─── BOTÕES INFERIORES ─── */
+.acoes {
+  display: grid;
+  grid-template-columns: 1fr 56px;
+  gap: 8px;
+}
+.btn-relatorio {
+  width: 100%; margin-bottom: 10px; padding: 10px 14px;
+  background: transparent; color: var(--muted);
+  border: 1.5px solid var(--panel); border-radius: 10px;
+  font-size: 13px; font-weight: 800; letter-spacing: .5px; cursor: pointer; transition: all 0.15s;
+}
+.btn-relatorio:hover:not(:disabled) { border-color: var(--text); color: var(--text); }
+.btn-relatorio:active:not(:disabled) { transform: translateY(1px); }
+.btn-relatorio:disabled { opacity: .4; cursor: not-allowed; }
+
+.btn-finalizar {
+  background: linear-gradient(135deg, var(--devol), #00d986);
+  color: #0d0f14;
+  border: none;
+  padding: 14px 18px;
+  border-radius: 10px;
+  font-size: 14px; font-weight: 900; letter-spacing: 1.5px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-finalizar:hover { transform: translateY(-1px); box-shadow: 0 8px 20px rgba(0,255,157,0.25); }
+.btn-finalizar:disabled {
+  background: var(--panel); color: var(--muted);
+  cursor: not-allowed; transform: none; box-shadow: none;
+}
+.btn-cancelar {
+  background: var(--panel);
+  border: 1.5px solid var(--border);
+  color: var(--danger);
+  border-radius: 10px;
+  font-size: 18px;
+  cursor: pointer;
+}
+.btn-cancelar:hover { border-color: var(--danger); background: rgba(255,68,102,0.08); }
+.btn-cancelar:disabled { opacity: 0.3; cursor: not-allowed; }
+
+/* ─── TOAST ─── */
+.toast-wrap {
+  position: fixed; bottom: 24px; right: 24px;
+  display: flex; flex-direction: column; gap: 8px;
+  z-index: 1000;
+}
+.toast {
+  background: var(--panel);
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 16px;
+  display: flex; align-items: center; gap: 10px;
+  font-size: 13px;
+  min-width: 260px;
+  box-shadow: 0 10px 28px rgba(0,0,0,0.4);
+  animation: toast-in 0.2s ease-out;
+}
+@keyframes toast-in { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+.toast .tico { font-size: 18px; }
+.toast.sucesso { border-color: var(--devol); }
+.toast.sucesso .tico { color: var(--devol); }
+.toast.erro    { border-color: var(--danger); }
+.toast.erro    .tico { color: var(--danger); }
+.toast.warn    { border-color: var(--warn); }
+.toast.warn    .tico { color: var(--warn); }
+.toast.info    { border-color: var(--entrada); }
+.toast.info    .tico { color: var(--entrada); }
+
+/* ─── MODAL DE BLOQUEIO (etiqueta já consumida) ─── */
+.modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.7);
+  backdrop-filter: blur(6px);
+  display: none;
+  align-items: center; justify-content: center;
+  z-index: 2000;
+}
+.modal-overlay.ativo { display: flex; }
+.modal {
+  background: var(--surface);
+  border: 2px solid var(--danger);
+  border-radius: 14px;
+  padding: 28px 30px;
+  max-width: 460px;
+  text-align: center;
+  box-shadow: 0 24px 60px rgba(0,0,0,0.6);
+}
+.modal .icone-grande {
+  font-size: 56px;
+  margin-bottom: 12px;
+}
+.modal .titulo {
+  font-size: 18px; font-weight: 900; letter-spacing: 0.5px;
+  color: var(--danger); margin-bottom: 10px;
+}
+.modal .info-bloco {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px;
+  margin: 14px 0;
+  text-align: left;
+  font-size: 13px;
+}
+.modal .info-bloco .lbl {
+  font-size: 10px; letter-spacing: 1.5px; color: var(--muted);
+  text-transform: uppercase; font-weight: 700;
+}
+.modal .info-bloco .val {
+  font-family: 'IBM Plex Mono', monospace;
+  font-weight: 700; color: var(--text);
+  display: block;
+  margin-top: 2px; margin-bottom: 6px;
+}
+.modal .info-bloco .val:last-child { margin-bottom: 0; }
+.modal .btn-fechar {
+  background: var(--danger);
+  border: none;
+  color: white;
+  padding: 12px 28px;
+  border-radius: 8px;
+  font-size: 13px; font-weight: 800; letter-spacing: 1px;
+  cursor: pointer;
+  margin-top: 8px;
+}
+.modal .btn-fechar:hover { filter: brightness(1.1); }
+
+/* ── Teclado na tela (touch, sem teclado físico) ── */
+.kp-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.78); display:none; align-items:center; justify-content:center; z-index:9999; }
+.kp-overlay.ativo { display:flex; }
+.kp-box { background:#161b22; border:1px solid #30363d; border-radius:14px; padding:20px; width:360px; max-width:94vw; box-shadow:0 24px 64px rgba(0,0,0,0.65); }
+.kp-titulo { color:#e6edf3; font-size:16px; font-weight:700; text-align:center; margin-bottom:12px; }
+.kp-display { background:#0d1117; border:1px solid #30363d; border-radius:8px; color:#58a6ff; font-size:32px; font-weight:800; letter-spacing:3px; text-align:center; padding:14px 10px; margin-bottom:14px; min-height:34px; font-family:monospace; }
+.kp-prefixos { display:grid; grid-template-columns:repeat(5,1fr); gap:6px; margin-bottom:10px; }
+.kp-prefixos button { background:#21262d; border:1px solid #30363d; color:#c9d1d9; font-size:18px; font-weight:800; padding:12px 0; border-radius:8px; cursor:pointer; }
+.kp-prefixos button:active { background:#388bfd; color:#fff; }
+.kp-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:14px; }
+.kp-grid button { background:#21262d; border:1px solid #30363d; color:#e6edf3; font-size:26px; font-weight:700; padding:18px 0; border-radius:8px; cursor:pointer; }
+.kp-grid button:active { background:#30363d; }
+.kp-grid button.kp-aux { color:#8b949e; font-size:22px; }
+.kp-acoes { display:grid; grid-template-columns:1fr 1.2fr; gap:10px; }
+.kp-acoes button { padding:16px 0; border-radius:8px; font-size:16px; font-weight:800; cursor:pointer; border:1px solid transparent; }
+.kp-cancel { background:#21262d; color:#c9d1d9; border-color:#30363d; }
+.kp-ok { background:#238636; color:#fff; }
+.kp-ok:active { background:#2ea043; }
+
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex;align-items:center;gap:24px">
+    <div class="logo">EKOPLASTIC</div>
+    <div class="crumb"><a href="/materia-prima.html" style="color:var(--muted);text-decoration:none">MP</a> &nbsp;›&nbsp; <b>RETIRADA</b></div>
+  </div>
+  <div class="header-right">
+    <div class="clock" id="clock">--:--:--</div>
+    <div class="srv-status off" id="srv-status">SERVIDOR ...</div>
+    <button class="btn-icon" onclick="location.href='/materia-prima.html'" title="Voltar para Matéria-Prima">📦</button>
+    <button class="btn-icon" onclick="location.href='/'" title="Início">🏠</button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- MENU LATERAL                                 -->
+  <!-- ═══════════════════════════════════════════ -->
+  <aside class="menu">
+    <div class="menu-titulo">OPERAÇÃO</div>
+    <div class="menu-item active">
+      <span class="icone">📤</span>
+      <span class="nome">RETIRADA</span>
+    </div>
+    <a href="/" class="menu-item">
+      <span class="icone">⏏</span>
+      <span class="nome">Voltar</span>
+    </a>
+    <div class="menu-rodape">v1 · RETIRADA</div>
+  </aside>
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- ÁREA CENTRAL                                 -->
+  <!-- ═══════════════════════════════════════════ -->
+  <section class="central">
+
+    <!-- Sub-tabs -->
+    <div class="subtabs">
+      <button class="subtab ativa" data-tipo="bipagem" onclick="setFluxo('bipagem')">
+        🏷 BIPAGEM &nbsp;<span style="font-size:10px;opacity:0.7">GBD / POLI / CARBO</span>
+      </button>
+      <button class="subtab" data-tipo="sacos" onclick="setFluxo('sacos')">
+        📦 SACOS 25 KG &nbsp;<span style="font-size:10px;opacity:0.7">PIG / DESSEC</span>
+      </button>
+    </div>
+
+    <!-- Conteúdo do fluxo -->
+    <div class="fluxo" id="fluxo-bipagem">
+      <div class="bipa-display">
+        <div class="icone">🏷️</div>
+        <div class="titulo">Aguardando bipagem</div>
+        <div class="sub">
+          Posicione o leitor sobre o código de barras da etiqueta de matéria-prima.<br>
+          O palete inteiro vai ser registrado como saída.
+        </div>
+        <button class="btn-simular" onclick="simularBipe()">⌨ Digitar código</button>
+        <button class="btn-simular" onclick="reimprimirEtiqueta()">🖨 Reimprimir etiqueta</button>
+      </div>
+      <div class="ultima-retirada" id="ultima-retirada">
+        <div class="ok-ico">✓</div>
+        <div class="corpo">
+          <div class="titulo">ÚLTIMA RETIRADA CONFIRMADA</div>
+          <div class="det" id="ult-det">—</div>
+          <div class="meta" id="ult-meta">—</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="fluxo" id="fluxo-sacos" style="display:none">
+
+      <div class="par">
+        <div class="bloco">
+          <div class="bloco-titulo">TIPO DE ADITIVO</div>
+          <div class="opcoes" id="opc-tipo"></div>
+        </div>
+        <div class="bloco" id="bl-cor" style="display:none">
+          <div class="bloco-titulo">COR DO PIGMENTO</div>
+          <div class="opcoes" id="opc-cor"></div>
+        </div>
+      </div>
+
+      <div class="bloco">
+        <div class="bloco-titulo">FORNECEDOR</div>
+        <div class="opcoes" id="opc-forn"></div>
+      </div>
+
+      <div class="bloco contador-bloco">
+        <div class="bloco-titulo">QUANTIDADE DE SACOS · 25 KG CADA</div>
+        <div class="contador-row">
+          <button class="btn-cont" onclick="ajustarSacos(-1)">−</button>
+          <input type="number" class="cont-input" id="sacos-input" value="0" min="0" oninput="ajustarSacos(0)">
+          <button class="btn-cont" onclick="ajustarSacos(1)">+</button>
+        </div>
+        <div class="contador-info" id="sacos-info"><b>0 sacos</b> · 0 kg</div>
+        <div class="quantidades-rapidas">
+          <button class="btn-qtd-rapida" data-q="5"  onclick="setSacos(5)">5</button>
+          <button class="btn-qtd-rapida" data-q="10" onclick="setSacos(10)">10</button>
+          <button class="btn-qtd-rapida" data-q="20" onclick="setSacos(20)">20</button>
+          <button class="btn-qtd-rapida" data-q="30" onclick="setSacos(30)">30</button>
+          <button class="btn-qtd-rapida" data-q="40" onclick="setSacos(40)">40</button>
+          <button class="btn-qtd-rapida" data-q="50" onclick="setSacos(50)">50</button>
+        </div>
+
+        <div class="avulso-sec">
+          <div class="avulso-lb">SACO ABERTO / FORA DO PADRÃO</div>
+          <div class="avulso-row">
+            <input type="text" inputmode="decimal" class="avulso-input" id="avulso-input"
+                   placeholder="kg  (ex.: 12,5)" oninput="ajustarSacos(0)">
+            <span class="avulso-dica">peso avulso, somado aos sacos</span>
+          </div>
+        </div>
+      </div>
+
+      <button class="btn-add" id="btn-add-aditivo" onclick="adicionarAditivo()" disabled>
+        ➕ ADICIONAR ITEM
+      </button>
+
+    </div>
+
+    <!-- ═══════════════════════════════════════════ -->
+    <!-- AÇÕES                                        -->
+    <!-- ═══════════════════════════════════════════ -->
+    <button class="btn-relatorio" id="btn-relatorio" onclick="relatorioAtual()" disabled>🧾 Relatório atual</button>
+    <div class="acoes">
+      <button class="btn-finalizar" id="btn-finalizar" onclick="finalizar()" disabled>
+        ✓ FINALIZAR · ENVIAR AO BLING
+      </button>
+      <button class="btn-cancelar" id="btn-cancelar" onclick="cancelar()" disabled title="Cancelar sessão">
+        ✕
+      </button>
+    </div>
+
+    <!-- ═══════════════════════════════════════════ -->
+    <!-- HISTÓRICO DA SESSÃO (coluna lateral direita) -->
+    <!-- ═══════════════════════════════════════════ -->
+    <div class="historico-side">
+      <div class="historico">
+        <div class="hist-head">
+          <span class="hist-titulo">ITENS DA RETIRADA</span>
+          <div class="hist-totais">
+            <span id="tot-itens">0 itens</span>
+            <span><b id="tot-kg">0,0 kg</b></span>
+          </div>
+        </div>
+        <div class="itens-lista" id="hist-lista">
+          <div class="item-vazio">
+            <span class="ico">📋</span>
+            Nenhum item retirado
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </section>
+</div>
+
+<!-- ═══════════════════════════════════════════ -->
+<!-- MODAL: ETIQUETA JÁ CONSUMIDA                 -->
+<!-- ═══════════════════════════════════════════ -->
+<div class="modal-overlay" id="modal-bloqueado">
+  <div class="modal">
+    <div class="icone-grande">🚫</div>
+    <div class="titulo">ETIQUETA JÁ FOI RETIRADA</div>
+    <div style="font-size:13px;color:var(--muted)">Esta matéria-prima já foi enviada para a extrusão anteriormente. Não pode ser retirada novamente.</div>
+    <div class="info-bloco" id="bloq-info"></div>
+    <button class="btn-fechar" onclick="fecharBloqueio()">FECHAR · CONTINUAR</button>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-confirmar">
+  <div class="modal">
+    <div class="icone-grande" id="conf-icone">📤</div>
+    <div class="titulo" id="conf-titulo">Confirmar</div>
+    <div style="font-size:14px;color:var(--muted);line-height:1.6" id="conf-texto"></div>
+    <div class="info-bloco" id="conf-info"></div>
+    <div style="display:flex;gap:10px;margin-top:16px">
+      <button class="btn-fechar" style="flex:1;background:transparent;border:1.5px solid var(--border);color:var(--txt)"
+              onclick="fecharConfirmacao(false)">← VOLTAR</button>
+      <button class="btn-fechar" style="flex:1" id="conf-ok" onclick="fecharConfirmacao(true)">CONFIRMAR</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-wrap" id="toast-wrap"></div>
+
+<!-- Teclado na tela (touch) — aparece quando é preciso digitar um código de etiqueta -->
+<div class="kp-overlay" id="keypad-modal">
+  <div class="kp-box">
+    <div class="kp-titulo" id="keypad-titulo">Digite o código</div>
+    <div class="kp-display" id="keypad-display">R</div>
+    <div class="kp-prefixos">
+      <button onclick="kpPrefix('R')">R</button>
+      <button onclick="kpPrefix('T')">T</button>
+      <button onclick="kpPrefix('S')">S</button>
+      <button onclick="kpPrefix('E')">E</button>
+      <button onclick="kpPrefix('O')">O</button>
+    </div>
+    <div class="kp-grid">
+      <button onclick="kpDigit('1')">1</button>
+      <button onclick="kpDigit('2')">2</button>
+      <button onclick="kpDigit('3')">3</button>
+      <button onclick="kpDigit('4')">4</button>
+      <button onclick="kpDigit('5')">5</button>
+      <button onclick="kpDigit('6')">6</button>
+      <button onclick="kpDigit('7')">7</button>
+      <button onclick="kpDigit('8')">8</button>
+      <button onclick="kpDigit('9')">9</button>
+      <button class="kp-aux" onclick="kpClear()">C</button>
+      <button onclick="kpDigit('0')">0</button>
+      <button class="kp-aux" onclick="kpBack()">⌫</button>
+    </div>
+    <div class="kp-acoes">
+      <button class="kp-cancel" onclick="kpCancel()">Cancelar</button>
+      <button class="kp-ok" onclick="kpOk()">✓ OK</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ════════════════════════════════════════════════════════════════════
+//   CONFIGURAÇÃO
+// ════════════════════════════════════════════════════════════════════
+
+const URL_BASE   = '';
+const URL_HEALTH = URL_BASE + '/healthcheck';
+const URL_SESS   = URL_BASE + '/sessoes';
+const URL_ETIQ   = URL_BASE + '/etiquetas';
+const URL_ADITV  = URL_BASE + '/retirada/aditivo';
+
+const KG_SACO = 25;
+
+// Catálogo de aditivos (matKey, cor opcional, fornecedores) — sincronizado com o cadastro Bling
+const ADITIVOS = {
+  PIG: {
+    label:       'Pigmento',
+    cores:       ['Amarelo', 'Branco', 'Preto', 'Verde'],
+    fornecedores:['Cristal Master', 'FG', 'Karina'],
+  },
+  DESSEC: {
+    label:       'Dessecante',
+    cores:       null,                              // não tem cor
+    fornecedores:['Cristal Master', 'FG', 'Karina', 'Secmil'],
+  },
+};
+
+// ════════════════════════════════════════════════════════════════════
+//   ESTADO
+// ════════════════════════════════════════════════════════════════════
+
+const estado = {
+  fluxo:        'bipagem',          // 'bipagem' | 'sacos'
+  sessaoId:     null,               // criada na 1ª retirada
+  itens:        [],                 // lista local de itens retirados na sessão atual
+  // Sub-fluxo de sacos
+  tipo:         null,               // 'PIG' | 'DESSEC'
+  cor:          null,
+  fornecedor:   null,
+  sacos:        0,
+  // Outros
+  servidorOnline: false,
+  buffer:       '',                 // buffer da captura global do leitor
+  bufferTimer:  null,
+};
+
+// ════════════════════════════════════════════════════════════════════
+//   UTILITÁRIOS
+// ════════════════════════════════════════════════════════════════════
+
+function fmtKg(n) { return n.toFixed(1).replace('.', ','); }
+function fmtHora() {
+  const d = new Date();
+  return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+}
+function tickRel() {
+  const d = new Date();
+  document.getElementById('clock').textContent =
+    String(d.getHours()).padStart(2,'0')+':'+
+    String(d.getMinutes()).padStart(2,'0')+':'+
+    String(d.getSeconds()).padStart(2,'0');
+}
+setInterval(tickRel, 1000); tickRel();
+
+function beep(freq, dur, vol=0.04) {
+  try {
+    const ctx = new (window.AudioContext||window.webkitAudioContext)();
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.connect(g); g.connect(ctx.destination);
+    o.frequency.value = freq;
+    g.gain.value = vol;
+    o.start();
+    setTimeout(()=>{ o.stop(); ctx.close(); }, dur*1000);
+  } catch(e){}
+}
+function beepOk()   { beep(880, 0.12); }
+function beepErro() { beep(220, 0.30, 0.06); }
+function beepWarn() { beep(440, 0.18, 0.05); }
+
+function showToast(tipo, ico, txt, dur=3500) {
+  const wrap = document.getElementById('toast-wrap');
+  const el = document.createElement('div');
+  el.className = 'toast ' + tipo;
+  el.innerHTML = `<span class="tico">${ico}</span><span>${txt}</span>`;
+  wrap.appendChild(el);
+  setTimeout(()=> { el.style.opacity = '0'; el.style.transform = 'translateX(20px)'; }, dur-300);
+  setTimeout(()=> el.remove(), dur);
+}
+
+// ════════════════════════════════════════════════════════════════════
+//   STATUS DO SERVIDOR
+// ════════════════════════════════════════════════════════════════════
+
+async function checarServidor() {
+  try {
+    const r = await fetch(URL_HEALTH);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    estado.servidorOnline = d.ok;
+    const el = document.getElementById('srv-status');
+    el.className = 'srv-status ' + (d.ok ? 'on' : 'off');
+    el.textContent = d.ok
+      ? 'SERVIDOR OK · BLING ' + (d.bling.autenticado ? 'OK' : 'OFF')
+      : 'SERVIDOR OFFLINE';
+  } catch(e) {
+    estado.servidorOnline = false;
+    const el = document.getElementById('srv-status');
+    el.className = 'srv-status off';
+    el.textContent = 'SERVIDOR OFFLINE';
+  }
+}
+checarServidor();
+setInterval(checarServidor, 5000);
+
+// ════════════════════════════════════════════════════════════════════
+//   SESSÃO
+// ════════════════════════════════════════════════════════════════════
+
+async function garantirSessao() {
+  if (estado.sessaoId) return estado.sessaoId;
+  try {
+    const r = await fetch(URL_SESS, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tipo: 'retirada' }),
+    });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.erro || 'falha ao abrir sessão');
+    estado.sessaoId = d.sessao_id;
+    console.log('Sessão de retirada aberta: #' + d.sessao_id);
+    return d.sessao_id;
+  } catch(e) {
+    showToast('erro', '✗', 'Erro ao abrir sessão: ' + e.message);
+    beepErro();
+    return null;
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════
+//   SUB-FLUXO: BIPAGEM (Grãos + CARBO)
+// ════════════════════════════════════════════════════════════════════
+
+function setFluxo(f) {
+  estado.fluxo = f;
+  document.querySelectorAll('.subtab').forEach(b => {
+    b.classList.toggle('ativa', b.dataset.tipo === f);
+  });
+  document.getElementById('fluxo-bipagem').style.display = (f === 'bipagem') ? 'flex' : 'none';
+  document.getElementById('fluxo-sacos').style.display   = (f === 'sacos')   ? 'flex' : 'none';
+}
+
+// Captura global de teclado: o leitor Comtac HS-960 envia caracteres + Enter como teclado USB.
+// Só captura na aba BIPAGEM e fora de inputs editáveis.
+let _bufKey = '';
+document.addEventListener('keydown', (e) => {
+  if (estado.fluxo !== 'bipagem') return;
+  const tag = (e.target.tagName || '').toUpperCase();
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+  if (document.getElementById('modal-bloqueado').classList.contains('ativo')) return;
+  if (document.getElementById('keypad-modal').classList.contains('ativo')) return;
+  if (e.key === 'Enter') {
+    if (_bufKey.length > 0) {
+      processarBipe(_bufKey);
+      _bufKey = '';
+    }
+    e.preventDefault();
+  } else if (e.key.length === 1 && /^[A-Za-z0-9]$/.test(e.key)) {
+    _bufKey += e.key;
+  }
+});
+
+async function processarBipe(raw) {
+  // Aceita ID puro ('R0000005', 'T0000001', 'S0000001') ou string completa
+  const m = raw.match(/[RTS]\d{7}/);
+  if (!m) {
+    showToast('warn', '⚠', 'Bipagem não reconhecida: ' + raw);
+    beepWarn();
+    return;
+  }
+  const id = m[0];
+
+  // 1) Garante sessão
+  const sessaoId = await garantirSessao();
+  if (!sessaoId) return;
+
+  // 2) Tenta consumir
+  try {
+    const r = await fetch(`${URL_ETIQ}/${id}/consumir`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessao_id: sessaoId }),
+    });
+    const d = await r.json();
+
+    if (r.status === 409 && d.ja_consumida) {
+      // Etiqueta já consumida — abre modal de bloqueio
+      mostrarBloqueio(d.etiqueta, d.consumo);
+      beepErro();
+      return;
+    }
+    if (!d.ok) {
+      showToast('erro', '✗', d.erro || `Falha ao retirar ${id}`);
+      beepErro();
+      return;
+    }
+
+    // 3) Sucesso → adiciona à lista local
+    const ev = d.etiqueta_virtual;
+    const itemLocal = {
+      virtId:     ev.id,
+      origId:     ev.ref_id,
+      tipo:       'bipagem',
+      materialKey: ev.material_key,
+      materialNome: ev.material_nome || ev.material_key,
+      cor:        ev.cor,
+      fornecedor: ev.fornecedor,
+      lote:       ev.lote,
+      peso:       ev.peso,
+      hora:       fmtHora(),
+    };
+    estado.itens.unshift(itemLocal);
+    renderHistorico();
+    mostrarUltimaRetirada(itemLocal);
+    beepOk();
+
+  } catch(e) {
+    showToast('erro', '✗', 'Erro de comunicação: ' + e.message);
+    beepErro();
+  }
+}
+
+// ── Teclado na tela (touch, sem teclado físico) ──────────────────────
+let _kpValue = 'R';
+let _kpCallback = null;
+function kpAbrir(titulo, valorInicial, cb) {
+  _kpValue = (valorInicial || 'R').toUpperCase();
+  _kpCallback = cb;
+  document.getElementById('keypad-titulo').textContent = titulo;
+  kpRender();
+  document.getElementById('keypad-modal').classList.add('ativo');
+}
+function kpRender() { document.getElementById('keypad-display').textContent = _kpValue || '\u00A0'; }
+function kpDigits() { return _kpValue.replace(/^[A-Z]/, ''); }
+function kpClick() { try { beep(700, 0.03); } catch(e) {} }
+function kpPrefix(p) { _kpValue = p + kpDigits(); kpRender(); kpClick(); }
+function kpDigit(d) { if (kpDigits().length >= 7) { kpClick(); return; } _kpValue += d; kpRender(); kpClick(); }
+function kpBack()  { _kpValue = _kpValue.slice(0, -1); kpRender(); kpClick(); }
+function kpClear() { _kpValue = 'R'; kpRender(); kpClick(); }
+function kpCancel() { document.getElementById('keypad-modal').classList.remove('ativo'); _kpCallback = null; }
+function kpOk() {
+  const v = _kpValue.trim().toUpperCase();
+  document.getElementById('keypad-modal').classList.remove('ativo');
+  const cb = _kpCallback; _kpCallback = null;
+  if (cb && v) cb(v);
+}
+
+function simularBipe() {
+  // Entrada manual via teclado na tela: quando a etiqueta não lê no leitor.
+  kpAbrir('Digitar código da etiqueta', 'R', code => processarBipe(code));
+}
+
+// Reimprime uma etiqueta existente (mesmo número) quando o código de barras
+// impresso saiu fraco/borrado e não lê. Não cria etiqueta nova nem retira nada.
+function reimprimirEtiqueta() {
+  kpAbrir('Reimprimir etiqueta', 'R', code => doReimprimir(code));
+}
+async function doReimprimir(id) {
+  if (!/^[RTSEO]\d{1,7}$/.test(id)) {
+    showToast('warn', '⚠', `Código inválido: ${id}`);
+    beepWarn();
+    return;
+  }
+  try {
+    const r = await fetch(`${URL_ETIQ}/${id}/reimprimir`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+    const d = await r.json();
+    if (!r.ok || !d.ok) {
+      showToast('erro', '✗', d.erro || `Falha ao reimprimir ${id}`);
+      beepErro();
+      return;
+    }
+    showToast('sucesso', '✓', `Etiqueta ${id} reimpressa — confira a impressora`);
+    beepOk();
+  } catch(e) {
+    showToast('erro', '✗', 'Erro de comunicação: ' + e.message);
+    beepErro();
+  }
+}
+
+function mostrarUltimaRetirada(item) {
+  const card = document.getElementById('ultima-retirada');
+  const det  = document.getElementById('ult-det');
+  const meta = document.getElementById('ult-meta');
+  det.innerHTML  = `<b>${item.materialNome}</b>${item.cor ? ' · ' + item.cor : ''} · ${item.fornecedor} · ${fmtKg(item.peso)} kg`;
+  meta.textContent = `Origem: ${item.origId} · Reg: ${item.virtId} · Lote ${item.lote}`;
+  card.classList.add('ativo');
+}
+
+function mostrarBloqueio(etiq, consumo) {
+  const info = document.getElementById('bloq-info');
+  const dt = consumo?.hora_impressao ? new Date(consumo.hora_impressao) : null;
+  const dtStr = dt ? `${String(dt.getDate()).padStart(2,'0')}/${String(dt.getMonth()+1).padStart(2,'0')}/${dt.getFullYear()} às ${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}` : '—';
+  info.innerHTML = `
+    <div><span class="lbl">Etiqueta</span><span class="val">${etiq.id}</span></div>
+    <div><span class="lbl">Material</span><span class="val">${etiq.material_nome || etiq.material_key}${etiq.cor ? ' · ' + etiq.cor : ''}</span></div>
+    <div><span class="lbl">Fornecedor</span><span class="val">${etiq.fornecedor}</span></div>
+    <div><span class="lbl">Peso</span><span class="val">${fmtKg(etiq.peso)} kg</span></div>
+    <div><span class="lbl">Retirada em</span><span class="val">${dtStr}</span></div>
+    ${consumo?.id ? `<div><span class="lbl">Registro</span><span class="val">${consumo.id}</span></div>` : ''}
+  `;
+  document.getElementById('modal-bloqueado').classList.add('ativo');
+}
+
+function fecharBloqueio() {
+  document.getElementById('modal-bloqueado').classList.remove('ativo');
+  _bufKey = '';                                       // limpa buffer de digitação acumulada
+}
+
+// ════════════════════════════════════════════════════════════════════
+//   SUB-FLUXO: SACOS (PIG / DESSEC)
+// ════════════════════════════════════════════════════════════════════
+
+function renderTipos() {
+  const box = document.getElementById('opc-tipo');
+  box.innerHTML = '';
+  Object.keys(ADITIVOS).forEach(k => {
+    const btn = document.createElement('button');
+    btn.className = 'opc' + (estado.tipo === k ? ' ativa' : '');
+    btn.textContent = ADITIVOS[k].label.toUpperCase();
+    btn.onclick = () => selTipo(k);
+    box.appendChild(btn);
+  });
+}
+
+function selTipo(k) {
+  estado.tipo = k;
+  estado.cor = null;
+  estado.fornecedor = null;
+  estado.sacos = 0;
+  renderTipos();
+  renderCores();
+  renderFornecedores();
+  ajustarSacos(0);
+  atualizarBotaoAdd();
+}
+
+function renderCores() {
+  const bl  = document.getElementById('bl-cor');
+  const box = document.getElementById('opc-cor');
+  const ad  = ADITIVOS[estado.tipo];
+  if (!ad || !ad.cores) { bl.style.display = 'none'; return; }
+  bl.style.display = 'block';
+  box.innerHTML = '';
+  ad.cores.forEach(c => {
+    const btn = document.createElement('button');
+    btn.className = 'opc' + (estado.cor === c ? ' ativa' : '');
+    btn.textContent = c;
+    btn.onclick = () => { estado.cor = c; renderCores(); atualizarBotaoAdd(); };
+    box.appendChild(btn);
+  });
+}
+
+function renderFornecedores() {
+  const box = document.getElementById('opc-forn');
+  box.innerHTML = '';
+  const ad = ADITIVOS[estado.tipo];
+  if (!ad) return;
+  ad.fornecedores.forEach(f => {
+    const btn = document.createElement('button');
+    btn.className = 'opc' + (estado.fornecedor === f ? ' ativa' : '');
+    btn.textContent = f;
+    btn.onclick = () => { estado.fornecedor = f; renderFornecedores(); atualizarBotaoAdd(); };
+    box.appendChild(btn);
+  });
+}
+
+function ajustarSacos(delta) {
+  const inp = document.getElementById('sacos-input');
+  let v = parseInt(inp.value) || 0;
+  v = Math.max(0, v + delta);
+  inp.value = v;
+  estado.sacos = v;
+  // Peso avulso: saco aberto / fora do padrão, somado aos sacos fechados.
+  const av = document.getElementById('avulso-input');
+  const avulso = av ? (parseFloat(String(av.value).replace(',', '.')) || 0) : 0;
+  estado.pesoAvulso = avulso > 0 ? +avulso.toFixed(3) : 0;
+  const kg = +(v * KG_SACO + estado.pesoAvulso).toFixed(3);
+  const fmtK = n => String(n).replace('.', ',');
+  document.getElementById('sacos-info').innerHTML =
+    (v > 0 ? `<b>${v} ${v === 1 ? 'saco' : 'sacos'}</b>` : '<b>sem sacos fechados</b>')
+    + (estado.pesoAvulso ? ` + <b>${fmtK(estado.pesoAvulso)} kg avulso</b>` : '')
+    + ` · ${fmtK(kg)} kg`;
+  // Destaca o atalho que casa com o valor atual (5/10/20/30/40/50), se houver
+  document.querySelectorAll('.btn-qtd-rapida').forEach(b => {
+    b.classList.toggle('ativo', parseInt(b.dataset.q) === v);
+  });
+  atualizarBotaoAdd();
+}
+
+function setSacos(n) {
+  document.getElementById('sacos-input').value = n;
+  ajustarSacos(0);
+}
+
+function atualizarBotaoAdd() {
+  const ok = estado.tipo
+          && estado.fornecedor
+          && (estado.sacos > 0 || (estado.pesoAvulso || 0) > 0)
+          && (estado.tipo !== 'PIG' || estado.cor);
+  document.getElementById('btn-add-aditivo').disabled = !ok;
+}
+
+async function adicionarAditivo() {
+  const sessaoId = await garantirSessao();
+  if (!sessaoId) return;
+  const matKey = estado.tipo;
+  const cor    = estado.cor;
+  const forn   = estado.fornecedor;
+  const qtd    = estado.sacos;
+  const avulso = estado.pesoAvulso || 0;
+
+  try {
+    const r = await fetch(URL_ADITV, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessao_id:   sessaoId,
+        materialKey: matKey,
+        cor:         cor,
+        fornecedor:  forn,
+        qtd_sacos:   qtd,
+        peso_avulso: estado.pesoAvulso || 0,
+      }),
+    });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.erro || 'falha');
+
+    const ev = d.etiqueta;
+    const itemLocal = {
+      virtId:       ev.id,
+      origId:       null,
+      tipo:         'aditivo',
+      materialKey:  ev.material_key,
+      materialNome: ev.material_nome || ev.material_key,
+      cor:          ev.cor,
+      fornecedor:   ev.fornecedor,
+      lote:         ev.lote,
+      peso:         ev.peso,
+      qtdSacos:     ev.qtd_sacos,
+      hora:         fmtHora(),
+    };
+    estado.itens.unshift(itemLocal);
+    renderHistorico();
+    beepOk();
+    showToast('sucesso', '✓', `${ADITIVOS[matKey].label}${cor ? ' ' + cor : ''} · `
+      + (qtd > 0 ? `${qtd} saco(s)` : '')
+      + (qtd > 0 && avulso > 0 ? ' + ' : '')
+      + (avulso > 0 ? `${String(avulso).replace('.', ',')} kg avulso` : '')
+      + ` · ${String(ev.peso).replace('.', ',')} kg`);
+
+    // Reseta contador e o peso avulso (mantém tipo/cor/fornecedor para
+    // continuar adicionando rápido)
+    estado.sacos = 0;
+    estado.pesoAvulso = 0;
+    document.getElementById('sacos-input').value = 0;
+    const avEl = document.getElementById('avulso-input');
+    if (avEl) avEl.value = '';
+    ajustarSacos(0);
+  } catch(e) {
+    showToast('erro', '✗', 'Erro: ' + e.message);
+    beepErro();
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════
+//   HISTÓRICO
+// ════════════════════════════════════════════════════════════════════
+
+function renderHistorico() {
+  const lista = document.getElementById('hist-lista');
+  if (estado.itens.length === 0) {
+    lista.innerHTML = '<div class="item-vazio"><span class="ico">📋</span>Nenhum item retirado</div>';
+  } else {
+    lista.innerHTML = estado.itens.map(it => {
+      const corStr = it.cor ? ' · ' + it.cor : '';
+      const sub    = it.tipo === 'aditivo'
+        ? `${it.fornecedor} · ${it.qtdSacos} × ${KG_SACO}kg`
+        : `${it.fornecedor} · Lote ${it.lote}${it.origId ? ' · Orig ' + it.origId : ''}`;
+      return `<div class="item ${it.tipo}">
+        <div class="id-tag">${it.virtId}</div>
+        <div class="det">
+          <b>${it.materialNome}${corStr}</b>
+          <div class="sub-info">${sub}</div>
+        </div>
+        <div>
+          <div class="peso">${fmtKg(it.peso)} kg</div>
+          <div class="hora">${it.hora}</div>
+        </div>
+        <button class="item-x" onclick="estornarItem('${it.virtId}')" title="Remover este item e liberar a etiqueta">✕</button>
+      </div>`;
+    }).join('');
+  }
+  const totKg = estado.itens.reduce((s, it) => s + it.peso, 0);
+  document.getElementById('tot-itens').textContent = estado.itens.length + ' ' + (estado.itens.length === 1 ? 'item' : 'itens');
+  document.getElementById('tot-kg').textContent    = fmtKg(totKg) + ' kg';
+
+  const tem = estado.itens.length > 0;
+  document.getElementById('btn-finalizar').disabled = !tem;
+  document.getElementById('btn-cancelar').disabled  = !tem;
+  document.getElementById('btn-relatorio').disabled = !tem;
+}
+
+// ════════════════════════════════════════════════════════════════════
+//   FINALIZAR / CANCELAR
+// ════════════════════════════════════════════════════════════════════
+
+// Imprime o relatório PARCIAL (momentâneo) sem finalizar a sessão.
+async function relatorioAtual() {
+  if (!estado.sessaoId) { showToast('warn', '⚠', 'Nenhuma sessão aberta. Faça ao menos uma retirada.'); return; }
+  try {
+    const r = await fetch(`${URL_SESS}/${estado.sessaoId}/relatorio-atual`, { method: 'POST' });
+    const d = await r.json();
+    if (!d.ok) { showToast('warn', '⚠', d.erro || 'Não foi possível imprimir o relatório'); return; }
+    showToast('ok', '🧾', 'Relatório atual enviado para impressão');
+  } catch (e) { showToast('err', '✕', 'Erro: ' + e.message); }
+}
+
+// Confirmação em modal próprio. A janela nativa do navegador (confirm)
+// tira o sistema da tela cheia e deixa a página exposta — por isso não é
+// usada em nenhuma tela de operação.
+let _resolverConfirmacao = null;
+function pedirConfirmacao({ icone, titulo, texto, info, botao }) {
+  return new Promise(resolve => {
+    document.getElementById('conf-icone').textContent = icone || '❓';
+    document.getElementById('conf-titulo').textContent = titulo || 'Confirmar';
+    document.getElementById('conf-texto').innerHTML = texto || '';
+    const el = document.getElementById('conf-info');
+    el.innerHTML = info || '';
+    el.style.display = info ? '' : 'none';
+    document.getElementById('conf-ok').textContent = botao || 'CONFIRMAR';
+    document.getElementById('modal-confirmar').classList.add('ativo');
+    _resolverConfirmacao = resolve;
+  });
+}
+function fecharConfirmacao(ok) {
+  document.getElementById('modal-confirmar').classList.remove('ativo');
+  if (_resolverConfirmacao) { const r = _resolverConfirmacao; _resolverConfirmacao = null; r(!!ok); }
+}
+
+async function finalizar() {
+  if (!estado.sessaoId || estado.itens.length === 0) return;
+  const totKg = estado.itens.reduce((s, it) => s + it.peso, 0);
+  const segue = await pedirConfirmacao({
+    icone: '📤', titulo: 'FINALIZAR E ENVIAR AO BLING',
+    texto: 'Um Pedido de Venda será gerado. Depois de enviado, não dá para desfazer por aqui.',
+    info: `${estado.itens.length} ${estado.itens.length === 1 ? 'item' : 'itens'} · ${fmtKg(totKg)} kg`,
+    botao: '✓ CONFIRMAR E ENVIAR',
+  });
+  if (!segue) return;
+
+  document.getElementById('btn-finalizar').disabled = true;
+  showToast('info', '📤', 'Enviando ao Bling...');
+
+  try {
+    const r = await fetch(`${URL_SESS}/${estado.sessaoId}/finalizar`, { method: 'POST' });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.erro || 'falha ao finalizar');
+
+    const bling = d.bling || {};
+    if (bling.ok) {
+      const modoLbl = bling.modo === 'simulacao' ? '🧪 SIMULAÇÃO · ' : '';
+      showToast('sucesso', '✓', `${modoLbl}Retirada enviada · Bling: ${bling.bling_id || 'OK'}`);
+      beepOk();
+      setTimeout(()=> beep(1100, 0.18), 180);
+    } else if (bling.status === 'pendente_config') {
+      showToast('warn', '⚠', `Sessão #${estado.sessaoId} salva, pendente config: ${bling.erro || ''}`);
+      beepWarn();
+    } else {
+      showToast('warn', '⚠', `Sessão salva, erro no envio: ${bling.erro || 'desconhecido'}`);
+      beepWarn();
+    }
+
+    // Reseta estado local pra nova sessão
+    estado.sessaoId = null;
+    estado.itens = [];
+    renderHistorico();
+    atualizarBadgesPai();
+    document.getElementById('ultima-retirada').classList.remove('ativo');
+  } catch(e) {
+    showToast('erro', '✗', 'Falha ao finalizar: ' + e.message);
+    beepErro();
+    document.getElementById('btn-finalizar').disabled = false;
+  }
+}
+
+async function cancelar() {
+  if (!estado.sessaoId || estado.itens.length === 0) return;
+  const confirmaCancelar = await pedirConfirmacao({
+    icone: '⚠️', titulo: 'CANCELAR A SESSÃO',
+    texto: 'Todas as retiradas desta sessão serão DESFEITAS — as etiquetas voltam a ficar disponíveis. Isso não pode ser desfeito.',
+    info: `${estado.itens.length} ${estado.itens.length === 1 ? 'retirada' : 'retiradas'} serão desfeitas`,
+    botao: 'SIM, CANCELAR',
+  });
+  if (!confirmaCancelar) return;
+
+  try {
+    const r = await fetch(`${URL_SESS}/${estado.sessaoId}/cancelar`, { method: 'POST' });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.erro || 'falha');
+    showToast('warn', '↩', `Sessão #${estado.sessaoId} cancelada`);
+    estado.sessaoId = null;
+    estado.itens = [];
+    renderHistorico();
+    atualizarBadgesPai();
+    document.getElementById('ultima-retirada').classList.remove('ativo');
+  } catch(e) {
+    showToast('erro', '✗', 'Erro ao cancelar: ' + e.message);
+  }
+}
+
+// Atualiza os indicadores "em andamento" no shell pai (aba) e na tela inicial
+// (avô) imediatamente, sem esperar o polling. Best-effort.
+function atualizarBadgesPai() {
+  try { if (window.parent && window.parent !== window && window.parent.atualizarBadges) window.parent.atualizarBadges(); } catch(e) {}
+  try { const avo = window.parent && window.parent.parent; if (avo && avo !== window.parent && avo.checarSessoesAbertas) avo.checarSessoesAbertas(); } catch(e) {}
+}
+
+// Cancela a sessão se a lista ficou vazia (some o "em andamento" da tela/aba).
+async function cancelarSessaoSeVazia() {
+  if (estado.itens.length > 0) return;
+  if (estado.sessaoId) {
+    try { await fetch(`${URL_SESS}/${estado.sessaoId}/cancelar`, { method: 'POST' }); } catch(e) {}
+    estado.sessaoId = null;
+  }
+  document.getElementById('ultima-retirada').classList.remove('ativo');
+  atualizarBadgesPai();
+}
+
+// Remove UM item da retirada (botão X). Estorna no servidor: cancela a etiqueta
+// virtual e devolve a etiqueta ORIGINAL para 'bipada' (apta a ser bipada de
+// novo). Depois tira o item da lista local.
+async function estornarItem(virtId) {
+  try {
+    const r = await fetch(`${URL_ETIQ}/${virtId}/estornar`, { method: 'POST' });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.erro || 'falha ao remover');
+    const idx = estado.itens.findIndex(it => it.virtId === virtId);
+    if (idx >= 0) estado.itens.splice(idx, 1);
+    renderHistorico();
+    await cancelarSessaoSeVazia();
+    beepOk();
+    showToast('sucesso', '↩', d.original_liberada
+      ? `Item removido · ${d.original_liberada} liberada p/ bipar de novo`
+      : 'Item removido');
+  } catch(e) {
+    showToast('erro', '✗', 'Erro ao remover: ' + e.message);
+    beepErro();
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════
+//   MODO EMBED — quando carregado dentro de um iframe do shell unificado
+// ════════════════════════════════════════════════════════════════════
+(function detectarEmbed() {
+  try {
+    const p = new URLSearchParams(location.search);
+    if (p.get('embed') === '1') document.body.classList.add('embed');
+  } catch(e) {}
+})();
+
+// ════════════════════════════════════════════════════════════════════
+//   RESTAURAR SESSÃO ABERTA
+// ════════════════════════════════════════════════════════════════════
+// Quando o operador sai da tela sem finalizar (ex: vai pesar bobina na
+// extrusão e volta depois), ao reabrir a tela retomamos exatamente o
+// que estava — sessão + itens. Servidor é fonte de verdade (banco).
+async function restaurarSessaoAberta() {
+  try {
+    const r = await fetch('/sessoes/abertas?tipo=retirada');
+    if (!r.ok) return;
+    const d = await r.json();
+    if (!d.ok || !d.sessoes.length) return;
+    const sessao = d.sessoes[0];     // mais recente
+    estado.sessaoId = sessao.id;
+    estado.itens = (sessao.etiquetas || []).map(e => {
+      const isAditivo = e.sub_tipo === 'aditivo-saida';
+      const hora = e.hora_impressao
+        ? new Date(e.hora_impressao).toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})
+        : '--:--';
+      return {
+        virtId:       e.id,
+        origId:       e.ref_id,
+        tipo:         isAditivo ? 'aditivo' : 'bipagem',
+        materialKey:  e.material_key,
+        materialNome: e.material_nome || e.material_key,
+        cor:          e.cor,
+        fornecedor:   e.fornecedor,
+        lote:         e.lote,
+        peso:         e.peso,
+        qtdSacos:     e.qtd_sacos,
+        hora:         hora,
+      };
+    }).reverse();   // unshift inverte; pra manter ordem cronológica reversa, invertemos
+    renderHistorico();
+    document.getElementById('btn-finalizar').disabled = estado.itens.length === 0;
+    document.getElementById('btn-cancelar').disabled  = estado.itens.length === 0;
+    if (estado.itens.length > 0) {
+      showToast('info', '↩', `Retomando sessão #${sessao.id} · ${estado.itens.length} ${estado.itens.length===1?'item':'itens'}`, 4000);
+    }
+  } catch(e) {
+    console.warn('Falha ao restaurar sessão de retirada:', e.message);
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════
+//   INIT
+// ════════════════════════════════════════════════════════════════════
+
+// Fornecedores dos aditivos (PIG/DESSEC) passam a vir do banco (mesma fonte
+// que a tela de Recebimento). Se o catálogo não responder, mantém os valores
+// embutidos acima (fallback) — a tela nunca fica sem fornecedores.
+async function carregarCatalogoRetirada() {
+  try {
+    const r = await fetch(URL_BASE + '/catalogo-mp');
+    if (!r.ok) return;
+    const cat = await r.json();
+    if (cat && cat.fornecedores) {
+      for (const k of Object.keys(ADITIVOS)) {
+        if (Array.isArray(cat.fornecedores[k])) ADITIVOS[k].fornecedores = cat.fornecedores[k];
+      }
+    }
+  } catch (e) { /* fallback: mantém os fornecedores embutidos */ }
+}
+
+renderTipos();
+renderFornecedores();
+renderCores();
+ajustarSacos(0);
+renderHistorico();
+carregarCatalogoRetirada().then(() => { renderFornecedores(); });
+restaurarSessaoAberta();
+
+</script>
+
+</body>
+</html>

@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<script src="/acesso-colaborador.js"></script>
+<title>Ekoplastic · Matéria-Prima</title>
+<script>
+/* Trava anti-recursão: esta tela carrega telas de trabalho em iframes.
+   Se, por arquivo desatualizado/cache, este materia-prima acabar DENTRO de
+   outro materia-prima, interrompemos o aninhamento e carregamos a tela real. */
+(function () {
+  try {
+    var w = window;
+    while (w !== w.parent) {
+      w = w.parent;
+      var path = '';
+      try { path = (w.location && w.location.pathname) || ''; } catch (e) { break; }
+      if (path.indexOf('materia-prima') !== -1) {
+        var aba = new URLSearchParams(location.search).get('aba');
+        var alvo = (aba === 'retorno' || aba === 'retor')
+          ? '/mp-recebimento-retorno.html?aba=retorno&embed=1'
+          : '/mp-recebimento-retorno.html?aba=recebimento&embed=1';
+        location.replace(alvo);
+        return;
+      }
+    }
+  } catch (e) {}
+})();
+</script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;700&family=Nunito:wght@600;700;800;900&display=swap');
+
+:root {
+  --bg:       #0d0f14;
+  --surface:  #161a23;
+  --panel:    #1e2330;
+  --panel-hi: #252b3d;
+  --border:   #2a3045;
+  --text:     #e8eaf0;
+  --muted:    #6b7490;
+  --entrada:  #00d4ff;
+  --saida:    #f07040;
+  --devol:    #00ff9d;
+  --danger:   #ff4466;
+  --warn:     #ffaa00;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  height: 100vh; overflow: hidden;
+  font-family: 'Nunito', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  user-select: none;
+}
+
+/* ─── HEADER ─── */
+header {
+  height: 44px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 20px;
+  flex-shrink: 0;
+}
+.logo {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px; font-weight: 700; letter-spacing: 3px;
+  color: var(--entrada);
+}
+.crumb { font-size: 11px; color: var(--muted); letter-spacing: 1px; }
+.crumb b { color: var(--text); font-weight: 800; }
+.header-right { display: flex; align-items: center; gap: 10px; }
+.btn-icon {
+  background: transparent; border: 1px solid var(--border);
+  border-radius: 6px; width: 32px; height: 32px;
+  color: var(--muted); font-size: 14px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.15s;
+}
+.btn-icon:hover { color: var(--text); border-color: var(--panel-hi); background: var(--panel-hi); }
+
+/* ─── LAYOUT ─── */
+.layout {
+  height: calc(100vh - 44px);
+  display: grid;
+  grid-template-columns: 1fr;
+}
+
+/* ─── MENU LATERAL ─── */
+.menu {
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  padding: 14px 12px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.menu-titulo {
+  font-size: 10px; font-weight: 800; letter-spacing: 2px;
+  color: var(--muted); padding: 0 4px; margin-bottom: 4px;
+}
+.menu-item {
+  background: var(--panel);
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 10px;
+  cursor: pointer;
+  display: flex; align-items: center; gap: 10px;
+  transition: all 0.15s;
+  position: relative;
+}
+.menu-item .icone { font-size: 18px; width: 22px; text-align: center; }
+.menu-item .nome { font-size: 12px; font-weight: 800; letter-spacing: 0.4px; }
+.menu-item:hover { background: var(--panel-hi); border-color: var(--panel-hi); }
+.menu-item.active.receb { background: rgba(0,212,255,0.10); border-color: var(--entrada); }
+.menu-item.active.receb .nome { color: var(--entrada); }
+.menu-item.active.retir { background: rgba(240,112,64,0.10); border-color: var(--saida); }
+.menu-item.active.retir .nome { color: var(--saida); }
+.menu-item.active.retor { background: rgba(0,255,157,0.10); border-color: var(--devol); }
+.menu-item.active.retor .nome { color: var(--devol); }
+
+.menu-item .badge {
+  position: absolute; top: 6px; right: 6px;
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--warn);
+  box-shadow: 0 0 6px var(--warn);
+  opacity: 0; transition: opacity 0.2s;
+}
+.menu-item .badge.on { opacity: 1; animation: pulseBadge 1.8s ease-in-out infinite; }
+@keyframes pulseBadge {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.menu-rodape {
+  margin-top: auto; padding-top: 12px;
+  border-top: 1px solid var(--border);
+  display: flex; flex-direction: column; gap: 6px;
+}
+.menu-item.voltar {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--muted);
+}
+.menu-item.voltar:hover { background: var(--panel); color: var(--text); }
+.menu-item.voltar .nome { color: inherit; }
+
+/* ─── ÁREA CENTRAL ─── */
+.central {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Tabs no topo */
+.tabs {
+  display: flex;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 8px 12px 0;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.tab {
+  background: var(--panel);
+  border: 1.5px solid var(--border);
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  padding: 10px 22px;
+  cursor: pointer;
+  font-family: 'Nunito', sans-serif;
+  font-size: 12px; font-weight: 800; letter-spacing: 1px;
+  color: var(--muted);
+  position: relative;
+  transition: all 0.15s;
+}
+.tab:hover { background: var(--panel-hi); color: var(--text); }
+.tab.ativa {
+  background: var(--bg);
+  border-color: var(--border);
+  margin-bottom: -1px;
+  z-index: 2;
+}
+.tab.ativa.receb { color: var(--entrada); border-top-color: var(--entrada); border-top-width: 2.5px; }
+.tab.ativa.retir { color: var(--saida);   border-top-color: var(--saida);   border-top-width: 2.5px; }
+.tab.ativa.retor { color: var(--devol);   border-top-color: var(--devol);   border-top-width: 2.5px; }
+.tab .badge {
+  position: absolute; top: 6px; right: 6px;
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--warn);
+  box-shadow: 0 0 5px var(--warn);
+  opacity: 0;
+}
+.tab .badge.on { opacity: 1; animation: pulseBadge 1.8s ease-in-out infinite; }
+
+/* Iframes */
+.frame-wrap {
+  flex: 1;
+  position: relative;
+  background: var(--bg);
+}
+.frame-pane {
+  position: absolute;
+  inset: 0;
+  display: none;
+  background: var(--bg);
+}
+.frame-pane.ativa { display: block; }
+.frame-pane iframe {
+  width: 100%; height: 100%;
+  border: none; display: block;
+}
+.frame-pane .loading {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--muted); font-size: 13px; letter-spacing: 1px;
+  font-family: 'IBM Plex Mono', monospace;
+}
+</style>
+</head>
+<body data-tela="Matéria-Prima">
+
+<header>
+  <div style="display:flex;align-items:center;gap:18px">
+    <div class="logo">EKOPLASTIC</div>
+    <div class="crumb">MATÉRIA-PRIMA &nbsp;›&nbsp; <b id="crumb-aba">Recebimento</b></div>
+  </div>
+  <div class="header-right">
+    <span id="resp-mp" onclick="trocarResponsavelMP()" title="Trocar responsável"
+      style="display:none; cursor:pointer; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.18);
+             color:#cfe3ff; padding:7px 13px; border-radius:20px; font-size:12px; font-weight:800; margin-right:8px;"></span>
+    <button class="btn-icon" onclick="location.href='/'" title="Início">🏠</button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <section class="central">
+    <div class="tabs">
+      <button class="tab receb ativa" id="tab-receb" onclick="ativarAba('receb')">
+        📥 RECEBIMENTO
+        <span class="badge" id="badge-tab-receb"></span>
+      </button>
+      <button class="tab retir" id="tab-retir" onclick="ativarAba('retir')">
+        📤 RETIRADA
+        <span class="badge" id="badge-tab-retir"></span>
+      </button>
+      <button class="tab retor" id="tab-retor" onclick="ativarAba('retor')">
+        🔄 RETORNO
+        <span class="badge" id="badge-tab-retor"></span>
+      </button>
+    </div>
+
+    <div class="frame-wrap">
+      <div class="frame-pane ativa" id="pane-receb">
+        <div class="loading" id="ld-receb">Carregando Recebimento...</div>
+        <iframe id="frame-receb" data-src="/mp-recebimento-retorno.html?aba=recebimento&embed=1"></iframe>
+      </div>
+      <div class="frame-pane" id="pane-retir">
+        <div class="loading" id="ld-retir">— clique para carregar Retirada —</div>
+        <iframe id="frame-retir" data-src="/mp-retirada.html?embed=1"></iframe>
+      </div>
+      <div class="frame-pane" id="pane-retor">
+        <div class="loading" id="ld-retor">— clique para carregar Retorno —</div>
+        <iframe id="frame-retor" data-src="/mp-recebimento-retorno.html?aba=retorno&embed=1"></iframe>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+const ABAS = ['receb', 'retir', 'retor'];
+const NOMES = { receb: 'Recebimento', retir: 'Retirada', retor: 'Retorno' };
+
+function ativarAba(qual) {
+  // Carrega iframe se ainda não carregou (lazy)
+  const iframe = document.getElementById('frame-' + qual);
+  if (iframe.dataset.loaded !== '1') {
+    iframe.dataset.loaded = '1';
+    iframe.addEventListener('load', () => {
+      const ld = document.getElementById('ld-' + qual);
+      if (ld) ld.style.display = 'none';
+      focarFrameAtivo(qual);   // leitor de código de barras precisa do foco no iframe
+    }, { once: true });
+    iframe.addEventListener('error', () => {
+      const ld = document.getElementById('ld-' + qual);
+      if (ld) ld.textContent = 'Erro ao carregar.';
+    }, { once: true });
+    iframe.src = iframe.dataset.src;
+  }
+
+  // Esconde TODOS, mostra a ativa
+  for (const a of ABAS) {
+    document.getElementById('pane-' + a).classList.toggle('ativa', a === qual);
+    document.getElementById('tab-'  + a).classList.toggle('ativa', a === qual);
+  }
+  document.getElementById('crumb-aba').textContent = NOMES[qual];
+
+  // Atualiza URL pra refletir a aba (sem reload)
+  try {
+    const u = new URL(window.location);
+    u.searchParams.set('aba', qual);
+    window.history.replaceState({}, '', u);
+  } catch(e) {}
+
+  // CRÍTICO p/ o leitor: o handler de bipagem fica no document do iframe.
+  // Sem foco no iframe, as teclas do leitor caem no pai (ou no console) e a
+  // bipagem "não funciona". Damos foco ao iframe ativo sempre que a aba abre.
+  setTimeout(() => focarFrameAtivo(qual), 60);
+}
+
+// Dá foco ao iframe da aba ativa (para o leitor de código de barras)
+function focarFrameAtivo(qual) {
+  const iframe = document.getElementById('frame-' + qual);
+  if (!iframe) return;
+  try { iframe.contentWindow.focus(); } catch(e) {}
+}
+function abaAtiva() {
+  return ABAS.find(a => document.getElementById('pane-' + a).classList.contains('ativa'));
+}
+// Recupera o foco do leitor: ao voltar para a janela, ou após qualquer clique
+// na moldura do pai (trocar de aba, breadcrumb), devolve o foco ao iframe ativo.
+window.addEventListener('focus', () => { const a = abaAtiva(); if (a) focarFrameAtivo(a); });
+document.addEventListener('click', () => { const a = abaAtiva(); if (a) setTimeout(() => focarFrameAtivo(a), 30); });
+
+// Lê ?aba= da URL para abrir na aba certa
+function abaInicial() {
+  const p = new URLSearchParams(location.search);
+  const a = p.get('aba');
+  if (a === 'retirada' || a === 'retir')                return 'retir';
+  if (a === 'retorno'  || a === 'retor')                return 'retor';
+  return 'receb';
+}
+
+// A aba inicial só carrega depois da senha — se carregar antes, o iframe
+// abre o próprio pedido de senha (era o que fazia parecer que cada aba pedia).
+// Ver comAcesso('mp', ...) mais abaixo.
+
+// Badges: indicam aba com sessão aberta
+async function atualizarBadges() {
+  try {
+    const r = await fetch('/sessoes/abertas');
+    const d = await r.json();
+    if (!d.ok) return;
+    const ativas = { receb: false, retir: false, retor: false };
+    for (const s of d.sessoes) {
+      if (s.tipo === 'recebimento') ativas.receb = true;
+      if (s.tipo === 'retirada')    ativas.retir = true;
+      if (s.tipo === 'retorno')     ativas.retor = true;
+    }
+    for (const k of ABAS) {
+      document.getElementById('badge-tab-'  + k).classList.toggle('on', ativas[k]);
+    }
+  } catch(e) {}
+}
+// A senha é pedida UMA vez, ao entrar no módulo. As abas internas
+// (recebimento, retirada, retorno) herdam essa liberação — antes, cada uma
+// carregava sua própria tela e pedia a senha de novo.
+function comAcesso(tela, aoEntrar) {
+  if (window.EkoAcesso && typeof EkoAcesso.exigir === 'function') return EkoAcesso.exigir(tela, aoEntrar);
+  console.warn('acesso-colaborador.js não carregou — abrindo sem identificação');
+  try { aoEntrar(); } catch (e) { console.error(e); }
+}
+function mostrarRespMP(nome) {
+  const el = document.getElementById('resp-mp');
+  if (!el) return;
+  el.innerHTML = nome ? ('👤 ' + nome + ' <span style="opacity:.6">· trocar</span>') : '';
+  el.style.display = nome ? 'inline-block' : 'none';
+}
+function trocarResponsavelMP() {
+  if (window.EkoAcesso && EkoAcesso.sair) EkoAcesso.sair('mp');
+  location.reload();
+}
+
+comAcesso('mp', nome => {
+  mostrarRespMP(nome);
+  ativarAba(abaInicial());
+  atualizarBadges();
+  setInterval(atualizarBadges, 8000);
+});
+</script>
+
+<script src="/seguranca-saida.js"></script>
+</body>
+</html>

@@ -1,0 +1,19 @@
+{
+  "name": "ekoplastic-pesagem",
+  "version": "157.0.0",
+  "description": "Sistema de pesagem e etiquetas Ekoplastic (Matéria-Prima, Extrusão, Produto Acabado, Inventário) — Node + node:sqlite + Bling v3 + balança serial + impressão EPL",
+  "private": true,
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node testes/piso-testes.js"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "dependencies": {
+    "@serialport/parser-readline": "^12.0.0",
+    "node-forge": "^1.4.0",
+    "serialport": "^12.0.0"
+  }
+}

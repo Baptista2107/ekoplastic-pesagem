@@ -1,0 +1,74 @@
+============================================================
+ MIGRACAO DAS ETIQUETAS Gold Green / WT dos Santos
+ (entrada feita por engano no sistema COPIA - lote 150726)
+============================================================
+
+O QUE ISTO RESOLVE
+------------------
+Ontem 19 fardos entraram pelo sistema COPIA e ganharam numeros
+(R0000179 a R0000197) que, no sistema OFICIAL, pertencem a OUTRO
+material (POLI Ycaro). Por isso bipar essas etiquetas no oficial
+lia o material errado.
+
+Esta migracao traz para o oficial os fardos que ainda estao em
+estoque, com numeros NOVOS. Depois e so bipar o numero novo.
+
+  - Sao 15 etiquetas (as que ainda estao em estoque).
+  - As 4 que voce ja baixou pela copia (R0000181, R0000185,
+    R0000195, R0000196) ficam de fora - ja sairam do estoque
+    e a saida ja esta no Bling.
+  - A migracao NAO envia nada ao Bling. A entrada desses fardos ja foi
+    lancada pela copia; o estoque do Bling ja esta certo. So
+    estamos fazendo o oficial "conhecer" esses fardos para poder
+    dar baixa depois.
+
+
+PASSO A PASSO
+-------------
+1) No sistema OFICIAL, FECHE o servidor (feche a janela preta).
+
+2) Copie estes 2 arquivos para a PASTA DO SISTEMA oficial
+   (a pasta onde fica o etiquetas.db):
+       - migrar-goldgreen.js
+       - RODAR-MIGRACAO.bat
+
+3) De um duplo clique em  RODAR-MIGRACAO.bat  e siga a tela.
+   Ele faz, nesta ordem:
+       - um BACKUP do banco (etiquetas-ANTES-migracao-....db)
+       - insere as 15 etiquetas com numeros novos, como "bipada"
+       - gera a lista de-para (migracao-goldgreen-DEPARA.csv)
+       - gera o reimprimir-migradas.ps1
+
+4) Reabra o servidor (INICIAR.bat).
+
+5) De um duplo clique em  reimprimir-migradas.ps1
+   (ou botao direito > Executar com PowerShell).
+   Ele reimprime as 15 etiquetas ja com os numeros novos.
+
+6) Cole cada etiqueta nova por cima da antiga no big bag
+   correspondente. Use a lista de-para para conferir
+   (numero antigo -> numero novo, com cor e peso).
+
+7) Pronto. A partir daqui, a baixa do Gold Green e feita normal
+   pelo oficial, bipando o numero novo. A COPIA pode ser
+   aposentada - nao use mais ela para nada.
+
+
+SE ALGO SAIR ERRADO
+-------------------
+- O script tem trava: se rodar duas vezes, ele aborta e avisa
+  que ja migrou (nao duplica).
+- Se precisar voltar atras, o backup esta na mesma pasta:
+  etiquetas-ANTES-migracao-....db  (basta renomear para
+  etiquetas.db com o servidor fechado).
+- Qualquer numero que "ja exista" no oficial faz o script parar
+  sozinho antes de inserir - ai me chame.
+
+
+IMPORTANTE (para nao repetir o problema)
+----------------------------------------
+A copia nunca deve rodar junto do oficial mexendo no Bling real.
+Se for manter a copia para testes, ela precisa: numeracao propria,
+modo simulacao (sem Bling real) e, de preferencia, outra porta.
+Se nao for usar, o mais seguro e apagar a copia.
+============================================================

@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Diagnóstico — Balança Serial</title>
+<style>
+body { background:#0d0f14; color:#e8eaf0; font-family:'Courier New',monospace; padding:24px; margin:0; }
+h1   { font-size:16px; letter-spacing:2px; text-transform:uppercase; color:#00d4ff; margin-bottom:20px; }
+.row { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:16px; align-items:flex-end; }
+label { font-size:11px; color:#6b7490; display:block; margin-bottom:4px; }
+button { padding:10px 20px; border:none; border-radius:8px; font-weight:700; font-size:12px; letter-spacing:1px; text-transform:uppercase; cursor:pointer; }
+.btn-connect    { background:#00d4ff; color:#000; }
+.btn-disconnect { background:rgba(255,68,102,.2); border:1px solid #ff4466; color:#ff4466; }
+.btn-clear      { background:rgba(255,255,255,.06); border:1px solid #2a3045; color:#6b7490; }
+#status { font-size:12px; padding:6px 14px; border-radius:6px; }
+#status.ok   { background:rgba(0,255,157,.1);  color:#00ff9d; border:1px solid rgba(0,255,157,.3); }
+#status.err  { background:rgba(255,68,102,.1); color:#ff4466; border:1px solid rgba(255,68,102,.3); }
+#status.warn { background:rgba(255,170,0,.1);  color:#ffaa00; border:1px solid rgba(255,170,0,.3); }
+#status.idle { background:rgba(255,255,255,.05);color:#6b7490; border:1px solid #2a3045; }
+/* painel de estado da porta */
+#info-porta {
+  display:flex; gap:16px; flex-wrap:wrap;
+  background:#0a0d13; border:1px solid #2a3045; border-radius:8px;
+  padding:10px 16px; margin-bottom:14px; font-size:11px;
+}
+.info-item { display:flex; flex-direction:column; gap:2px; }
+.info-lbl  { color:#6b7490; text-transform:uppercase; letter-spacing:1px; }
+.info-val  { font-size:14px; font-weight:700; color:#00d4ff; }
+.info-val.ok   { color:#00ff9d; }
+.info-val.err  { color:#ff4466; }
+.info-val.warn { color:#ffaa00; }
+/* aviso de configuração */
+#aviso-config {
+  background:rgba(255,170,0,.07); border:1px solid rgba(255,170,0,.3);
+  border-radius:8px; padding:12px 16px; margin-bottom:14px;
+  font-size:12px; color:#ffaa00; display:none;
+}
+#aviso-config b { color:#ffd060; }
+#terminal {
+  background:#080b10; border:1px solid #2a3045; border-radius:10px;
+  padding:16px; height:360px; overflow-y:auto;
+  font-size:13px; line-height:1.8; white-space:pre-wrap; word-break:break-all;
+}
+.hex   { color:#ffaa00; }
+.ascii { color:#00ff9d; }
+.ts    { color:#2a3045; font-size:10px; }
+.peso-detectado { color:#00d4ff; font-size:15px; font-weight:700; }
+.sep   { color:#2a3045; }
+#peso-atual { font-size:48px; font-weight:700; color:#00ff9d; font-family:monospace; text-align:center; padding:16px; background:#080b10; border:1px solid #2a3045; border-radius:10px; margin-bottom:12px; }
+</style>
+</head>
+<body>
+<h1>◈ Diagnóstico — Balança Serial (Weightech WT3000-iR)</h1>
+
+<div id="peso-atual">--.- kg</div>
+
+<!-- Painel de estado em tempo real -->
+<div id="info-porta">
+  <div class="info-item"><span class="info-lbl">Porta</span><span class="info-val" id="inf-porta">—</span></div>
+  <div class="info-item"><span class="info-lbl">Porta aberta</span><span class="info-val" id="inf-aberta">—</span></div>
+  <div class="info-item"><span class="info-lbl">Bytes recebidos</span><span class="info-val" id="inf-bytes">—</span></div>
+  <div class="info-item"><span class="info-lbl">Último dado</span><span class="info-val" id="inf-ts">—</span></div>
+  <div class="info-item"><span class="info-lbl">Peso extraído</span><span class="info-val" id="inf-peso">—</span></div>
+</div>
+
+<!-- Aviso de configuração da balança -->
+<div id="aviso-config">
+  ⚠ <b>Porta aberta mas sem dados.</b> A balança pode estar com transmissão desligada.<br>
+  No painel da balança: <b>Menu (↑+↓) → 03 rS1 → rS1-04 → StrEAn → confirmar</b><br>
+  Verifique também: <b>rS1-01 = b 9600</b> e <b>rS1-02 = n81</b>
+</div>
+
+<div class="row">
+  <div>
+    <button class="btn-connect" id="btn-con" onclick="conectar()">⚡ INICIAR DIAGNÓSTICO</button>
+  </div>
+  <div>
+    <button class="btn-disconnect" id="btn-dis" onclick="desconectar()" style="display:none">✕ PARAR</button>
+  </div>
+  <div>
+    <button class="btn-clear" onclick="limpar()">LIMPAR</button>
+  </div>
+  <div id="status" class="idle">Desconectado</div>
+</div>
+
+<p style="font-size:11px;color:#6b7490;margin-bottom:10px;">
+  Mostra os bytes brutos recebidos via servidor Node.js (porta serial configurada · 9600 · 8N1).
+</p>
+
+<div id="terminal">Aguardando conexão...\n</div>
+
+<script>
+// Diagnóstico via servidor Node.js — consulta /balanca/raw
+// O Node.js detém a porta serial; o browser apenas lê os dados já processados.
+
+let _polling    = null;
+let _ultimoPeso = null;
+let _ultimoRaw  = null;
+let _semDadosCont = 0; // conta polls sem dados (para exibir aviso)
+
+async function conectar() {
+  if (_polling) return;
+  log('⚓ Conectando ao servidor em este servidor ...');
+  try {
+    const r = await fetch('/balanca/raw');
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const dados = await r.json();
+    atualizarPainel(dados);
+
+    if (!dados.portaAberta) {
+      setStatus('err', `Porta ${dados.porta} não está aberta`);
+      log(`✗ Servidor respondeu mas ${dados.porta} não está aberta.\n  → Verifique o cabo USB-Serial e reinicie o INICIAR.bat`, 'err');
+      return;
+    }
+
+    setStatus('ok', `Conectado — ${dados.porta} · 9600 · 8N1`);
+    document.getElementById('btn-con').style.display = 'none';
+    document.getElementById('btn-dis').style.display = 'block';
+    log(`\n✓ PORTA ${dados.porta} ABERTA — 9600 baud / 8N1 / CR+LF\n${'─'.repeat(60)}`);
+    log('  Aguardando transmissão da balança...\n');
+    _polling = setInterval(pollRaw, 500);
+  } catch(e) {
+    setStatus('err', 'Servidor offline');
+    log('✗ ' + e.message + '\n  → Verifique se o INICIAR.bat está rodando', 'err');
+  }
+}
+
+async function pollRaw() {
+  try {
+    const r    = await fetch('/balanca/raw');
+    const dados = await r.json();
+    const ts   = new Date().toLocaleTimeString('pt-BR');
+
+    atualizarPainel(dados);
+
+    if (dados.ok && dados.raw && dados.raw !== _ultimoRaw) {
+      // Nova linha recebida — exibe HEX + ASCII
+      _ultimoRaw    = dados.raw;
+      _semDadosCont = 0;
+      document.getElementById('aviso-config').style.display = 'none';
+
+      const bytes = [...new TextEncoder().encode(dados.raw)];
+      const hex   = bytes.map(b => b.toString(16).toUpperCase().padStart(2,'0')).join(' ');
+      const ascii = bytes.map(b => (b >= 32 && b < 127) ? String.fromCharCode(b) : `[${b}]`).join('');
+      logRaw(ts, hex, ascii);
+
+      if (dados.peso !== null && dados.peso !== _ultimoPeso) {
+        _ultimoPeso = dados.peso;
+        document.getElementById('peso-atual').textContent = dados.peso.toFixed(3) + ' kg';
+        log(`► PESO: ${dados.peso.toFixed(3)} kg`, 'peso');
+      }
+    } else {
+      // Sem dados novos
+      _semDadosCont++;
+      // Após 6 polls (~3 s) sem nada, exibe o aviso de configuração
+      if (_semDadosCont === 6) {
+        document.getElementById('aviso-config').style.display = 'block';
+        log('\n⚠ Porta aberta mas sem dados. Veja o aviso amarelo acima.\n', 'err');
+      }
+    }
+  } catch(e) {
+    setStatus('err', 'Servidor perdido');
+    log('✗ Servidor não responde: ' + e.message, 'err');
+    clearInterval(_polling);
+    _polling = null;
+    document.getElementById('btn-con').style.display = 'block';
+    document.getElementById('btn-dis').style.display = 'none';
+  }
+}
+
+function atualizarPainel(dados) {
+  const el = id => document.getElementById(id);
+  el('inf-porta').textContent  = dados.porta || '—';
+  el('inf-bytes').textContent  = dados.bytesTotal != null ? dados.bytesTotal : '—';
+  el('inf-peso').textContent   = dados.peso  != null ? dados.peso.toFixed(3) + ' kg' : '—';
+
+  const aberta = dados.portaAberta;
+  el('inf-aberta').textContent = aberta ? 'SIM' : 'NÃO';
+  el('inf-aberta').className   = 'info-val ' + (aberta ? 'ok' : 'err');
+
+  if (dados.ultimoByteTs) {
+    const seg = Math.round((Date.now() - dados.ultimoByteTs) / 1000);
+    el('inf-ts').textContent = seg < 5 ? 'agora' : `${seg}s atrás`;
+    el('inf-ts').className   = 'info-val ' + (seg < 5 ? 'ok' : seg < 30 ? 'warn' : 'err');
+  } else {
+    el('inf-ts').textContent = 'nenhum';
+    el('inf-ts').className   = 'info-val err';
+  }
+}
+
+function desconectar() {
+  clearInterval(_polling);
+  _polling = null;
+  _ultimoPeso = null;
+  setStatus('idle', 'Desconectado');
+  document.getElementById('btn-con').style.display = 'block';
+  document.getElementById('btn-dis').style.display = 'none';
+  log('\n✕ POLLING ENCERRADO\n');
+}
+
+function logRaw(ts, valor, ascii) {
+  const t = document.getElementById('terminal');
+  t.innerHTML += `<span class="ts">${ts}</span>  <span class="hex">${valor}</span>  <span class="sep">│</span>  <span class="ascii">${ascii}</span>\n`;
+  t.scrollTop = t.scrollHeight;
+}
+
+function log(msg, tipo) {
+  const t = document.getElementById('terminal');
+  const cls = tipo === 'peso' ? 'peso-detectado' : tipo === 'err' ? 'err' : '';
+  t.innerHTML += cls ? `<span class="${cls}">${msg}</span>\n` : msg + '\n';
+  t.scrollTop = t.scrollHeight;
+}
+
+function limpar() {
+  document.getElementById('terminal').innerHTML = '';
+}
+
+function setStatus(tipo, msg) {
+  const el = document.getElementById('status');
+  el.className = `${tipo}`;
+  el.textContent = msg;
+}
+</script>
+</body>
+</html>

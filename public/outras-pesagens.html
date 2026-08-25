@@ -1,0 +1,1084 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Ekoplastic · Resíduos</title>
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=Nunito:wght@600;700;800;900&display=swap');
+
+:root {
+  --bg:       #0a0c10;
+  --surface:  #13161e;
+  --panel:    #1a1e28;
+  --panel-hi: #232838;
+  --border:   #252b3b;
+  --accent:   #d9a521;       /* dourado outras pesagens */
+  --accent2:  #00ff9d;
+  --warn:     #ffaa00;
+  --text:     #eef0f6;
+  --muted:    #5a6080;
+  --danger:   #ff4466;
+  --radius:   14px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+html, body {
+  height: 100vh;
+  overflow: hidden;
+  font-family: 'Nunito', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  user-select: none;
+}
+
+/* Modo embed (futuro shell unificado) */
+body.embed > header,
+body.embed > #banner-turno { display: none !important; }
+body.embed > .layout-content { height: 100vh !important; }
+
+/* ─── HEADER ─── */
+header {
+  background: var(--surface);
+  border-bottom: 2px solid var(--border);
+  padding: 0 24px;
+  height: 56px;
+  display: flex; align-items: center; justify-content: space-between;
+  flex-shrink: 0;
+}
+.logo { display: flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 900; letter-spacing: 2px; color: var(--accent); }
+.logo-icon { width: 30px; height: 30px; border: 2px solid var(--accent); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 15px; }
+.header-center { display: flex; align-items: center; gap: 12px; }
+.turno-badge {
+  font-size: 11px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase;
+  padding: 5px 14px; border-radius: 20px;
+  background: rgba(168,128,255,0.12); color: var(--accent);
+  border: 1px solid rgba(168,128,255,0.3);
+}
+.clock { font-family: 'IBM Plex Mono', monospace; font-size: 18px; font-weight: 700; color: var(--accent2); letter-spacing: 2px; }
+.header-right { display: flex; align-items: center; gap: 10px; }
+.btn-icon {
+  background: transparent; border: 1px solid var(--border);
+  border-radius: 6px; width: 32px; height: 32px;
+  color: var(--muted); font-size: 14px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.15s;
+}
+.btn-icon:hover { color: var(--text); border-color: var(--panel-hi); }
+.srv-status {
+  font-size: 10px; font-weight: 700; letter-spacing: 1.5px;
+  padding: 5px 10px; border-radius: 6px;
+  border: 1px solid var(--border);
+}
+.srv-status.on  { color: var(--accent2); border-color: rgba(0,255,157,0.4); background: rgba(0,255,157,0.06); }
+.srv-status.off { color: var(--danger);  border-color: rgba(255,68,102,0.4); background: rgba(255,68,102,0.06); }
+
+/* ─── BANNER TURNO ─── */
+#banner-turno {
+  display: none;
+  background: rgba(168,128,255,0.07);
+  border-bottom: 1px solid rgba(168,128,255,0.25);
+  padding: 10px 24px;
+  align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  flex-shrink: 0;
+}
+#banner-turno.on { display: flex; }
+.banner-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 8px var(--accent); animation: pulse 2s infinite; }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+.banner-info { font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600; color: var(--text); }
+.banner-label { font-size: 9px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; color: var(--accent); }
+.banner-resumo { font-size: 11px; color: var(--muted); font-family: 'IBM Plex Mono', monospace; padding-left: 14px; border-left: 1px solid var(--border); }
+
+.btn-finalizar {
+  background: rgba(255,68,102,0.12);
+  border: 2px solid rgba(255,68,102,0.4);
+  color: var(--danger);
+  border-radius: 10px;
+  font-size: 12px; font-weight: 900; letter-spacing: 1.5px; text-transform: uppercase;
+  padding: 8px 14px;
+  cursor: pointer;
+  font-family: 'Nunito', sans-serif;
+}
+.btn-finalizar:hover { filter: brightness(1.1); }
+
+/* ─── TABS ─── */
+.tabs {
+  background: var(--surface);
+  padding: 0 20px;
+  display: flex; gap: 4px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.tab {
+  padding: 12px 22px;
+  font-size: 12px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase;
+  color: var(--muted); cursor: pointer;
+  border-bottom: 2.5px solid transparent;
+  transition: all 0.15s;
+}
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+/* ─── LAYOUT GERAL ─── */
+.layout-content {
+  flex: 1; height: calc(100vh - 56px);
+  overflow: hidden;
+}
+#banner-turno.on ~ .layout-content { height: calc(100vh - 56px - 56px); }
+
+.page { height: 100%; overflow: hidden; padding: 12px 18px; display: none; }
+.page.active { display: flex; gap: 12px; }
+
+/* ─── EMISSÃO ─── */
+.touch-panel {
+  flex: 1;
+  overflow: hidden;            /* sem scroll em 15" touch */
+  display: flex; flex-direction: column; gap: 9px;
+}
+.section-label {
+  font-size: 9px; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase;
+  color: var(--muted); margin-bottom: 4px;
+}
+.touch-grid {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;
+}
+.touch-grid.cols-2 { grid-template-columns: repeat(2, 1fr); }
+.touch-grid.cols-3 { grid-template-columns: repeat(3, 1fr); }
+
+.touch-btn {
+  padding: 9px 6px;
+  background: var(--panel);
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-family: 'Nunito', sans-serif;
+  font-size: 12px; font-weight: 800; letter-spacing: 0.5px;
+  cursor: pointer;
+  transition: all 0.15s;
+  text-align: center;
+}
+.touch-btn:hover  { background: var(--panel-hi); border-color: var(--muted); }
+.touch-btn:active { transform: scale(0.96); }
+.touch-btn.selected {
+  border-color: var(--accent);
+  background: rgba(168,128,255,0.12);
+  color: var(--accent);
+  box-shadow: 0 0 12px rgba(168,128,255,0.18);
+}
+
+/* Cores — compactas com círculo menor */
+.cor-btn {
+  display: flex; flex-direction: row; align-items: center; gap: 8px;
+  padding: 8px 10px;
+  background: var(--panel);
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.cor-btn:active { transform: scale(0.96); }
+.cor-circulo { width: 26px; height: 26px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.15); flex-shrink: 0; }
+.cor-label { font-size: 11px; font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase; }
+.cor-preta    .cor-circulo { background: #111; border-color: #555; }
+.cor-branca   .cor-circulo { background: #f0f0f0; border-color: #aaa; }
+.cor-amarela  .cor-circulo { background: #f5c800; border-color: #d4a800; }
+.cor-colorida .cor-circulo { background: #2eb82e; border-color: #1a8c1a; }
+.cor-preta.selected    { border-color: #888; background: rgba(80,80,80,0.15); }
+.cor-branca.selected   { border-color: #ccc; background: rgba(200,200,200,0.1); }
+.cor-amarela.selected  { border-color: #f5c800; background: rgba(245,200,0,0.12); }
+.cor-colorida.selected { border-color: #2eb82e; background: rgba(46,184,46,0.12); }
+
+/* Tipo (LEVE/REFORÇADA) — botão alto com info de espessura */
+.tipo-btn {
+  padding: 10px 8px;
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 1px;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  line-height: 1.1;
+}
+.tipo-btn .esp-info { font-size: 10px; font-weight: 600; opacity: 0.7; letter-spacing: 0; }
+.tipo-btn.selected { background: rgba(168,128,255,0.15); }
+.tipo-btn.selected .esp-info { opacity: 0.95; }
+
+/* Operadores */
+.op-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.op-vazio { color: var(--muted); font-size: 11px; padding: 6px; grid-column: 1/-1; text-align: center; }
+.op-capa-display {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+  padding: 12px 14px; font-size: 15px; font-weight: 700; color: var(--accent);
+  font-family: 'IBM Plex Mono', monospace;
+}
+.op-capa-display.vazio { color: var(--muted); font-weight: 500; font-size: 12px; }
+.capa-btn .esp-info { display:block; font-size: 10px; font-weight: 600; opacity: 0.7; margin-top: 2px; }
+.capa-btn.selected .esp-info { opacity: 0.95; }
+
+/* Máquina */
+.maq-btn { font-size: 16px; font-weight: 900; padding: 11px; }
+
+/* Linha tipo + largura lado a lado (economiza altura) */
+.row-2col { display: grid; grid-template-columns: 1fr 1.4fr; gap: 12px; }
+
+/* Balança compacta */
+.balanca-card {
+  background: var(--panel);
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+}
+.balanca-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.balanca-label { font-size: 10px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; color: var(--muted); }
+.balanca-status {
+  font-size: 9px; font-weight: 800; letter-spacing: 1px;
+  padding: 2px 9px; border-radius: 20px;
+  text-transform: uppercase;
+}
+.balanca-status.connected    { background: rgba(0,255,157,0.1); color: var(--accent2); border: 1px solid rgba(0,255,157,0.3); }
+.balanca-status.disconnected { background: rgba(255,68,102,0.1); color: var(--danger);  border: 1px solid rgba(255,68,102,0.3); }
+.balanca-status.aguardando   { background: rgba(255,170,0,0.1);  color: var(--warn);    border: 1px solid rgba(255,170,0,0.3); }
+.balanca-status.simulada     { background: rgba(168,128,255,0.12); color: var(--accent); border: 1px solid rgba(168,128,255,0.3); }
+.balanca-status.instavel     { background: rgba(255,170,0,0.18); color: var(--warn);    border: 1px solid rgba(255,170,0,0.55); animation: pulse-warn 1.4s ease-in-out infinite; }
+.balanca-status.descarga     { background: rgba(255,170,0,0.22); color: var(--warn);    border: 1px solid rgba(255,170,0,0.6);  animation: pulse-warn 1.4s ease-in-out infinite; font-weight: 900; }
+@keyframes pulse-warn { 0%,100%{ opacity: 1; } 50%{ opacity: 0.55; } }
+.peso-display {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 36px; font-weight: 600;
+  color: var(--accent);
+  text-align: center;
+  letter-spacing: 1.5px;
+  line-height: 1;
+}
+.peso-unit { font-size: 14px; color: var(--muted); }
+.peso-sub {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px; color: var(--muted);
+  text-align: center;
+  margin-top: 4px;
+  letter-spacing: 0.5px;
+}
+
+.peso-manual-wrap { display: flex; gap: 6px; margin-top: 8px; }
+.peso-manual-input {
+  flex: 1;
+  background: var(--bg);
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 14px;
+  font-family: 'IBM Plex Mono', monospace;
+  padding: 8px 10px;
+  outline: none;
+  text-align: center;
+}
+.peso-manual-input:focus { border-color: var(--accent); }
+.btn-peso-ok {
+  background: var(--accent);
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  font-size: 11px; font-weight: 900;
+  padding: 8px 14px;
+  cursor: pointer;
+  font-family: 'Nunito', sans-serif;
+  letter-spacing: 1px;
+}
+.btn-peso-sim {
+  background: rgba(255,170,0,0.12);
+  border: 1px solid rgba(255,170,0,0.35);
+  border-radius: 8px;
+  color: var(--warn);
+  font-size: 10px; font-weight: 900;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-family: 'Nunito', sans-serif;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+.btn-peso-sim:hover { background: rgba(255,170,0,0.18); }
+
+/* Botão imprimir */
+.btn-imprimir {
+  width: 100%; padding: 16px;
+  background: linear-gradient(135deg, var(--accent), #7860d0);
+  border: none; border-radius: 12px;
+  color: #fff;
+  font-family: 'Nunito', sans-serif;
+  font-size: 16px; font-weight: 900;
+  letter-spacing: 2px; text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 4px 18px rgba(168,128,255,0.3);
+}
+.btn-imprimir:hover  { filter: brightness(1.08); transform: translateY(-1px); }
+.btn-imprimir:active { transform: scale(0.98); }
+.btn-imprimir:disabled { opacity: 0.25; cursor: not-allowed; transform: none; box-shadow: none; filter: grayscale(0.5); }
+
+/* Preview etiqueta (lateral direita) */
+.preview-col {
+  width: 360px;
+  flex-shrink: 0;
+  display: flex; flex-direction: column;
+  gap: 10px;
+  overflow: hidden;
+}
+.preview-wrap {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
+  display: flex; flex-direction: column;
+  gap: 9px;
+}
+.preview-label {
+  font-size: 10px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase;
+  color: var(--muted);
+}
+
+.preview-etiqueta {
+  background: #fff; color: #000;
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 6px;
+  border: 1px solid #ddd;
+  font-family: 'IBM Plex Mono', monospace;
+  font-weight: 600;
+}
+.pe-turno { font-size: 9px; color: #666; text-align: right; letter-spacing: 1px; }
+.pe-prod { font-size: 15px; font-weight: 700; color: #000; text-align: center; margin: 6px 0 2px; }
+.pe-info { font-size: 10px; color: #444; text-align: center; }
+.pe-peso { font-size: 28px; font-weight: 700; color: #000; text-align: center; margin: 8px 0; border-top: 1.5px solid #222; border-bottom: 1.5px solid #222; padding: 8px 0; }
+.pe-sku  { font-size: 11px; font-weight: 700; text-align: center; color: #111; margin: 4px 0 2px; letter-spacing: 0.5px; }
+.pe-bc-wrap { padding: 4px 6px 2px; }
+.pe-bc-svg  { display: block; width: 100%; height: 38px; }
+.pe-id   { font-family: 'IBM Plex Mono', monospace; font-size: 14px; font-weight: 700; color: #000; text-align: center; letter-spacing: 2px; margin-top: 2px; }
+.pe-vazio { color: #888; text-align: center; padding: 40px 0; font-size: 12px; }
+
+/* Histórico turno — padrão MP (id · desc · peso · ação BIPAR) */
+.hist-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  display: flex; flex-direction: column; gap: 6px;
+  min-height: 0;
+  flex: 1;
+}
+.hist-head { display: flex; justify-content: space-between; align-items: baseline; }
+.hist-titulo { font-size: 10px; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); }
+.hist-totais { font-size: 10px; font-family: 'IBM Plex Mono', monospace; color: var(--muted); }
+.hist-totais b { color: var(--accent2); }
+.hist-lista {
+  flex: 1;
+  overflow-y: auto;
+  display: flex; flex-direction: column; gap: 3px;
+  min-height: 60px;
+}
+.hist-item {
+  background: rgba(255,255,255,0.02);
+  border-radius: 6px;
+  padding: 6px 9px;
+  display: grid;
+  grid-template-columns: 70px 1fr auto 60px 32px;
+  gap: 8px;
+  align-items: center;
+  font-family: 'IBM Plex Mono', monospace;
+  border-left: 2px solid var(--accent);
+  transition: all 0.2s;
+}
+.hist-item.pendente   { border-left-color: var(--warn); background: rgba(255,170,0,0.05); }
+.hist-item.bipada     { border-left-color: var(--accent2); }
+.hist-item.cancelada  { border-left-color: var(--danger); opacity: 0.5; }
+.hist-id    { font-size: 10px; font-weight: 700; color: var(--accent); }
+.hist-desc  { font-size: 11px; font-weight: 700; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hist-small { font-size: 9px; color: var(--muted); font-weight: 600; letter-spacing: 0.5px; }
+.hist-peso  { font-size: 12px; font-weight: 800; text-align: right; }
+.hist-item.bipada   .hist-peso { color: var(--accent2); }
+.hist-item.pendente .hist-peso { color: var(--warn); }
+.hist-acao {
+  font-size: 10px; font-weight: 800;
+  padding: 5px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+  border: 1.5px solid var(--warn);
+  background: rgba(255,170,0,0.12);
+  color: var(--warn);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-family: 'Nunito', sans-serif;
+  transition: all 0.12s;
+}
+.hist-acao:hover  { background: var(--warn); color: #1a0f00; }
+.hist-acao:active { transform: scale(0.96); }
+.hist-check {
+  font-size: 16px; color: var(--accent2);
+  font-weight: 800;
+  text-align: center;
+}
+.hist-del {
+  width: 26px; height: 26px; padding: 0;
+  border: 1px solid var(--border); border-radius: 6px;
+  background: transparent; color: var(--muted);
+  font-size: 13px; font-weight: 800; line-height: 1;
+  cursor: pointer; transition: all 0.12s;
+}
+.hist-del:hover { background: rgba(239,68,68,0.12); color: var(--danger); border-color: var(--danger); }
+.hist-vazio { color: var(--muted); text-align: center; padding: 30px 0; font-size: 12px; }
+.hist-item.bipada      { border-left-color: var(--accent2); }
+.hist-item.cancelada   { border-left-color: var(--danger); opacity: 0.5; }
+.hist-vazio { color: var(--muted); text-align: center; padding: 30px 0; font-size: 12px; }
+
+/* ─── CONFIG ─── */
+.config-wrap {
+  flex: 1;
+  display: flex; flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+}
+.config-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+}
+.config-titulo { font-size: 11px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; color: var(--muted); margin-bottom: 12px; }
+.input-row { display: flex; gap: 8px; }
+.input-text {
+  flex: 1;
+  background: var(--bg);
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 14px;
+  font-family: 'Nunito', sans-serif;
+  padding: 10px 14px;
+  outline: none;
+}
+.input-text:focus { border-color: var(--accent); }
+.btn-add {
+  background: var(--accent);
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  font-size: 12px; font-weight: 900;
+  padding: 10px 18px;
+  letter-spacing: 1px;
+  cursor: pointer;
+  font-family: 'Nunito', sans-serif;
+}
+.op-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.op-pill {
+  padding: 8px 14px;
+  background: rgba(168,128,255,0.08);
+  border: 1px solid rgba(168,128,255,0.3);
+  border-radius: 16px;
+  font-size: 12px; font-weight: 700;
+  color: var(--accent);
+  display: flex; align-items: center; gap: 8px;
+}
+.op-pill .x {
+  cursor: pointer; opacity: 0.5; transition: opacity 0.15s;
+}
+.op-pill .x:hover { opacity: 1; color: var(--danger); }
+
+/* ─── TOAST ─── */
+#toast-area {
+  position: fixed; top: 80px; right: 20px;
+  display: flex; flex-direction: column; gap: 8px;
+  z-index: 9999; pointer-events: none;
+}
+.toast {
+  background: var(--panel); border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 8px; padding: 12px 16px;
+  font-size: 13px; min-width: 280px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  animation: tslide 0.25s ease;
+}
+.toast.success { border-left-color: var(--accent2); }
+.toast.error   { border-left-color: var(--danger); }
+.toast.warn    { border-left-color: var(--warn); }
+@keyframes tslide { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+/* ─── MODAL ─── */
+.modal-overlay {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.7);
+  z-index: 1000;
+  align-items: center; justify-content: center;
+  padding: 20px;
+}
+.modal-overlay.on { display: flex; }
+.modal {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 26px 28px;
+  max-width: 480px;
+  width: 100%;
+}
+.modal-titulo { font-size: 18px; font-weight: 900; margin-bottom: 12px; }
+.modal-corpo { font-size: 14px; color: var(--text); margin-bottom: 20px; line-height: 1.5; }
+.modal-acoes { display: flex; gap: 10px; justify-content: flex-end; }
+.btn-modal {
+  padding: 10px 22px;
+  border-radius: 8px;
+  font-size: 13px; font-weight: 800;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  font-family: 'Nunito', sans-serif;
+  border: 1px solid transparent;
+}
+.btn-modal.primary  { background: var(--accent); color: #fff; }
+.btn-modal.secundario { background: transparent; border-color: var(--border); color: var(--text); }
+.btn-modal.danger { background: var(--danger); color: #fff; }
+
+/* Inputs do modal de início de turno */
+.modal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 18px 0; }
+.modal-field { display: flex; flex-direction: column; gap: 6px; }
+.modal-field .lbl { font-size: 10px; font-weight: 800; letter-spacing: 1px; color: var(--muted); text-transform: uppercase; }
+.modal-select-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.modal-select-grid .touch-btn { padding: 10px 6px; font-size: 12px; }
+
+</style>
+</head>
+<body data-tela="Resíduos">
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">⚖</div>
+    RESÍDUOS
+  </div>
+  <div class="header-center">
+    <div class="clock" id="clock">--:--:--</div>
+  </div>
+  <div class="header-right">
+    <div class="srv-status off" id="srv-status">SERVIDOR…</div>
+    <button class="btn-icon" onclick="voltarPagina()" title="Voltar">←</button>
+    <button class="btn-icon" onclick="location.href='/'" title="Voltar ao menu inicial">🏠</button>
+  </div>
+</header>
+
+<!-- Banner de pesagem ativa (aparece quando há sessão aberta) -->
+<div id="banner-turno">
+  <div style="display:flex;align-items:center;gap:14px;">
+    <div class="banner-dot"></div>
+    <div>
+      <div class="banner-label">PESAGEM EM ANDAMENTO</div>
+      <div class="banner-info" id="banner-info"></div>
+    </div>
+    <div class="banner-resumo" id="banner-resumo">0 itens · 0,0 kg</div>
+  </div>
+  <button class="btn-finalizar" onclick="finalizarSessao()">⏹ FINALIZAR E ENVIAR</button>
+</div>
+
+<div class="layout-content">
+  <div class="page active" id="page-pesagem">
+
+    <div class="touch-panel">
+
+      <div>
+        <div class="section-label">Aparas</div>
+        <div class="touch-grid">
+          <div class="cor-btn cor-amarela"  id="it-APARA.AMARELA" onclick="selecionarItem('APARA.AMARELA')"><div class="cor-circulo"></div><div class="cor-label" style="color:#f5c800;">Amarela</div></div>
+          <div class="cor-btn cor-colorida" id="it-APARA.VERDE"   onclick="selecionarItem('APARA.VERDE')"><div class="cor-circulo"></div><div class="cor-label" style="color:#2eb82e;">Verde</div></div>
+          <div class="cor-btn cor-preta"    id="it-APARA.PRETA"   onclick="selecionarItem('APARA.PRETA')"><div class="cor-circulo"></div><div class="cor-label" style="color:#aaa;">Preta</div></div>
+          <div class="cor-btn cor-branca"   id="it-APARA.BRANCA"  onclick="selecionarItem('APARA.BRANCA')"><div class="cor-circulo"></div><div class="cor-label" style="color:#e0e0e0;">Branca</div></div>
+        </div>
+      </div>
+
+      <div>
+        <div class="section-label">Resíduos (vão ao Bling)</div>
+        <div class="touch-grid cols-2">
+          <div class="touch-btn" id="it-RES.BORRA"     onclick="selecionarItem('RES.BORRA')">BORRA</div>
+          <div class="touch-btn" id="it-RES.VARREDURA" onclick="selecionarItem('RES.VARREDURA')">VARREDURA</div>
+          <div class="touch-btn" id="it-RES.PO" onclick="selecionarItem('RES.PO')">PÓ</div>
+        </div>
+      </div>
+
+      <div class="balanca-card">
+        <div class="balanca-top">
+          <span class="balanca-label">Peso</span>
+          <span class="balanca-status disconnected" id="balanca-status">Desconectada</span>
+        </div>
+        <div class="peso-display"><span id="peso-val">0.0</span><span class="peso-unit"> kg</span></div>
+        <div class="peso-sub" id="peso-sub" style="visibility:hidden;">—</div>
+        <div class="peso-manual-wrap">
+          <input type="number" class="peso-manual-input" id="peso-manual"
+            placeholder="Digite o peso manual..." step="0.1" min="0"
+            onkeydown="if(event.key==='Enter') confirmarPesoManual()">
+          <button class="btn-peso-ok" onclick="confirmarPesoManual()">OK</button>
+          <button class="btn-peso-sim" onclick="simularPeso()" title="Gera peso aleatório pra testes">⟳ SIM</button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Coluna direita: preview + lista -->
+    <div class="preview-col">
+
+      <div class="preview-wrap">
+        <div class="preview-label">PREVIEW DA ETIQUETA</div>
+        <div class="preview-etiqueta" id="preview-etiqueta">
+          <div class="pe-vazio">Selecione o item e o peso<br>para imprimir</div>
+        </div>
+        <button class="btn-imprimir" id="btn-imprimir" onclick="imprimirEtiqueta()" disabled>
+          ⎙ IMPRIMIR ETIQUETA
+        </button>
+      </div>
+
+      <div class="hist-card">
+        <div class="hist-head">
+          <span class="hist-titulo">PESAGENS DO LOTE</span>
+          <div class="hist-totais"><span id="hist-tot-n">0 itens</span> · <b id="hist-tot-kg">0,0 kg</b></div>
+        </div>
+        <div class="hist-lista" id="hist-lista">
+          <div class="hist-vazio">Nenhuma pesagem ainda</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Modal de bipagem pendente (bloqueia nova pesagem até bipar a anterior) -->
+<div class="modal-overlay" id="modal-bipagem-pendente">
+  <div class="modal" style="border-color: var(--warn);">
+    <div class="modal-titulo">⚠ Bipe a pesagem antes de continuar</div>
+    <div class="modal-corpo">Há pesagem aguardando confirmação. Bipe a etiqueta (com o leitor ou o botão) para liberar a próxima.</div>
+    <div id="lista-pendentes-modal" style="margin:12px 0;"></div>
+    <div class="modal-acoes">
+      <button class="btn-modal secundario" onclick="fecharModalBipagemPendente()">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toasts -->
+<div id="toast-area"></div>
+
+<script>
+const URL_BASE = window.location.origin;
+const LIMIAR_ZERO_KG = 2;   // abaixo disso = balança "vazia"
+
+// Catálogo dos itens (espelha OUTRAS_CATALOGO do servidor)
+const OUTRAS_ITENS = {
+  'APARA.AMARELA': { nome:'Apara Amarela', cor:'Amarela', categoria:'APARA' },
+  'APARA.VERDE':   { nome:'Apara Verde',   cor:'Verde',   categoria:'APARA' },
+  'APARA.PRETA':   { nome:'Apara Preta',   cor:'Preta',   categoria:'APARA' },
+  'APARA.BRANCA':  { nome:'Apara Branca',  cor:'Branca',  categoria:'APARA' },
+  'RES.BORRA':     { nome:'Borra',         cor:null,      categoria:'RESIDUO' },
+  'RES.VARREDURA': { nome:'Varredura',     cor:null,      categoria:'RESIDUO' },
+  'RES.PO':        { nome:'Pó',            cor:null,      categoria:'RESIDUO' },
+};
+
+const state = {
+  sessaoId:      null,
+  itemCodigo:    '',
+  pesoAtual:     0,
+  pesoBruto:     0,        // Outras: peso lido = peso final (sem tara)
+  balancaEstavel:true,
+  aguardandoZero:false,
+  proximoSeq:    1,
+  itens:         [],
+  tokenPendente: null,
+};
+
+function gerarToken() {
+  return 'tok_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+}
+function voltarPagina() {
+  try { if (window.parent && window.parent.ekoHome) { window.parent.ekoHome(); return; } } catch(e) {}
+  location.href = '/';
+}
+function tickClock() {
+  const el = document.getElementById('clock');
+  if (el) el.textContent = new Date().toLocaleTimeString('pt-BR');
+}
+setInterval(tickClock, 1000); tickClock();
+
+async function pingServidor() {
+  const el = document.getElementById('srv-status');
+  try {
+    const r = await fetch(URL_BASE + '/healthcheck');
+    const d = await r.json();
+    if (d.ok) {
+      el.className = 'srv-status on'; el.textContent = 'ONLINE';
+      if (d.proximoSeq && d.proximoSeq.outras && !state.itens.length) {
+        state.proximoSeq = d.proximoSeq.outras;
+        atualizarPreview();
+      }
+    } else { el.className = 'srv-status off'; el.textContent = 'ERRO'; }
+  } catch(e) { el.className = 'srv-status off'; el.textContent = 'OFFLINE'; }
+}
+
+// ─── BALANÇA ───
+async function pollBalanca() {
+  if (document.visibilityState !== 'visible') return;
+  try {
+    const r = await fetch(URL_BASE + '/balanca/peso');
+    if (!r.ok) throw new Error();
+    const d = await r.json();
+    const setStatus = (cls, txt) => {
+      const el = document.getElementById('balanca-status');
+      if (el) { el.className = 'balanca-status ' + cls; el.textContent = txt; }
+    };
+    const semLeitura = d.peso == null || d.portaAberta === false;
+    if (semLeitura) { setStatus('disconnected', 'Desconectada'); atualizarBotaoImprimir(); return; }
+
+    const pesoAtualBalanca = d.peso;
+    state.balancaEstavel = d.estavel !== false;
+
+    if (state.aguardandoZero && pesoAtualBalanca < LIMIAR_ZERO_KG) {
+      state.aguardandoZero = false;
+      console.log('[outras] balança zerou — pronto pra próxima');
+    }
+    if (!state.aguardandoZero) definirPeso(pesoAtualBalanca);
+
+    if (state.aguardandoZero)              setStatus('descarga', '⚠ Retire o material');
+    else if (pesoAtualBalanca < LIMIAR_ZERO_KG) setStatus('aguardando', 'Aguardando material');
+    else if (!state.balancaEstavel)        setStatus('instavel', '~ Instável');
+    else                                   setStatus('connected', 'Estável');
+    atualizarBotaoImprimir();
+  } catch(e) { /* servidor offline — não atualiza */ }
+}
+setInterval(pollBalanca, 1000);
+
+// Outras pesagens não têm tara/tubete: o peso lido é o peso final.
+function definirPeso(valor, statusCls, statusText) {
+  state.pesoBruto = valor;
+  state.pesoAtual = valor;
+  if (statusCls && statusText) {
+    const st = document.getElementById('balanca-status');
+    st.className = 'balanca-status ' + statusCls; st.textContent = statusText;
+  }
+  document.getElementById('peso-val').textContent = (valor || 0).toFixed(1);
+  const sub = document.getElementById('peso-sub');
+  if (sub) sub.style.visibility = 'hidden';
+  atualizarBotaoImprimir();
+  atualizarPreview();
+}
+function confirmarPesoManual() {
+  const v = parseFloat(document.getElementById('peso-manual').value);
+  if (!v || v <= 0) { toast('Informe um peso válido.', 'error'); return; }
+  state.balancaEstavel = true; state.aguardandoZero = false;
+  definirPeso(v, 'aguardando', 'Manual');
+  document.getElementById('peso-manual').value = '';
+}
+function simularPeso() {
+  const v = Math.round((Math.random() * (40 - 8) + 8) * 10) / 10;
+  state.balancaEstavel = true; state.aguardandoZero = false;
+  definirPeso(v, 'simulada', 'Simulado');
+  document.getElementById('peso-manual').value = '';
+}
+
+// ─── TRAVA DE BIPAGEM ───
+function pendentesBipagem() { return state.itens.filter(i => i.status === 'aguardando_bipe'); }
+function renderListaPendentesModal() {
+  const pend = pendentesBipagem();
+  const cont = document.getElementById('lista-pendentes-modal');
+  if (!pend.length) { cont.innerHTML = ''; return; }
+  cont.innerHTML = pend.map(it => `
+    <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;
+                background: rgba(255,170,0,0.08); border:1px solid rgba(255,170,0,0.3);
+                border-radius:8px; padding:10px 12px; margin-bottom:8px; font-family:'IBM Plex Mono',monospace;">
+      <div>
+        <div style="font-size:13px; font-weight:800; color:var(--warn);">${it.id}</div>
+        <div style="font-size:11px; color:var(--muted); margin-top:2px;">
+          Pesagem #${String(it.seq_sessao||'-').padStart(2,'0')} · ${it.nome} · ${it.peso.toFixed(1)} kg
+        </div>
+      </div>
+      <button class="hist-acao" onclick="biparItem('${it.id}')">BIPAR</button>
+    </div>
+  `).join('');
+}
+function abrirModalBipagemPendente() { renderListaPendentesModal(); document.getElementById('modal-bipagem-pendente').classList.add('on'); }
+function fecharModalBipagemPendente() { document.getElementById('modal-bipagem-pendente').classList.remove('on'); }
+function bloqueadoPorBipagem() { if (pendentesBipagem().length > 0) { abrirModalBipagemPendente(); return true; } return false; }
+
+// ─── SELEÇÃO DE ITEM ───
+function selecionarItem(codigo) {
+  if (bloqueadoPorBipagem()) return;
+  state.itemCodigo = codigo;
+  document.querySelectorAll('.touch-panel .cor-btn, .touch-panel .touch-btn').forEach(b => b.classList.remove('selected'));
+  const el = document.getElementById('it-' + codigo);
+  if (el) el.classList.add('selected');
+  atualizarPreview();
+  atualizarBotaoImprimir();
+}
+
+// ─── PREVIEW ───
+function atualizarPreview() {
+  const div = document.getElementById('preview-etiqueta');
+  const item = OUTRAS_ITENS[state.itemCodigo];
+  if (!item || !state.pesoAtual) {
+    div.innerHTML = '<div class="pe-vazio">Selecione o item e o peso<br>para imprimir</div>';
+    return;
+  }
+  const idPreview = 'O' + String(state.proximoSeq || 1).padStart(7, '0');
+  div.innerHTML = `
+    <div class="pe-turno">RESIDUOS</div>
+    <div class="pe-prod">${item.nome.toUpperCase()}</div>
+    <div class="pe-info">${item.categoria === 'RESIDUO' ? 'RESÍDUO (vai ao Bling)' : 'APARA (inventário)'}</div>
+    <div class="pe-peso">${state.pesoAtual.toFixed(1)} kg</div>
+    <div class="pe-sku">${state.itemCodigo}</div>
+    <div class="pe-bc-wrap"><svg id="pe-barcode" class="pe-bc-svg"></svg></div>
+    <div class="pe-id">${idPreview}</div>
+  `;
+  try {
+    JsBarcode('#pe-barcode', idPreview, { format:'CODE128', width:2, height:38, displayValue:false, margin:0, background:'transparent', lineColor:'#000' });
+  } catch(e) { console.error('Erro JsBarcode:', e); }
+}
+
+// ─── BOTÃO IMPRIMIR ───
+function atualizarBotaoImprimir() {
+  const btn = document.getElementById('btn-imprimir');
+  if (!btn) return;
+  const camposOk = !!state.itemCodigo && state.pesoAtual > 0;
+  const pend = pendentesBipagem();
+  if (pend.length > 0) {
+    btn.textContent = `⚠ BIPE A PESAGEM #${String(pend[0].seq_sessao||'-').padStart(2,'0')} PRIMEIRO`;
+    btn.disabled = true;
+  } else if (state.aguardandoZero) {
+    btn.textContent = '⏳ RETIRE O MATERIAL';
+    btn.disabled = true;
+  } else if (camposOk && !state.balancaEstavel) {
+    btn.textContent = '⏳ AGUARDANDO ESTABILIDADE...';
+    btn.disabled = true;
+  } else {
+    btn.textContent = '⎙ IMPRIMIR ETIQUETA';
+    btn.disabled = !(camposOk && state.balancaEstavel);
+  }
+}
+
+// ─── IMPRIMIR ───
+async function imprimirEtiqueta() {
+  if (bloqueadoPorBipagem()) return;
+  if (!state.itemCodigo) { toast('Selecione o item.', 'error'); return; }
+  const ok = await garantirSessaoAberta();
+  if (!ok) return;
+  const btn = document.getElementById('btn-imprimir');
+  btn.disabled = true;
+  if (!state.tokenPendente) state.tokenPendente = gerarToken();
+  try {
+    const r = await fetch(URL_BASE + '/etiquetas/outras', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        clientToken: state.tokenPendente,
+        sessao_id:   state.sessaoId,
+        item_codigo: state.itemCodigo,
+        peso:        state.pesoAtual,
+        peso_bruto:  state.pesoBruto || null,
+        tara:        0,
+      }),
+    });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.erro || 'Falha na impressão');
+    state.tokenPendente = null;
+    const item = OUTRAS_ITENS[state.itemCodigo] || { nome: state.itemCodigo };
+    toast(`✓ Etiqueta ${d.id} impressa (${item.nome})`, 'success');
+    if (d.seq) state.proximoSeq = d.seq + 1;
+    state.itens.unshift({
+      id: d.id, seq_sessao: d.seq_sessao, codigo: state.itemCodigo,
+      nome: item.nome, peso: state.pesoAtual, status: 'aguardando_bipe',
+      hora: new Date().toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' }),
+    });
+    renderHistorico();
+    state.aguardandoZero = true;
+    setTimeout(() => {
+      state.pesoBruto = 0; state.pesoAtual = 0;
+      document.getElementById('peso-val').textContent = '0.0';
+      atualizarBotaoImprimir(); atualizarPreview();
+    }, 800);
+  } catch(e) {
+    toast('Erro ao imprimir: ' + e.message, 'error');
+    btn.disabled = false;
+  }
+}
+
+// ─── HISTÓRICO ───
+function renderHistorico() {
+  const lista = document.getElementById('hist-lista');
+  if (!state.itens.length) {
+    lista.innerHTML = '<div class="hist-vazio">Nenhuma pesagem ainda</div>';
+  } else {
+    lista.innerHTML = state.itens.map(it => {
+      const cls = it.status === 'bipada' ? 'bipada' : it.status === 'cancelada' ? 'cancelada' : 'pendente';
+      const acao = it.status === 'aguardando_bipe'
+        ? `<button class="hist-acao" onclick="biparItem('${it.id}')">BIPAR</button>`
+        : it.status === 'bipada'
+        ? '<span class="hist-check" title="bipada">✓</span>'
+        : '<span class="hist-check" style="color:var(--danger);" title="cancelada">✕</span>';
+      return `<div class="hist-item ${cls}">
+        <span class="hist-id">${it.id}</span>
+        <span class="hist-desc">${it.nome}<br><span class="hist-small">Pesagem #${String(it.seq_sessao||'-').padStart(2,'0')} · ${it.hora}</span></span>
+        <span class="hist-peso">${it.peso.toFixed(1)} kg</span>
+        ${acao}
+        <button class="hist-del" title="Excluir pesagem" onclick="excluirItem('${it.id}')">✕</button>
+      </div>`;
+    }).join('');
+  }
+  const validas = state.itens.filter(i => i.status !== 'cancelada');
+  document.getElementById('hist-tot-n').textContent = validas.length + (validas.length === 1 ? ' item' : ' itens');
+  const totKg = validas.reduce((a, b) => a + (b.peso || 0), 0);
+  document.getElementById('hist-tot-kg').textContent = totKg.toFixed(1).replace('.', ',') + ' kg';
+  atualizarBanner();
+}
+function atualizarBanner() {
+  if (!state.sessaoId) return;
+  const el = document.getElementById('banner-resumo');
+  if (!el) return;
+  const validas = state.itens.filter(i => i.status !== 'cancelada');
+  const totKg = validas.reduce((a, b) => a + (b.peso || 0), 0);
+  el.textContent = `${validas.length} ${validas.length === 1 ? 'item' : 'itens'} · ${totKg.toFixed(1).replace('.', ',')} kg`;
+}
+
+async function excluirItem(id) {
+  try { await fetch(URL_BASE + '/etiquetas/' + id + '/cancelar', { method: 'POST' }); } catch(e) {}
+  const idx = state.itens.findIndex(it => it.id === id);
+  if (idx >= 0) state.itens.splice(idx, 1);
+  renderHistorico(); atualizarBotaoImprimir();
+  toast('Pesagem excluída', 'info');
+}
+async function biparItem(id) {
+  if (!/^O\d+$/.test(id)) { toast(`ID inválido: ${id} (esperado O0000000)`, 'error'); return; }
+  try {
+    const r = await fetch(URL_BASE + '/etiquetas/' + id + '/bipar', { method: 'POST' });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.erro || 'Erro');
+    const item = state.itens.find(i => i.id === id);
+    if (item) { item.status = 'bipada'; renderHistorico(); }
+    if (pendentesBipagem().length === 0) fecharModalBipagemPendente();
+    else renderListaPendentesModal();
+    atualizarBotaoImprimir();
+    toast(`✓ ${id} bipada`, 'success');
+  } catch(e) { toast('Erro ao bipar: ' + e.message, 'error'); }
+}
+
+// ─── LEITOR DE CÓDIGO DE BARRAS (global) ───
+let _bipeBuffer = '', _bipeTimer = null, _bipeInicio = 0;
+window.addEventListener('keydown', (e) => {
+  const ae = document.activeElement;
+  if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.tagName === 'SELECT')) return;
+  const modalAberto = document.querySelector('.modal-overlay.on');
+  if (modalAberto && modalAberto.id !== 'modal-bipagem-pendente') return;
+  if (e.key === 'Enter') {
+    if (_bipeBuffer) {
+      const raw = _bipeBuffer.toUpperCase();
+      const decorrido = Date.now() - _bipeInicio;
+      _bipeBuffer = '';
+      const cadenciaDeLeitor = raw.length >= 4 && decorrido < 300;
+      if (!cadenciaDeLeitor) return;
+      let id = null;
+      if (/^O\d+$/.test(raw))      id = raw;
+      else if (/^\d+$/.test(raw))  id = 'O' + raw.padStart(7, '0');
+      if (id) biparItem(id);
+    }
+  } else if (e.key.length === 1) {
+    if (!_bipeBuffer) _bipeInicio = Date.now();
+    _bipeBuffer += e.key;
+    clearTimeout(_bipeTimer);
+    _bipeTimer = setTimeout(() => { _bipeBuffer = ''; }, 1000);
+  } else if (e.key === 'Backspace') {
+    _bipeBuffer = _bipeBuffer.slice(0, -1);
+  }
+});
+
+// ─── SESSÃO ───
+async function garantirSessaoAberta() {
+  if (state.sessaoId) return true;
+  try {
+    const r = await fetch(URL_BASE + '/sessoes', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tipo: 'outras' }),   // sem operador/máquina/turno
+    });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.erro || 'Falha ao abrir sessão');
+    state.sessaoId = d.sessao_id;
+    aplicarBanner(true);
+    toast(`✓ Pesagem iniciada · Sessão #${state.sessaoId}`, 'success');
+    return true;
+  } catch(e) { toast('Erro ao iniciar: ' + e.message, 'error'); return false; }
+}
+function aplicarBanner(ativo) {
+  const b = document.getElementById('banner-turno');
+  b.classList.toggle('on', ativo);
+  if (ativo) document.getElementById('banner-info').textContent = `Sessão #${state.sessaoId}`;
+}
+
+// ─── FINALIZAR E ENVIAR ───
+async function finalizarSessao() {
+  if (!state.sessaoId) { toast('Nenhuma pesagem em andamento.', 'info'); return; }
+  if (pendentesBipagem().length > 0) {
+    // finalizar cancela pendentes no servidor; avisa o operador
+    toast('Há pesagens não bipadas — serão canceladas ao finalizar.', 'warn', 5000);
+  }
+  try {
+    const r = await fetch(URL_BASE + `/sessoes/${state.sessaoId}/finalizar`, { method: 'POST' });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.erro || 'Erro');
+    if (d.resumo && d.resumo.ok) {
+      toast(`✓ Finalizado · resumo impresso (${d.resumo.itens} ${d.resumo.itens === 1 ? 'item' : 'itens'})`, 'success');
+    } else {
+      toast('✓ Finalizado', 'success');
+    }
+    if (d.bling) {
+      if (d.bling.modo === 'sem_itens_bling') toast('Nenhuma borra/varredura — nada enviado ao Bling (só inventário).', 'info', 5000);
+      else if (d.bling.modo === 'simulacao')  toast(`Bling: simulado (${d.bling.bling_id})`, 'info', 4000);
+      else if (d.bling.ok)                    toast(`Bling: enviado (${d.bling.bling_id})`, 'success', 4000);
+    }
+    // limpa estado
+    state.sessaoId = null; state.itens = []; state.itemCodigo = '';
+    state.pesoAtual = 0; state.pesoBruto = 0;
+    document.getElementById('peso-val').textContent = '0.0';
+    renderHistorico();
+    aplicarBanner(false);
+    document.querySelectorAll('.touch-panel .cor-btn, .touch-panel .touch-btn').forEach(b => b.classList.remove('selected'));
+    atualizarBotaoImprimir(); atualizarPreview();
+  } catch(e) { toast('Erro: ' + e.message, 'error'); }
+}
+
+// ─── RESTAURAR SESSÃO ABERTA (reload) ───
+async function restaurarSessaoAberta() {
+  try {
+    const r = await fetch(URL_BASE + '/sessoes/abertas?tipo=outras');
+    if (!r.ok) return;
+    const d = await r.json();
+    if (!d.ok || !d.sessoes.length) return;
+    const s = d.sessoes[0];
+    state.sessaoId = s.id;
+    state.itens = (s.etiquetas || []).slice().reverse().map(e => ({
+      id: e.id, seq_sessao: e.seq_sessao, codigo: e.sku || e.codigo,
+      nome: e.material_nome || e.sku || '?', peso: e.peso || 0, status: e.status,
+      hora: e.hora_impressao ? new Date(e.hora_impressao).toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' }) : '--:--',
+    }));
+    aplicarBanner(true);
+    renderHistorico();
+    toast(`↩ Retomando pesagem · ${state.itens.length} ${state.itens.length===1?'item':'itens'}`, 'success');
+  } catch(e) { console.warn('Falha ao restaurar sessão de outras:', e.message); }
+}
+
+// ─── TOAST ───
+function toast(msg, tipo = 'info', dur = 3500) {
+  const wrap = document.getElementById('toast-area');
+  const t = document.createElement('div');
+  t.className = 'toast ' + tipo;
+  t.textContent = msg;
+  wrap.appendChild(t);
+  setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, dur);
+}
+
+// ─── INIT ───
+function init() {
+  renderHistorico();
+  pingServidor();
+  setInterval(pingServidor, 5000);
+  restaurarSessaoAberta().then(() => { atualizarBotaoImprimir(); atualizarPreview(); });
+}
+init();
+</script>
+
+<script src="/seguranca-saida.js"></script>
+</body>
+</html>

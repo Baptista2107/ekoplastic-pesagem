@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Dashboard · Histórico Ekoplastic</title>
+<style>
+  :root{
+    --bg:#0a0f14; --panel:#111a22; --panel2:#16222d; --border:#243440;
+    --txt:#e9f1f7; --muted:#8ba3b8; --dim:#5f7488;
+    --ciano:#00e0d0; --verde:#3ddc84; --ambar:#ffc250; --vermelho:#ff6b6b; --roxo:#a78bfa; --azul:#5aa9ff;
+    --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{background:var(--bg); color:var(--txt); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; font-size:14px; line-height:1.45; padding-bottom:60px;}
+
+  header{position:sticky; top:0; z-index:30; background:linear-gradient(180deg,#0d161e,#0a0f14);
+         border-bottom:1px solid var(--border); padding:14px 20px; display:flex; align-items:center; gap:14px; flex-wrap:wrap;}
+  header h1{font-size:18px; font-weight:800; letter-spacing:0.3px;}
+  header h1 .marca{color:var(--ciano);}
+  header .periodo-atual{font-size:12px; color:var(--muted); font-family:var(--mono);}
+  header .voltar{margin-left:auto; background:var(--panel2); border:1px solid var(--border); color:var(--txt);
+                 border-radius:9px; padding:8px 14px; font-size:13px; text-decoration:none; font-weight:700;}
+
+  .filtros{background:var(--panel); border-bottom:1px solid var(--border); padding:14px 20px;
+           display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end;}
+  .campo{display:flex; flex-direction:column; gap:5px;}
+  .campo label{font-size:10px; color:var(--dim); font-weight:800; letter-spacing:1px; text-transform:uppercase;}
+  .campo select, .campo input{background:var(--bg); border:1px solid var(--border); color:var(--txt);
+        border-radius:8px; padding:9px 11px; font-size:13px; font-family:inherit; min-width:120px;}
+  .campo input[type=date]{min-width:145px;}
+  .atalhos{display:flex; gap:6px; margin-left:auto;}
+  .atalho{background:var(--panel2); border:1px solid var(--border); color:var(--muted); border-radius:7px;
+          padding:8px 12px; font-size:12px; font-weight:700; cursor:pointer; font-family:inherit;}
+  .atalho:hover{color:var(--txt); border-color:var(--ciano);}
+  .atalho.on{background:var(--ciano); color:#03211f; border-color:var(--ciano);}
+
+  .abas{display:flex; gap:2px; padding:0 20px; background:var(--panel); border-bottom:1px solid var(--border); overflow-x:auto;}
+  .aba{background:none; border:none; border-bottom:3px solid transparent; color:var(--muted);
+       padding:13px 16px; font-size:13px; font-weight:800; cursor:pointer; white-space:nowrap; font-family:inherit;}
+  .aba.on{color:var(--ciano); border-bottom-color:var(--ciano);}
+
+  main{padding:20px;}
+  .kpis{display:grid; grid-template-columns:repeat(auto-fit,minmax(165px,1fr)); gap:12px; margin-bottom:22px;}
+  .kpi{background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:16px 18px; position:relative; overflow:hidden;}
+  .kpi::before{content:''; position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--ciano);}
+  .kpi.alerta::before{background:var(--vermelho);}
+  .kpi.aviso::before{background:var(--ambar);}
+  .kpi .v{font-size:27px; font-weight:800; font-variant-numeric:tabular-nums; line-height:1.1;}
+  .kpi .l{font-size:10px; color:var(--dim); font-weight:800; letter-spacing:1px; text-transform:uppercase; margin-top:6px;}
+  .kpi .sub{font-size:11px; color:var(--muted); margin-top:3px;}
+
+  .grade{display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:16px; margin-bottom:20px;}
+  .cartao{background:var(--panel); border:1px solid var(--border); border-radius:12px; overflow:hidden;}
+  .cartao h3{font-size:11px; font-weight:800; letter-spacing:1.1px; text-transform:uppercase; color:var(--muted);
+             padding:13px 16px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between;}
+  .cartao .corpo{padding:6px 0; max-height:340px; overflow:auto;}
+
+  .barra-linha{display:flex; align-items:center; gap:10px; padding:7px 16px; font-size:13px;}
+  .barra-linha .nome{flex:0 0 40%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .barra-linha .trilho{flex:1; height:7px; background:var(--panel2); border-radius:4px; overflow:hidden;}
+  .barra-linha .preench{height:100%; background:var(--ciano); border-radius:4px;}
+  .barra-linha .val{font-family:var(--mono); font-size:12px; color:var(--muted); min-width:88px; text-align:right;}
+
+  table{width:100%; border-collapse:collapse; font-size:12.5px;}
+  th{text-align:left; font-size:10px; letter-spacing:0.8px; text-transform:uppercase; color:var(--dim);
+     padding:10px 12px; border-bottom:1px solid var(--border); position:sticky; top:0; background:var(--panel); font-weight:800;}
+  td{padding:9px 12px; border-bottom:1px solid rgba(36,52,64,0.5);}
+  tr:hover td{background:rgba(0,224,208,0.04);}
+  td.num{font-family:var(--mono); text-align:right; font-variant-numeric:tabular-nums;}
+  td.id{font-family:var(--mono); color:var(--ciano); font-weight:700;}
+
+  .tag{display:inline-block; padding:2px 8px; border-radius:20px; font-size:10.5px; font-weight:800; letter-spacing:0.3px;}
+  .tag.bipada{background:rgba(61,220,132,0.14); color:var(--verde);}
+  .tag.consumida{background:rgba(90,169,255,0.14); color:var(--azul);}
+  .tag.cancelada{background:rgba(255,107,107,0.14); color:var(--vermelho);}
+  .tag.aguardando_bipe{background:rgba(255,194,80,0.14); color:var(--ambar);}
+  .tag.enviado{background:rgba(61,220,132,0.14); color:var(--verde);}
+  .tag.erro{background:rgba(255,107,107,0.14); color:var(--vermelho);}
+  .tag.pendente{background:rgba(255,194,80,0.14); color:var(--ambar);}
+  .tag.neutro{background:rgba(139,163,184,0.14); color:var(--muted);}
+  .tag.extrusao{background:rgba(167,139,250,0.14); color:var(--roxo);}
+  .tag.recebimento{background:rgba(61,220,132,0.14); color:var(--verde);}
+  .tag.retirada{background:rgba(255,194,80,0.14); color:var(--ambar);}
+  .tag.retorno{background:rgba(90,169,255,0.14); color:var(--azul);}
+  .tag.outras{background:rgba(139,163,184,0.14); color:var(--muted);}
+  .tag['data-t']{background:rgba(0,224,208,0.14); color:var(--ciano);}
+
+  .vazio{padding:40px 20px; text-align:center; color:var(--dim); font-size:14px;}
+  .carregando{padding:40px; text-align:center; color:var(--muted);}
+  .rodape-tab{padding:11px 16px; border-top:1px solid var(--border); display:flex; justify-content:space-between;
+              align-items:center; font-size:12px; color:var(--muted);}
+  .btn-mais{background:var(--panel2); border:1px solid var(--border); color:var(--txt); border-radius:7px;
+            padding:7px 14px; font-size:12px; font-weight:700; cursor:pointer; font-family:inherit;}
+  .btn-csv{background:var(--ciano); color:#03211f; border:none; border-radius:7px; padding:8px 14px;
+           font-size:12px; font-weight:800; cursor:pointer; font-family:inherit;}
+  .oculto{display:none !important;}
+  .aviso-caixa{background:rgba(255,194,80,0.08); border:1px solid var(--ambar); border-radius:10px;
+               padding:14px 16px; margin-bottom:18px; font-size:13px; color:#ffe0a8;}
+</style>
+</head>
+<body>
+
+<header>
+  <h1><span class="marca">▮</span> Histórico <span style="color:var(--muted);font-weight:600">Ekoplastic</span></h1>
+  <span class="periodo-atual" id="periodo-banco">carregando…</span>
+  <a class="voltar" href="/">← menu</a>
+</header>
+
+<div class="filtros">
+  <div class="campo"><label>De</label><input type="date" id="f-de"></div>
+  <div class="campo"><label>Até</label><input type="date" id="f-ate"></div>
+  <div class="campo"><label>Turno</label><select id="f-turno"><option value="">todos</option></select></div>
+  <div class="campo"><label>Máquina</label><select id="f-maquina"><option value="">todas</option></select></div>
+  <div class="campo"><label>Fornecedor</label><select id="f-fornecedor"><option value="">todos</option></select></div>
+  <div class="campo"><label>Módulo</label><select id="f-modulo">
+    <option value="">todos</option><option value="recebimento">recebimento</option>
+    <option value="retirada">retirada</option><option value="retorno">retorno</option>
+    <option value="extrusao">extrusão</option><option value="produto-acabado">produto acabado</option>
+    <option value="outras">outras pesagens</option></select></div>
+  <div class="campo"><label>Material</label><select id="f-material"><option value="">todos</option></select></div>
+  <div class="campo"><label>Status</label><select id="f-status">
+    <option value="">todos</option><option value="bipada">bipada</option><option value="consumida">consumida</option>
+    <option value="cancelada">cancelada</option><option value="aguardando_bipe">aguardando bipe</option></select></div>
+  <div class="campo"><label>Busca (etiqueta/lote)</label><input id="f-busca" placeholder="ex.: R00001"></div>
+  <div class="atalhos">
+    <button class="atalho" onclick="periodoRapido('hoje',this)">hoje</button>
+    <button class="atalho" onclick="periodoRapido('7',this)">7 dias</button>
+    <button class="atalho" onclick="periodoRapido('mes',this)">este mês</button>
+    <button class="atalho" onclick="periodoRapido('tudo',this)">tudo</button>
+    <button class="atalho" style="border-color:var(--ciano); color:var(--ciano);" onclick="gerarArquivo(this)"
+            title="Gera um arquivo .html com todos os dados dentro — funciona sem servidor">⬇ gerar arquivo</button>
+  </div>
+</div>
+
+<div class="abas">
+  <button class="aba on" data-aba="geral"    onclick="trocarAba('geral',this)">Visão geral</button>
+  <button class="aba"    data-aba="extrusao" onclick="trocarAba('extrusao',this)">Extrusão</button>
+  <button class="aba"    data-aba="mp"       onclick="trocarAba('mp',this)">Matéria-Prima</button>
+  <button class="aba"    data-aba="pa"       onclick="trocarAba('pa',this)">Produto Acabado</button>
+  <button class="aba"    data-aba="bobinas"  onclick="trocarAba('bobinas',this)">Retirada de Bobinas</button>
+  <button class="aba"    data-aba="inv"      onclick="trocarAba('inv',this)">Inventário</button>
+  <button class="aba"    data-aba="sessoes"  onclick="trocarAba('sessoes',this)">Sessões &amp; Bling</button>
+</div>
+
+<main id="conteudo"><div class="carregando">Carregando histórico…</div></main>
+
+<script>
+const URL_BASE='';
+let ABA='geral', OPCOES={}, MOV_OFFSET=0, ULTIMO_RESUMO=null;
+
+const fmtKg = n => (Math.round((n||0)*10)/10).toLocaleString('pt-BR') + ' kg';
+const fmtN  = n => (n||0).toLocaleString('pt-BR');
+const esc   = s => String(s==null?'':s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const dataBR = iso => { if(!iso) return '—'; const d=new Date(iso); return isNaN(d)? String(iso).slice(0,16).replace('T',' ')
+  : d.toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}); };
+const soData = iso => { if(!iso) return '—'; const d=new Date(iso+'T12:00:00'); return isNaN(d)? iso
+  : d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}); };
+
+// ── filtros → querystring
+function filtros(extra){
+  const p = new URLSearchParams();
+  const g = id => (document.getElementById(id)||{}).value || '';
+  if(g('f-de'))  p.set('de',  g('f-de'));
+  if(g('f-ate')) p.set('ate', g('f-ate'));
+  if(g('f-turno')) p.set('turno', g('f-turno'));
+  if(g('f-maquina')) p.set('maquina', g('f-maquina'));
+  if(g('f-fornecedor')) p.set('fornecedor', g('f-fornecedor'));
+  if(g('f-material')) p.set('material', g('f-material'));
+  if(g('f-status')) p.set('status', g('f-status'));
+  if(g('f-busca')) p.set('busca', g('f-busca'));
+  // a aba define o tipo de movimento
+  // O filtro de módulo, quando escolhido, tem prioridade sobre a aba.
+  // Sem ele, cada aba define quais módulos entram (MP reúne recebimento,
+  // retirada e retorno — por isso a retirada de um big bag aparece ao lado
+  // da entrada dele).
+  const mod = g('f-modulo');
+  if(mod){ p.set('tipo', mod); }
+  else {
+    const porAba = { extrusao:'extrusao', pa:'produto-acabado', mp:'recebimento,retirada,retorno' };
+    if(porAba[ABA]) p.set('tipos', porAba[ABA]);
+  }
+  for(const [k,v] of Object.entries(extra||{})) if(v!=null && v!=='') p.set(k,v);
+  return p.toString();
+}
+
+function periodoRapido(qual, botao){
+  document.querySelectorAll('.atalho').forEach(b=>b.classList.remove('on'));
+  if(botao) botao.classList.add('on');
+  const hoje = new Date();
+  const iso = d => d.toISOString().slice(0,10);
+  if(qual==='hoje'){ document.getElementById('f-de').value=iso(hoje); document.getElementById('f-ate').value=iso(hoje); }
+  else if(qual==='7'){ const d=new Date(hoje); d.setDate(d.getDate()-6);
+    document.getElementById('f-de').value=iso(d); document.getElementById('f-ate').value=iso(hoje); }
+  else if(qual==='mes'){ document.getElementById('f-de').value=iso(new Date(hoje.getFullYear(),hoje.getMonth(),1));
+    document.getElementById('f-ate').value=iso(hoje); }
+  else { document.getElementById('f-de').value=(OPCOES.periodo&&OPCOES.periodo.inicio)||'';
+    document.getElementById('f-ate').value=(OPCOES.periodo&&OPCOES.periodo.fim)||''; }
+  carregar();
+}
+
+function trocarAba(a, botao){
+  ABA=a; MOV_OFFSET=0;
+  document.querySelectorAll('.aba').forEach(b=>b.classList.remove('on'));
+  if(botao) botao.classList.add('on');
+  carregar();
+}
+
+// ── carregamento das opções (uma vez)
+async function carregarOpcoes(){
+  try{
+    const r=await fetch(URL_BASE+'/dashboard/opcoes'); const d=await r.json();
+    OPCOES=d||{};
+    const p=OPCOES.periodo||{};
+    document.getElementById('periodo-banco').textContent =
+      (p.inicio&&p.fim) ? ('dados de ' + soData(p.inicio) + ' a ' + soData(p.fim)) : 'sem dados ainda';
+    const encher=(id,lista,rotuloTodos)=>{
+      const s=document.getElementById(id); if(!s) return;
+      s.innerHTML='<option value="">'+rotuloTodos+'</option>'+(lista||[]).map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join('');
+    };
+    encher('f-turno',OPCOES.turnos,'todos');
+    encher('f-maquina',OPCOES.maquinas,'todas');
+    encher('f-fornecedor',OPCOES.fornecedores,'todos');
+    encher('f-material',OPCOES.materiais,'todos');
+    // período inicial: mês corrente (ou tudo, se não houver nada no mês)
+    const hoje=new Date();
+    document.getElementById('f-de').value = new Date(hoje.getFullYear(),hoje.getMonth(),1).toISOString().slice(0,10);
+    document.getElementById('f-ate').value = hoje.toISOString().slice(0,10);
+    document.querySelectorAll('.atalho')[2].classList.add('on');
+  }catch(e){ document.getElementById('periodo-banco').textContent='erro ao ler o banco'; }
+}
+
+// ── render de apoio
+function barras(titulo, linhas, campoNome, unidade){
+  const max = Math.max(1, ...linhas.map(l=>l.kg||0));
+  const corpo = linhas.length ? linhas.map(l=>{
+    const nome = (l[campoNome]||'—') + (l.cor ? (' · '+l.cor) : '');
+    const pct = Math.round(((l.kg||0)/max)*100);
+    return `<div class="barra-linha"><span class="nome" title="${esc(nome)}">${esc(nome)}</span>
+      <span class="trilho"><span class="preench" style="width:${pct}%"></span></span>
+      <span class="val">${unidade==='kg'?fmtKg(l.kg):fmtN(l.qtd)}<span style="color:var(--dim)"> · ${fmtN(l.qtd)}</span></span></div>`;
+  }).join('') : '<div class="vazio">sem dados no período</div>';
+  return `<div class="cartao"><h3>${titulo}</h3><div class="corpo">${corpo}</div></div>`;
+}
+
+function tabela(colunas, linhas, montaLinha, rodape){
+  if(!linhas.length) return '<div class="cartao"><div class="vazio">Nenhum registro no período com esses filtros.</div></div>';
+  return `<div class="cartao"><div class="corpo" style="max-height:none; padding:0;"><table>
+    <thead><tr>${colunas.map(c=>`<th>${c}</th>`).join('')}</tr></thead>
+    <tbody>${linhas.map(montaLinha).join('')}</tbody></table></div>${rodape||''}</div>`;
+}
+
+// ── carregamento principal
+async function carregar(){
+  const alvo=document.getElementById('conteudo');
+  alvo.innerHTML='<div class="carregando">Carregando…</div>';
+  try{
+    if(ABA==='bobinas' || ABA==='inv') return await carregarExtras(alvo);
+    if(ABA==='sessoes') return await carregarSessoes(alvo);
+
+    const [rr, rm] = await Promise.all([
+      fetch(URL_BASE+'/dashboard/resumo?'+filtros()).then(r=>r.json()),
+      fetch(URL_BASE+'/dashboard/movimentos?'+filtros({limite:200,offset:0})).then(r=>r.json()),
+    ]);
+    ULTIMO_RESUMO=rr; MOV_OFFSET=0;
+    const t=rr.totais||{};
+    let html='';
+
+    // Entradas e saídas somadas juntas dariam um número sem sentido
+    // (o mesmo big bag entra e depois sai). Por isso ficam separadas.
+    const porTipo=rr.porTipo||[];
+    const kgDe=nomes=>porTipo.filter(x=>nomes.includes(x.chave)).reduce((a,x)=>a+(x.kg||0),0);
+    const qtDe=nomes=>porTipo.filter(x=>nomes.includes(x.chave)).reduce((a,x)=>a+(x.qtd||0),0);
+    const kgEnt=kgDe(['recebimento','retorno']), kgSai=kgDe(['retirada']);
+    const qtEnt=qtDe(['recebimento','retorno']), qtSai=qtDe(['retirada']);
+    const mostraFluxo = (kgEnt>0 && kgSai>0);
+
+    html+=`<div class="kpis">
+      <div class="kpi"><div class="v">${fmtN(t.qtd)}</div><div class="l">Registros</div><div class="sub">etiquetas / lançamentos</div></div>
+      ${mostraFluxo
+        ? `<div class="kpi"><div class="v">${fmtKg(kgEnt)}</div><div class="l">Entradas</div><div class="sub">${fmtN(qtEnt)} recebimento/retorno</div></div>
+           <div class="kpi aviso"><div class="v">${fmtKg(kgSai)}</div><div class="l">Saídas</div><div class="sub">${fmtN(qtSai)} retirada(s)</div></div>`
+        : `<div class="kpi"><div class="v">${fmtKg(t.kg)}</div><div class="l">Peso total</div></div>`}
+      <div class="kpi ${(t.canceladas||0)>0?'alerta':''}"><div class="v">${fmtN(t.canceladas)}</div><div class="l">Cancelamentos</div></div>
+      <div class="kpi ${(t.pendentes||0)>0?'aviso':''}"><div class="v">${fmtN(t.pendentes)}</div><div class="l">Aguardando bipe</div></div>
+      <div class="kpi"><div class="v">${fmtN(t.consumidas)}</div><div class="l">Consumidas / baixadas</div></div>
+    </div>`;
+
+    html+='<div class="grade">';
+    if(ABA==='geral')     html+=barras('Por módulo','porTipo' in rr ? rr.porTipo:[],'chave','kg');
+    html+=barras('Por dia', (rr.porDia||[]).map(d=>({chave:soData(d.dia),qtd:d.qtd,kg:d.kg})),'chave','kg');
+    if(ABA==='extrusao'||ABA==='geral'||ABA==='pa') html+=barras('Por máquina',rr.porMaquina||[],'chave','kg');
+    html+=barras('Por turno',rr.porTurno||[],'chave','kg');
+    if(ABA==='mp'||ABA==='geral') html+=barras('Por fornecedor',rr.porForn||[],'chave','kg');
+    if(ABA==='mp'||ABA==='geral') html+=barras('Por material',rr.porMaterial||[],'chave','kg');
+    html+=barras('Por responsável',rr.porOperador||[],'chave','kg');
+    html+=barras('Por situação',rr.porStatus||[],'chave','qtd');
+    html+='</div>';
+
+    html+=`<div style="display:flex; align-items:center; gap:12px; margin:22px 0 12px;">
+      <h2 style="font-size:13px; letter-spacing:1.1px; text-transform:uppercase; color:var(--muted); font-weight:800;">Movimentos</h2>
+      <button class="btn-csv" onclick="exportarCSV()">⬇ CSV</button></div>`;
+    html+=renderMovimentos(rm);
+    alvo.innerHTML=html;
+  }catch(e){ alvo.innerHTML='<div class="vazio">Erro ao carregar: '+esc(e.message)+'</div>'; }
+}
+
+function renderMovimentos(rm){
+  const linhas=(rm&&rm.linhas)||[];
+  const cols=['Etiqueta','Quando','Módulo','Descrição','Turno/Máq','Resp.','Peso','Situação'];
+  const monta=l=>{
+    const descr = l.tipo==='extrusao'
+      ? [l.cor,l.tipo_bobina,l.largura&&('L'+l.largura)].filter(Boolean).join(' · ')
+      : (l.tipo==='produto-acabado'
+          ? [l.material_nome||l.material_key, l.sku].filter(Boolean).join(' · ')
+          : [l.material_nome||l.material_key, l.cor, l.fornecedor, l.lote&&('lote '+l.lote)].filter(Boolean).join(' · '));
+    return `<tr>
+      <td class="id">${esc(l.id)}</td>
+      <td>${dataBR(l.hora_impressao)}</td>
+      <td><span class="tag ${esc(l.tipo)}">${esc(l.tipo)}</span></td>
+      <td>${esc(descr||'—')}</td>
+      <td>${esc([l.turno_codigo,l.maquina].filter(Boolean).join(' / ')||'—')}</td>
+      <td>${esc(l.operador||'—')}</td>
+      <td class="num">${fmtKg(l.peso)}</td>
+      <td><span class="tag ${esc(l.status)}">${esc(String(l.status||'').replace('_',' '))}</span></td>
+    </tr>`;
+  };
+  const total=(rm&&rm.total)||0;
+  const mostrando=linhas.length;
+  const rodape=`<div class="rodape-tab"><span>mostrando ${fmtN(mostrando)} de ${fmtN(total)}</span>
+    ${mostrando<total?'<button class="btn-mais" onclick="carregarMais()">carregar mais</button>':''}</div>`;
+  return tabela(cols,linhas,monta,rodape);
+}
+
+async function carregarMais(){
+  MOV_OFFSET+=200;
+  try{
+    const rm=await fetch(URL_BASE+'/dashboard/movimentos?'+filtros({limite:200,offset:MOV_OFFSET})).then(r=>r.json());
+    const corpo=document.querySelector('#conteudo table tbody');
+    if(!corpo) return;
+    const tmp=document.createElement('tbody');
+    tmp.innerHTML=renderMovimentos(rm).match(/<tbody>([\s\S]*?)<\/tbody>/)[1];
+    while(tmp.firstChild) corpo.appendChild(tmp.firstChild);
+    const rod=document.querySelector('#conteudo .rodape-tab');
+    const qtd=corpo.querySelectorAll('tr').length;
+    if(rod) rod.innerHTML=`<span>mostrando ${fmtN(qtd)} de ${fmtN(rm.total)}</span>`+
+      (qtd<rm.total?'<button class="btn-mais" onclick="carregarMais()">carregar mais</button>':'');
+  }catch(e){}
+}
+
+async function carregarSessoes(alvo){
+  const r=await fetch(URL_BASE+'/dashboard/sessoes?'+filtros()).then(r=>r.json());
+  const ss=(r&&r.sessoes)||[];
+  const comErro=ss.filter(s=>s.bling_status==='erro').length;
+  const pend=ss.filter(s=>s.bling_status==='pendente'||s.bling_status==='pendente_config').length;
+  let html=`<div class="kpis">
+    <div class="kpi"><div class="v">${fmtN(ss.length)}</div><div class="l">Sessões</div></div>
+    <div class="kpi ${comErro?'alerta':''}"><div class="v">${fmtN(comErro)}</div><div class="l">Com erro no Bling</div></div>
+    <div class="kpi ${pend?'aviso':''}"><div class="v">${fmtN(pend)}</div><div class="l">Pendentes de envio</div></div>
+    <div class="kpi"><div class="v">${fmtKg(ss.reduce((a,s)=>a+(s.total_kg||0),0))}</div><div class="l">Peso das sessões</div></div>
+  </div>`;
+  html+=tabela(['#','Início','Tipo','Turno/Máq','Responsável','Itens','Peso','Bling','Pedido / erro'], ss, s=>`
+    <tr>
+      <td class="id">#${s.id}</td>
+      <td>${dataBR(s.inicio)}</td>
+      <td><span class="tag ${esc(s.tipo)}">${esc(s.tipo)}</span></td>
+      <td>${esc([s.turno_codigo,s.maquina].filter(Boolean).join(' / ')||'—')}</td>
+      <td>${esc(s.operador||'—')}</td>
+      <td class="num">${fmtN(s.itens)}</td>
+      <td class="num">${fmtKg(s.total_kg)}</td>
+      <td><span class="tag ${esc(s.bling_status||'neutro')}">${esc(s.bling_status||'—')}</span></td>
+      <td style="max-width:320px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"
+          title="${esc(s.bling_erro||s.bling_id||'')}">${esc(s.bling_erro || s.bling_id || '—')}</td>
+    </tr>`);
+  alvo.innerHTML=html;
+}
+
+async function carregarExtras(alvo){
+  const r=await fetch(URL_BASE+'/dashboard/extras').then(r=>r.json());
+  if(ABA==='bobinas'){
+    let baixas=(r&&r.baixas)||[];
+    const de=document.getElementById('f-de').value, ate=document.getElementById('f-ate').value;
+    if(de)  baixas=baixas.filter(b=>(b.dia||'')>=de);
+    if(ate) baixas=baixas.filter(b=>(b.dia||'')<=ate);
+    const kg=baixas.reduce((a,b)=>a+(Number(b.peso)||0),0);
+    const porTurno={}, porDestino={};
+    baixas.forEach(b=>{ porTurno[b.turno_label||'—']=(porTurno[b.turno_label||'—']||0)+(Number(b.peso)||0);
+                        porDestino[b.destino||'—']=(porDestino[b.destino||'—']||0)+(Number(b.peso)||0); });
+    const emLista=o=>Object.entries(o).map(([k,v])=>({chave:k,kg:v,qtd:baixas.filter(b=>(b.turno_label===k||b.destino===k)).length}));
+    let html=`<div class="kpis">
+      <div class="kpi"><div class="v">${fmtN(baixas.length)}</div><div class="l">Bobinas retiradas</div></div>
+      <div class="kpi"><div class="v">${fmtKg(kg)}</div><div class="l">Peso retirado</div></div>
+      <div class="kpi"><div class="v">${fmtN(new Set(baixas.map(b=>b.dia)).size)}</div><div class="l">Dias com retirada</div></div>
+    </div><div class="grade">`;
+    html+=barras('Por turno',emLista(porTurno),'chave','kg');
+    html+=barras('Por destino',emLista(porDestino),'chave','kg');
+    html+='</div>';
+    html+=tabela(['Etiqueta','Quando','Bobina','Turno','Destino','Peso','Pedido Bling'], baixas, b=>`
+      <tr><td class="id">${esc(b.id)}</td><td>${dataBR(b.hora)}</td>
+      <td>${esc([b.cor,b.tipo_bobina,b.largura].filter(Boolean).join(' · '))}</td>
+      <td>${esc(b.turno_label||'—')}</td><td>${esc(b.destino||'—')}</td>
+      <td class="num">${fmtKg(b.peso)}</td><td class="id">${esc(b.pedido||'—')}</td></tr>`);
+    alvo.innerHTML=html;
+    return;
+  }
+  // inventário
+  const itens=((r&&r.inventario)||{}).itens||[];
+  const div=itens.filter(i=>i.saldoBling!=null && Math.abs(i.divergencia||0)>=0.001);
+  let html=`<div class="kpis">
+    <div class="kpi"><div class="v">${fmtN(itens.length)}</div><div class="l">Produtos contados</div></div>
+    <div class="kpi ${div.length?'alerta':''}"><div class="v">${fmtN(div.length)}</div><div class="l">Com divergência</div></div>
+    <div class="kpi"><div class="v">${fmtKg(itens.reduce((a,i)=>a+(i.somaLeitura||0),0))}</div><div class="l">Contagem física</div></div>
+    <div class="kpi"><div class="v">${fmtKg(itens.reduce((a,i)=>a+(i.saldoBling||0),0))}</div><div class="l">Saldo Bling</div></div>
+  </div>`;
+  if(!itens.length) html+='<div class="aviso-caixa">Nenhum inventário em andamento. Os itens aparecem aqui conforme são finalizados na tela de Inventário.</div>';
+  html+=tabela(['Produto','Contagem física','Saldo Bling','Diferença','Quando'], itens, i=>{
+    const d=i.divergencia;
+    const cor = (i.saldoBling==null) ? 'var(--muted)' : (Math.abs(d||0)<0.001 ? 'var(--verde)' : 'var(--vermelho)');
+    return `<tr><td>${esc([i.materialNome||i.material,i.cor,i.fornecedor].filter(Boolean).join(' · '))}</td>
+      <td class="num">${fmtKg(i.somaLeitura)}</td>
+      <td class="num">${i.saldoBling==null?'—':fmtKg(i.saldoBling)}</td>
+      <td class="num" style="color:${cor}; font-weight:800">${i.saldoBling==null?'—':((d>0?'+':'')+fmtKg(d))}</td>
+      <td>${dataBR(i.finalizadoEm)}</td></tr>`;
+  });
+  alvo.innerHTML=html;
+}
+
+// Gera o dashboard autônomo: um .html com os dados embutidos, que abre em
+// qualquer computador sem servidor. Fica salvo na pasta "dashboard" do sistema
+// e também baixa aqui.
+async function gerarArquivo(botao){
+  if(window.EKO_OFFLINE){ alert('Este já é o arquivo gerado.'); return; }
+  const txt=botao.textContent; botao.textContent='gerando…'; botao.disabled=true;
+  try{
+    const r=await fetch(URL_BASE+'/dashboard/exportar-html?dias=365');
+    if(!r.ok) throw new Error('falhou (HTTP '+r.status+')');
+    const nome=r.headers.get('X-Eko-Arquivo')||'dashboard.html';
+    const qtd=r.headers.get('X-Eko-Registros')||'?';
+    const blob=await r.blob();
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob); a.download=nome;
+    document.body.appendChild(a); a.click(); a.remove();
+    botao.textContent='✓ gerado';
+    alert('Arquivo gerado com '+qtd+' registros.\n\nEle também foi salvo na pasta "dashboard" do sistema, '
+      + 'ao lado da pasta de logs — de onde você pode copiar para o Google Drive.');
+    setTimeout(()=>{ botao.textContent=txt; botao.disabled=false; }, 2500);
+  }catch(e){ alert('Erro ao gerar: '+e.message); botao.textContent=txt; botao.disabled=false; }
+}
+
+async function exportarCSV(){
+  try{
+    const rm=await fetch(URL_BASE+'/dashboard/movimentos?'+filtros({limite:1000,offset:0})).then(r=>r.json());
+    const linhas=(rm&&rm.linhas)||[];
+    if(!linhas.length){ alert('Nada para exportar com esses filtros.'); return; }
+    const cab=['etiqueta','data_hora','modulo','material','cor','fornecedor','lote','largura','tipo_bobina','sku','turno','maquina','responsavel','peso_kg','situacao','sessao','bling'];
+    const linha=l=>[l.id,l.hora_impressao,l.tipo,l.material_nome||l.material_key||'',l.cor||'',l.fornecedor||'',l.lote||'',
+      l.largura||'',l.tipo_bobina||'',l.sku||'',l.turno_codigo||'',l.maquina||'',l.operador||'',
+      String(l.peso||0).replace('.',','),l.status||'',l.sessao_id||'',l.bling_id||l.bling_status||'']
+      .map(v=>String(v).replace(/;/g,',')).join(';');
+    const csv='\ufeff'+cab.join(';')+'\n'+linhas.map(linha).join('\n');
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
+    a.download='historico-'+(document.getElementById('f-de').value||'tudo')+'_a_'+(document.getElementById('f-ate').value||'hoje')+'.csv';
+    document.body.appendChild(a); a.click(); a.remove();
+  }catch(e){ alert('Erro ao exportar: '+e.message); }
+}
+
+['f-de','f-ate','f-turno','f-maquina','f-fornecedor','f-material','f-status','f-modulo'].forEach(id=>{
+  const el=document.getElementById(id); if(el) el.addEventListener('change',carregar);
+});
+let tBusca=null;
+document.getElementById('f-busca').addEventListener('input',()=>{ clearTimeout(tBusca); tBusca=setTimeout(carregar,450); });
+
+// Se este arquivo for aberto direto do disco (dois cliques na pasta), não há
+// servidor para consultar. Em vez de um erro técnico, explica o que fazer.
+if (!window.EKO_OFFLINE && location.protocol === 'file:') {
+  document.getElementById('conteudo').innerHTML =
+    `<div style="max-width:640px; margin:40px auto; background:var(--panel); border:1px solid var(--ambar);
+                 border-radius:14px; padding:26px; line-height:1.7;">
+       <div style="font-size:19px; font-weight:800; color:var(--ambar); margin-bottom:14px;">
+         Este é o dashboard <u>ao vivo</u> — ele precisa do sistema rodando</div>
+       <div style="font-size:15px; color:var(--txt);">
+         Você abriu o arquivo <code>public/dashboard.html</code> direto da pasta. Ele busca os dados
+         no sistema, por isso não mostra nada sozinho.
+       </div>
+       <div style="font-size:15px; color:var(--txt); margin-top:18px;">
+         <b>Para ver os dados agora:</b><br>
+         Com o sistema aberto, acesse <code>http://localhost:3000/dashboard.html</code>
+       </div>
+       <div style="font-size:15px; color:var(--txt); margin-top:18px;">
+         <b>Para ter um arquivo que funciona sozinho</b> (e pode ir para o Google Drive):<br>
+         dê dois cliques em <code>GERAR-DASHBOARD.bat</code>, na pasta do sistema.
+         Ele cria o arquivo dentro da pasta <code>dashboard</code>, com todos os dados embutidos.
+       </div>
+     </div>`;
+  const p = document.getElementById('periodo-banco'); if (p) p.textContent = 'arquivo aberto sem o sistema';
+} else {
+  (async()=>{ await carregarOpcoes(); await carregar(); })();
+}
+</script>
+</body>
+</html>

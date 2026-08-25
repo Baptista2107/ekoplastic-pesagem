@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<script src="/acesso-colaborador.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Retirada de Bobinas</title>
+<script src="/vendor/html5-qrcode.min.js"></script>
+<style>
+  :root{
+    --bg:#0a1119; --panel:#131f30; --panel-hi:#1d2c42; --border:#2a3a52;
+    --txt:#eef4fb; --muted:#94a8c4; --verde:#00ff9d; --ambar:#ffc250; --vermelho:#ff6b6b; --azul:#5aa9ff;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;} html{height:100%;}
+  body{background:var(--bg); color:var(--txt); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; padding-bottom:20px; font-size:17px; line-height:1.4; min-height:100dvh;}
+  header{padding:calc(16px + env(safe-area-inset-top)) 20px 16px; border-bottom:1px solid var(--border); position:sticky; top:0; background:linear-gradient(180deg,var(--panel),var(--bg)); z-index:20; display:flex; align-items:center; gap:12px;}
+  header h1{margin:0; font-size:22px; font-weight:800; flex:1;}
+  .btn-sair{background:var(--panel-hi); border:1px solid var(--border); color:var(--muted); border-radius:12px; padding:11px 15px; font-size:17px; font-weight:800; text-decoration:none; line-height:1;}
+  .wrap{padding:18px 20px;}
+  .oculto{display:none !important;}
+  .btn{width:100%; padding:18px; border-radius:16px; font-size:18px; border:none; font-weight:800; cursor:pointer; margin-top:14px; min-height:62px; font-family:inherit; transition:transform 0.05s;}
+  .btn:active{transform:scale(0.98);}
+  .btn-verde{background:var(--verde); color:#052916; box-shadow:0 4px 16px rgba(0,255,157,0.22);}
+  .btn-cinza{background:var(--panel-hi); color:var(--txt); border:1.5px solid var(--border);}
+  .btn-vermelho{background:var(--vermelho); color:#2b0a0a;}
+  #reader{width:100%; border-radius:18px; overflow:hidden; background:#000; display:none; border:1.5px solid var(--border);}
+  #reader.on{display:block; min-height:240px;}
+  #reader video{width:100%!important; height:auto!important; display:block;}
+  .cam-controles{display:flex; gap:10px;}
+  #btn-torch,#btn-diag{width:auto; flex:0 0 auto; padding:0 22px; font-size:22px;}
+
+  #zoom-barra, #lente-barra{background:var(--panel); border:1.5px solid var(--border); border-radius:14px; padding:14px 16px; margin-top:12px;}
+  .zoom-lb{display:flex; justify-content:space-between; font-size:12px; color:var(--muted); font-weight:800; letter-spacing:1px; margin-bottom:10px;}
+  .zoom-lb span:last-child{color:var(--verde); font-size:15px;}
+  .zoom-linha{display:flex; align-items:center; gap:12px;}
+  .zoom-op{background:var(--panel-hi); border:1.5px solid var(--border); color:var(--txt); border-radius:12px;
+           min-width:54px; height:54px; font-size:24px; font-weight:800; font-family:inherit; cursor:pointer;}
+  .zoom-op:active{transform:scale(0.95);}
+  #zoom-range{flex:1; height:40px; accent-color:var(--verde);}
+  .lente-botoes{display:flex; gap:8px; flex-wrap:wrap;}
+  .lente-btn{flex:1; min-width:90px; background:var(--panel-hi); border:1.5px solid var(--border); color:var(--txt);
+             border-radius:12px; padding:14px 10px; font-size:14px; font-weight:700; font-family:inherit; cursor:pointer;}
+  .lente-btn.sel{border-color:var(--verde); color:var(--verde);}
+  .card-bob{background:linear-gradient(135deg,var(--panel-hi),var(--panel)); border:2px solid var(--verde); border-radius:18px; padding:20px; margin:16px 0;}
+  .card-bob .cb-id{font-family:ui-monospace,monospace; font-size:15px; color:var(--muted); font-weight:700;}
+  .card-bob .cb-nome{font-size:26px; font-weight:900; margin:6px 0; line-height:1.2;}
+  .card-bob .cb-peso{font-size:32px; font-weight:900; color:var(--verde);}
+  .card-bob .cb-extra{font-size:14px; color:var(--muted); margin-top:8px;}
+  .destino-lb{font-size:13px; color:var(--muted); font-weight:800; letter-spacing:0.8px; text-transform:uppercase; margin-top:18px;}
+  .card-bob.erro{border-color:var(--vermelho);}
+  .card-bob.erro .cb-nome{color:var(--vermelho);}
+
+  .hist-tit{font-size:13px; font-weight:800; letter-spacing:1.2px; color:var(--muted); text-transform:uppercase; margin:26px 0 12px; display:flex; justify-content:space-between;}
+  .hist-item{display:flex; align-items:center; gap:12px; padding:14px 16px; background:var(--panel); border:1px solid var(--border); border-left:5px solid var(--verde); border-radius:12px; margin-bottom:9px;}
+  .hist-item .hi-nome{flex:1; font-size:15px; font-weight:700; line-height:1.3;}
+  .hist-item .hi-sub{font-size:12px; color:var(--muted); margin-top:3px; font-family:ui-monospace,monospace;}
+  .hist-item .hi-kg{font-weight:800; white-space:nowrap; color:var(--verde);}
+  .vazio{color:var(--muted); font-size:15px; text-align:center; padding:24px; line-height:1.5;}
+  .totais{display:flex; gap:12px; margin:16px 0;}
+  .totais .cx{flex:1; background:var(--panel); border:1.5px solid var(--border); border-radius:16px; padding:16px 10px; text-align:center;}
+  .totais .n{font-size:32px; font-weight:900; color:var(--verde); line-height:1;}
+  .totais .l{font-size:12px; color:var(--muted); margin-top:6px; font-weight:800;}
+
+  .toast{position:fixed; left:50%; transform:translateX(-50%); top:84px; padding:16px 22px; border-radius:14px; font-size:16px; font-weight:800; z-index:100; box-shadow:0 8px 28px rgba(0,0,0,0.6); max-width:92vw; text-align:center; display:none;}
+  .toast.ok{background:#0d3b2a; color:var(--verde); border:1.5px solid var(--verde);}
+  .toast.erro{background:#3b1414; color:var(--vermelho); border:1.5px solid var(--vermelho);}
+  .toast.aviso{background:#3b2f0d; color:var(--ambar); border:1.5px solid var(--ambar);}
+  .carregando{color:var(--muted); font-size:16px; text-align:center; padding:26px;}
+  .turno-grid{display:flex; flex-direction:column; gap:14px; margin-top:20px;}
+  .turno-btn{background:var(--panel); border:2px solid var(--border); color:var(--txt); border-radius:18px; padding:26px 20px; font-size:24px; font-weight:900; cursor:pointer; font-family:inherit; text-align:left;}
+  .turno-btn:active{transform:scale(0.98);}
+  .turno-btn .tb-sub{display:block; font-size:13px; color:var(--muted); font-weight:600; margin-top:6px;}
+  .barra-turno{display:flex; align-items:center; gap:12px; background:var(--panel-hi); border:1.5px solid var(--verde); border-radius:14px; padding:14px 16px; margin-bottom:16px;}
+  .barra-turno .bt-lb{font-size:12px; color:var(--muted); font-weight:800; letter-spacing:0.6px;}
+  .barra-turno .bt-nome{font-size:19px; font-weight:900; color:var(--verde);}
+  .barra-turno button{margin-left:auto; background:transparent; border:1.5px solid var(--border); color:var(--txt); border-radius:10px; padding:10px 14px; font-size:14px; font-weight:700; font-family:inherit;}
+</style>
+</head>
+<body>
+<header>
+  <h1>🧵 Retirada de Bobinas</h1>
+  <a class="btn-sair" href="/" title="Voltar ao sistema">✕</a>
+</header>
+<div class="toast" id="toast"></div>
+
+<!-- ETAPA 1: escolher o turno (é o cliente da venda no Bling) -->
+<div class="wrap" id="tela-turno">
+  <div style="font-size:17px; color:var(--muted); line-height:1.5;">Selecione o turno que está retirando. A baixa das bobinas sai como venda para esse turno no Bling.</div>
+  <div class="turno-grid" id="grid-turnos"><div class="carregando">Carregando turnos…</div></div>
+</div>
+
+<!-- ETAPA 2: leitura -->
+<div class="wrap oculto" id="tela-leitura">
+  <div class="barra-turno">
+    <div><div class="bt-lb">TURNO</div><div class="bt-nome" id="turno-nome">—</div></div>
+    <button onclick="trocarTurno()">Trocar</button>
+  </div>
+  <div class="cam-box"><div id="reader"></div></div>
+  <div id="zoom-barra" class="oculto">
+    <div class="zoom-lb"><span>ZOOM</span><span id="zoom-valor">1.0×</span></div>
+    <div class="zoom-linha">
+      <button class="zoom-op" onclick="ajustarZoom(-1)">−</button>
+      <input type="range" id="zoom-range" min="1" max="5" step="0.1" value="1" oninput="aplicarZoom(this.value)">
+      <button class="zoom-op" onclick="ajustarZoom(1)">+</button>
+    </div>
+  </div>
+  <div id="lente-barra" class="oculto">
+    <div class="zoom-lb"><span>LENTE DA CÂMERA</span></div>
+    <div id="lente-botoes" class="lente-botoes"></div>
+  </div>
+  <div class="cam-controles">
+    <button class="btn btn-cinza" id="btn-camera" onclick="toggleCamera()">▶️ Ligar câmera</button>
+    <button class="btn btn-cinza" id="btn-digitar" onclick="digitarCodigo()" title="Digitar o código">⌨️ Digitar</button>
+    <button class="btn btn-cinza oculto" id="btn-torch" onclick="toggleTorch()" title="Lanterna">🔦</button>
+  </div>
+  <div id="painel-diag" class="oculto" style="background:var(--panel); border:1.5px solid var(--ambar); border-radius:14px; padding:16px; margin-top:12px; font-size:14px; line-height:1.6;"></div>
+  <button class="btn btn-cinza" onclick="digitarCodigo()">⌨️ Digitar código da bobina</button>
+
+  <!-- bobina lida, aguardando confirmação -->
+  <div id="area-bobina"></div>
+
+  <div class="totais">
+    <div class="cx"><div class="n" id="t-qtd">0</div><div class="l">BOBINAS HOJE</div></div>
+    <div class="cx"><div class="n" id="t-kg">0</div><div class="l">KG RETIRADOS</div></div>
+  </div>
+
+  <div class="hist-tit"><span>Retiradas de hoje</span></div>
+  <div id="lista-hist"><div class="vazio">Nenhuma bobina retirada hoje.</div></div>
+</div>
+
+<script>
+const URL_BASE='';
+let scanner=null, camLigada=false, ULTIMO_ERRO_CAM=null;
+let ZOOM_CAPS=null, CAMERAS=[], CAMERA_ID=null, RESOLUCAO_CAM=null;
+const ultimoBipe={};
+let bobinaAtual=null;      // bobina lida aguardando confirmação
+let TURNO=null;            // {codigo,label} — é o cliente da venda no Bling
+let enviando=false;
+
+function toast(tipo,msg,ms){
+  const t=document.getElementById('toast');
+  t.className='toast '+tipo; t.innerHTML=msg; t.style.display='block';
+  clearTimeout(t._t); t._t=setTimeout(()=>t.style.display='none', ms||2400);
+}
+function beep(freq,dur){
+  try{
+    const ac=beep._ac=beep._ac||new (window.AudioContext||window.webkitAudioContext)();
+    const o=ac.createOscillator(),g=ac.createGain();
+    o.frequency.value=freq;o.connect(g);g.connect(ac.destination);
+    g.gain.setValueAtTime(0.15,ac.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+(dur||0.12));
+    o.start();o.stop(ac.currentTime+(dur||0.12));
+  }catch(e){}
+}
+function vibrar(p){ try{ if(navigator.vibrate) navigator.vibrate(p); }catch(e){} }
+function fmtKg(n){ return (Math.round(n*10)/10).toLocaleString('pt-BR')+' kg'; }
+
+function formatosSuportados(){
+  if(typeof Html5QrcodeSupportedFormats === 'undefined') return undefined;
+  const F=Html5QrcodeSupportedFormats;
+  return [F.CODE_128,F.CODE_39,F.EAN_13,F.EAN_8,F.ITF,F.CODABAR,F.QR_CODE];
+}
+
+// Verifica os pré-requisitos e devolve a causa exata quando algo falta.
+function checarPreRequisitos(){
+  if(typeof Html5Qrcode === 'undefined')
+    return 'A biblioteca de leitura não carregou. Recarregue a página (puxe a tela para baixo).';
+  if(!window.isSecureContext)
+    return 'A página não está em conexão segura. Acesse por https://…:3443 (não http).';
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia)
+    return 'CERTIFICADO: o Safari bloqueou a câmera porque o certificado do servidor não é confiável neste iPhone. Toque em "⚙️ Diagnóstico" para ver como resolver.';
+  return null;
+}
+
+// Mostra o estado real do aparelho — é o que diz a causa quando a câmera falha.
+async function mostrarDiagnostico(){
+  const p=document.getElementById('painel-diag');
+  p.classList.remove('oculto');
+  const emQuadro = (window.self !== window.top);
+  const linhas=[];
+  const sim='<b style="color:var(--verde)">SIM</b>', nao='<b style="color:var(--vermelho)">NÃO</b>';
+  linhas.push('Biblioteca de leitura: '+(typeof Html5Qrcode!=='undefined'?sim:nao));
+  linhas.push('Conexão segura (HTTPS): '+(window.isSecureContext?sim:nao));
+  linhas.push('Acesso à câmera disponível: '+((navigator.mediaDevices&&navigator.mediaDevices.getUserMedia)?sim:nao));
+  linhas.push('Aberto em tela cheia: '+(emQuadro?nao+' (está dentro de um quadro)':sim));
+  linhas.push('Endereço: '+location.protocol+'//'+location.host);
+  if(ULTIMO_ERRO_CAM) linhas.push('<b style="color:var(--vermelho)">Último erro: '+ULTIMO_ERRO_CAM+'</b>');
+  p.innerHTML='<div style="font-weight:800; margin-bottom:8px; color:var(--ambar)">⚙️ Diagnóstico</div>'+linhas.join('<br>')+'<div class="carregando" style="padding:8px 0">procurando câmeras…</div>';
+  let extra='';
+  try{
+    if(typeof Html5Qrcode!=='undefined'){
+      const cams=await Html5Qrcode.getCameras();
+      extra='<br>Câmeras encontradas: <b>'+cams.length+'</b>'+(cams.length?(' ('+cams.map(c=>c.label||'sem nome').join(', ')+')'):'');
+    }
+  }catch(e){ extra='<br>Erro ao listar câmeras: <b style="color:var(--vermelho)">'+(e&&(e.name||e.message))+'</b>'; }
+
+  let solucao='';
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    solucao='<div style="margin-top:12px; padding:12px; background:rgba(255,194,80,0.12); border-radius:10px;">'+
+      '<b>Causa provável:</b> o iPhone não confia no certificado do servidor, e o Safari bloqueia a câmera nesse caso — mesmo com a permissão concedida.<br><br>'+
+      '<b>Como resolver:</b><br>1. Baixe o certificado: <a href="/cert-ekoplastic.pem" style="color:var(--azul)">tocar aqui</a><br>'+
+      '2. Ajustes → Geral → VPN e Gerenciamento → instale o perfil<br>'+
+      '3. Ajustes → Geral → Sobre → Ajustes de Confiança do Certificado → <b>ative "Ekoplastic"</b><br>'+
+      '4. Feche e reabra o Safari</div>';
+  }
+  p.innerHTML='<div style="font-weight:800; margin-bottom:8px; color:var(--ambar)">⚙️ Diagnóstico</div>'+linhas.join('<br>')+extra+solucao
+    +'<button class="btn btn-cinza" style="margin-top:14px; min-height:44px; font-size:14px;" onclick="document.getElementById(\'painel-diag\').classList.add(\'oculto\')">fechar</button>';
+}
+
+// Escolhe a MELHOR câmera traseira do aparelho. O iPhone expõe várias (grande-angular,
+// ultra-angular, dupla); a "traseira" simples é a que foca de perto com nitidez —
+// justamente o que código de barras exige. Escolher pelo ID evita que o sistema
+// selecione a ultra-angular, que não foca a curta distância.
+async function escolherCameraId(){
+  try{
+    const cams = await Html5Qrcode.getCameras();
+    if(!cams || !cams.length) return null;
+    const rot = c => (c.label||'').toLowerCase();
+    const traseiras = cams.filter(c => /traseira|back|rear|trás/.test(rot(c)));
+    if(traseiras.length){
+      // evita ultra-angular (foco ruim de perto) e prefere a traseira "simples"
+      const semUltra = traseiras.filter(c => !/ultra/.test(rot(c)));
+      const lista = semUltra.length ? semUltra : traseiras;
+      const simples = lista.find(c => !/dupla|dual|tripla|grande|wide/.test(rot(c)));
+      return (simples || lista[lista.length-1]).id;
+    }
+    return cams[cams.length-1].id;
+  }catch(e){ return null; }
+}
+
+// Alternativa à câmera: digitar o código da etiqueta. Passa exatamente pelas
+// mesmas validações da leitura (duplicata, produto incompatível, soma do peso).
+async function digitarCodigo(){
+  const cod = prompt('Código da etiqueta (ex.: R0000123):');
+  if(!cod) return;
+  const id = cod.trim().toUpperCase();
+  if(!id) return;
+  delete ultimoBipe[id];   // digitação manual não sofre o anti-repetição da câmera
+  await onLeu(id);
+}
+
+async function toggleCamera(){
+  if(camLigada){ await pararCamera(); return; }
+  const problema = checarPreRequisitos();
+  if(problema){ toast('erro', problema, 9000); return; }
+
+  document.getElementById('reader').classList.add('on');
+  document.getElementById('btn-camera').textContent='⏹️ Desligar câmera';
+  camLigada=true;
+  ULTIMO_ERRO_CAM=null;
+
+  // Mira ampla: de longe o QR aparece pequeno no quadro, então a área
+  // analisada precisa ser grande para não deixá-lo de fora.
+  const qrboxFn = (vw, vh) => {
+    const lado = Math.floor(Math.min(vw, vh) * 0.92);
+    return { width: Math.max(120, lado), height: Math.max(120, lado) };
+  };
+  // Resolução alta é o que permite ler de longe: um QR de 91mm a 4,5m precisa
+  // de ~2 pixels por quadradinho do código. Pede a maior possível — o aparelho
+  // entrega a melhor que tiver.
+  const config = { fps:10, qrbox:qrboxFn, aspectRatio:1.0,
+                   videoConstraints: { facingMode:'environment', width:{ ideal:3840 }, height:{ ideal:2160 } } };
+
+  // Tenta na ordem: câmera traseira escolhida pelo ID → traseira genérica → qualquer uma.
+  // Cada tentativa usa uma instância NOVA (uma instância que falhou não reinicia).
+  const idTraseira = CAMERA_ID || await escolherCameraId();
+  CAMERA_ID = idTraseira || null;
+  const alvos = [];
+  if(idTraseira) alvos.push(idTraseira);
+  alvos.push({ facingMode:'environment' });
+  alvos.push({ facingMode:'user' });
+
+  let ok=false;
+  for(const alvo of alvos){
+    try{ if(scanner){ try{ await scanner.stop(); }catch(e){} try{ scanner.clear(); }catch(e){} } }catch(e){}
+    scanner = new Html5Qrcode('reader', { formatsToSupport: formatosSuportados(), verbose:false });
+    try{
+      await scanner.start(alvo, config, onLeu, ()=>{});
+      ok=true; break;
+    }catch(err){
+      ULTIMO_ERRO_CAM = (err && (err.name ? (err.name+': '+(err.message||'')) : (err.message||String(err)))) || 'erro desconhecido';
+      const n=String(ULTIMO_ERRO_CAM);
+      if(/NotAllowed|Permission/i.test(n)) break;   // permissão negada: não insiste
+    }
+  }
+
+  if(!ok){
+    camLigada=false;
+    document.getElementById('reader').classList.remove('on');
+    document.getElementById('btn-camera').textContent='▶️ Ligar câmera';
+    toast('erro','Câmera não abriu. Toque em ⚙️ e me mande o "Último erro".', 7000);
+    return;
+  }
+
+  // Melhorias opcionais — se falharem, a leitura continua normal.
+  try{ await scanner.applyVideoConstraints({ advanced:[{ focusMode:'continuous' }] }); }catch(e){}
+  try{
+    const caps = scanner.getRunningTrackCapabilities();
+    if(caps && caps.torch){ document.getElementById('btn-torch').classList.remove('oculto'); }
+    prepararZoom(caps);
+    try{
+      const st = scanner.getRunningTrackSettings ? scanner.getRunningTrackSettings() : null;
+      if(st && st.width) RESOLUCAO_CAM = st.width + ' x ' + st.height;
+    }catch(e){}
+  }catch(e){}
+  prepararLentes();
+}
+
+async function pararCamera(){
+  camLigada=false; torchOn=false;
+  document.getElementById('btn-camera').textContent='▶️ Ligar câmera';
+  const bt=document.getElementById('btn-torch'); if(bt){ bt.classList.add('oculto'); bt.style.background=''; bt.style.color=''; }
+  ['zoom-barra','lente-barra'].forEach(id=>{ const e=document.getElementById(id); if(e) e.classList.add('oculto'); });
+  try{ if(scanner){ await scanner.stop(); scanner.clear(); } }catch(e){}
+  document.getElementById('reader').classList.remove('on');
+}
+// O diagnóstico saiu da tela para deixá-la limpa, mas continua a um toque
+// longo de distância: segurar o botão da câmera por 2 segundos. Fica lá para
+// quando algo der errado, sem ocupar espaço no dia a dia.
+(function ligarDiagnosticoOculto(){
+  const liga = () => {
+    const b = document.getElementById('btn-camera');
+    if (!b) return setTimeout(liga, 300);
+    let t = null;
+    const comecar = () => { t = setTimeout(() => { t = null; mostrarDiagnostico(); }, 2000); };
+    const parar   = () => { if (t) { clearTimeout(t); t = null; } };
+    b.addEventListener('touchstart', comecar, { passive: true });
+    b.addEventListener('touchend', parar);
+    b.addEventListener('touchmove', parar);
+    b.addEventListener('mousedown', comecar);
+    b.addEventListener('mouseup', parar);
+    b.addEventListener('mouseleave', parar);
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', liga); else liga();
+})();
+
+// ─────────── ZOOM ───────────
+// Aproxima a imagem sem chegar perto do QR. Só aparece se o aparelho
+// permitir controlar o zoom pela web (a maioria dos Android permite; no
+// iPhone depende da versão do iOS — por isso existe a troca de lente).
+function prepararZoom(caps){
+  const barra=document.getElementById('zoom-barra');
+  const z = caps && caps.zoom;
+  if(!z || z.max === undefined || z.max <= (z.min||1)){ barra.classList.add('oculto'); ZOOM_CAPS=null; return; }
+  ZOOM_CAPS = { min: z.min || 1, max: z.max, step: z.step || 0.1 };
+  const r=document.getElementById('zoom-range');
+  r.min=ZOOM_CAPS.min; r.max=ZOOM_CAPS.max; r.step=ZOOM_CAPS.step;
+  // retoma o zoom usado por último neste aparelho
+  let inicial=ZOOM_CAPS.min;
+  try{ const salvo=parseFloat(localStorage.getItem('eko_zoom')); if(salvo>=ZOOM_CAPS.min && salvo<=ZOOM_CAPS.max) inicial=salvo; }catch(e){}
+  r.value=inicial;
+  barra.classList.remove('oculto');
+  aplicarZoom(inicial);
+}
+async function aplicarZoom(v){
+  if(!ZOOM_CAPS || !scanner) return;
+  const val=Math.max(ZOOM_CAPS.min, Math.min(ZOOM_CAPS.max, parseFloat(v)));
+  document.getElementById('zoom-valor').textContent=val.toFixed(1)+'×';
+  document.getElementById('zoom-range').value=val;
+  try{
+    await scanner.applyVideoConstraints({ advanced:[{ zoom: val }] });
+    try{ localStorage.setItem('eko_zoom', String(val)); }catch(e){}
+  }catch(e){ /* alguns aparelhos recusam: mantém como está */ }
+}
+function ajustarZoom(d){
+  if(!ZOOM_CAPS) return;
+  const r=document.getElementById('zoom-range');
+  const passo=Math.max(ZOOM_CAPS.step, (ZOOM_CAPS.max-ZOOM_CAPS.min)/10);
+  aplicarZoom(parseFloat(r.value) + d*passo);
+}
+
+// ─────────── LENTES ───────────
+// Alternativa ao zoom (útil no iPhone): trocar a lente traseira. A "tele"
+// enxerga mais longe; a normal foca melhor de perto.
+async function prepararLentes(){
+  const barra=document.getElementById('lente-barra');
+  try{
+    if(!CAMERAS.length) CAMERAS=(await Html5Qrcode.getCameras())||[];
+  }catch(e){ CAMERAS=[]; }
+  const rot=c=>(c.label||'').toLowerCase();
+  const tras=CAMERAS.filter(c=>/traseira|back|rear|trás/.test(rot(c)));
+  if(tras.length<2){ barra.classList.add('oculto'); return; }
+  const apelido=c=>{
+    const r=rot(c);
+    if(/ultra/.test(r)) return 'Ampla';
+    if(/tele/.test(r))  return 'Tele';
+    if(/dupla|dual|tripla/.test(r)) return 'Dupla';
+    return 'Normal';
+  };
+  const el=document.getElementById('lente-botoes');
+  el.innerHTML='';
+  tras.forEach(c=>{
+    const b=document.createElement('button');
+    b.className='lente-btn'+(c.id===CAMERA_ID?' sel':'');
+    b.textContent=apelido(c);
+    b.onclick=()=>trocarLente(c.id);
+    el.appendChild(b);
+  });
+  barra.classList.remove('oculto');
+}
+async function trocarLente(id){
+  if(!camLigada || id===CAMERA_ID) return;
+  CAMERA_ID=id;
+  try{ if(scanner){ await scanner.stop(); scanner.clear(); } }catch(e){}
+  scanner=new Html5Qrcode('reader',{formatsToSupport:formatosSuportados(), verbose:false});
+  const qrboxFn=(vw,vh)=>{const w=Math.max(120,Math.floor(vw*0.9));return {width:w,height:Math.max(90,Math.floor(Math.min(vh*0.6,w*0.6)))};};
+  try{
+    await scanner.start(id,{fps:10,qrbox:qrboxFn,aspectRatio:1.0},onLeu,()=>{});
+    try{ await scanner.applyVideoConstraints({advanced:[{focusMode:'continuous'}]}); }catch(e){}
+    try{ prepararZoom(scanner.getRunningTrackCapabilities()); }catch(e){}
+    prepararLentes();
+    toast('ok','Lente trocada',1500);
+  }catch(e){ toast('erro','Não consegui usar esta lente',3000); }
+}
+
+// Liga/desliga a lanterna do aparelho (quando suportado).
+let torchOn=false;
+async function toggleTorch(){
+  if(!scanner || !camLigada) return;
+  try{
+    torchOn=!torchOn;
+    await scanner.applyVideoConstraints({ advanced: [ { torch: torchOn } ] });
+    const bt=document.getElementById('btn-torch');
+    bt.style.background = torchOn ? 'var(--ambar)' : '';
+    bt.style.color = torchOn ? '#3b2f0d' : '';
+  }catch(e){ toast('aviso','Este aparelho não permite a lanterna pela web',3000); torchOn=false; }
+}
+
+
+// Leitura: consulta a bobina e mostra na tela para o operador CONFERIR.
+// A baixa só acontece quando ele aperta o botão de confirmar.
+async function onLeu(codigo){
+  const id=(codigo||'').trim().toUpperCase();
+  const agora=Date.now();
+  if(ultimoBipe[id] && agora-ultimoBipe[id]<2500) return;
+  ultimoBipe[id]=agora;
+  if(enviando) return;
+
+  try{
+    const r=await fetch(URL_BASE+'/bobinas/'+encodeURIComponent(id));
+    const d=await r.json();
+    if(!r.ok || !d.ok){
+      beep(320,0.2); vibrar(150);
+      mostrarErro(id, (d&&d.erro)||'Bobina não encontrada');
+      return;
+    }
+    const b=d.bobina;
+    if(b.status==='consumida'){
+      beep(320,0.2); vibrar([80,60,80]);
+      mostrarErro(id,'Esta bobina JÁ teve baixa'+(b.bling_pedido_id?(' (pedido '+b.bling_pedido_id+')'):''));
+      return;
+    }
+    if(b.status==='cancelada'){ beep(320,0.2); vibrar(150); mostrarErro(id,'Bobina cancelada'); return; }
+    if(!b.produto_id){ beep(320,0.2); vibrar(150); mostrarErro(id,'Sem produto no Bling para '+b.chave); return; }
+
+    beep(880,0.1); vibrar(60);
+    bobinaAtual=b;
+    document.getElementById('area-bobina').innerHTML=
+      '<div class="card-bob">'+
+        '<div class="cb-id">'+b.id+'</div>'+
+        '<div class="cb-nome">'+b.cor+' · '+b.tipo_bobina+' · '+b.largura+'</div>'+
+        '<div class="cb-peso">'+fmtKg(b.peso)+'</div>'+
+        '<div class="cb-extra">Produzida por '+(b.operador||'—')+' · Máq '+(b.maquina||'—')+
+          (b.hora_impressao?(' · '+new Date(b.hora_impressao).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})):'')+'</div>'+
+        '<div class="destino-lb">Para onde vai esta bobina?</div>'+
+        '<button class="btn btn-verde btn-destino" data-destino="Sacoleira P1" onclick="confirmarBaixa(\'Sacoleira P1\')">✓ Sacoleira P1</button>'+
+        '<button class="btn btn-verde btn-destino" data-destino="Sacoleira P2" onclick="confirmarBaixa(\'Sacoleira P2\')">✓ Sacoleira P2</button>'+
+        '<button class="btn btn-cinza" onclick="cancelarLeitura()">Cancelar</button>'+
+      '</div>';
+    document.getElementById('area-bobina').scrollIntoView({behavior:'smooth', block:'center'});
+  }catch(e){ toast('erro','Erro ao consultar: '+e.message,3000); }
+}
+
+function mostrarErro(id,msg){
+  bobinaAtual=null;
+  document.getElementById('area-bobina').innerHTML=
+    '<div class="card-bob erro">'+
+      '<div class="cb-id">'+id+'</div>'+
+      '<div class="cb-nome">⛔ '+msg+'</div>'+
+      '<button class="btn btn-cinza" onclick="cancelarLeitura()">Fechar</button>'+
+    '</div>';
+}
+function restaurarBotoesDestino(){
+  document.querySelectorAll('.btn-destino').forEach(b=>{
+    b.disabled=false; b.style.opacity=''; b.textContent='✓ '+b.dataset.destino;
+  });
+}
+function cancelarLeitura(){ bobinaAtual=null; document.getElementById('area-bobina').innerHTML=''; }
+
+// Baixa de verdade — um pedido de venda por bobina.
+async function confirmarBaixa(destino){
+  if(!bobinaAtual || enviando) return;
+  if(!TURNO){ toast('erro','Selecione o turno primeiro',3000); trocarTurno(); return; }
+  if(!destino){ toast('erro','Escolha a sacoleira de destino',3000); return; }
+  enviando=true;
+  // desabilita os dois botões de destino e marca qual foi escolhido
+  const botoes=document.querySelectorAll('.btn-destino');
+  botoes.forEach(b=>{ b.disabled=true; if(b.dataset.destino===destino) b.textContent='Enviando ao Bling…'; else b.style.opacity='0.35'; });
+  try{
+    const r=await fetch(URL_BASE+'/bobinas/baixa',{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ id:bobinaAtual.id, turno:TURNO&&TURNO.codigo, destino, operador:(window.EKO_RESPONSAVEL||null) })
+    });
+    const d=await r.json();
+    if(!r.ok || !d.ok){
+      beep(320,0.25); vibrar(200);
+      toast('erro',(d&&d.erro)||'Falha ao dar baixa',6000);
+      restaurarBotoesDestino();
+      enviando=false; return;
+    }
+    beep(1050,0.14); vibrar([60,50,60]);
+    toast('ok','✓ Baixa feita → '+destino+'<br>pedido '+d.pedido+(d.modo==='simulacao'?' (simulação)':''),3500);
+    cancelarLeitura();
+    await carregarHistorico();
+  }catch(e){
+    toast('erro','Erro: '+e.message,5000);
+    restaurarBotoesDestino();
+  }
+  enviando=false;
+}
+
+// ── TURNO: é o cliente da venda. Fica guardado no aparelho para o operador
+// não precisar escolher a cada bobina; o botão "Trocar" volta para a seleção.
+async function carregarTurnos(){
+  let turnos=[];
+  try{
+    const r=await fetch(URL_BASE+'/bobinas/turnos');
+    const d=await r.json();
+    turnos=(d&&d.turnos)||[];
+  }catch(e){}
+  const g=document.getElementById('grid-turnos');
+  if(!turnos.length){ g.innerHTML='<div class="vazio">Nenhum turno cadastrado. Avise a manutenção.</div>'; return; }
+  g.innerHTML='';
+  for(const t of turnos){
+    const b=document.createElement('button');
+    b.className='turno-btn';
+    b.innerHTML=t.label+'<span class="tb-sub">baixa sai como venda para este turno</span>';
+    b.onclick=()=>escolherTurno(t.codigo,t.label);
+    g.appendChild(b);
+  }
+  // retoma o turno usado por último neste aparelho
+  try{
+    const salvo=localStorage.getItem('bobinas_turno');
+    if(salvo){ const t=JSON.parse(salvo); if(turnos.find(x=>x.codigo===t.codigo)) escolherTurno(t.codigo,t.label); }
+  }catch(e){}
+}
+function escolherTurno(codigo,label){
+  TURNO={codigo,label};
+  try{ localStorage.setItem('bobinas_turno', JSON.stringify(TURNO)); }catch(e){}
+  document.getElementById('turno-nome').textContent=label;
+  document.getElementById('tela-turno').classList.add('oculto');
+  document.getElementById('tela-leitura').classList.remove('oculto');
+  carregarHistorico();
+}
+function trocarTurno(){
+  pararCamera();
+  cancelarLeitura();
+  document.getElementById('tela-leitura').classList.add('oculto');
+  document.getElementById('tela-turno').classList.remove('oculto');
+}
+
+async function carregarHistorico(){
+  try{
+    const r=await fetch(URL_BASE+'/bobinas/baixas-hoje');
+    const d=await r.json();
+    const lista=(d&&d.baixas)||[];
+    document.getElementById('t-qtd').textContent=(d&&d.qtd)||0;
+    document.getElementById('t-kg').textContent=((d&&d.total_kg)||0).toLocaleString('pt-BR');
+    const el=document.getElementById('lista-hist');
+    if(!lista.length){ el.innerHTML='<div class="vazio">Nenhuma bobina retirada hoje.</div>'; return; }
+    el.innerHTML=lista.map(x=>{
+      const h=x.hora? new Date(x.hora).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) : '';
+      return '<div class="hist-item">'+
+        '<div style="flex:1"><div class="hi-nome">'+x.cor+' · '+x.tipo_bobina+' · '+x.largura+'</div>'+
+        '<div class="hi-sub">'+x.id+' · '+h+(x.turno_label?(' · '+x.turno_label):'')+(x.destino?(' → '+x.destino):'')+(x.pedido?(' · pedido '+x.pedido):'')+'</div></div>'+
+        '<div class="hi-kg">'+fmtKg(x.peso)+'</div></div>';
+    }).join('');
+  }catch(e){}
+}
+
+// Só inicia depois que o colaborador entrar com a senha dele.
+// Rede de segurança: se o componente de acesso não carregar por algum motivo,
+// a tela ABRE mesmo assim (sem identificação) em vez de ficar morta. Numa
+// fábrica, tela travada para a produção; falta de identificação, não.
+function comAcesso(tela, aoEntrar) {
+  if (window.EkoAcesso && typeof EkoAcesso.exigir === 'function') return EkoAcesso.exigir(tela, aoEntrar);
+  console.warn('acesso-colaborador.js não carregou — abrindo a tela sem identificação');
+  try { aoEntrar(); } catch (e) { console.error(e); }
+}
+comAcesso('bobinas', nome => {
+  const h = document.querySelector('header h1');
+  if (h && nome) h.innerHTML = '\u{1F9F5} Retirada de Bobinas <span style="display:block;font-size:12px;color:#94a8c4;font-weight:700">\u{1F464} ' + nome + '</span>';
+  carregarTurnos();
+});
+</script>
+</body>
+</html>

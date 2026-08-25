@@ -1,0 +1,1836 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Inventário de Matéria-Prima</title>
+<script src="/vendor/html5-qrcode.min.js"></script>
+<script src="/vendor/jspdf.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#0a1119; --panel:#131f30; --panel-hi:#1d2c42; --border:#2a3a52;
+    --txt:#eef4fb; --muted:#94a8c4; --verde:#00ff9d; --ambar:#ffc250; --vermelho:#ff6b6b; --azul:#5aa9ff;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;}
+  body{background:var(--bg); color:var(--txt); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; padding-bottom:calc(28px + env(safe-area-inset-bottom)); font-size:17px; line-height:1.4;}
+
+  header{padding:calc(16px + env(safe-area-inset-top)) 20px 16px; border-bottom:1px solid var(--border); position:sticky; top:0; background:linear-gradient(180deg,var(--panel),var(--bg)); z-index:20; display:flex; align-items:center; gap:12px;}
+  header h1{margin:0; font-size:22px; font-weight:800; letter-spacing:0.2px; flex:1;}
+  .btn-voltar{background:var(--panel-hi); border:1px solid var(--border); color:var(--txt); border-radius:12px; padding:12px 16px; font-size:15px; font-weight:700; display:none;}
+  .btn-voltar:active{transform:scale(0.96);}
+
+  .wrap{padding:18px 20px 8px;}
+  .oculto{display:none !important;}
+
+  .rotulo{font-size:13px; color:var(--muted); font-weight:800; letter-spacing:1px; text-transform:uppercase; margin:22px 0 9px;}
+  select, .btn{width:100%; padding:18px; border-radius:16px; font-size:18px; font-family:inherit;}
+  select{border:1.5px solid var(--border); background:var(--panel); color:var(--txt); font-weight:600; appearance:none; -webkit-appearance:none; background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' fill='none' stroke='%2394a8c4' stroke-width='2'%3E%3Cpath d='M2 5l5 5 5-5'/%3E%3C/svg%3E"); background-repeat:no-repeat; background-position:right 18px center;}
+  select:disabled{opacity:0.35;}
+  .btn{border:none; font-weight:800; cursor:pointer; letter-spacing:0.3px; margin-top:16px; min-height:62px; transition:transform 0.05s;}
+  .btn + .btn{margin-top:10px;}
+  .btn:active{transform:scale(0.98);}
+  .btn-verde{background:var(--verde); color:#052916; box-shadow:0 4px 16px rgba(0,255,157,0.22);}
+  .btn-verde:disabled{opacity:0.35; box-shadow:none;}
+  .btn-cinza{background:var(--panel-hi); color:var(--txt); border:1.5px solid var(--border);}
+  .btn-azul{background:var(--azul); color:#042038;}
+
+  .prod-sel{background:linear-gradient(135deg,var(--panel-hi),var(--panel)); border:1.5px solid var(--verde); border-radius:16px; padding:16px 18px; margin-bottom:14px;}
+  .prod-sel .p1{font-size:22px; font-weight:800; line-height:1.25;}
+  .prod-sel .p2{font-size:14px; color:var(--muted); margin-top:5px; line-height:1.4;}
+
+  /* O tamanho é controlado por este contêiner: a biblioteca de leitura grava
+     a largura em pixels direto no #reader, sobrepondo qualquer CSS nele. */
+  .cam-box{max-width:320px; margin:0 auto; border-radius:18px; overflow:hidden;}
+  .cam-box #reader{width:100% !important; max-width:100% !important; border:1.5px solid var(--border);
+                   border-radius:18px; overflow:hidden; background:#000; display:none;}
+  .cam-box #reader video, .cam-box #reader canvas{width:100% !important; height:auto !important; display:block;}
+  #reader.on{display:block;}
+  #reader video{width:100%!important; height:auto!important; display:block;}
+
+  .cam-controles{display:flex; gap:10px; align-items:stretch;}
+  .cam-controles .btn{margin-top:0;}
+  #btn-camera{flex:1;}
+  #btn-digitar{flex:0 0 auto; width:auto; padding:0 20px; font-size:15px; white-space:nowrap;}
+  #btn-torch{flex:0 0 auto; width:auto; padding:0 20px; font-size:22px;}
+
+  .contador{display:flex; gap:12px; margin:18px 0;}
+  .contador .cx{flex:1; background:var(--panel); border:1.5px solid var(--border); border-radius:16px; padding:18px 10px; text-align:center;}
+  .contador .n{font-size:38px; font-weight:900; color:var(--verde); line-height:1;}
+  .contador .l{font-size:12px; color:var(--muted); margin-top:7px; font-weight:800; letter-spacing:0.6px;}
+
+  .leitura-item{display:flex; align-items:center; gap:12px; padding:14px 16px; background:var(--panel); border:1px solid var(--border); border-radius:12px; margin-bottom:8px; font-size:16px;}
+  .leitura-item .id{font-family:ui-monospace,monospace; font-weight:800; color:var(--verde);}
+  .leitura-item .pz{margin-left:auto; color:var(--muted); font-weight:600;}
+  .leitura-item .rm{background:none; border:1.5px solid var(--border); color:var(--muted); border-radius:10px; padding:9px 13px; font-size:15px;}
+
+  .comp{background:var(--panel); border:1.5px solid var(--border); border-radius:18px; padding:22px; margin-bottom:16px;}
+  .comp .linha{display:flex; justify-content:space-between; align-items:center; padding:14px 0; border-bottom:1px solid var(--border); font-size:17px;}
+  .comp .linha:last-of-type{border-bottom:none;}
+  .comp .linha .v{font-weight:800; font-variant-numeric:tabular-nums; font-size:20px;}
+  .comp .veredicto{margin-top:16px; padding:20px; border-radius:15px; font-size:21px; font-weight:900; text-align:center; line-height:1.3;}
+  .veredicto.ok{background:rgba(0,255,157,0.12); color:var(--verde);}
+  .veredicto.div{background:rgba(255,107,107,0.12); color:var(--vermelho);}
+
+  .sec-fim{margin-top:34px; padding-top:22px; border-top:1px solid var(--border);}
+  .sec-fim-tit{font-size:13px; font-weight:800; letter-spacing:1.2px; color:var(--muted); text-transform:uppercase; margin-bottom:12px; display:flex; justify-content:space-between;}
+  .fim-item{display:flex; align-items:center; gap:12px; padding:13px 15px; background:var(--panel); border:1px solid var(--border); border-radius:13px; margin-bottom:8px;}
+  .fim-item.ok{border-left:5px solid var(--verde);}
+  .fim-item.div{border-left:5px solid var(--vermelho);}
+  .fim-item .fi-nome{flex:1; font-size:16px; font-weight:800; line-height:1.3;}
+  .fim-item .fi-sub{font-size:13px; color:var(--muted); margin-top:3px;}
+  .fim-item .fi-badge{font-size:14px; font-weight:800; padding:7px 13px; border-radius:20px; white-space:nowrap;}
+  .fi-badge.ok{background:rgba(0,255,157,0.14); color:var(--verde);}
+  .fi-badge.div{background:rgba(255,107,107,0.14); color:var(--vermelho);}
+  .vazio{color:var(--muted); font-size:15px; text-align:center; padding:24px; line-height:1.5;}
+
+  /* Ações de fim de tarefa: discretas e no fim da página — não competem
+     com o botão principal de cada etapa nem roubam altura útil. */
+  .acoes-fim{display:flex; gap:10px; margin-top:22px; padding-top:18px; border-top:1px solid var(--border);}
+  .acoes-fim .btn-fim-acao{flex:1; padding:12px 10px; border-radius:11px; background:transparent;
+      border:1.5px solid var(--border); color:var(--muted); font-size:13.5px; font-weight:700;
+      font-family:inherit; cursor:pointer; letter-spacing:0.2px;}
+  .acoes-fim .btn-fim-acao:active{transform:scale(0.98);}
+  .acoes-fim .btn-fim-acao.perigo{color:var(--ambar); border-color:rgba(255,194,80,0.35);}
+  .acoes-fim .btn-fim-acao.destaque{color:var(--verde); border-color:rgba(0,255,157,0.4);}
+  /* Resumo do que já foi contado */
+  .resumo-inv{display:flex; gap:10px; margin-bottom:12px;}
+  .resumo-inv .ri{flex:1; background:var(--panel); border:1px solid var(--border); border-radius:12px;
+      padding:12px 8px; text-align:center;}
+  .resumo-inv .ri .n{font-size:22px; font-weight:900; line-height:1;}
+  .resumo-inv .ri .l{font-size:10.5px; color:var(--muted); font-weight:800; letter-spacing:0.6px; margin-top:5px;}
+  .resumo-inv .ri.div .n{color:var(--vermelho);}
+  .resumo-inv .ri.ok .n{color:var(--verde);}
+
+  .toast{position:fixed; left:50%; transform:translateX(-50%); top:84px; padding:16px 22px; border-radius:14px; font-size:16px; font-weight:800; z-index:100; box-shadow:0 8px 28px rgba(0,0,0,0.6); max-width:92vw; text-align:center; display:none;}
+  .toast.ok{background:#0d3b2a; color:var(--verde); border:1.5px solid var(--verde);}
+  .toast.erro{background:#3b1414; color:var(--vermelho); border:1.5px solid var(--vermelho);}
+  .toast.aviso{background:#3b2f0d; color:var(--ambar); border:1.5px solid var(--ambar);}
+  .carregando{color:var(--muted); font-size:16px; text-align:center; padding:26px;}
+  .grupo-livre{background:var(--panel); border:1px solid var(--border); border-left:5px solid var(--verde);
+               border-radius:12px; padding:14px 16px; margin-bottom:10px;}
+  .grupo-livre .gl-nome{font-size:17px; font-weight:800;}
+  .grupo-livre .gl-sub{font-size:13px; color:var(--muted); margin-top:4px;}
+  .grupo-livre .gl-kg{font-size:20px; font-weight:900; color:var(--verde); float:right;}
+  .gl-excluir{background:rgba(255,107,107,0.12); border:1px solid var(--vermelho); color:var(--vermelho);
+              border-radius:9px; padding:8px 14px; font-size:13px; font-weight:800; font-family:inherit; margin-top:12px;}
+  .gl-ver{background:transparent; border:1px solid var(--border); color:var(--muted); border-radius:9px;
+          padding:8px 14px; font-size:13px; font-weight:700; font-family:inherit; margin:12px 0 0 8px;}
+  .gl-lista{margin-top:12px; padding-top:10px; border-top:1px solid var(--border);}
+  .gl-linha{display:flex; align-items:center; gap:10px; padding:8px 0; font-size:14px; font-family:ui-monospace,monospace;}
+  .gl-linha span:nth-child(2){margin-left:auto; color:var(--muted);}
+  .gl-rm{background:none; border:1px solid var(--border); color:var(--muted); border-radius:8px; padding:6px 11px; font-size:13px;}
+  .acoes-leitura{display:flex; gap:10px; align-items:stretch;}
+  .acoes-leitura .btn{margin-top:16px;}
+  .acoes-leitura #btn-previa{flex:0 0 auto; width:auto; padding:0 22px; font-size:16px;}
+  .acoes-leitura #btn-finalizar-leitura{flex:1;}
+  .previa-cx{background:var(--panel); border:1.5px solid var(--azul); border-radius:18px; padding:18px; margin-top:14px;}
+  .previa-tit{font-size:13px; font-weight:800; letter-spacing:1px; color:var(--azul); text-transform:uppercase; margin-bottom:12px;}
+  .previa-linha{display:flex; justify-content:space-between; align-items:center; padding:11px 0; border-bottom:1px solid var(--border); font-size:15px;}
+  .previa-linha:last-of-type{border-bottom:none;}
+  .previa-linha .pv{font-weight:800; font-variant-numeric:tabular-nums;}
+  .sacos-cx{background:var(--panel); border:1.5px solid var(--ambar); border-radius:18px; padding:18px; margin-top:12px;}
+  .sacos-cx select{width:100%; padding:16px; border-radius:14px; border:1.5px solid var(--border);
+                   background:var(--bg); color:var(--txt); font-size:16px; font-family:inherit;}
+  .manual-cx{background:var(--panel); border:1.5px solid var(--border); border-radius:18px; padding:22px 18px; text-align:center;}
+  .manual-lb{font-size:13px; color:var(--muted); font-weight:800; letter-spacing:1px; margin-bottom:14px;}
+  .manual-linha{display:flex; gap:8px; align-items:center; justify-content:center;}
+  .manual-op{background:var(--panel-hi); border:1.5px solid var(--border); color:var(--txt); border-radius:14px;
+             min-width:62px; height:62px; font-size:18px; font-weight:800; font-family:inherit; cursor:pointer;}
+  .manual-op:active{transform:scale(0.95);}
+  .manual-num{width:110px; height:62px; text-align:center; font-size:32px; font-weight:900; border-radius:14px;
+              border:1.5px solid var(--verde); background:var(--bg); color:var(--verde); font-family:inherit;}
+  .sobras-sec{margin-top:18px; padding-top:16px; border-top:1px solid var(--border);}
+  .sobras-lb{font-size:12px; color:var(--muted); font-weight:800; letter-spacing:0.8px; margin-bottom:10px;}
+  .sobras-add{display:flex; gap:8px;}
+  .sobras-in{flex:1; height:52px; padding:0 14px; border-radius:12px; border:1.5px solid var(--border);
+             background:var(--bg); color:var(--txt); font-size:18px; font-weight:700; font-family:inherit; text-align:center;}
+  .sobras-bt{flex:0 0 auto; padding:0 18px; height:52px; border-radius:12px; border:1.5px solid var(--ambar);
+             background:transparent; color:var(--ambar); font-size:14px; font-weight:800; font-family:inherit;}
+  .sobra-linha{display:flex; align-items:center; gap:10px; padding:9px 0; font-size:15px; border-bottom:1px solid var(--border);}
+  .sobra-linha span{font-weight:700;}
+  .sobra-linha .sx{margin-left:auto; background:none; border:1px solid var(--border); color:var(--muted);
+                   border-radius:8px; padding:6px 11px; font-size:13px;}
+  .manual-conta{margin-top:16px; font-size:18px; color:var(--muted);}
+  .manual-conta b{color:var(--verde); font-size:22px;}
+
+  /* App shell: ocupa a tela toda do celular, sem "página web" ao redor */
+  html{height:100%;}
+  body{min-height:100dvh;}
+  .btn-sair{background:var(--panel-hi); border:1px solid var(--border); color:var(--muted); border-radius:12px; padding:11px 15px; font-size:17px; font-weight:800; text-decoration:none; line-height:1;}
+  .btn-sair:active{transform:scale(0.96);}
+  /* Câmera em destaque: altura generosa para enquadrar o código com folga */
+  #reader.on{display:block; background:#000;}
+  #reader video{border-radius:16px;}
+  .cam-controles{margin-top:14px;}
+  #zoom-barra, #lente-barra{background:var(--panel); border:1.5px solid var(--border); border-radius:14px; padding:14px 16px; margin-top:12px;}
+  .zoom-lb{display:flex; justify-content:space-between; font-size:12px; color:var(--muted); font-weight:800; letter-spacing:1px; margin-bottom:10px;}
+  .zoom-lb span:last-child{color:var(--verde); font-size:15px;}
+  .zoom-linha{display:flex; align-items:center; gap:12px;}
+  .zoom-op{background:var(--panel-hi); border:1.5px solid var(--border); color:var(--txt); border-radius:12px;
+           min-width:54px; height:54px; font-size:24px; font-weight:800; font-family:inherit; cursor:pointer;}
+  .zoom-op:active{transform:scale(0.95);}
+  #zoom-range{flex:1; height:40px; accent-color:var(--verde);}
+  .lente-botoes{display:flex; gap:8px; flex-wrap:wrap;}
+  .lente-btn{flex:1; min-width:90px; background:var(--panel-hi); border:1.5px solid var(--border); color:var(--txt);
+             border-radius:12px; padding:14px 10px; font-size:14px; font-weight:700; font-family:inherit; cursor:pointer;}
+  .lente-btn.sel{border-color:var(--verde); color:var(--verde);}
+  /* Em telas bem baixas (celular deitado), reduz o vídeo para caber os botões */
+  @media (max-height:520px){ .cam-box{max-width:250px;} }
+</style>
+</head>
+<body>
+<header>
+  <button class="btn-voltar" id="btn-voltar" onclick="voltarSelecao()">← Voltar</button>
+  <h1 id="titulo">📦 Inventário</h1>
+  <a class="btn-sair" href="/" title="Voltar ao sistema">✕</a>
+</header>
+
+<div class="toast" id="toast"></div>
+
+<!-- ETAPA 0: MP ou PA -->
+<div class="wrap" id="tela-tipo">
+  <div style="font-size:17px; color:var(--muted); line-height:1.5; margin-bottom:8px;">O que você vai contar?</div>
+  <button class="btn btn-verde" style="min-height:110px; font-size:21px;" onclick="escolherTipo('mp')">
+    📦 MATÉRIA-PRIMA<span style="display:block; font-size:13px; font-weight:600; color:#053; margin-top:6px;">
+      big bags · leitura da etiqueta</span></button>
+  <button class="btn btn-cinza" style="min-height:110px; font-size:21px; border-color:#7dd3fc; color:#7dd3fc;" onclick="escolherTipo('pa')">
+    🏷️ PRODUTO ACABADO<span style="display:block; font-size:13px; font-weight:600; color:var(--muted); margin-top:6px;">
+      gaiolas · leitura do QR Code</span></button>
+</div>
+
+<!-- ETAPA 1: SELEÇÃO -->
+<div class="wrap oculto" id="tela-selecao">
+  <div id="bloco-mp">
+    <div class="rotulo">MATERIAL</div>
+    <select id="sel-material" onchange="materialMudou()"><option value="">Carregando…</option></select>
+    <div class="rotulo">COR</div>
+    <select id="sel-cor" onchange="corMudou()" disabled><option value="">—</option></select>
+    <div class="rotulo">FORNECEDOR</div>
+    <select id="sel-forn" onchange="fornMudou()" disabled><option value="">—</option></select>
+    <button class="btn btn-verde" id="btn-iniciar" onclick="iniciarLeitura()" disabled>▶️ Iniciar leitura deste produto</button>
+    <div style="text-align:center; color:var(--muted); font-size:14px; margin:18px 0 4px;">— ou —</div>
+    <button class="btn btn-cinza" style="border-color:#7dd3fc; color:#7dd3fc;" onclick="mpIniciarLivre()">
+      🔀 LEITURA LIVRE<span style="display:block; font-size:12px; font-weight:600; color:var(--muted); margin-top:4px;">
+        leia qualquer etiqueta — o sistema agrupa por produto</span></button>
+  </div>
+  <div id="bloco-pa" class="oculto">
+    <div class="rotulo">FORMATO</div>
+    <select id="pa-formato" onchange="paAtualizar()"><option value="">Selecione…</option></select>
+    <div class="rotulo">COR</div>
+    <select id="pa-cor" onchange="paAtualizar()"><option value="">Selecione…</option></select>
+    <button class="btn btn-verde" id="pa-btn-iniciar" onclick="paIniciar()" disabled>▶️ Iniciar contagem deste produto</button>
+    <div style="text-align:center; color:var(--muted); font-size:14px; margin:18px 0 4px;">— ou —</div>
+    <button class="btn btn-cinza" style="border-color:#7dd3fc; color:#7dd3fc;" onclick="paIniciarLivre()">
+      🔀 LEITURA LIVRE<span style="display:block; font-size:12px; font-weight:600; color:var(--muted); margin-top:4px;">
+        leia qualquer gaiola — o sistema agrupa por produto</span></button>
+  </div>
+
+  <div class="sec-fim" id="sec-finalizados">
+    <div class="sec-fim-tit"><span>Produtos já inventariados</span><span id="cont-fim"></span></div>
+    <div id="lista-fim"><div class="vazio">Nenhum produto inventariado ainda.</div></div>
+    <div class="acoes-fim" id="acoes-fim">
+      <button class="btn-fim-acao" onclick="exportarPDF(false)">⬇️ PDF</button>
+      <button class="btn-fim-acao destaque" id="btn-compartilhar" onclick="exportarPDF(true)">📤 Compartilhar</button>
+      <button class="btn-fim-acao perigo" onclick="finalizarInventario()">🏁 Encerrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ETAPA 2: LEITURA -->
+<div class="wrap oculto" id="tela-leitura">
+  <div class="prod-sel">
+    <div class="p1" id="leit-prod">—</div>
+    <div class="p2">Bipe os big bags deste produto. O peso de cada etiqueta soma sozinho.</div>
+  </div>
+  <!-- CONTAGEM MANUAL (pigmento/dessecante: sacos, não big bags) -->
+  <div id="bloco-manual" class="oculto">
+    <div class="manual-cx">
+      <div class="manual-lb">QUANTOS SACOS?</div>
+      <div class="manual-linha">
+        <button class="manual-op" onclick="ajustarSacos(-10)">−10</button>
+        <button class="manual-op" onclick="ajustarSacos(-1)">−1</button>
+        <input class="manual-num" id="manual-sacos" type="number" inputmode="numeric" min="0" value="0" onchange="sacosDigitados()">
+        <button class="manual-op" onclick="ajustarSacos(1)">+1</button>
+        <button class="manual-op" onclick="ajustarSacos(10)">+10</button>
+      </div>
+      <div class="sobras-sec">
+        <div class="sobras-lb">SACOS ABERTOS (peso avulso)</div>
+        <div class="sobras-add">
+          <input class="sobras-in" id="man-sobra-kg" type="text" inputmode="decimal" placeholder="kg  (ex.: 12,5)">
+          <button class="sobras-bt" onclick="addSobra('man')">+ incluir</button>
+        </div>
+        <div id="man-sobras-lista"></div>
+      </div>
+      <div class="manual-conta" id="manual-conta">0 sacos × 25 kg = <b>0 kg</b></div>
+    </div>
+  </div>
+
+  <div id="bloco-camera">
+  <div class="cam-box"><div id="reader"></div></div>
+  <div id="zoom-barra" class="oculto">
+    <div class="zoom-lb"><span>ZOOM</span><span id="zoom-valor">1.0×</span></div>
+    <div class="zoom-linha">
+      <button class="zoom-op" onclick="ajustarZoom(-1)">−</button>
+      <input type="range" id="zoom-range" min="1" max="5" step="0.1" value="1" oninput="aplicarZoom(this.value)">
+      <button class="zoom-op" onclick="ajustarZoom(1)">+</button>
+    </div>
+  </div>
+  <div id="lente-barra" class="oculto">
+    <div class="zoom-lb"><span>LENTE DA CÂMERA</span></div>
+    <div id="lente-botoes" class="lente-botoes"></div>
+  </div>
+  <div class="cam-controles">
+    <button class="btn btn-cinza" id="btn-camera" onclick="toggleCamera()">▶️ Ligar câmera</button>
+    <button class="btn btn-cinza" id="btn-digitar" onclick="digitarCodigo()" title="Digitar o código">⌨️ Digitar</button>
+    <button class="btn btn-cinza oculto" id="btn-torch" onclick="toggleTorch()" title="Lanterna">🔦</button>
+  </div>
+  <div id="painel-diag" class="oculto" style="background:var(--panel); border:1.5px solid var(--ambar); border-radius:14px; padding:16px; margin-top:12px; font-size:14px; line-height:1.6;"></div>
+  </div><!-- /bloco-camera -->
+  <div class="contador">
+    <div class="cx"><div class="n" id="c-qtd">0</div><div class="l">BIG BAGS LIDOS</div></div>
+    <div class="cx"><div class="n" id="c-kg">0</div><div class="l">KG SOMADOS</div></div>
+  </div>
+  <div id="lista-leituras"></div>
+  <button class="btn btn-cinza oculto" id="btn-add-sacos" style="border-color:var(--ambar); color:var(--ambar);"
+          onclick="abrirSacos()">➕ Adicionar material por sacos</button>
+
+  <div id="painel-sacos" class="oculto">
+    <div class="sacos-cx">
+      <div class="rotulo" style="margin-top:0">MATERIAL</div>
+      <select id="sac-produto"><option value="">Selecione…</option></select>
+      <div class="rotulo">QUANTOS SACOS?</div>
+      <div class="manual-linha">
+        <button class="manual-op" onclick="sacAjustar(-10)">−10</button>
+        <button class="manual-op" onclick="sacAjustar(-1)">−1</button>
+        <input class="manual-num" id="sac-num" type="number" inputmode="numeric" min="0" value="0" onchange="sacDigitado()">
+        <button class="manual-op" onclick="sacAjustar(1)">+1</button>
+        <button class="manual-op" onclick="sacAjustar(10)">+10</button>
+      </div>
+      <div class="sobras-sec">
+        <div class="sobras-lb">SACOS ABERTOS (peso avulso)</div>
+        <div class="sobras-add">
+          <input class="sobras-in" id="sac-sobra-kg" type="text" inputmode="decimal" placeholder="kg  (ex.: 12,5)">
+          <button class="sobras-bt" onclick="addSobra('sac')">+ incluir</button>
+        </div>
+        <div id="sac-sobras-lista"></div>
+      </div>
+      <div class="manual-conta" id="sac-conta">0 sacos × 25 kg = <b>0 kg</b></div>
+      <div style="display:flex; gap:10px; margin-top:16px;">
+        <button class="btn btn-cinza" style="margin-top:0" onclick="fecharSacos()">Cancelar</button>
+        <button class="btn btn-verde" style="margin-top:0" id="sac-ok" onclick="confirmarSacos()" disabled>✓ Adicionar à contagem</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="lista-livre"></div>
+  <div class="acoes-leitura">
+    <button class="btn btn-cinza" id="btn-previa" onclick="previaContagem()">👁 Prévia</button>
+    <button class="btn btn-verde" id="btn-finalizar-leitura" onclick="finalizarQualquer()">✓ Finalizar contagem</button>
+  </div>
+
+  <div id="painel-previa" class="oculto"></div>
+</div>
+
+<!-- ETAPA 3: COMPARATIVO -->
+<div class="wrap oculto" id="tela-comparativo">
+  <div class="prod-sel"><div class="p1" id="comp-prod">—</div></div>
+  <div id="comp-corpo"><div class="carregando">Consultando saldo no Bling…</div></div>
+</div>
+
+<!-- RODAPÉ -->
+
+<script>
+const URL_BASE = '';
+let PRODUTOS = [];           // lista de {material, materialNome, cor, fornecedor, chave}
+let FINALIZADOS = [];        // itens já inventariados (do servidor)
+let scanner = null, camLigada = false;
+let ULTIMO_ERRO_CAM = null;   // guarda o erro real da câmera para o diagnóstico
+let ZOOM_CAPS = null;         // limites de zoom que o aparelho aceita
+let RESOLUCAO_CAM = null;     // resolução que a câmera realmente entregou
+let CAMERAS = [];             // lentes disponíveis (traseiras)
+let CAMERA_ID = null;         // lente em uso
+const ultimoBipe = {};       // debounce por código
+
+// seleção e leitura atuais
+let sel = null;              // {material, materialNome, cor, fornecedor}
+let leituras = [];           // [{id, peso}]
+let idsLidos = new Set();
+// Tudo que já foi contado neste CICLO de inventário (produtos já salvos).
+// idsLidos vale só para a contagem atual; este aqui atravessa as contagens e
+// impede que a mesma etiqueta entre duas vezes no mesmo inventário. Só zera
+// quando o inventário é encerrado.
+let CICLO = {};   // id da etiqueta -> nome do produto onde ela foi contada
+
+function reconstruirCiclo(){
+  CICLO = {};
+  for(const it of (FINALIZADOS||[])){
+    const onde = rotuloProduto(it);
+    for(const l of (it.leituras||[])){
+      // lançamentos manuais (sacos) não têm etiqueta e não entram no bloqueio
+      if(!l || !l.id || l.id==='SACOS' || l.id==='MANUAL') continue;
+      CICLO[l.id] = onde;
+    }
+  }
+}
+// Já foi contada neste inventário (numa contagem anterior)?
+function jaContadaNoCiclo(id){ return CICLO[id] || null; }
+let saldoBlingAtual = null;
+let TIPO_INV = null;         // 'mp' ou 'pa'
+let PA_PRODUTOS = [];        // combinações cor × formato do produto acabado
+let PA_SEL = null;           // {corKey, cor, formato, sku}
+let MODO_MANUAL = false;      // pigmento/dessecante: conta sacos, não bipa etiqueta
+let KG_POR_SACO = 25;
+let sacos = 0;
+let MODO_LIVRE = false;      // PA: lê qualquer gaiola, agrupa por produto
+let LIVRE = {};              // { "formato|corKey": {formato, corKey, cor, gaiolas:[], fardos, kg} }
+
+// ─────────── contagem em andamento salva no aparelho ───────────
+// Sem isso, atualizar a página no meio da contagem perde tudo. Fica guardado
+// até finalizar o produto (ou limpar) — inclusive se fechar o navegador.
+const CHAVE_ANDAMENTO = 'eko_inventario_andamento';
+function salvarAndamento(){
+  try{
+    if(!TIPO_INV || (!sel && !MODO_LIVRE)) return;
+    localStorage.setItem(CHAVE_ANDAMENTO, JSON.stringify({
+      tipo:TIPO_INV, modoLivre:MODO_LIVRE, sel, leituras, sacos,
+      modoManual:MODO_MANUAL, kgPorSaco:KG_POR_SACO, livre:LIVRE, ts:Date.now(),
+    }));
+  }catch(e){}
+}
+function limparAndamento(){ try{ localStorage.removeItem(CHAVE_ANDAMENTO); }catch(e){} }
+function lerAndamento(){
+  try{
+    const b=localStorage.getItem(CHAVE_ANDAMENTO); if(!b) return null;
+    const o=JSON.parse(b);
+    // descarta se for de mais de 24h (contagem esquecida)
+    if(!o || !o.ts || (Date.now()-o.ts) > 24*3600*1000){ limparAndamento(); return null; }
+    return o;
+  }catch(e){ return null; }
+}
+function retomarAndamento(){
+  const o=lerAndamento(); if(!o) return false;
+  const quantos = o.modoLivre
+    ? Object.values(o.livre||{}).reduce((a,g)=>a+(g.gaiolas||[]).length,0)
+    : (o.leituras||[]).length;
+  const oQue = o.modoLivre ? 'leitura livre' : (o.sel ? rotuloProduto(o.sel) : '');
+  if(!confirm(`Havia uma contagem em andamento (${oQue}) com ${quantos} leitura(s).\n\nOK = continuar de onde parou\nCancelar = descartar e começar do zero`)){
+    limparAndamento(); return false;
+  }
+  TIPO_INV=o.tipo; MODO_LIVRE=!!o.modoLivre; sel=o.sel; leituras=o.leituras||[];
+  sacos=o.sacos||0; MODO_MANUAL=!!o.modoManual; KG_POR_SACO=o.kgPorSaco||25; LIVRE=o.livre||{};
+  // sobras (sacos abertos) da contagem por produto
+  SOBRAS['man'] = (o.leituras && o.leituras[0] && o.leituras[0].abertos) ? [...o.leituras[0].abertos] : [];
+  idsLidos=new Set(leituras.map(l=>l.id));
+  document.getElementById('tela-tipo').classList.add('oculto');
+  document.getElementById('tela-selecao').classList.add('oculto');
+  document.getElementById('tela-leitura').classList.remove('oculto');
+  document.getElementById('btn-voltar').style.display='block';
+  document.getElementById('btn-voltar').onclick = voltarTipo;
+  if(MODO_LIVRE){
+    const ehPA = (TIPO_INV==='pa');
+    document.getElementById('leit-prod').textContent='Leitura livre';
+    document.querySelector('#tela-leitura .p2').textContent = ehPA
+      ? 'Leia o QR de qualquer gaiola. O sistema agrupa por produto.'
+      : 'Leia a etiqueta de qualquer big bag. O sistema agrupa por produto.';
+    // o lançamento por sacos só existe na matéria-prima
+    document.getElementById('btn-add-sacos').classList.toggle('oculto', ehPA);
+    document.getElementById('painel-sacos').classList.add('oculto');
+    aplicarModo();
+    renderLivre();
+  }else{
+    document.getElementById('leit-prod').textContent=rotuloProduto(sel);
+    aplicarModo(); renderSobras('man'); renderLeituras();
+  }
+  document.getElementById('titulo').textContent='Contagem';
+  return true;
+}
+
+// ─────────── util ───────────
+function toast(tipo, msg, ms){
+  const t=document.getElementById('toast');
+  t.className='toast '+tipo; t.textContent=msg; t.style.display='block';
+  clearTimeout(t._t); t._t=setTimeout(()=>t.style.display='none', ms||2200);
+}
+function beep(freq, dur){
+  try{
+    const ac=beep._ac=beep._ac||new (window.AudioContext||window.webkitAudioContext)();
+    const o=ac.createOscillator(), g=ac.createGain();
+    o.frequency.value=freq; o.connect(g); g.connect(ac.destination);
+    g.gain.setValueAtTime(0.15, ac.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime+(dur||0.12));
+    o.start(); o.stop(ac.currentTime+(dur||0.12));
+  }catch(e){}
+}
+function vibrar(ms){ try{ if(navigator.vibrate) navigator.vibrate(ms); }catch(e){} }
+function norm(s){ return (s==null?'':String(s)).trim().toLowerCase(); }
+function rotuloProduto(p){
+  return (p.materialNome || p.material) + (p.cor ? ' · ' + p.cor : '') + ' · ' + (p.fornecedor || '—');
+}
+function fmtKg(n){ return (Math.round(n*1000)/1000).toLocaleString('pt-BR') + ' kg'; }
+
+// ─────────── escolha entre MP e PA ───────────
+function escolherTipo(t){
+  TIPO_INV = t;
+  const ehPA = (t === 'pa');
+  document.getElementById('tela-tipo').classList.add('oculto');
+  document.getElementById('tela-selecao').classList.remove('oculto');
+  // Alterna os dois blocos de seleção — cada um tem seus próprios campos.
+  document.getElementById('bloco-mp').classList.toggle('oculto', ehPA);
+  document.getElementById('bloco-pa').classList.toggle('oculto', !ehPA);
+  document.getElementById('titulo').textContent = ehPA ? '🏷️ Inventário · Produto Acabado' : '📦 Inventário · Matéria-Prima';
+  const bv = document.getElementById('btn-voltar');
+  bv.style.display = 'block';
+  bv.onclick = voltarTipo;
+  if (ehPA) carregarProdutosPA();
+  renderFinalizados();
+}
+
+function voltarTipo(){
+  pararCamera(); cancelarPA();
+  document.getElementById('tela-leitura').classList.add('oculto');
+  document.getElementById('tela-comparativo').classList.add('oculto');
+  document.getElementById('tela-selecao').classList.add('oculto');
+  document.getElementById('tela-tipo').classList.remove('oculto');
+  document.getElementById('btn-voltar').style.display='none';
+  document.getElementById('titulo').textContent='📦 Inventário';
+  TIPO_INV=null;
+}
+function cancelarPA(){
+  PA_SEL=null; MODO_LIVRE=false;
+  const b=document.getElementById('btn-add-sacos'); if(b) b.classList.add('oculto');
+  const p=document.getElementById('painel-sacos'); if(p) p.classList.add('oculto');
+}
+
+// ─────────── PRODUTO ACABADO ───────────
+async function carregarProdutosPA(){
+  try{
+    const r=await fetch(URL_BASE+'/inventario/pa/produtos');
+    const d=await r.json();
+    PA_PRODUTOS=(d&&d.produtos)||[];
+  }catch(e){ PA_PRODUTOS=[]; }
+  const fmts=[...new Set(PA_PRODUTOS.map(p=>p.formato))];
+  const cores=[...new Set(PA_PRODUTOS.map(p=>p.cor))];
+  document.getElementById('pa-formato').innerHTML='<option value="">Selecione…</option>'+
+    fmts.map(f=>`<option value="${f}">${f.replace('x',' × ')}</option>`).join('');
+  document.getElementById('pa-cor').innerHTML='<option value="">Selecione…</option>'+
+    cores.map(c=>`<option value="${c}">${c}</option>`).join('');
+  paAtualizar();
+}
+function paAtualizar(){
+  const f=document.getElementById('pa-formato').value;
+  const c=document.getElementById('pa-cor').value;
+  document.getElementById('pa-btn-iniciar').disabled = !(f && c);
+}
+function paIniciar(){
+  const f=document.getElementById('pa-formato').value;
+  const c=document.getElementById('pa-cor').value;
+  const prod=PA_PRODUTOS.find(p=>p.formato===f && p.cor===c);
+  if(!prod){ toast('erro','Combinação não encontrada',3000); return; }
+  PA_SEL=prod;
+  sel={ material:'PA', materialNome:'Produto Acabado', cor:prod.cor, fornecedor:null, corKey:prod.corKey, formato:prod.formato, sku:prod.sku };
+  leituras=[]; idsLidos=new Set(); saldoBlingAtual=null; MODO_MANUAL=false;
+  aplicarModo();
+  document.getElementById('leit-prod').textContent = prod.rotulo;
+  document.querySelector('#tela-leitura .p2').textContent='Leia o QR das gaiolas deste produto. Os fardos somam sozinhos.';
+  document.getElementById('tela-selecao').classList.add('oculto');
+  document.getElementById('tela-comparativo').classList.add('oculto');
+  document.getElementById('tela-leitura').classList.remove('oculto');
+  document.getElementById('titulo').textContent='Contagem';
+  renderLeituras();
+}
+
+// ─────────── LEITURA LIVRE (matéria-prima) ───────────
+// Lê qualquer etiqueta de big bag e agrupa por material + cor + fornecedor.
+// Observação: pigmento e dessecante não aparecem aqui — eles vêm em sacos e
+// são contados manualmente, escolhendo o produto.
+function mpIniciarLivre(){
+  MODO_LIVRE=true; MODO_MANUAL=false;
+  document.getElementById('btn-add-sacos').classList.remove('oculto');
+  document.getElementById('painel-sacos').classList.add('oculto');
+  LIVRE={}; leituras=[]; idsLidos=new Set(); sel=null;
+  document.getElementById('tela-selecao').classList.add('oculto');
+  document.getElementById('tela-comparativo').classList.add('oculto');
+  document.getElementById('tela-leitura').classList.remove('oculto');
+  document.getElementById('leit-prod').textContent='Leitura livre';
+  document.querySelector('#tela-leitura .p2').textContent='Leia a etiqueta de qualquer big bag. O sistema agrupa por produto.';
+  document.getElementById('titulo').textContent='Contagem livre';
+  aplicarModo();
+  renderLivre();
+}
+
+// ─────────── SACOS ABERTOS (peso avulso) ───────────
+// Saco aberto/parcial não pesa os 25 kg do padrão. Aqui o operador informa o
+// peso real de cada um, e ele entra na contagem junto com os sacos fechados.
+const SOBRAS = { sac: [], man: [] };
+
+function addSobra(pref){
+  const campo=document.getElementById(pref+'-sobra-kg');
+  const v=parseFloat(String(campo.value).replace(',','.'));
+  if(!isFinite(v) || v<=0){ toast('aviso','Informe o peso do saco aberto',2500); campo.focus(); return; }
+  if(v>25){ toast('aviso','Peso maior que um saco cheio (25 kg) — confira',3500); }
+  SOBRAS[pref].push(+v.toFixed(3));
+  campo.value='';
+  renderSobras(pref);
+  beep(880,0.06);
+  if(pref==='sac') sacRender(); else renderManual();
+}
+function removerSobra(pref, i){
+  SOBRAS[pref].splice(i,1);
+  renderSobras(pref);
+  if(pref==='sac') sacRender(); else renderManual();
+}
+function renderSobras(pref){
+  const el=document.getElementById(pref+'-sobras-lista');
+  if(!el) return;
+  const lista=SOBRAS[pref];
+  if(!lista.length){ el.innerHTML=''; return; }
+  el.innerHTML=lista.map((kg,i)=>
+    `<div class="sobra-linha"><span>${fmtKg(kg)}</span>
+       <button class="sx" onclick="removerSobra('${pref}',${i})">✕</button></div>`).join('')
+    + `<div style="margin-top:8px; font-size:13px; color:var(--muted);">
+         ${lista.length} saco(s) aberto(s) · ${fmtKg(somaSobras(pref))}</div>`;
+}
+function somaSobras(pref){ return SOBRAS[pref].reduce((a,b)=>a+b,0); }
+function limparSobras(pref){ SOBRAS[pref]=[]; renderSobras(pref); }
+
+// ─────────── MATERIAIS POR SACOS DENTRO DA LEITURA LIVRE ───────────
+// Carbonato, pigmento e dessecante vêm em sacos e não têm etiqueta para bipar.
+// Poder lançá-los aqui evita ter de sair da leitura livre (e perder o que já
+// foi lido) só para contar esses três.
+let SAC_SEL = null, SAC_QTD = 0;
+
+function produtosPorSaco(){
+  return (PRODUTOS||[]).filter(p => p.manual);
+}
+function abrirSacos(){
+  const lista = produtosPorSaco();
+  if(!lista.length){ toast('aviso','Nenhum material por sacos cadastrado',3000); return; }
+  const sel=document.getElementById('sac-produto');
+  sel.innerHTML='<option value="">Selecione…</option>'+lista.map((p,i)=>
+    `<option value="${i}">${p.materialNome}${p.cor?(' · '+p.cor):''}${p.fornecedor?(' · '+p.fornecedor):''}</option>`).join('');
+  sel.onchange=()=>{ const i=sel.value; SAC_SEL = (i==='')?null:lista[parseInt(i,10)]; sacRender(); };
+  SAC_SEL=null; SAC_QTD=0; limparSobras('sac');
+  document.getElementById('sac-num').value=0;
+  document.getElementById('painel-sacos').classList.remove('oculto');
+  document.getElementById('btn-add-sacos').classList.add('oculto');
+  sacRender();
+}
+function fecharSacos(){
+  document.getElementById('painel-sacos').classList.add('oculto');
+  document.getElementById('btn-add-sacos').classList.remove('oculto');
+}
+function sacRender(){
+  const kgSaco = (SAC_SEL && SAC_SEL.kgPorSaco) || 25;
+  const kgCheios = SAC_QTD * kgSaco;
+  const kgSobras = somaSobras('sac');
+  const kg = kgCheios + kgSobras;
+  document.getElementById('sac-num').value = SAC_QTD;
+  document.getElementById('sac-conta').innerHTML =
+    SAC_QTD + ' saco(s) × ' + kgSaco + ' kg' +
+    (kgSobras ? (' + ' + fmtKg(kgSobras) + ' de abertos') : '') +
+    ' = <b>' + fmtKg(kg) + '</b>';
+  // dá para lançar só sobras (ex.: sobrou meio saco e mais nada)
+  document.getElementById('sac-ok').disabled = !(SAC_SEL && kg > 0);
+}
+function sacAjustar(d){ SAC_QTD = Math.max(0, SAC_QTD + d); sacRender(); if(d>0) beep(880,0.06); }
+function sacDigitado(){
+  const v = parseInt(document.getElementById('sac-num').value, 10);
+  SAC_QTD = (isNaN(v) || v < 0) ? 0 : v; sacRender();
+}
+function confirmarSacos(){
+  const kgSobrasC = somaSobras('sac');
+  if(!SAC_SEL || (SAC_QTD<=0 && kgSobrasC<=0)) return;
+  const p=SAC_SEL, kgSaco=p.kgPorSaco||25;
+  const abertos=[...SOBRAS['sac']];
+  const kg=SAC_QTD*kgSaco + kgSobrasC;
+  const chave='MP|'+p.material+'|'+(p.cor||'')+'|'+(p.fornecedor||'');
+  if(!LIVRE[chave]) LIVRE[chave]={
+    tipo:'mp', chave, material:p.material, cor:p.cor||null, fornecedor:p.fornecedor||null,
+    materialNome:p.materialNome, porSaco:true,
+    rotulo:p.materialNome+(p.cor?(' · '+p.cor):'')+(p.fornecedor?(' · '+p.fornecedor):''),
+    gaiolas:[], fardos:0, kg:0,
+  };
+  const g=LIVRE[chave];
+  // um material por sacos entra como UMA linha; contar de novo substitui.
+  const idLinha='SACOS';
+  const jaTem=g.gaiolas.findIndex(x=>x.id===idLinha);
+  if(jaTem>=0){ g.kg-=g.gaiolas[jaTem].peso; g.gaiolas.splice(jaTem,1); }
+  g.gaiolas.push({ id:idLinha, peso:kg, sacos:SAC_QTD, abertos });
+  g.kg+=kg; g.porSaco=true;
+  toast('ok','✓ '+g.rotulo+' · '+SAC_QTD+' sacos'+(abertos.length?(' + '+abertos.length+' aberto(s)'):'')+' ('+fmtKg(kg)+')',2400);
+  limparSobras('sac');
+  fecharSacos();
+  renderLivre(); salvarAndamento();
+}
+
+// ─────────── LEITURA LIVRE (produto acabado) ───────────
+// Lê qualquer gaiola, na ordem que aparecer, e agrupa por produto.
+// No fim, mostra o comparativo de TODOS os produtos lidos contra o Bling.
+function paIniciarLivre(){
+  MODO_LIVRE=true; MODO_MANUAL=false;
+  document.getElementById('btn-add-sacos').classList.add('oculto');
+  document.getElementById('painel-sacos').classList.add('oculto');
+  LIVRE={}; leituras=[]; idsLidos=new Set(); sel=null;
+  document.getElementById('tela-selecao').classList.add('oculto');
+  document.getElementById('tela-comparativo').classList.add('oculto');
+  document.getElementById('tela-leitura').classList.remove('oculto');
+  document.getElementById('leit-prod').textContent='Leitura livre';
+  document.querySelector('#tela-leitura .p2').textContent='Leia o QR de qualquer gaiola. O sistema agrupa por produto.';
+  document.getElementById('titulo').textContent='Contagem livre';
+  aplicarModo();
+  renderLivre();
+}
+
+function renderLivre(){
+  document.getElementById('lista-leituras').classList.add('oculto');
+  const el=document.getElementById('lista-livre');
+  el.classList.remove('oculto');
+  const grupos=Object.values(LIVRE);
+  const totG=grupos.reduce((a,g)=>a+g.gaiolas.length,0);
+  const totKg=grupos.reduce((a,g)=>a+g.kg,0);
+  document.getElementById('c-qtd').textContent=totG;
+  document.getElementById('c-kg').textContent=(Math.round(totKg*10)/10).toLocaleString('pt-BR');
+  const lbs=document.querySelectorAll('.contador .l');
+  if(lbs[0]) lbs[0].textContent = (TIPO_INV==='pa') ? 'GAIOLAS LIDAS' : 'ETIQUETAS LIDAS';
+  if(lbs[1]) lbs[1].textContent='KG TOTAIS';
+  if(!grupos.length){ el.innerHTML='<div class="vazio">Nenhuma gaiola lida ainda.<br>Ligue a câmera e leia qualquer QR.</div>'; return; }
+  grupos.sort((a,b)=>b.kg-a.kg);
+  el.innerHTML='';
+  for(const g of grupos){
+    const div=document.createElement('div');
+    div.className='grupo-livre';
+    let sub;
+    if(g.tipo==='pa') sub = `${g.gaiolas.length} gaiola(s) · ${g.fardos} fardos`;
+    else if(g.porSaco){
+      const sc=g.gaiolas.reduce((a,x)=>a+(x.sacos||0),0);
+      const ab=g.gaiolas.reduce((a,x)=>a+((x.abertos||[]).length),0);
+      sub = `${sc} saco(s)` + (ab?` + ${ab} aberto(s)`:'') + ` · contagem manual`;
+    } else sub = `${g.gaiolas.length} big bag(s)`;
+    div.innerHTML=
+      `<span class="gl-kg">${fmtKg(g.kg)}</span>
+       <div class="gl-nome">${g.rotulo}</div>
+       <div class="gl-sub">${sub}</div>`;
+    // Excluir o produto inteiro (some da contagem e libera as gaiolas dele
+    // para serem lidas de novo).
+    const bt=document.createElement('button');
+    bt.className='gl-excluir'; bt.textContent='✕ excluir';
+    bt.onclick=()=>excluirGrupoLivre(g.chave);
+    div.appendChild(bt);
+    // Ver/remover gaiola por gaiola
+    const ver=document.createElement('button');
+    ver.className='gl-ver'; ver.textContent = g.tipo==='pa' ? 'ver gaiolas' : 'ver etiquetas';
+    ver.onclick=()=>alternarGaiolas(g.chave, div);
+    div.appendChild(ver);
+    el.appendChild(div);
+  }
+}
+
+// Remove um produto inteiro da contagem livre.
+function excluirGrupoLivre(chave){
+  const g=LIVRE[chave]; if(!g) return;
+  const unid = g.tipo==='pa' ? 'gaiola' : 'etiqueta';
+  if(!confirm(`Excluir ${g.rotulo} da contagem?\n\n${g.gaiolas.length} ${unid}(s) · ${fmtKg(g.kg)}\n\nAs ${unid}s voltam a poder ser lidas.`)) return;
+  g.gaiolas.forEach(x=>idsLidos.delete(x.id));
+  delete LIVRE[chave];
+  renderLivre(); salvarAndamento();
+  toast('ok','Produto removido da contagem',1800);
+}
+
+// Remove uma gaiola específica de dentro de um produto.
+function excluirGaiolaLivre(chave, id){
+  const g=LIVRE[chave]; if(!g) return;
+  const i=g.gaiolas.findIndex(x=>x.id===id); if(i<0) return;
+  const gi=g.gaiolas[i];
+  g.gaiolas.splice(i,1);
+  g.fardos-=(gi.fardos||0); g.kg-=(gi.peso||0);
+  idsLidos.delete(id);
+  if(!g.gaiolas.length) delete LIVRE[chave];
+  renderLivre(); salvarAndamento();
+  toast('ok',id+' removida',1600);
+}
+
+// Mostra/esconde a lista de gaiolas de um produto.
+function alternarGaiolas(chave, div){
+  const ja=div.querySelector('.gl-lista');
+  if(ja){ ja.remove(); return; }
+  const g=LIVRE[chave]; if(!g) return;
+  const box=document.createElement('div');
+  box.className='gl-lista';
+  g.gaiolas.forEach(x=>{
+    const linha=document.createElement('div');
+    linha.className='gl-linha';
+    linha.innerHTML=`<span>${x.id}</span><span>${x.fardos!=null? (x.fardos+' fardos') : fmtKg(x.peso)}</span>`;
+    const rm=document.createElement('button');
+    rm.className='gl-rm'; rm.textContent='✕';
+    rm.onclick=()=>excluirGaiolaLivre(chave, x.id);
+    linha.appendChild(rm);
+    box.appendChild(linha);
+  });
+  div.appendChild(box);
+}
+
+// Finaliza a leitura livre: consulta o Bling de cada produto e mostra o
+// comparativo geral, item por item.
+async function finalizarLivre(){
+  const grupos=Object.values(LIVRE);
+  if(!grupos.length){ toast('aviso','Nenhuma gaiola lida ainda',2500); return; }
+  await pararCamera();
+  document.getElementById('tela-leitura').classList.add('oculto');
+  document.getElementById('tela-comparativo').classList.remove('oculto');
+  document.getElementById('comp-prod').textContent='Leitura livre · '+grupos.length+' produto(s)';
+  document.getElementById('titulo').textContent='Comparativo';
+  const corpo=document.getElementById('comp-corpo');
+  corpo.innerHTML='<div class="carregando">Consultando os saldos no Bling…</div>';
+
+  for(const g of grupos){
+    try{
+      const url = (g.tipo==='pa')
+        ? '/inventario/pa/saldo?corKey='+encodeURIComponent(g.corKey)+'&formato='+encodeURIComponent(g.formato)
+        : '/inventario/saldo?material='+encodeURIComponent(g.material)+'&cor='+encodeURIComponent(g.cor||'')+'&fornecedor='+encodeURIComponent(g.fornecedor||'');
+      const r=await fetch(URL_BASE+url);
+      const d=await r.json();
+      g.saldo = (r.ok && d.ok) ? Number(d.saldoFisico) : null;
+      g.erroSaldo = (r.ok && d.ok) ? null : ((d && d.erro) || 'sem saldo');
+    }catch(e){ g.saldo=null; g.erroSaldo=e.message; }
+  }
+
+  const totLido=grupos.reduce((a,g)=>a+g.kg,0);
+  const comSaldo=grupos.filter(g=>g.saldo!=null);
+  const totBling=comSaldo.reduce((a,g)=>a+g.saldo,0);
+  const divergentes=comSaldo.filter(g=>Math.abs(g.kg-g.saldo)>=0.001).length;
+
+  corpo.innerHTML=
+    '<div class="comp">'+
+      '<div class="linha"><span>Produtos contados</span><span class="v">'+grupos.length+'</span></div>'+
+      '<div class="linha"><span>Contagem física</span><span class="v">'+fmtKg(totLido)+'</span></div>'+
+      '<div class="linha"><span>Saldo no Bling</span><span class="v">'+fmtKg(totBling)+'</span></div>'+
+      (divergentes
+        ? '<div class="veredicto div">⚠ '+divergentes+' produto(s) com divergência</div>'
+        : '<div class="veredicto ok">✓ SEM DIVERGÊNCIA<br><span style="font-size:13px;font-weight:400">físico e sistema batem</span></div>')+
+    '</div>'+
+    grupos.map(g=>{
+      const dif = (g.saldo==null)? null : +(g.kg-g.saldo).toFixed(3);
+      const bate = dif!=null && Math.abs(dif)<0.001;
+      const cor = (g.saldo==null)?'var(--muted)':(bate?'var(--verde)':'var(--vermelho)');
+      return `<div class="grupo-livre" style="border-left-color:${cor}">
+        <span class="gl-kg" style="color:${cor}">${g.saldo==null?'—':((dif>0?'+':'')+fmtKg(dif))}</span>
+        <div class="gl-nome">${g.rotulo}</div>
+        <div class="gl-sub">contado ${fmtKg(g.kg)} · Bling ${g.saldo==null?('— ('+(g.erroSaldo||'')+')'):fmtKg(g.saldo)}</div>
+      </div>`;
+    }).join('')+
+    '<button class="btn btn-verde" onclick="salvarLivre()">💾 Salvar todos e encerrar</button>'+
+    '<button class="btn btn-cinza" onclick="voltarParaLeitura()">← Voltar e continuar lendo</button>';
+}
+
+async function salvarLivre(){
+  const grupos=Object.values(LIVRE);
+  try{
+    for(const g of grupos){
+      const corpo = (g.tipo==='pa')
+        ? { material:'PA-'+g.formato, cor:g.cor, fornecedor:g.formato,
+            materialNome:'Produto Acabado '+g.formato.replace('x',' × ') }
+        : { material:g.material, cor:g.cor, fornecedor:g.fornecedor, materialNome:g.materialNome };
+      await fetch(URL_BASE+'/inventario/salvar',{
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({ ...corpo, leituras:g.gaiolas, somaLeitura:g.kg,
+                              saldoBling:(g.saldo==null?null:g.saldo) }),
+      });
+    }
+    toast('ok',grupos.length+' produto(s) salvos no inventário',2500);
+    LIVRE={}; leituras=[]; idsLidos=new Set(); MODO_LIVRE=false;
+    limparAndamento();
+    await carregarFinalizados();
+    voltarTipo();
+  }catch(e){ toast('erro','Erro ao salvar: '+e.message,4000); }
+}
+
+// ─────────── carregar produtos e inventário ───────────
+async function carregarTudo(){
+  try{
+    const r = await fetch(URL_BASE+'/inventario/produtos');
+    const d = await r.json();
+    PRODUTOS = (d && d.produtos) || [];
+  }catch(e){ toast('erro','Falha ao carregar produtos: '+e.message, 4000); PRODUTOS=[]; }
+  montarMateriais();
+  await carregarFinalizados();
+}
+async function carregarFinalizados(){
+  try{
+    const r = await fetch(URL_BASE+'/inventario/atual');
+    const d = await r.json();
+    FINALIZADOS = (d && d.inventario && d.inventario.itens) || [];
+  }catch(e){ FINALIZADOS=[]; }
+  reconstruirCiclo();
+  renderFinalizados();
+}
+
+function montarMateriais(){
+  const mats = [];
+  const vistos = {};
+  for(const p of PRODUTOS){ if(!vistos[p.material]){ vistos[p.material]=1; mats.push({k:p.material, nome:p.materialNome||p.material}); } }
+  mats.sort((a,b)=>a.nome.localeCompare(b.nome));
+  const s=document.getElementById('sel-material');
+  s.innerHTML='<option value="">Selecione…</option>'+mats.map(m=>`<option value="${m.k}">${m.nome}</option>`).join('');
+}
+function materialMudou(){
+  const mat=document.getElementById('sel-material').value;
+  const cores=[]; const vistos={};
+  for(const p of PRODUTOS){ if(p.material===mat){ const c=p.cor||''; if(!(c in vistos)){ vistos[c]=1; cores.push(c); } } }
+  const sc=document.getElementById('sel-cor');
+  const semCor = cores.length===1 && cores[0]==='';
+  if(semCor){
+    sc.innerHTML='<option value="">(sem cor)</option>'; sc.disabled=true; sc.value='';
+  }else{
+    cores.sort();
+    sc.innerHTML='<option value="">Selecione…</option>'+cores.map(c=>`<option value="${c}">${c||'(sem cor)'}</option>`).join('');
+    sc.disabled=false;
+  }
+  document.getElementById('sel-forn').innerHTML='<option value="">—</option>';
+  document.getElementById('sel-forn').disabled=true;
+  atualizarBotaoIniciar();
+  if(semCor) corMudou();
+}
+function corMudou(){
+  const mat=document.getElementById('sel-material').value;
+  const cor=document.getElementById('sel-cor').value;
+  const forns=[]; const vistos={};
+  for(const p of PRODUTOS){ if(p.material===mat && (p.cor||'')===cor){ const f=p.fornecedor||''; if(!(f in vistos)){ vistos[f]=1; forns.push(f); } } }
+  forns.sort();
+  const sf=document.getElementById('sel-forn');
+  sf.innerHTML='<option value="">Selecione…</option>'+forns.map(f=>`<option value="${f}">${f||'—'}</option>`).join('');
+  sf.disabled=false;
+  atualizarBotaoIniciar();
+}
+function fornMudou(){ atualizarBotaoIniciar(); }
+function atualizarBotaoIniciar(){
+  const mat=document.getElementById('sel-material').value;
+  const cor=document.getElementById('sel-cor').value;
+  const scDisabled=document.getElementById('sel-cor').disabled;
+  const forn=document.getElementById('sel-forn').value;
+  const ok = mat && forn && (scDisabled || cor!=='' || document.getElementById('sel-cor').value!=='');
+  // cor válida: ou o material não tem cor (select desabilitado) ou uma cor foi escolhida
+  const corOk = scDisabled || cor!=='';
+  document.getElementById('btn-iniciar').disabled = !(mat && forn && corOk);
+}
+
+// ─────────── iniciar leitura ───────────
+function iniciarLeitura(){
+  const mat=document.getElementById('sel-material').value;
+  const scDisabled=document.getElementById('sel-cor').disabled;
+  const cor= scDisabled ? '' : document.getElementById('sel-cor').value;
+  const forn=document.getElementById('sel-forn').value;
+  const prod = PRODUTOS.find(p=>p.material===mat && (p.cor||'')===cor && (p.fornecedor||'')===forn);
+  sel = { material:mat, materialNome:(prod?prod.materialNome:mat), cor:cor||null, fornecedor:forn };
+  leituras = []; idsLidos = new Set(); saldoBlingAtual = null; limparSobras('man');
+
+  // se esse produto já foi inventariado, retoma as leituras salvas
+  const jaFeito = FINALIZADOS.find(i=>i.material===sel.material && (i.cor||'')===(sel.cor||'') && (i.fornecedor||'')===sel.fornecedor);
+  if(jaFeito && Array.isArray(jaFeito.leituras) && jaFeito.leituras.length){
+    if(confirm('Este produto já foi inventariado. Deseja refazer do zero?\n\nOK = recomeçar   |   Cancelar = manter o que já estava')){
+      // recomeça vazio
+    }else{
+      leituras = jaFeito.leituras.map(x=>({id:x.id, peso:x.peso}));
+      leituras.forEach(l=>idsLidos.add(l.id));
+    }
+  }
+
+  // Pigmento e Dessecante vêm em SACOS (contagem manual), não em big bags
+  // com etiqueta — a tela troca de modo conforme o produto escolhido.
+  MODO_MANUAL = !!(prod && prod.manual);
+  KG_POR_SACO = (prod && prod.kgPorSaco) || 25;
+  sacos = MODO_MANUAL ? Math.round(leituras.reduce((a,l)=>a+(l.peso||0),0) / KG_POR_SACO) : 0;
+  aplicarModo();
+
+  document.getElementById('leit-prod').textContent = rotuloProduto(sel);
+  document.getElementById('tela-selecao').classList.add('oculto');
+  document.getElementById('tela-comparativo').classList.add('oculto');
+  document.getElementById('tela-leitura').classList.remove('oculto');
+  document.getElementById('btn-voltar').style.display='block';
+  document.getElementById('titulo').textContent='Leitura';
+  renderLeituras();
+}
+
+// ─────────── câmera ───────────
+function formatosSuportados(){
+  if(typeof Html5QrcodeSupportedFormats === 'undefined') return undefined;
+  const F=Html5QrcodeSupportedFormats;
+  return [F.CODE_128,F.CODE_39,F.EAN_13,F.EAN_8,F.ITF,F.CODABAR,F.QR_CODE];
+}
+
+// Verifica os pré-requisitos e devolve a causa exata quando algo falta.
+function checarPreRequisitos(){
+  if(typeof Html5Qrcode === 'undefined')
+    return 'A biblioteca de leitura não carregou. Recarregue a página (puxe a tela para baixo).';
+  if(!window.isSecureContext)
+    return 'A página não está em conexão segura. Acesse por https://…:3443 (não http).';
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia)
+    return 'CERTIFICADO: o Safari bloqueou a câmera porque o certificado do servidor não é confiável neste iPhone. Toque em "⚙️ Diagnóstico" para ver como resolver.';
+  return null;
+}
+
+// Mostra o estado real do aparelho — é o que diz a causa quando a câmera falha.
+async function mostrarDiagnostico(){
+  const p=document.getElementById('painel-diag');
+  p.classList.remove('oculto');
+  const emQuadro = (window.self !== window.top);
+  const linhas=[];
+  const sim='<b style="color:var(--verde)">SIM</b>', nao='<b style="color:var(--vermelho)">NÃO</b>';
+  linhas.push('Biblioteca de leitura: '+(typeof Html5Qrcode!=='undefined'?sim:nao));
+  linhas.push('Conexão segura (HTTPS): '+(window.isSecureContext?sim:nao));
+  linhas.push('Acesso à câmera disponível: '+((navigator.mediaDevices&&navigator.mediaDevices.getUserMedia)?sim:nao));
+  linhas.push('Aberto em tela cheia: '+(emQuadro?nao+' (está dentro de um quadro)':sim));
+  linhas.push('Endereço: '+location.protocol+'//'+location.host);
+  if(ULTIMO_ERRO_CAM) linhas.push('<b style="color:var(--vermelho)">Último erro: '+ULTIMO_ERRO_CAM+'</b>');
+  if(RESOLUCAO_CAM) linhas.push('Resolucao da camera: <b>'+RESOLUCAO_CAM+'</b>');
+  linhas.push('Zoom pela web: '+(ZOOM_CAPS?(sim+' (até '+ZOOM_CAPS.max.toFixed(1)+'×)'):nao+' — use a troca de lente'));
+  p.innerHTML='<div style="font-weight:800; margin-bottom:8px; color:var(--ambar)">⚙️ Diagnóstico</div>'+linhas.join('<br>')+'<div class="carregando" style="padding:8px 0">procurando câmeras…</div>';
+  let extra='';
+  try{
+    if(typeof Html5Qrcode!=='undefined'){
+      const cams=await Html5Qrcode.getCameras();
+      extra='<br>Câmeras encontradas: <b>'+cams.length+'</b>'+(cams.length?(' ('+cams.map(c=>c.label||'sem nome').join(', ')+')'):'');
+    }
+  }catch(e){ extra='<br>Erro ao listar câmeras: <b style="color:var(--vermelho)">'+(e&&(e.name||e.message))+'</b>'; }
+
+  let solucao='';
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    solucao='<div style="margin-top:12px; padding:12px; background:rgba(255,194,80,0.12); border-radius:10px;">'+
+      '<b>Causa provável:</b> o iPhone não confia no certificado do servidor, e o Safari bloqueia a câmera nesse caso — mesmo com a permissão concedida.<br><br>'+
+      '<b>Como resolver:</b><br>1. Baixe o certificado: <a href="/cert-ekoplastic.pem" style="color:var(--azul)">tocar aqui</a><br>'+
+      '2. Ajustes → Geral → VPN e Gerenciamento → instale o perfil<br>'+
+      '3. Ajustes → Geral → Sobre → Ajustes de Confiança do Certificado → <b>ative "Ekoplastic"</b><br>'+
+      '4. Feche e reabra o Safari</div>';
+  }
+  p.innerHTML='<div style="font-weight:800; margin-bottom:8px; color:var(--ambar)">⚙️ Diagnóstico</div>'+linhas.join('<br>')+extra+solucao
+    +'<button class="btn btn-cinza" style="margin-top:14px; min-height:44px; font-size:14px;" onclick="document.getElementById(\'painel-diag\').classList.add(\'oculto\')">fechar</button>';
+}
+
+// Escolhe a MELHOR câmera traseira do aparelho. O iPhone expõe várias (grande-angular,
+// ultra-angular, dupla); a "traseira" simples é a que foca de perto com nitidez —
+// justamente o que código de barras exige. Escolher pelo ID evita que o sistema
+// selecione a ultra-angular, que não foca a curta distância.
+async function escolherCameraId(){
+  try{
+    const cams = await Html5Qrcode.getCameras();
+    if(!cams || !cams.length) return null;
+    const rot = c => (c.label||'').toLowerCase();
+    const traseiras = cams.filter(c => /traseira|back|rear|trás/.test(rot(c)));
+    if(traseiras.length){
+      // evita ultra-angular (foco ruim de perto) e prefere a traseira "simples"
+      const semUltra = traseiras.filter(c => !/ultra/.test(rot(c)));
+      const lista = semUltra.length ? semUltra : traseiras;
+      const simples = lista.find(c => !/dupla|dual|tripla|grande|wide/.test(rot(c)));
+      return (simples || lista[lista.length-1]).id;
+    }
+    return cams[cams.length-1].id;
+  }catch(e){ return null; }
+}
+
+// Alternativa à câmera: digitar o código da etiqueta. Passa exatamente pelas
+// mesmas validações da leitura (duplicata, produto incompatível, soma do peso).
+async function digitarCodigo(){
+  const cod = prompt('Código da etiqueta (ex.: R0000123):');
+  if(!cod) return;
+  const id = cod.trim().toUpperCase();
+  if(!id) return;
+  delete ultimoBipe[id];   // digitação manual não sofre o anti-repetição da câmera
+  await onLeu(id);
+}
+
+async function toggleCamera(){
+  if(camLigada){ await pararCamera(); return; }
+  const problema = checarPreRequisitos();
+  if(problema){ toast('erro', problema, 9000); return; }
+
+  document.getElementById('reader').classList.add('on');
+  document.getElementById('btn-camera').textContent='⏹️ Desligar câmera';
+  camLigada=true;
+  ULTIMO_ERRO_CAM=null;
+
+  // Mira ampla: de longe o QR aparece pequeno no quadro, então a área
+  // analisada precisa ser grande para não deixá-lo de fora.
+  const qrboxFn = (vw, vh) => {
+    const lado = Math.floor(Math.min(vw, vh) * 0.92);
+    return { width: Math.max(120, lado), height: Math.max(120, lado) };
+  };
+  // Resolução alta é o que permite ler de longe: um QR de 91mm a 4,5m precisa
+  // de ~2 pixels por quadradinho do código. Pede a maior possível — o aparelho
+  // entrega a melhor que tiver.
+  const config = { fps:10, qrbox:qrboxFn, aspectRatio:1.0,
+                   videoConstraints: { facingMode:'environment', width:{ ideal:3840 }, height:{ ideal:2160 } } };
+
+  // Tenta na ordem: câmera traseira escolhida pelo ID → traseira genérica → qualquer uma.
+  // Cada tentativa usa uma instância NOVA (uma instância que falhou não reinicia).
+  const idTraseira = CAMERA_ID || await escolherCameraId();
+  CAMERA_ID = idTraseira || null;
+  const alvos = [];
+  if(idTraseira) alvos.push(idTraseira);
+  alvos.push({ facingMode:'environment' });
+  alvos.push({ facingMode:'user' });
+
+  let ok=false;
+  for(const alvo of alvos){
+    try{ if(scanner){ try{ await scanner.stop(); }catch(e){} try{ scanner.clear(); }catch(e){} } }catch(e){}
+    scanner = new Html5Qrcode('reader', { formatsToSupport: formatosSuportados(), verbose:false });
+    try{
+      await scanner.start(alvo, config, onLeu, ()=>{});
+      ok=true; break;
+    }catch(err){
+      ULTIMO_ERRO_CAM = (err && (err.name ? (err.name+': '+(err.message||'')) : (err.message||String(err)))) || 'erro desconhecido';
+      const n=String(ULTIMO_ERRO_CAM);
+      if(/NotAllowed|Permission/i.test(n)) break;   // permissão negada: não insiste
+    }
+  }
+
+  if(!ok){
+    camLigada=false;
+    document.getElementById('reader').classList.remove('on');
+    document.getElementById('btn-camera').textContent='▶️ Ligar câmera';
+    toast('erro','Câmera não abriu. Toque em ⚙️ e me mande o "Último erro".', 7000);
+    return;
+  }
+
+  // Melhorias opcionais — se falharem, a leitura continua normal.
+  try{ await scanner.applyVideoConstraints({ advanced:[{ focusMode:'continuous' }] }); }catch(e){}
+  try{
+    const caps = scanner.getRunningTrackCapabilities();
+    if(caps && caps.torch){ document.getElementById('btn-torch').classList.remove('oculto'); }
+    prepararZoom(caps);
+    try{
+      const st = scanner.getRunningTrackSettings ? scanner.getRunningTrackSettings() : null;
+      if(st && st.width) RESOLUCAO_CAM = st.width + ' x ' + st.height;
+    }catch(e){}
+  }catch(e){}
+  prepararLentes();
+}
+
+async function pararCamera(){
+  camLigada=false; torchOn=false;
+  document.getElementById('btn-camera').textContent='▶️ Ligar câmera';
+  const bt=document.getElementById('btn-torch'); if(bt){ bt.classList.add('oculto'); bt.style.background=''; bt.style.color=''; }
+  ['zoom-barra','lente-barra'].forEach(id=>{ const e=document.getElementById(id); if(e) e.classList.add('oculto'); });
+  try{ if(scanner){ await scanner.stop(); scanner.clear(); } }catch(e){}
+  document.getElementById('reader').classList.remove('on');
+}
+// O diagnóstico saiu da tela para deixá-la limpa, mas continua a um toque
+// longo de distância: segurar o botão da câmera por 2 segundos. Fica lá para
+// quando algo der errado, sem ocupar espaço no dia a dia.
+(function ligarDiagnosticoOculto(){
+  const liga = () => {
+    const b = document.getElementById('btn-camera');
+    if (!b) return setTimeout(liga, 300);
+    let t = null;
+    const comecar = () => { t = setTimeout(() => { t = null; mostrarDiagnostico(); }, 2000); };
+    const parar   = () => { if (t) { clearTimeout(t); t = null; } };
+    b.addEventListener('touchstart', comecar, { passive: true });
+    b.addEventListener('touchend', parar);
+    b.addEventListener('touchmove', parar);
+    b.addEventListener('mousedown', comecar);
+    b.addEventListener('mouseup', parar);
+    b.addEventListener('mouseleave', parar);
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', liga); else liga();
+})();
+
+// ─────────── ZOOM ───────────
+// Aproxima a imagem sem chegar perto do QR. Só aparece se o aparelho
+// permitir controlar o zoom pela web (a maioria dos Android permite; no
+// iPhone depende da versão do iOS — por isso existe a troca de lente).
+function prepararZoom(caps){
+  const barra=document.getElementById('zoom-barra');
+  const z = caps && caps.zoom;
+  if(!z || z.max === undefined || z.max <= (z.min||1)){ barra.classList.add('oculto'); ZOOM_CAPS=null; return; }
+  ZOOM_CAPS = { min: z.min || 1, max: z.max, step: z.step || 0.1 };
+  const r=document.getElementById('zoom-range');
+  r.min=ZOOM_CAPS.min; r.max=ZOOM_CAPS.max; r.step=ZOOM_CAPS.step;
+  // retoma o zoom usado por último neste aparelho
+  let inicial=ZOOM_CAPS.min;
+  try{ const salvo=parseFloat(localStorage.getItem('eko_zoom')); if(salvo>=ZOOM_CAPS.min && salvo<=ZOOM_CAPS.max) inicial=salvo; }catch(e){}
+  r.value=inicial;
+  barra.classList.remove('oculto');
+  aplicarZoom(inicial);
+}
+async function aplicarZoom(v){
+  if(!ZOOM_CAPS || !scanner) return;
+  const val=Math.max(ZOOM_CAPS.min, Math.min(ZOOM_CAPS.max, parseFloat(v)));
+  document.getElementById('zoom-valor').textContent=val.toFixed(1)+'×';
+  document.getElementById('zoom-range').value=val;
+  try{
+    await scanner.applyVideoConstraints({ advanced:[{ zoom: val }] });
+    try{ localStorage.setItem('eko_zoom', String(val)); }catch(e){}
+  }catch(e){ /* alguns aparelhos recusam: mantém como está */ }
+}
+function ajustarZoom(d){
+  if(!ZOOM_CAPS) return;
+  const r=document.getElementById('zoom-range');
+  const passo=Math.max(ZOOM_CAPS.step, (ZOOM_CAPS.max-ZOOM_CAPS.min)/10);
+  aplicarZoom(parseFloat(r.value) + d*passo);
+}
+
+// ─────────── LENTES ───────────
+// Alternativa ao zoom (útil no iPhone): trocar a lente traseira. A "tele"
+// enxerga mais longe; a normal foca melhor de perto.
+async function prepararLentes(){
+  const barra=document.getElementById('lente-barra');
+  try{
+    if(!CAMERAS.length) CAMERAS=(await Html5Qrcode.getCameras())||[];
+  }catch(e){ CAMERAS=[]; }
+  const rot=c=>(c.label||'').toLowerCase();
+  const tras=CAMERAS.filter(c=>/traseira|back|rear|trás/.test(rot(c)));
+  if(tras.length<2){ barra.classList.add('oculto'); return; }
+  const apelido=c=>{
+    const r=rot(c);
+    if(/ultra/.test(r)) return 'Ampla';
+    if(/tele/.test(r))  return 'Tele';
+    if(/dupla|dual|tripla/.test(r)) return 'Dupla';
+    return 'Normal';
+  };
+  const el=document.getElementById('lente-botoes');
+  el.innerHTML='';
+  tras.forEach(c=>{
+    const b=document.createElement('button');
+    b.className='lente-btn'+(c.id===CAMERA_ID?' sel':'');
+    b.textContent=apelido(c);
+    b.onclick=()=>trocarLente(c.id);
+    el.appendChild(b);
+  });
+  barra.classList.remove('oculto');
+}
+async function trocarLente(id){
+  if(!camLigada || id===CAMERA_ID) return;
+  CAMERA_ID=id;
+  try{ if(scanner){ await scanner.stop(); scanner.clear(); } }catch(e){}
+  scanner=new Html5Qrcode('reader',{formatsToSupport:formatosSuportados(), verbose:false});
+  const qrboxFn=(vw,vh)=>{const w=Math.max(120,Math.floor(vw*0.9));return {width:w,height:Math.max(90,Math.floor(Math.min(vh*0.6,w*0.6)))};};
+  try{
+    await scanner.start(id,{fps:10,qrbox:qrboxFn,aspectRatio:1.0},onLeu,()=>{});
+    try{ await scanner.applyVideoConstraints({advanced:[{focusMode:'continuous'}]}); }catch(e){}
+    try{ prepararZoom(scanner.getRunningTrackCapabilities()); }catch(e){}
+    prepararLentes();
+    toast('ok','Lente trocada',1500);
+  }catch(e){ toast('erro','Não consegui usar esta lente',3000); }
+}
+
+// Liga/desliga a lanterna do aparelho (quando suportado).
+let torchOn=false;
+async function toggleTorch(){
+  if(!scanner || !camLigada) return;
+  try{
+    torchOn=!torchOn;
+    await scanner.applyVideoConstraints({ advanced: [ { torch: torchOn } ] });
+    const bt=document.getElementById('btn-torch');
+    bt.style.background = torchOn ? 'var(--ambar)' : '';
+    bt.style.color = torchOn ? '#3b2f0d' : '';
+  }catch(e){ toast('aviso','Este aparelho não permite a lanterna pela web',3000); torchOn=false; }
+}
+
+// Leitura do QR de gaiola (produto acabado).
+// Formato do QR: EKOPA|<id>|<formato>|<corKey>|<fardos>|<kg>
+async function onLeuGaiola(texto){
+  const partes=String(texto||'').trim().split('|');
+  if(partes[0]!=='EKOPA' || partes.length<6){
+    beep(320,0.2); vibrar(150);
+    toast('erro','Este QR não é uma etiqueta de gaiola',3000);
+    return;
+  }
+  const [,id,formato,corKey,fardosTxt,kgTxt]=partes;
+  const agora=Date.now();
+  if(ultimoBipe[id] && agora-ultimoBipe[id]<2500) return;
+  ultimoBipe[id]=agora;
+
+  // BLOQUEIO 1: gaiola já contada nesta contagem
+  if(idsLidos.has(id)){ beep(320,0.18); vibrar([80,60,80]); toast('aviso','⚠ Gaiola '+id+' já foi contada',2200); return; }
+
+  // BLOQUEIO 1B: já contada em outro produto deste mesmo inventário.
+  const ondeJaG = jaContadaNoCiclo(id);
+  if(ondeJaG){
+    beep(320,0.22); vibrar([100,60,100]);
+    toast('erro','⛔ Gaiola '+id+' já foi contada neste inventário<br><span style="font-weight:600">em '+ondeJaG+'</span>',4000);
+    return;
+  }
+
+  // No modo livre não há produto fixo: agrupa pelo que a etiqueta disser.
+  if(MODO_LIVRE){
+    let fardosL=parseInt(fardosTxt,10)||0;
+    let corNomeL=corKey;
+    try{
+      const r=await fetch(URL_BASE+'/inventario/pa/gaiola/'+encodeURIComponent(id));
+      const d=await r.json();
+      if(r.ok && d.ok && d.gaiola) fardosL=d.gaiola.fardos;
+    }catch(e){}
+    const p=(PA_PRODUTOS||[]).find(x=>x.corKey===corKey);
+    if(p) corNomeL=p.cor;
+    const chave=formato+'|'+corKey;
+    if(!LIVRE[chave]) LIVRE[chave]={
+      tipo:'pa', chave, formato, corKey, cor:corNomeL,
+      rotulo: formato.replace('x',' × ')+' · '+corNomeL,
+      gaiolas:[], fardos:0, kg:0,
+    };
+    const g=LIVRE[chave];
+    g.gaiolas.push({id, peso:fardosL*25, fardos:fardosL});
+    g.fardos+=fardosL; g.kg+=fardosL*25;
+    idsLidos.add(id);
+    beep(880,0.1); vibrar(60);
+    toast('ok','✓ '+id+' · '+formato.replace('x',' × ')+' '+corNomeL+' · '+fardosL+' fardos',1800);
+    renderLivre(); salvarAndamento();
+    return;
+  }
+
+  // BLOQUEIO 2: produto diferente do escolhido
+  if(formato!==PA_SEL.formato || corKey!==PA_SEL.corKey){
+    beep(320,0.22); vibrar([100,60,100,60,100]);
+    toast('erro','⛔ '+id+' é de OUTRO produto ('+formato.replace('x',' × ')+' '+corKey+')',3500);
+    return;
+  }
+
+  // confere no sistema (a etiqueta pode ter sido reimpressa/alterada)
+  let fardos=parseInt(fardosTxt,10)||0;
+  try{
+    const r=await fetch(URL_BASE+'/inventario/pa/gaiola/'+encodeURIComponent(id));
+    const d=await r.json();
+    if(r.ok && d.ok && d.gaiola){ fardos=d.gaiola.fardos; }
+  }catch(e){ /* sem conexão: usa o que está no QR */ }
+
+  const kg=fardos*25;
+  leituras.push({ id, peso:kg, fardos });
+  idsLidos.add(id);
+  beep(880,0.1); vibrar(60);
+  toast('ok','✓ '+id+' · '+fardos+' fardos ('+kg+' kg)',1600);
+  renderLeituras(); salvarAndamento();
+}
+
+async function onLeu(codigo){
+  if(TIPO_INV==='pa') return onLeuGaiola(codigo);
+  const id = (codigo||'').trim().toUpperCase();
+  const agora=Date.now();
+  if(ultimoBipe[id] && agora-ultimoBipe[id]<2500) return;   // não re-dispara o mesmo em sequência
+  ultimoBipe[id]=agora;
+
+  // BLOQUEIO 1: dupla leitura na contagem atual
+  if(idsLidos.has(id)){ beep(320,0.18); vibrar([80,60,80]); toast('aviso','⚠ '+id+' já foi lido nesta contagem',2000); return; }
+
+  // BLOQUEIO 1B: já contada em OUTRO produto deste mesmo inventário.
+  // Sem isso, sair da contagem e voltar permitiria contar a mesma etiqueta
+  // duas vezes no mesmo ciclo.
+  const ondeJa = jaContadaNoCiclo(id);
+  if(ondeJa){
+    beep(320,0.22); vibrar([100,60,100]);
+    toast('erro','⛔ '+id+' já foi contada neste inventário<br><span style="font-weight:600">em '+ondeJa+'</span>',4000);
+    return;
+  }
+
+  // consulta a etiqueta no sistema
+  let etq;
+  try{
+    const r=await fetch(URL_BASE+'/etiqueta/'+encodeURIComponent(id));
+    if(!r.ok){ beep(320,0.18); vibrar(150); toast('erro','Etiqueta '+id+' não encontrada no sistema',2500); return; }
+    const d=await r.json();
+    etq = d.etiqueta || d;
+  }catch(e){ toast('erro','Erro ao consultar '+id,2500); return; }
+
+  // No modo livre não há produto escolhido: agrupa pelo que a etiqueta disser.
+  if(MODO_LIVRE){
+    const mat=(etq.material_key||etq.materialKey||'?');
+    const cor=etq.cor||null, forn=etq.fornecedor||null;
+    const chave='MP|'+mat+'|'+(cor||'')+'|'+(forn||'');
+    // Nome do material: usa o do catálogo (o mesmo que aparece na seleção).
+    // A etiqueta guarda só a abreviação impressa, que fica ruim de ler aqui.
+    const prodCat = (PRODUTOS||[]).find(p => p.material===mat
+        && (p.cor||'')===(cor||'') && (p.fornecedor||'')===(forn||''));
+    const nomeMat = (prodCat && prodCat.materialNome) || etq.material_nome || mat;
+    if(!LIVRE[chave]) LIVRE[chave]={
+      tipo:'mp', chave, material:mat, cor, fornecedor:forn,
+      materialNome: nomeMat,
+      rotulo: nomeMat+(cor?(' · '+cor):'')+(forn?(' · '+forn):''),
+      gaiolas:[], fardos:0, kg:0,
+    };
+    const g=LIVRE[chave];
+    const p=Number(etq.peso)||0;
+    g.gaiolas.push({id, peso:p});
+    g.kg+=p;
+    idsLidos.add(id);
+    beep(880,0.1); vibrar(60);
+    toast('ok','✓ '+id+' · '+g.rotulo+' · '+fmtKg(p),1800);
+    renderLivre(); salvarAndamento();
+    return;
+  }
+
+  // BLOQUEIO 2: etiqueta incompatível com a seleção
+  const compat = norm(etq.material_key||etq.materialKey)===norm(sel.material)
+              && norm(etq.cor)===norm(sel.cor)
+              && norm(etq.fornecedor)===norm(sel.fornecedor);
+  if(!compat){
+    beep(320,0.22); vibrar([100,60,100,60,100]);
+    const desc=(etq.material_key||etq.materialKey||'?')+(etq.cor?('/'+etq.cor):'')+'/'+(etq.fornecedor||'?');
+    toast('erro','⛔ '+id+' é de OUTRO produto ('+desc+')',3200);
+    return;
+  }
+
+  // OK — soma
+  const peso=Number(etq.peso)||0;
+  leituras.push({id, peso});
+  idsLidos.add(id);
+  beep(880,0.1); vibrar(60);
+  toast('ok','✓ '+id+' · '+fmtKg(peso),1400);
+  renderLeituras(); salvarAndamento();
+}
+
+// Alterna entre bipar etiqueta (big bags) e contar sacos (pigmento/dessecante).
+function aplicarModo(){
+  const ll=document.getElementById('lista-livre');
+  if(ll) ll.classList.toggle('oculto', !MODO_LIVRE);
+  const ln=document.getElementById('lista-leituras');
+  if(ln) ln.classList.toggle('oculto', MODO_LIVRE);
+  if(MODO_LIVRE){
+    document.getElementById('bloco-camera').classList.remove('oculto');
+    document.getElementById('bloco-manual').classList.add('oculto');
+    return;
+  }
+  const cam = document.getElementById('bloco-camera');
+  const man = document.getElementById('bloco-manual');
+  const lst = document.getElementById('lista-leituras');
+  const cont = document.querySelector('.contador');
+  if(MODO_MANUAL){
+    pararCamera();
+    cam.classList.add('oculto'); man.classList.remove('oculto');
+    if(lst) lst.classList.add('oculto');
+    if(cont) cont.classList.add('oculto');
+    document.querySelector('#tela-leitura .p2').textContent =
+      'Conte os sacos deste produto. Cada saco tem ' + KG_POR_SACO + ' kg.';
+    document.getElementById('manual-sacos').value = sacos;
+    renderManual();
+  }else{
+    cam.classList.remove('oculto'); man.classList.add('oculto');
+    if(lst) lst.classList.remove('oculto');
+    if(cont) cont.classList.remove('oculto');
+    document.querySelector('#tela-leitura .p2').textContent =
+      'Bipe os big bags deste produto. O peso de cada etiqueta soma sozinho.';
+  }
+}
+function renderManual(){
+  const kgCheios = sacos * KG_POR_SACO;
+  const kgSobras = somaSobras('man');
+  const kg = kgCheios + kgSobras;
+  salvarAndamento();
+  document.getElementById('manual-conta').innerHTML =
+    sacos + ' saco(s) × ' + KG_POR_SACO + ' kg' +
+    (kgSobras ? (' + ' + fmtKg(kgSobras) + ' de abertos') : '') +
+    ' = <b>' + fmtKg(kg) + '</b>';
+  // a contagem manual vira uma "leitura" única, para o resto do fluxo não mudar
+  leituras = kg > 0 ? [{ id:'MANUAL', peso:kg, sacos, abertos:[...SOBRAS['man']] }] : [];
+}
+function ajustarSacos(d){
+  sacos = Math.max(0, sacos + d);
+  document.getElementById('manual-sacos').value = sacos;
+  renderManual();
+  if(d>0) beep(880,0.06);
+}
+function sacosDigitados(){
+  const v = parseInt(document.getElementById('manual-sacos').value, 10);
+  sacos = (isNaN(v) || v < 0) ? 0 : v;
+  document.getElementById('manual-sacos').value = sacos;
+  renderManual();
+}
+
+function renderLeituras(){
+  const qtd=leituras.length;
+  if(TIPO_INV==='pa'){
+    const fardos=leituras.reduce((a,l)=>a+(l.fardos||0),0);
+    const kg=leituras.reduce((a,l)=>a+(l.peso||0),0);
+    document.getElementById('c-qtd').textContent=qtd;
+    document.getElementById('c-kg').textContent=(Math.round(kg*10)/10).toLocaleString('pt-BR');
+    const lbs=document.querySelectorAll('.contador .l');
+    if(lbs[0]) lbs[0].textContent='GAIOLAS LIDAS';
+    if(lbs[1]) lbs[1].textContent='KG ('+fardos+' FARDOS)';
+    const lst=document.getElementById('lista-leituras');
+    if(!qtd){ lst.innerHTML='<div class="vazio">Nenhuma gaiola lida ainda. Ligue a câmera e leia o QR.</div>'; return; }
+    lst.innerHTML='';
+    for(let i=leituras.length-1;i>=0;i--){
+      const l=leituras[i];
+      const div=document.createElement('div'); div.className='leitura-item';
+      div.innerHTML='<span class="id">'+l.id+'</span><span class="pz">'+l.fardos+' fardos · '+fmtKg(l.peso)+'</span>';
+      const rm=document.createElement('button'); rm.className='rm'; rm.textContent='✕';
+      rm.onclick=()=>{ idsLidos.delete(l.id); leituras.splice(i,1); renderLeituras(); };
+      div.appendChild(rm); lst.appendChild(div);
+    }
+    return;
+  }
+  const soma=leituras.reduce((s,l)=>s+(l.peso||0),0);
+  document.getElementById('c-qtd').textContent=qtd;
+  document.getElementById('c-kg').textContent=(Math.round(soma*1000)/1000).toLocaleString('pt-BR');
+  const lst=document.getElementById('lista-leituras');
+  if(!qtd){ lst.innerHTML='<div class="vazio">Nenhuma leitura ainda. Ligue a câmera e bipe.</div>'; return; }
+  lst.innerHTML='';
+  // mais recentes no topo
+  for(let i=leituras.length-1;i>=0;i--){
+    const l=leituras[i];
+    const div=document.createElement('div'); div.className='leitura-item';
+    div.innerHTML='<span class="id">'+l.id+'</span><span class="pz">'+fmtKg(l.peso)+'</span>';
+    const rm=document.createElement('button'); rm.className='rm'; rm.textContent='✕';
+    rm.onclick=()=>{ idsLidos.delete(l.id); leituras.splice(i,1); renderLeituras(); };
+    div.appendChild(rm); lst.appendChild(div);
+  }
+}
+
+// ─────────── finalizar leitura → comparativo ───────────
+// PRÉVIA: mostra como está a contagem contra o Bling SEM finalizar nada.
+// Antes, para conferir divergência era preciso finalizar e depois voltar a ler
+// — o que abria espaço para leitura repetida.
+async function previaContagem(){
+  const el=document.getElementById('painel-previa');
+  el.classList.remove('oculto');
+  el.innerHTML='<div class="previa-cx"><div class="carregando">Consultando o Bling…</div></div>';
+  try{ el.scrollIntoView({behavior:'smooth', block:'nearest'}); }catch(e){}
+
+  // monta a lista do que está sendo contado agora
+  let grupos;
+  if(MODO_LIVRE){
+    grupos=Object.values(LIVRE).map(g=>({ rotulo:g.rotulo, kg:g.kg, tipo:g.tipo,
+      corKey:g.corKey, formato:g.formato, material:g.material, cor:g.cor, fornecedor:g.fornecedor, porSaco:g.porSaco }));
+  }else{
+    const soma=(MODO_MANUAL? sacos*KG_POR_SACO : leituras.reduce((a,l)=>a+(l.peso||0),0));
+    grupos=[{ rotulo:rotuloProduto(sel), kg:soma, tipo:(TIPO_INV==='pa'?'pa':'mp'),
+              corKey:sel.corKey, formato:sel.formato, material:sel.material, cor:sel.cor, fornecedor:sel.fornecedor }];
+  }
+  if(!grupos.length){ el.innerHTML='<div class="previa-cx"><div class="vazio">Nada contado ainda.</div></div>'; return; }
+
+  for(const g of grupos){
+    try{
+      const url=(g.tipo==='pa')
+        ? '/inventario/pa/saldo?corKey='+encodeURIComponent(g.corKey)+'&formato='+encodeURIComponent(g.formato)
+        : '/inventario/saldo?material='+encodeURIComponent(g.material)+'&cor='+encodeURIComponent(g.cor||'')+'&fornecedor='+encodeURIComponent(g.fornecedor||'');
+      const r=await fetch(URL_BASE+url); const d=await r.json();
+      g.saldo=(r.ok&&d.ok)?Number(d.saldoFisico):null;
+    }catch(e){ g.saldo=null; }
+  }
+
+  const div=grupos.filter(g=>g.saldo!=null && Math.abs(g.kg-g.saldo)>=0.001).length;
+  el.innerHTML=
+    '<div class="previa-cx">'+
+      '<div class="previa-tit">👁 Prévia — nada foi salvo ainda</div>'+
+      grupos.map(g=>{
+        const dif=(g.saldo==null)?null:+(g.kg-g.saldo).toFixed(3);
+        const bate=dif!=null && Math.abs(dif)<0.001;
+        const cor=(g.saldo==null)?'var(--muted)':(bate?'var(--verde)':'var(--vermelho)');
+        return `<div class="previa-linha">
+            <span>${g.rotulo}<br><span style="font-size:12px;color:var(--muted)">contado ${fmtKg(g.kg)} · Bling ${g.saldo==null?'—':fmtKg(g.saldo)}</span></span>
+            <span class="pv" style="color:${cor}">${g.saldo==null?'—':(bate?'✓ bate':((dif>0?'+':'')+fmtKg(dif)))}</span>
+          </div>`;
+      }).join('')+
+      (div? `<div style="margin-top:14px;color:var(--ambar);font-size:14px;">⚠ ${div} produto(s) com diferença — confira se ficou etiqueta para trás.</div>`
+          : '<div style="margin-top:14px;color:var(--verde);font-size:14px;">✓ Tudo batendo até aqui.</div>')+
+      '<button class="btn btn-cinza" style="min-height:48px;font-size:15px;" onclick="fecharPrevia()">← Voltar a ler</button>'+
+    '</div>';
+}
+function fecharPrevia(){ document.getElementById('painel-previa').classList.add('oculto'); }
+
+// Encaminha para o fluxo certo (produto único ou leitura livre).
+function finalizarQualquer(){ return MODO_LIVRE ? finalizarLivre() : finalizarLeitura(); }
+
+async function finalizarLeitura(){
+  if(MODO_MANUAL && sacos === 0){
+    if(!confirm('Nenhum saco contado. Registrar 0 kg para este produto?')) return;
+  } else if(!MODO_MANUAL && !leituras.length){
+    if(!confirm('Nenhuma etiqueta foi lida. Registrar 0 kg para este produto?')) return;
+  }
+  await pararCamera();
+  document.getElementById('tela-leitura').classList.add('oculto');
+  document.getElementById('tela-comparativo').classList.remove('oculto');
+  document.getElementById('comp-prod').textContent=rotuloProduto(sel);
+  document.getElementById('titulo').textContent='Comparativo';
+  const corpo=document.getElementById('comp-corpo');
+  corpo.innerHTML='<div class="carregando">Consultando saldo no Bling…</div>';
+
+  const soma=leituras.reduce((s,l)=>s+(l.peso||0),0);
+  // busca saldo do Bling
+  let saldo=null, erroSaldo=null;
+  try{
+    const q = (TIPO_INV==='pa')
+      ? '/inventario/pa/saldo?corKey='+encodeURIComponent(sel.corKey)+'&formato='+encodeURIComponent(sel.formato)
+      : '/inventario/saldo?material='+encodeURIComponent(sel.material)+'&cor='+encodeURIComponent(sel.cor||'')+'&fornecedor='+encodeURIComponent(sel.fornecedor||'');
+    const r=await fetch(URL_BASE+q);
+    const d=await r.json();
+    if(r.ok && d.ok){ saldo=Number(d.saldoFisico); }
+    else { erroSaldo=(d && d.erro) || 'não foi possível obter o saldo'; }
+  }catch(e){ erroSaldo=e.message; }
+  saldoBlingAtual=saldo;
+
+  const dif = (saldo==null)? null : +(soma - saldo).toFixed(3);
+  let veredicto='';
+  if(saldo==null){
+    veredicto='<div class="veredicto div">Não consegui o saldo do Bling:<br>'+(erroSaldo||'')+'<br><span style="font-size:12px;font-weight:400">Você ainda pode salvar só a contagem física.</span></div>';
+  }else if(Math.abs(dif)<0.001){
+    veredicto='<div class="veredicto ok">✓ SEM DIVERGÊNCIA<br><span style="font-size:13px;font-weight:400">físico e sistema batem</span></div>';
+  }else{
+    const txt = dif>0 ? ('SOBRA de '+fmtKg(dif)+' no físico') : ('FALTA de '+fmtKg(Math.abs(dif))+' no físico');
+    veredicto='<div class="veredicto div">⚠ DIVERGÊNCIA<br>'+txt+'</div>';
+  }
+  corpo.innerHTML=
+    '<div class="comp">'+
+      '<div class="linha"><span>Contagem física (leitura)</span><span class="v">'+fmtKg(soma)+'</span></div>'+
+      '<div class="linha"><span>Saldo no Bling</span><span class="v">'+(saldo==null?'—':fmtKg(saldo))+'</span></div>'+
+      (saldo==null?'':'<div class="linha"><span>Diferença</span><span class="v" style="color:'+(Math.abs(dif)<0.001?'var(--verde)':'var(--vermelho)')+'">'+(dif>0?'+':'')+fmtKg(dif)+'</span></div>')+
+      veredicto+
+    '</div>'+
+    '<button class="btn btn-verde" onclick="salvarItem()">💾 Salvar e ir para o próximo</button>'+
+    '<button class="btn btn-cinza" onclick="voltarParaLeitura()">← Voltar e continuar bipando</button>';
+}
+
+function voltarParaLeitura(){
+  document.getElementById('tela-comparativo').classList.add('oculto');
+  document.getElementById('tela-leitura').classList.remove('oculto');
+  document.getElementById('titulo').textContent='Leitura';
+}
+
+async function salvarItem(){
+  const soma=leituras.reduce((s,l)=>s+(l.peso||0),0);
+  try{
+    const r=await fetch(URL_BASE+'/inventario/salvar',{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ material: (TIPO_INV==='pa' ? ('PA-'+sel.formato) : sel.material),
+                            cor:sel.cor, fornecedor: (TIPO_INV==='pa' ? sel.formato : sel.fornecedor),
+                            materialNome: (TIPO_INV==='pa' ? ('Produto Acabado '+sel.formato.replace('x',' × ')) : sel.materialNome),
+                            leituras, somaLeitura:soma, saldoBling:saldoBlingAtual })
+    });
+    const d=await r.json();
+    if(!r.ok || !d.ok){ toast('erro','Falha ao salvar: '+((d&&d.erro)||''),3000); return; }
+    FINALIZADOS=(d.inventario&&d.inventario.itens)||FINALIZADOS;
+    reconstruirCiclo();
+    toast('ok','Produto salvo no inventário',1600);
+    limparAndamento();
+    voltarSelecao();
+  }catch(e){ toast('erro','Erro ao salvar: '+e.message,3000); }
+}
+
+// ─────────── voltar / finalizados ───────────
+function voltarSelecao(){
+  pararCamera();
+  if(TIPO_INV==='pa'){
+    document.getElementById('tela-leitura').classList.add('oculto');
+    document.getElementById('tela-comparativo').classList.add('oculto');
+    document.getElementById('tela-selecao').classList.remove('oculto');
+    document.getElementById('titulo').textContent='🏷️ Inventário · Produto Acabado';
+    carregarFinalizados();
+    return;
+  }
+  document.getElementById('tela-leitura').classList.add('oculto');
+  document.getElementById('tela-comparativo').classList.add('oculto');
+  document.getElementById('tela-selecao').classList.remove('oculto');
+  document.getElementById('btn-voltar').style.display='none';
+  document.getElementById('titulo').textContent='📦 Inventário de MP';
+  // limpa seleção
+  document.getElementById('sel-material').value='';
+  materialMudou();
+  renderFinalizados();
+}
+
+function renderFinalizados(){
+  const lst=document.getElementById('lista-fim');
+  const acoes=document.getElementById('acoes-fim');
+  document.getElementById('cont-fim').textContent = FINALIZADOS.length ? (FINALIZADOS.length+' item(s)') : '';
+  // Sem nada contado, as ações de fim não fazem sentido — some para não poluir.
+  if(acoes) acoes.style.display = FINALIZADOS.length ? 'flex' : 'none';
+  // Compartilhar só existe em celular (e em HTTPS). No computador, some.
+  const btComp=document.getElementById('btn-compartilhar');
+  if(btComp){
+    const podeCompartilhar = !!(navigator.canShare && navigator.share);
+    btComp.style.display = podeCompartilhar ? '' : 'none';
+  }
+  if(!FINALIZADOS.length){ lst.innerHTML='<div class="vazio">Nenhum produto inventariado ainda.</div>'; return; }
+
+  // Resumo: o que já foi contado, quanto bate e quanto diverge.
+  const comSaldo=FINALIZADOS.filter(i=>i.saldoBling!=null);
+  const divergentes=comSaldo.filter(i=>Math.abs(i.divergencia||0)>=0.001).length;
+  const okQtd=comSaldo.length-divergentes;
+  const totKg=FINALIZADOS.reduce((a,i)=>a+(i.somaLeitura||0),0);
+  lst.innerHTML=
+    `<div class="resumo-inv">
+       <div class="ri"><div class="n">${FINALIZADOS.length}</div><div class="l">PRODUTOS</div></div>
+       <div class="ri ok"><div class="n">${okQtd}</div><div class="l">BATERAM</div></div>
+       <div class="ri ${divergentes?'div':''}"><div class="n">${divergentes}</div><div class="l">DIVERGEM</div></div>
+       <div class="ri"><div class="n" style="font-size:16px">${fmtKg(totKg)}</div><div class="l">CONTADO</div></div>
+     </div>`;
+
+  for(const it of FINALIZADOS){
+    const semSaldo = (it.saldoBling==null);
+    const bate = !semSaldo && Math.abs(it.divergencia||0)<0.001;
+    const div=document.createElement('div');
+    div.className='fim-item '+(semSaldo?'':(bate?'ok':'div'));
+    let badge;
+    if(semSaldo) badge='<span class="fi-badge div">sem saldo</span>';
+    else if(bate) badge='<span class="fi-badge ok">✓ bate</span>';
+    else{ const d=it.divergencia; badge='<span class="fi-badge div">'+(d>0?'+':'')+fmtKg(d)+'</span>'; }
+    div.innerHTML='<div style="flex:1"><div class="fi-nome">'+rotuloProduto(it)+'</div>'+
+      '<div class="fi-sub">'+fmtKg(it.somaLeitura)+' lidos'+(semSaldo?'':(' · Bling '+fmtKg(it.saldoBling)))+'</div></div>'+badge;
+    lst.appendChild(div);
+  }
+}
+
+// ─────────── PDF ───────────
+// No PA guardamos o nome da cor; o saldo é consultado pela sigla.
+function corKeyDe(nomeCor){
+  const p=(PA_PRODUTOS||[]).find(x=>x.cor===nomeCor);
+  return p ? p.corKey : '';
+}
+
+async function exportarPDF(compartilhar){
+  if(!FINALIZADOS.length){ toast('aviso','Nada para exportar ainda',2000); return; }
+  toast('ok','Consultando estoque atual no Bling…',6000);
+
+  // Versão completa: consulta o estoque ATUAL de cada produto no Bling na hora
+  // de gerar o PDF (em vez de usar só o saldo capturado durante a contagem).
+  // Se algum não responder (app sem escopo de estoque, ou fora do ar), cai para
+  // o saldo salvo e sinaliza no rodapé.
+  let falhas=0;
+  for(const it of FINALIZADOS){
+    try{
+      // Produto acabado e matéria-prima consultam saldos por caminhos diferentes.
+      const ehPA = String(it.material||'').startsWith('PA-');
+      const q = ehPA
+        ? '/inventario/pa/saldo?corKey='+encodeURIComponent(corKeyDe(it.cor))+'&formato='+encodeURIComponent(it.fornecedor||'')
+        : '/inventario/saldo?material='+encodeURIComponent(it.material)+'&cor='+encodeURIComponent(it.cor||'')+'&fornecedor='+encodeURIComponent(it.fornecedor||'');
+      const r=await fetch(URL_BASE+q);
+      const d=await r.json();
+      if(r.ok && d.ok){ it.saldoAtual=Number(d.saldoFisico); }
+      else { it.saldoAtual=(it.saldoBling==null?null:it.saldoBling); falhas++; }
+    }catch(e){ it.saldoAtual=(it.saldoBling==null?null:it.saldoBling); falhas++; }
+  }
+
+  // Título conforme o que foi inventariado (só PA, só MP ou os dois).
+  const ehItemPA = it => String(it.material||'').startsWith('PA-');
+  const qPA = FINALIZADOS.filter(ehItemPA).length;
+  const titulo = qPA===FINALIZADOS.length ? 'Inventário de Produto Acabado'
+               : (qPA===0 ? 'Inventário de Matéria-Prima' : 'Inventário de Estoque');
+
+  // Ordem de leitura: agrupado por cor e, dentro da cor, formato crescente.
+  // (Ex.: 30×40 Colorida, 30×45 Colorida, 33×46 Colorida…)
+  const numFormato = f => {
+    const m = String(f||'').match(/(\d+)\s*x\s*(\d+)/i);
+    return m ? (parseInt(m[1],10)*1000 + parseInt(m[2],10)) : 999999;
+  };
+  const ordenados = [...FINALIZADOS].sort((a,b)=>{
+    const pa=ehItemPA(a), pb=ehItemPA(b);
+    if(pa!==pb) return pa?1:-1;                                  // MP antes, PA depois
+    if(pa){                                                       // produto acabado
+      const c=(a.cor||'').localeCompare(b.cor||'');               // por família de cor
+      if(c) return c;
+      return numFormato(a.fornecedor) - numFormato(b.fornecedor); // formato crescente
+    }
+    return (a.materialNome||a.material||'').localeCompare(b.materialNome||b.material||'')
+        || (a.cor||'').localeCompare(b.cor||'')
+        || (a.fornecedor||'').localeCompare(b.fornecedor||'');
+  });
+
+  const { jsPDF } = window.jspdf;
+  const doc=new jsPDF({unit:'mm', format:'a4'});
+  const W=210; let y=18;
+  doc.setFontSize(16); doc.setFont(undefined,'bold');
+  doc.text(titulo, W/2, y, {align:'center'}); y+=7;
+  doc.setFontSize(10); doc.setFont(undefined,'normal'); doc.setTextColor(90);
+  doc.text('Gerado em '+new Date().toLocaleString('pt-BR')+'  ·  Bling = estoque atual', W/2, y, {align:'center'}); y+=10;
+  doc.setTextColor(0);
+
+  // cabeçalho da tabela
+  const x0=12, cols=[x0, 92, 126, 160, 198];
+  function linhaTab(a,b,c,d, bold){
+    doc.setFont(undefined, bold?'bold':'normal'); doc.setFontSize(9);
+    doc.text(String(a), cols[0]+1, y, {maxWidth:cols[1]-cols[0]-2});
+    doc.text(String(b), cols[2]-1, y, {align:'right'});
+    doc.text(String(c), cols[3]-1, y, {align:'right'});
+    doc.text(String(d), cols[4]-1, y, {align:'right'});
+  }
+  doc.setFont(undefined,'bold'); doc.setFontSize(9);
+  linhaTab('Produto','Leitura (kg)','Bling atual (kg)','Difer. (kg)', true); y+=2;
+  doc.line(x0, y, 198, y); y+=5;
+
+  let totL=0, totB=0, comDiv=0, corAtual=null;
+  for(const it of ordenados){
+    // Cabeçalho da família de cor (só no produto acabado, que é onde agrupa)
+    if(ehItemPA(it) && (it.cor||'') !== corAtual){
+      corAtual = it.cor||'';
+      if(y>262){ doc.addPage(); y=18; }
+      y+=2;
+      doc.setFont(undefined,'bold'); doc.setFontSize(10);
+      doc.setTextColor(60);
+      doc.text(String(corAtual).toUpperCase(), x0+1, y);
+      doc.setTextColor(0);
+      y+=5;
+    }
+    // Sob o cabeçalho da cor, basta o formato — repetir "Produto Acabado" e a
+    // cor em cada linha só polui.
+    const nome = ehItemPA(it)
+      ? String(it.fornecedor||'').replace('x',' × ')
+      : rotuloProduto(it);
+    const l=it.somaLeitura||0; const b=(it.saldoAtual==null)?null:it.saldoAtual;
+    const d=(b==null)?null:+(l-b).toFixed(3);
+    totL+=l; if(b!=null) totB+=b;
+    if(b!=null && Math.abs(d)>=0.001) comDiv++;
+    if(d!=null && Math.abs(d)>=0.001) doc.setTextColor(200,40,40); else doc.setTextColor(0);
+    linhaTab(nome, l.toLocaleString('pt-BR'), (b==null?'—':b.toLocaleString('pt-BR')), (d==null?'—':((d>0?'+':'')+d.toLocaleString('pt-BR'))), false);
+    doc.setTextColor(0);
+    y+=6;
+    if(y>272){ doc.addPage(); y=18; }
+  }
+  y+=1; doc.line(x0, y, 198, y); y+=5;
+  linhaTab('TOTAL', totL.toLocaleString('pt-BR'), totB.toLocaleString('pt-BR'), ((totL-totB)>0?'+':'')+(totL-totB).toLocaleString('pt-BR'), true);
+  y+=10;
+  doc.setFont(undefined,'normal'); doc.setFontSize(10);
+  doc.text('Produtos conferidos: '+FINALIZADOS.length+'    |    Com divergência: '+comDiv, x0, y);
+  if(falhas>0){
+    y+=7; doc.setTextColor(200,40,40); doc.setFontSize(9);
+    doc.text('Atenção: '+falhas+' produto(s) sem saldo do Bling (app sem escopo "Controle de estoque", ou fora do ar).', x0, y);
+    doc.setTextColor(0);
+  }
+
+  const dt=new Date().toISOString().slice(0,10);
+  const nome = (qPA===FINALIZADOS.length ? 'inventario-produto-acabado-' : 'inventario-') + dt + '.pdf';
+
+  if(compartilhar){
+    // Compartilhamento nativo do celular: abre a lista de apps (WhatsApp,
+    // e-mail, etc). Só existe em HTTPS e em navegador de celular — se não
+    // houver, cai para o download normal.
+    try{
+      const blob = doc.output('blob');
+      const arquivo = new File([blob], nome, { type:'application/pdf' });
+      if(navigator.canShare && navigator.canShare({ files:[arquivo] })){
+        await navigator.share({
+          files: [arquivo],
+          title: titulo,
+          text: titulo + ' · ' + new Date().toLocaleDateString('pt-BR')
+               + ' · ' + FINALIZADOS.length + ' produtos'
+               + (comDiv ? (' · ' + comDiv + ' com divergência') : ' · sem divergências'),
+        });
+        toast('ok','PDF compartilhado',2500);
+        return;
+      }
+      toast('aviso','Este aparelho não permite compartilhar direto — o arquivo foi baixado',4500);
+    }catch(e){
+      if(e && e.name === 'AbortError') return;    // o usuário fechou a lista
+      toast('aviso','Não consegui compartilhar — baixando o arquivo',4000);
+    }
+  }
+
+  doc.save(nome);
+  toast('ok','PDF gerado'+(falhas?(' · '+falhas+' sem saldo Bling'):''),3000);
+}
+
+// ─────────── finalizar inventário ───────────
+async function finalizarInventario(){
+  if(!FINALIZADOS.length){ toast('aviso','O inventário está vazio',2000); return; }
+  if(!confirm('Finalizar e ZERAR o inventário atual?\n\nRecomendo exportar o PDF antes.\nOK = zerar   |   Cancelar = manter')) return;
+  try{
+    await fetch(URL_BASE+'/inventario/limpar',{method:'POST'});
+    FINALIZADOS=[]; CICLO={};
+    renderFinalizados();
+    toast('ok','Inventário finalizado e zerado',2200);
+  }catch(e){ toast('erro','Erro ao finalizar: '+e.message,3000); }
+}
+
+// init
+// Só oferece retomar depois que os catálogos estiverem carregados — os nomes
+// dos produtos vêm deles.
+Promise.all([carregarTudo(), carregarProdutosPA()]).then(() => { retomarAndamento(); });
+</script>
+</body>
+</html>

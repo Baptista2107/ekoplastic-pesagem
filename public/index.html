@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Ekoplastic · Sistema de Etiquetas</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;700&family=Nunito:wght@600;700;800;900&display=swap');
+
+:root {
+  --bg:       #0d0f14;
+  --surface:  #161a23;
+  --panel:    #1e2330;
+  --panel-hi: #252b3d;
+  --border:   #2a3045;
+  --text:     #e8eaf0;
+  --muted:    #6b7490;
+  --entrada:  #00d4ff;
+  --saida:    #f07040;
+  --devol:    #00ff9d;
+  --danger:   #ff4466;
+  --warn:     #ffaa00;
+  --extrusao: #a880ff;
+  --outras:   #d9a521;
+  --produto:  #2ee6a6;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  min-height: 100vh;
+  font-family: 'Nunito', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  user-select: none;
+}
+header {
+  height: 56px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 28px;
+}
+.logo {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 18px; font-weight: 700; letter-spacing: 3px;
+  color: var(--entrada);
+}
+.sub { font-size: 11px; color: var(--muted); letter-spacing: 1.5px; margin-top: 2px; }
+.status-mini {
+  display: flex; gap: 14px; align-items: center;
+  font-size: 11px;
+}
+.status-item {
+  display: flex; align-items: center; gap: 6px;
+  padding: 5px 12px;
+  background: var(--panel);
+  border-radius: 6px;
+  border: 1px solid var(--border);
+}
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+.dot.on  { background: var(--devol); box-shadow: 0 0 6px var(--devol); }
+.dot.off { background: var(--danger); }
+.dot.warn{ background: var(--warn); }
+
+main {
+  padding: 60px 28px 40px;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+h1 {
+  font-size: 13px; letter-spacing: 3px; font-weight: 800;
+  color: var(--muted); text-transform: uppercase;
+  margin-bottom: 22px;
+}
+
+/* ─── TILES PRINCIPAIS ─── */
+.grid-principal {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+.tile-big {
+  background: var(--panel);
+  border: 1.5px solid var(--border);
+  border-radius: 18px;
+  padding: 52px 32px;
+  cursor: pointer;
+  transition: all 0.18s;
+  text-decoration: none;
+  color: inherit;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  min-height: 160px;
+  position: relative;
+  overflow: hidden;
+}
+.tile-big:hover {
+  background: var(--panel-hi);
+  transform: translateY(-3px);
+  box-shadow: 0 18px 40px rgba(0,0,0,0.4);
+}
+.tile-big.mp:hover       { border-color: var(--entrada); }
+.tile-big.extrusao:hover { border-color: var(--extrusao); }
+.tile-big.outras:hover   { border-color: var(--outras); }
+.tile-big.produto:hover  { border-color: var(--produto); }
+.tile-big .titulo {
+  font-size: 32px; font-weight: 900;
+  letter-spacing: 1.5px;
+  margin-bottom: 10px;
+}
+.tile-big.mp       .titulo { color: var(--entrada); }
+.tile-big.extrusao .titulo { color: var(--extrusao); }
+.tile-big.outras   .titulo { color: var(--outras); }
+.tile-big.produto  .titulo { color: var(--produto); }
+.tile-big .desc {
+  font-size: 13px; color: var(--muted);
+  line-height: 1.5;
+  max-width: 380px;
+}
+.tile-big .badge {
+  position: absolute;
+  top: 16px; right: 16px;
+  font-size: 10px; font-weight: 700; letter-spacing: 1.5px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  background: rgba(255,170,0,0.12);
+  color: var(--warn);
+  border: 1px solid rgba(255,170,0,0.3);
+  display: none;
+}
+.tile-big .badge.on { display: block; animation: pulseWarn 1.6s ease-in-out infinite; }
+@keyframes pulseWarn {
+  0%, 100% { opacity: 0.7; }
+  50% { opacity: 1; }
+}
+
+.rodape {
+  margin-top: 50px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--muted);
+  display: flex; justify-content: space-between; align-items: center;
+}
+.rodape b { font-family: 'IBM Plex Mono', monospace; color: var(--text); }
+.rodape-link {
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  transition: all 0.15s;
+}
+.rodape-link:hover {
+  color: var(--text);
+  border-color: var(--border);
+  background: var(--panel);
+}
+/* quadro onde as telas de processo abrem (mantém a tela cheia contínua) */
+#eko-frame {
+  display: none;
+  position: fixed; inset: 0;
+  width: 100%; height: 100%;
+  border: 0; margin: 0; padding: 0;
+  z-index: 5000; background: var(--bg);
+}
+</style>
+</head>
+<body data-tela="Menu">
+
+<script>
+  /* Se o MENU foi carregado DENTRO do iframe do shell (uma tela pediu "voltar
+     ao menu"), devolve o controle ao shell e não mostra o menu aqui. */
+  if (window.self !== window.top) {
+    try { document.documentElement.style.visibility = 'hidden'; } catch (e) {}
+    try { if (window.parent && window.parent.ekoHome) window.parent.ekoHome(); } catch (e) {}
+  }
+</script>
+
+<!-- As telas (Matéria-Prima, Extrusão, Manutenção) abrem AQUI, sem recarregar o
+     menu — assim a tela cheia não cai entre as navegações. -->
+<iframe id="eko-frame" title="Tela" allow="camera; fullscreen"></iframe>
+
+<header>
+  <div>
+    <div class="logo">EKOPLASTIC</div>
+    <div class="sub">Sistema de Etiquetas</div>
+  </div>
+  <div class="status-mini">
+    <div class="status-item">
+      <span class="dot" id="dot-bling"></span><span id="txt-bling">Bling: ...</span>
+    </div>
+    <div class="status-item">
+      <span class="dot" id="dot-bal"></span><span id="txt-bal">Balança: ...</span>
+    </div>
+    <div class="status-item">
+      <span class="dot" id="dot-impr"></span><span id="txt-impr">Impressora: ...</span>
+    </div>
+  </div>
+</header>
+
+<main>
+  <h1>Operações</h1>
+  <div class="grid-principal">
+    <a href="/materia-prima.html" class="tile-big mp">
+      <span class="badge" id="badge-mp">EM ANDAMENTO</span>
+      <div class="titulo">MATÉRIA PRIMA</div>
+    </a>
+    <a href="/etiqueta-producao.html" class="tile-big extrusao">
+      <span class="badge" id="badge-ext">EM ANDAMENTO</span>
+      <div class="titulo">EXTRUSÃO</div>
+    </a>
+    <a href="/outras-pesagens.html" class="tile-big outras">
+      <span class="badge" id="badge-out">EM ANDAMENTO</span>
+      <div class="titulo">RESÍDUOS</div>
+    </a>
+    <a href="/produto-acabado.html" class="tile-big produto">
+      <span class="badge" id="badge-pa">EM ANDAMENTO</span>
+      <div class="titulo">PRODUTO ACABADO</div>
+    </a>
+  </div>
+
+  <div class="rodape">
+    <span>Servidor em <b id="ver-host">localhost:3000</b> · Banco: <b id="ver-db">— etiquetas, — sessões</b></span>
+    <a href="#" onclick="ekoEntrarProtegido('/manutencao.html');return false;" class="rodape-link">⚙ OPÇÕES 🔒</a>
+  </div>
+</main>
+
+<script>
+// Quando aberta via file:// (duplo-clique), URLs relativas falham.
+// Detecta e usa URL absoluta apontando pro servidor.
+const URL_BASE = (location.protocol === 'file:' || location.protocol === 'about:')
+  ? 'http://localhost:3000'
+  : '';
+
+async function atualizarStatus() {
+  try {
+    const r = await fetch(URL_BASE + '/healthcheck');
+    const d = await r.json();
+    if (!d.ok) throw new Error('healthcheck retornou ok=false');
+
+    // Bling
+    const bl  = document.getElementById('dot-bling');
+    const blT = document.getElementById('txt-bling');
+    if (d.bling.autenticado) {
+      bl.className = 'dot on';
+      const min = d.bling.token_expira_em_s ? Math.round(d.bling.token_expira_em_s/60) : '?';
+      blT.textContent = d.bling.simulacao
+        ? `Bling: SIMULAÇÃO (não envia)`
+        : `Bling: OK (renova em ${min}min)`;
+      if (d.bling.simulacao) bl.className = 'dot warn';
+    } else {
+      bl.className = 'dot off';
+      blT.textContent = 'Bling: não autenticado';
+    }
+
+    // Balança — verde só quando há dados chegando; porta aberta sem dados = amarelo
+    const bal  = document.getElementById('dot-bal');
+    const balT = document.getElementById('txt-bal');
+    if (!d.balanca.portaAberta) {
+      bal.className = 'dot off';
+      balT.textContent = 'Balança: porta fechada';
+    } else if (d.balanca.recebendo) {
+      bal.className = 'dot on';
+      balT.textContent = `Balança: ${d.balanca.ultimoPeso !== null ? d.balanca.ultimoPeso.toFixed(1) + ' kg' : 'recebendo'}`;
+    } else {
+      bal.className = 'dot warn';
+      balT.textContent = 'Balança: sem dados (porta aberta)';
+    }
+
+    // Impressora
+    const imp  = document.getElementById('dot-impr');
+    const impT = document.getElementById('txt-impr');
+    if (d.impressora) {
+      imp.className = 'dot on';
+      impT.textContent = `Impressora: ${d.impressora}`;
+    } else if (d.impressao_simulada) {
+      imp.className = 'dot warn';
+      impT.textContent = 'Impressora: SIMULAÇÃO';
+    } else {
+      imp.className = 'dot off';
+      impT.textContent = 'Impressora: nenhuma';
+    }
+
+    document.getElementById('ver-db').textContent = `${d.banco.etiquetas} etiquetas, ${d.banco.sessoes} sessões`;
+  } catch(e) {
+    document.getElementById('dot-bling').className = 'dot off';
+    document.getElementById('txt-bling').textContent = 'Servidor offline';
+  }
+}
+
+// Badge "EM ANDAMENTO" se houver sessão aberta nas respectivas modalidades
+async function checarSessoesAbertas() {
+  try {
+    const r = await fetch(URL_BASE + '/sessoes/abertas');
+    const d = await r.json();
+    if (!d.ok) return;
+    // Uma sessão só conta como "em andamento" se tiver itens ativos. Sessões
+    // abertas mas vazias (todos os itens cancelados/excluídos) NÃO acendem o
+    // badge — evita o "EM ANDAMENTO" fantasma após cancelar tudo.
+    const comItens = s => s.etiquetas && s.etiquetas.length > 0;
+    const temMP  = d.sessoes.some(s => comItens(s) && ['recebimento','retorno','retirada'].includes(s.tipo));
+    const temExt = d.sessoes.some(s => comItens(s) && s.tipo === 'extrusao');
+    const temOut = d.sessoes.some(s => comItens(s) && s.tipo === 'outras');
+    const temPA  = d.sessoes.some(s => comItens(s) && s.tipo === 'produto-acabado');
+    document.getElementById('badge-mp').classList.toggle('on', temMP);
+    document.getElementById('badge-ext').classList.toggle('on', temExt);
+    document.getElementById('badge-out').classList.toggle('on', temOut);
+    const elPA = document.getElementById('badge-pa');
+    if (elPA) elPA.classList.toggle('on', temPA);
+  } catch(e) { /* silencioso */ }
+}
+
+atualizarStatus();
+checarSessoesAbertas();
+setInterval(atualizarStatus, 5000);
+setInterval(checarSessoesAbertas, 10000);
+</script>
+<script>
+/* ───── SHELL: abre as telas num iframe, mantendo a tela cheia contínua ───── */
+(function () {
+  if (window.self !== window.top) return;   // só o shell de verdade orquestra
+  const frame = document.getElementById('eko-frame');
+  function emFS(){ return !!(document.fullscreenElement || document.webkitFullscreenElement); }
+  window.ekoEntrarFS = function () {
+    if (window.__ekoSaindo || emFS()) return;
+    const el = document.documentElement;
+    const fn = el.requestFullscreen || el.webkitRequestFullscreen;
+    if (fn) { try { const p = fn.call(el); if (p && p.catch) p.catch(function(){}); } catch (e) {} }
+  };
+  window.ekoSairFS = function () {
+    const fn = document.exitFullscreen || document.webkitExitFullscreen;
+    if (fn && emFS()) { try { const p = fn.call(document); if (p && p.catch) p.catch(function(){}); } catch (e) {} }
+  };
+  window.ekoExitFS = function () { window.__ekoSaindo = true; window.ekoSairFS(); };
+  window.ekoAbrirTela = function (url) {
+    if (!url) return;
+    frame.style.display = 'block';
+    // Foca o quadro ao carregar: o leitor de código de barras precisa que o
+    // foco do teclado chegue na tela (e, dela, no iframe da aba de trabalho).
+    frame.addEventListener('load', function () { try { frame.contentWindow.focus(); } catch (e) {} }, { once: true });
+    frame.src = url;
+    // Força reflow/repaint do quadro. Em tela cheia, trocar o src do iframe às
+    // vezes deixa o quadro "preto" até um repaint (glitch de composição da GPU).
+    void frame.offsetHeight;
+    requestAnimationFrame(function () { frame.style.display = 'block'; void frame.offsetHeight; });
+    const b = document.getElementById('eko-btn-sair'); if (b) b.style.display = 'none';
+  };
+  window.ekoHome = function () {
+    frame.style.display = 'none'; try { frame.src = 'about:blank'; } catch (e) {}
+    const b = document.getElementById('eko-btn-sair'); if (b) b.style.display = '';
+  };
+  // tela cheia entra no 1º toque do menu (e a cada abertura de tela).
+  // Também devolve o foco ao quadro (e, em cascata, ao iframe de trabalho),
+  // para o leitor de código de barras voltar a funcionar após tocar na moldura.
+  document.addEventListener('click', function () {
+    window.ekoEntrarFS();
+    if (frame && frame.style.display !== 'none') { try { frame.contentWindow.focus(); } catch (e) {} }
+  }, true);
+  window.addEventListener('focus', function () {
+    if (frame && frame.style.display !== 'none') { try { frame.contentWindow.focus(); } catch (e) {} }
+  });
+
+  // ── Anti-tela-preta ────────────────────────────────────────────────
+  // Em tela cheia, o quadro do iframe às vezes "apaga" (fica preto) por um
+  // glitch de composição da GPU do mini PC. Forçamos um repaint invisível do
+  // quadro periodicamente e a cada toque — assim a tela se recupera sozinha,
+  // sem precisar arrastar o dedo.
+  window.ekoRepaint = function () {
+    if (!frame) return;
+    try {
+      frame.style.opacity = '0.998';
+      requestAnimationFrame(function () { try { frame.style.opacity = '1'; void frame.offsetHeight; } catch (e) {} });
+    } catch (e) {}
+  };
+  setInterval(window.ekoRepaint, 4000);                       // previne o apagão quando ocioso
+  ['pointerdown', 'touchstart', 'touchmove', 'mousedown'].forEach(function (ev) {
+    document.addEventListener(ev, window.ekoRepaint, { passive: true, capture: true });   // recupera na hora ao tocar
+  });
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) window.ekoRepaint(); });
+
+  // tiles abrem no iframe (sem navegar a página)
+  function armarTiles() {
+    document.querySelectorAll('.tile-big').forEach(function (a) {
+      a.addEventListener('click', function (e) {
+        e.preventDefault();
+        window.ekoEntrarFS();
+        window.ekoAbrirTela(a.getAttribute('href'));
+      });
+    });
+  }
+  if (document.readyState !== 'loading') armarTiles();
+  else document.addEventListener('DOMContentLoaded', armarTiles);
+  // abertura direta de uma tela fora do shell (/?tela=/...)
+  try { const t = new URLSearchParams(location.search).get('tela'); if (t) window.ekoAbrirTela(t); } catch (e) {}
+})();
+</script>
+<script src="/seguranca-saida.js"></script>
+</body>
+</html>
