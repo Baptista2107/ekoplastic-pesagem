@@ -1,4 +1,3 @@
-set "MINIPC=192.168.3.42"
 @echo off
 setlocal EnableExtensions DisableDelayedExpansion
 chcp 65001 >nul
@@ -10,9 +9,14 @@ set "ORIGEM=git@github.com:Baptista2107/ekoplastic-pesagem.git"
 REM ===================================================================
 REM  ENDERECO DO MINI PC - preencha com o IP da LAN ou o do Tailscale.
 REM  Deixando VAZIO, o script so' publica no GitHub e nao oferece
-REM  aplicar na estacao. A porta 3000 ja e' liberada no firewall pelo
-REM  LIBERAR-ACESSO-CELULAR.bat.
-set "MINIPC="
+REM  aplicar na estacao.
+REM
+REM  A conversa com a estacao e' pela porta 3443 (HTTPS), NAO pela 3000.
+REM  A porta 3000 do sistema escuta so' em 127.0.0.1 - de fora da propria
+REM  maquina ela nunca responde. Quem atende a rede e' a 3443, a mesma
+REM  que o celular usa, liberada no firewall pelo LIBERAR-ACESSO-CELULAR.bat.
+REM  O certificado e' auto-assinado, por isso o curl vai com -k.
+set "MINIPC=100.82.224.60"
 REM  exemplo:  set "MINIPC=192.168.3.42"
 REM ===================================================================
 set "LOG=%~dp0OUTPUT_ENVIAR_ATUALIZACAO.TXT"
@@ -65,17 +69,36 @@ if not "%ATRAS%"=="0" (
 )
 call :L "OK 3/4: voce esta em dia com o GitHub."
 
+REM  O commit atual e' lido JA AQUI. Antes ele so' existia depois da FASE 3,
+REM  o que impedia usar a FASE 5 quando nao havia nada novo a enviar.
+set "SHA="
+for /f "delims=" %%H in ('git rev-parse --short HEAD 2^>nul') do set "SHA=%%H"
+
 set "PEND=0"
 for /f %%N in ('git status --porcelain ^| find /c /v ""') do set "PEND=%%N"
-if "%PEND%"=="0" (
-  call :L "Nada mudou na pasta. Nao ha o que enviar."
+if not "%PEND%"=="0" goto :tem_mudanca
+
+REM  Nada novo para publicar. Isso NAO quer dizer que nao ha nada a fazer:
+REM  a estacao pode estar atrasada em relacao ao que ja esta no GitHub -
+REM  por exemplo quando a FASE 5 foi pulada numa rodada anterior. Entao,
+REM  havendo endereco da estacao, seguimos direto para aplicar o commit
+REM  que ja existe, em vez de encerrar sem opcao.
+call :L "Nada mudou na pasta - nao ha o que publicar."
+if not defined MINIPC (
+  call :L "E nao ha endereco de estacao configurado. Encerrando."
   call :L "=== FIM DO DIAGNOSTICO ==="
   echo.
-  echo  Nada mudou. Nada a enviar.
+  echo  Nada mudou e nenhuma estacao configurada. Nada a fazer.
   echo.
   pause
   exit /b 0
 )
+call :L "Seguindo para a FASE 5: aplicar na estacao o commit %SHA%,"
+call :L "que ja esta publicado."
+call :L ""
+goto :aplicar_estacao
+
+:tem_mudanca
 call :L "OK 4/4: %PEND% mudanca a enviar."
 call :L ""
 
@@ -224,6 +247,7 @@ call :L "------------------------------------------------------------"
 call :L ""
 
 REM ================= FASE 5 - APLICAR NA ESTACAO =================
+:aplicar_estacao
 if not defined MINIPC (
   call :L "O Mini PC nao recebeu nada. Ele continua na versao anterior."
   call :L "Para poder aplicar daqui, preencha a linha MINIPC no topo"
@@ -235,12 +259,12 @@ if not defined MINIPC (
 call :L "------------------------------------------------------------"
 call :L "FASE 5 - APLICAR NA ESTACAO"
 call :L "------------------------------------------------------------"
-set "URLMINI=http://%MINIPC%:3000"
+set "URLMINI=https://%MINIPC%:3443"
 set "TMPHC=%TEMP%\eko_mini_hc.tmp"
 set "TMPJ=%TEMP%\eko_mini_body.tmp"
 
 call :L "Consultando a estacao em %URLMINI% ..."
-curl -s --max-time 8 "%URLMINI%/healthcheck" > "%TMPHC%" 2>nul
+curl -s -k --max-time 8 "%URLMINI%/healthcheck" > "%TMPHC%" 2>nul
 if errorlevel 1 goto :mini_inalcancavel
 for %%Z in ("%TMPHC%") do if %%~zZ EQU 0 goto :mini_inalcancavel
 
@@ -281,7 +305,7 @@ REM  do cmd e' fonte garantida de dor de cabeca.
 > "%TMPJ%" echo {"senha":"%SENHA%"}
 set "SENHA="
 call :L "Disparando a atualizacao..."
-curl -s --max-time 15 -X POST "%URLMINI%/sistema/atualizar" -H "Content-Type: application/json" -d "@%TMPJ%" > "%TEMP%\eko_mini_resp.tmp" 2>nul
+curl -s -k --max-time 15 -X POST "%URLMINI%/sistema/atualizar" -H "Content-Type: application/json" -d "@%TMPJ%" > "%TEMP%\eko_mini_resp.tmp" 2>nul
 del "%TMPJ%" >nul 2>&1
 type "%TEMP%\eko_mini_resp.tmp" >>"%LOG%"
 echo.
@@ -310,7 +334,7 @@ set /a _e=0
 :esperamini
 timeout /t 3 /nobreak >nul
 set /a _e+=1
-curl -s --max-time 5 "%URLMINI%/healthcheck" > "%TMPHC%" 2>nul
+curl -s -k --max-time 5 "%URLMINI%/healthcheck" > "%TMPHC%" 2>nul
 findstr /C:"%SHA%" "%TMPHC%" >nul 2>&1
 if not errorlevel 1 goto :minivoltou
 if %_e% lss 25 goto :esperamini
@@ -348,8 +372,14 @@ goto :fim_ok
 :mini_inalcancavel
 call :L "Nao consegui falar com a estacao em %URLMINI%"
 call :L "O GitHub JA foi atualizado - isso nao se perdeu."
-call :L "Confira: a estacao esta ligada? O IP mudou? A porta 3000 esta"
-call :L "liberada? O LIBERAR-ACESSO-CELULAR.bat abre ela no firewall."
+call :L "O GitHub nao se perdeu - a estacao e' que nao atendeu."
+call :L "Confira, nesta ordem:"
+call :L "  1. a estacao esta ligada e com o INICIAR.bat rodando?"
+call :L "  2. a porta 3443 esta liberada no firewall dela? Rode uma vez"
+call :L "     o LIBERAR-ACESSO-CELULAR.bat NO MINI PC."
+call :L "  3. o HTTPS subiu la'? Na janela preta do servidor deve aparecer"
+call :L "     a linha HTTPS(rede): https://<ip-do-mini-pc>:3443"
+call :L "  4. o IP mudou? Rode o DESCOBRIR-MINIPC.bat."
 del "%TMPHC%" >nul 2>&1
 call :L "=== FIM DO DIAGNOSTICO ==="
 goto :fim_ok
