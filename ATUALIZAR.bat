@@ -170,6 +170,42 @@ goto :parar
 
 :subiu
 call :L "OK: o sistema respondeu."
+
+REM  ---- espera a deteccao da impressora ----------------------------
+REM  detectarImpressora roda PowerShell e e' ASSINCRONA: o servidor ja
+REM  responde /healthcheck varios segundos antes de PRINTER_DETECTADA
+REM  virar true. Consultar cedo demais reporta "impressora nao detectada"
+REM  e joga um susto que nao existe. Aqui esperamos ate' 24s e, se ainda
+REM  assim nao vier, pedimos a re-deteccao pelo endpoint proprio.
+set "TMPHC=%TEMP%\eko_hc.tmp"
+set /a _p=0
+:esperaimp_at
+curl -s "%URLSAUDE%" > "%TMPHC%" 2>nul
+findstr /R /C:"impressora_detectada.:true" "%TMPHC%" >nul 2>&1
+if not errorlevel 1 goto :impok_at
+set /a _p+=1
+if %_p% GEQ 12 goto :impforca_at
+timeout /t 2 /nobreak >nul
+goto :esperaimp_at
+
+:impforca_at
+call :L "Impressora nao apareceu em 24s - pedindo re-deteccao..."
+curl -s -X POST "http://localhost:3000/impressora/redetectar" >>"%LOG%" 2>&1
+timeout /t 3 /nobreak >nul
+curl -s "%URLSAUDE%" > "%TMPHC%" 2>nul
+
+:impok_at
+findstr /R /C:"impressora_detectada.:true" "%TMPHC%" >nul 2>&1
+if errorlevel 1 (
+  call :L "ATENCAO: a impressora NAO foi detectada."
+  call :L "O sistema sobe e pesa, mas a etiqueta sai em SIMULACAO - ou"
+  call :L "seja, nao sai no papel. Confira se a ELGIN esta ligada e"
+  call :L "instalada no Windows, e teste uma impressao antes do turno."
+) else (
+  call :L "OK: impressora detectada - impressao real, sem simulacao."
+)
+del "%TMPHC%" >nul 2>&1
+
 call :L ""
 call :L "Healthcheck - confira a versao e as contagens:"
 curl -s "%URLSAUDE%" >>"%LOG%" 2>&1

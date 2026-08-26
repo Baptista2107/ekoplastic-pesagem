@@ -17,24 +17,8 @@ REM   2. deteccao por curinga "PROJETO*", que evita digitar o acento
 REM   3. escrita a mao, se as duas acima falharem
 set "PRODUCAO=%~1"
 if defined PRODUCAO goto :tem_producao
-
-REM  PERIGO REAL: se existir mais de uma pasta comecando com PROJETO -
-REM  por exemplo uma "- BACKUP" - o curinga casa com todas e o laco fica
-REM  com a ULTIMA em ordem alfabetica, que costuma ser justamente a copia
-REM  velha. Copiar o banco da copia velha e' perder producao. Por isso,
-REM  havendo duvida, o script NAO escolhe: ele para e exige que voce
-REM  arraste a pasta certa.
-set "NCAND=0"
-set "PRODUCAO="
-for /d %%D in (%USERPROFILE%\Desktop\PROJETO*) do (
-  set /a NCAND+=1
-  set "PRODUCAO=%%D"
-)
-if not defined PRODUCAO for /d %%D in (%USERPROFILE%\OneDrive\Desktop\PROJETO*) do (
-  set /a NCAND+=1
-  set "PRODUCAO=%%D"
-)
-if %NCAND% GTR 1 goto :ambiguo
+for /d %%D in (%USERPROFILE%\Desktop\PROJETO*) do set "PRODUCAO=%%D"
+if not defined PRODUCAO for /d %%D in (%USERPROFILE%\OneDrive\Desktop\PROJETO*) do set "PRODUCAO=%%D"
 :tem_producao
 REM ===================================================================
 
@@ -54,18 +38,7 @@ REM ---------- FASE 0 ----------
 call :L "------------------------------------------------------------"
 call :L "FASE 0 - VERIFICACOES"
 call :L "------------------------------------------------------------"
-if not exist "%~dp0.git" (
-  call :L "FALHA: esta pasta nao e' o clone - nao tem .git."
-  call :L ""
-  call :L "Voce rodou a partir de:"
-  call :L "   %~dp0"
-  call :L ""
-  call :L "Este .bat tem que ser executado de DENTRO da pasta clonada,"
-  call :L "normalmente:   C:\Ekoplastic\pesagem"
-  call :L "Nao copie este arquivo para a pasta de producao - ele ja existe"
-  call :L "dentro do clone, que e' de onde ele deve rodar."
-  goto :parar
-)
+if not exist "%~dp0.git" ( call :L "FALHA: rode este .bat DENTRO da pasta clonada." & goto :parar )
 if not defined PRODUCAO (
   call :L "FALHA: nao localizei a pasta de producao."
   call :L "Arraste a pasta de producao para cima do icone deste .bat."
@@ -185,42 +158,6 @@ echo ------------------------------------------------------------
 curl -s "%URLSAUDE%"
 echo.
 echo ------------------------------------------------------------
-
-REM  ---- espera a deteccao da impressora ----------------------------
-REM  detectarImpressora roda PowerShell e e' ASSINCRONA: o servidor ja
-REM  responde /healthcheck varios segundos antes de PRINTER_DETECTADA
-REM  virar true. Consultar cedo demais reporta "impressora nao detectada"
-REM  e joga um susto que nao existe. Aqui esperamos ate' 24s e, se ainda
-REM  assim nao vier, pedimos a re-deteccao pelo endpoint proprio.
-set "TMPHC=%TEMP%\eko_hc.tmp"
-set /a _p=0
-:esperaimp_t2
-curl -s "%URLSAUDE%" > "%TMPHC%" 2>nul
-findstr /R /C:"impressora_detectada.:true" "%TMPHC%" >nul 2>&1
-if not errorlevel 1 goto :impok_t2
-set /a _p+=1
-if %_p% GEQ 12 goto :impforca_t2
-timeout /t 2 /nobreak >nul
-goto :esperaimp_t2
-
-:impforca_t2
-call :L "Impressora nao apareceu em 24s - pedindo re-deteccao..."
-curl -s -X POST "http://localhost:3000/impressora/redetectar" >>"%LOG%" 2>&1
-timeout /t 3 /nobreak >nul
-curl -s "%URLSAUDE%" > "%TMPHC%" 2>nul
-
-:impok_t2
-findstr /R /C:"impressora_detectada.:true" "%TMPHC%" >nul 2>&1
-if errorlevel 1 (
-  call :L "ATENCAO: a impressora NAO foi detectada."
-  call :L "O sistema sobe e pesa, mas a etiqueta sai em SIMULACAO - ou"
-  call :L "seja, nao sai no papel. Confira se a ELGIN esta ligada e"
-  call :L "instalada no Windows, e teste uma impressao antes do turno."
-) else (
-  call :L "OK: impressora detectada - impressao real, sem simulacao."
-)
-del "%TMPHC%" >nul 2>&1
-
 call :L ""
 call :L "------------------------------------------------------------"
 call :L "O SISTEMA SUJOU A PASTA AO SUBIR?"
@@ -271,15 +208,6 @@ copy /y "%PRODUCAO%\%~1" "%~dp0%~1" >nul 2>&1
 if errorlevel 1 ( call :L "  ERRO ao copiar %~1" & set "FALTOU=1" & exit /b 1 )
 call :L "  copiado: %~1"
 exit /b 0
-
-:ambiguo
-call :L "FALHA: achei %NCAND% pastas comecando com PROJETO no Desktop."
-call :L "Nao vou escolher sozinho qual e' a de producao - errar aqui"
-call :L "significa copiar um banco velho por cima do atual."
-call :L ""
-call :L "ARRASTE a pasta de producao correta para cima do icone deste"
-call :L ".bat e solte. O caminho chega pronto e sem ambiguidade."
-goto :parar
 
 :parar
 call :L ""
