@@ -57,8 +57,12 @@ async function subirServidor() {
       // horário (ex: dashboard vazio à noite) independente de onde o
       // teste rode. Sem isso, máquinas em UTC mascarariam o problema.
       TZ: 'America/Sao_Paulo',
-      // Garante modo simulação (não toca em Bling real nem precisa de impressora)
-      // bling_simular já é '1' por default; impressão auto-simula sem Zebra.
+      // Bling: bling_simular já é '1' por default, então nada sai daqui.
+      // Impressão: NÃO dá para confiar no auto-fallback. Ele só simula quando
+      // NENHUMA impressora é detectada, e numa máquina de desenvolvimento que
+      // tenha o driver da ELGIN instalado a detecção acha, e o piso de testes
+      // imprime dezenas de etiquetas de papel de verdade. Por isso o modo
+      // simulado é ligado EXPLICITAMENTE logo após o boot, em subir().
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -69,8 +73,27 @@ async function subirServidor() {
   for (let i = 0; i < 75; i++) {
     try {
       const r = await fetch(BASE + '/healthcheck');
-      if (r.ok) return true;
-    } catch(e) {}
+      if (r.ok) {
+        // Trava de papel: força print_simular=1 ANTES de qualquer teste que
+        // imprima. Sem isto, rodar os testes numa máquina com a impressora
+        // instalada cospe uma etiqueta física por impressão do piso — foram
+        // dezenas por execução. O EPL continua sendo gravado em
+        // logs/print-simulado/, então a auditoria do que seria impresso não
+        // se perde.
+        await fetch(BASE + '/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ print_simular: '1' }),
+        });
+        const hc = await (await fetch(BASE + '/healthcheck')).json();
+        if (!hc.impressao_simulada) {
+          throw new Error('print_simular não pegou — abortando para não imprimir papel de verdade');
+        }
+        return true;
+      }
+    } catch(e) {
+      if (String(e.message).includes('print_simular')) throw e;
+    }
     await sleep(200);
   }
   throw new Error('Servidor não subiu em 15s');
