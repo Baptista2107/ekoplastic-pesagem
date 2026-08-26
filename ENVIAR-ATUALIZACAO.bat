@@ -1,3 +1,4 @@
+set "MINIPC=192.168.3.42"
 @echo off
 setlocal EnableExtensions DisableDelayedExpansion
 chcp 65001 >nul
@@ -5,6 +6,15 @@ cd /d "%~dp0"
 title Ekoplastic Pesagem - Enviar atualizacao
 
 set "ORIGEM=git@github.com:Baptista2107/ekoplastic-pesagem.git"
+
+REM ===================================================================
+REM  ENDERECO DO MINI PC - preencha com o IP da LAN ou o do Tailscale.
+REM  Deixando VAZIO, o script so' publica no GitHub e nao oferece
+REM  aplicar na estacao. A porta 3000 ja e' liberada no firewall pelo
+REM  LIBERAR-ACESSO-CELULAR.bat.
+set "MINIPC="
+REM  exemplo:  set "MINIPC=192.168.3.42"
+REM ===================================================================
 set "LOG=%~dp0OUTPUT_ENVIAR_ATUALIZACAO.TXT"
 
 > "%LOG%" echo ============================================================
@@ -209,14 +219,142 @@ if /I "%SHAREMOTO%"=="%SHALOCAL%" (
 )
 call :L ""
 call :L "------------------------------------------------------------"
-call :L "RESULTADO: ENVIADO."
+call :L "PUBLICADO NO GITHUB."
 call :L "------------------------------------------------------------"
 call :L ""
-call :L "O Mini PC NAO recebeu nada ainda. Ele continua na versao"
-call :L "anterior ate' alguem rodar o ATUALIZAR.bat la', na hora que"
-call :L "voce escolher. Nada e' automatico."
+
+REM ================= FASE 5 - APLICAR NA ESTACAO =================
+if not defined MINIPC (
+  call :L "O Mini PC nao recebeu nada. Ele continua na versao anterior."
+  call :L "Para poder aplicar daqui, preencha a linha MINIPC no topo"
+  call :L "deste .bat com o IP da estacao."
+  call :L "=== FIM DO DIAGNOSTICO ==="
+  goto :fim_ok
+)
+
+call :L "------------------------------------------------------------"
+call :L "FASE 5 - APLICAR NA ESTACAO"
+call :L "------------------------------------------------------------"
+set "URLMINI=http://%MINIPC%:3000"
+set "TMPHC=%TEMP%\eko_mini_hc.tmp"
+set "TMPJ=%TEMP%\eko_mini_body.tmp"
+
+call :L "Consultando a estacao em %URLMINI% ..."
+curl -s --max-time 8 "%URLMINI%/healthcheck" > "%TMPHC%" 2>nul
+if errorlevel 1 goto :mini_inalcancavel
+for %%Z in ("%TMPHC%") do if %%~zZ EQU 0 goto :mini_inalcancavel
+
+type "%TMPHC%" >>"%LOG%"
+echo.
+echo ------------------------------------------------------------
+echo  A ESTACAO RESPONDEU. Confira se e' a maquina certa:
+echo ------------------------------------------------------------
+type "%TMPHC%"
+echo.
+echo ------------------------------------------------------------
+echo.
+echo  Aplicar AGORA o commit %SHA% nesta estacao?
+echo.
+echo  O servidor vai encerrar e voltar em alguns segundos. A tela
+echo  do operador fecha e reabre sozinha. Se houver sessao aberta,
+echo  a propria estacao recusa e nada acontece.
+echo.
+set "APLICAR="
+set /p "APLICAR=Digite S para aplicar, ou ENTER para deixar para depois: "
+if /I not "%APLICAR%"=="S" (
+  call :L "Operador escolheu nao aplicar agora. GitHub atualizado, estacao nao."
+  call :L "=== FIM DO DIAGNOSTICO ==="
+  goto :fim_ok
+)
+
+echo.
+set "SENHA="
+for /f "usebackq delims=" %%P in (`powershell -NoProfile -Command "$s=Read-Host -AsSecureString 'Senha de supervisor'; [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($s))"`) do set "SENHA=%%P"
+if not defined SENHA (
+  call :L "Senha nao informada - nada foi aplicado na estacao."
+  call :L "=== FIM DO DIAGNOSTICO ==="
+  goto :fim_ok
+)
+
+REM  O corpo vai por arquivo: montar JSON com aspas na linha de comando
+REM  do cmd e' fonte garantida de dor de cabeca.
+> "%TMPJ%" echo {"senha":"%SENHA%"}
+set "SENHA="
+call :L "Disparando a atualizacao..."
+curl -s --max-time 15 -X POST "%URLMINI%/sistema/atualizar" -H "Content-Type: application/json" -d "@%TMPJ%" > "%TEMP%\eko_mini_resp.tmp" 2>nul
+del "%TMPJ%" >nul 2>&1
+type "%TEMP%\eko_mini_resp.tmp" >>"%LOG%"
+echo.
+echo  Resposta da estacao:
+type "%TEMP%\eko_mini_resp.tmp"
+echo.
+REM  O "." no lugar da aspa e' proposital: dentro de findstr /C: nao ha
+REM  escape de barra invertida, entao \" chegaria literal e nunca casaria.
+REM  Com /R, o ponto casa a aspa sem precisar escrever a aspa.
+findstr /R /C:"ok.:true" "%TEMP%\eko_mini_resp.tmp" >nul 2>&1
+if errorlevel 1 (
+  call :L ""
+  call :L "A ESTACAO RECUSOU. Nada foi alterado la'."
+  call :L "Motivos comuns: senha de supervisor errada, ou sessao aberta"
+  call :L "no turno. A resposta acima diz qual foi."
+  del "%TEMP%\eko_mini_resp.tmp" >nul 2>&1
+  call :L "=== FIM DO DIAGNOSTICO ==="
+  goto :fim_ok
+)
+del "%TEMP%\eko_mini_resp.tmp" >nul 2>&1
+
+call :L "Aceito. Esperando a estacao voltar com o commit %SHA% ..."
+echo.
+echo  Esperando a estacao voltar. Isso leva alguns segundos.
+set /a _e=0
+:esperamini
+timeout /t 3 /nobreak >nul
+set /a _e+=1
+curl -s --max-time 5 "%URLMINI%/healthcheck" > "%TMPHC%" 2>nul
+findstr /C:"%SHA%" "%TMPHC%" >nul 2>&1
+if not errorlevel 1 goto :minivoltou
+if %_e% lss 25 goto :esperamini
+
+call :L ""
+call :L "ATENCAO: a estacao nao voltou com o commit %SHA% em 75 segundos."
+call :L "Va' ate' o Mini PC e leia o OUTPUT_ATUALIZACAO_REMOTA.TXT da pasta."
+call :L "A estacao pode ter subido com o codigo antigo - que e' o caminho"
+call :L "seguro previsto, mas precisa ser conferido."
+type "%TMPHC%" >>"%LOG%"
+del "%TMPHC%" >nul 2>&1
+call :L "=== FIM DO DIAGNOSTICO ==="
+goto :fim_ok
+
+:minivoltou
+type "%TMPHC%" >>"%LOG%"
+echo.
+echo ------------------------------------------------------------
+type "%TMPHC%"
+echo.
+echo ------------------------------------------------------------
+del "%TMPHC%" >nul 2>&1
+call :L ""
+call :L "------------------------------------------------------------"
+call :L "ESTACAO ATUALIZADA no commit %SHA%."
+call :L "------------------------------------------------------------"
+call :L ""
+call :L "Confira no healthcheck acima: modulo_serial e portaAberta"
+call :L "devem estar true, e a impressora detectada. Se a alteracao"
+call :L "mexeu em tela, ela ja reabriu sozinha com a versao nova."
 call :L ""
 call :L "=== FIM DO DIAGNOSTICO ==="
+goto :fim_ok
+
+:mini_inalcancavel
+call :L "Nao consegui falar com a estacao em %URLMINI%"
+call :L "O GitHub JA foi atualizado - isso nao se perdeu."
+call :L "Confira: a estacao esta ligada? O IP mudou? A porta 3000 esta"
+call :L "liberada? O LIBERAR-ACESSO-CELULAR.bat abre ela no firewall."
+del "%TMPHC%" >nul 2>&1
+call :L "=== FIM DO DIAGNOSTICO ==="
+goto :fim_ok
+
+:fim_ok
 echo.
 start "" notepad "%LOG%"
 echo.

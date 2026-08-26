@@ -397,6 +397,20 @@ const logE = (src, m, x) => log('ERROR', src, m, x);
 const logD = (src, m, x) => log('DEBUG', src, m, x);
 
 // ── Segurança: trava de saída por senha de supervisor ──
+// Qual commit esta rodando. Lido direto de .git/HEAD, sem chamar o git:
+// serve para conferir DE OUTRA MAQUINA, pelo /healthcheck, qual versao a
+// estacao esta executando de fato. Sem isto, "atualizei?" so' se responde
+// indo ate' o Mini PC. Devolve null quando a pasta nao veio de um clone.
+function commitAtual() {
+  try {
+    const head = fs.readFileSync(path.join(__dirname, '.git', 'HEAD'), 'utf8').trim();
+    const m = head.match(/^ref:\s*(.+)$/);
+    if (!m) return head.slice(0, 7);                    // HEAD destacado: o proprio sha
+    const ref = fs.readFileSync(path.join(__dirname, '.git', m[1].trim()), 'utf8').trim();
+    return ref.slice(0, 7);
+  } catch (e) { return null; }
+}
+
 function hashSenha(s) {
   // SHA-256 com sal fixo do app (senha numérica de balcão; protege contra
   // leitura casual do hash, não contra ataque técnico determinado).
@@ -1718,11 +1732,6 @@ let balanca = {
   portaAberta:  false,
   bytesTotal:   0,
   ultimoByteTs: null,
-  // O módulo nativo carregou? null = ainda não tentou, true = carregou,
-  // false = ausente. Sem isto, "portaAberta: false" no /healthcheck é
-  // ambíguo: pode ser cabo solto ou o serialport nem ter carregado — que
-  // são problemas completamente diferentes e com soluções diferentes.
-  moduloSerial: null,
 };
 let _balancaReconectando = false;   // B5: guarda contra empilhamento de reconexões
 
@@ -1760,10 +1769,8 @@ function iniciarBalanca() {
   try {
     ({ SerialPort }     = require('serialport'));
     ({ ReadlineParser } = require('@serialport/parser-readline'));
-    balanca.moduloSerial = true;
   } catch(e) {
-    balanca.moduloSerial = false;
-    logW('balanca', 'Módulo serialport não disponível — balança desativada', { erro: e.message });
+    logW('balanca', 'Módulo serialport não disponível — balança desativada');
     _balancaReconectando = false;
     return;
   }
@@ -3832,6 +3839,7 @@ const requestHandler = async (req, res) => {
       return jsonOk(res, {
         servidor: 'online',
         versao: VERSION,
+        commit: commitAtual(),
         impressora: PRINTER_DETECTADA ? PRINTER_ATIVA : null,    // A6: null se não detectada
         impressora_detectada: PRINTER_DETECTADA,
         impressao_simulada: !PRINTER_DETECTADA || configGet('print_simular', '0') === '1',
@@ -3843,7 +3851,7 @@ const requestHandler = async (req, res) => {
           outras:      getProximoSeq('outras'),
         },
         totalEtiquetas: counts.etiquetas,                   // alias
-        balanca:   { modulo_serial: balanca.moduloSerial, portaAberta: balanca.portaAberta, recebendo: balancaRecebendo(), ultimoPeso: balanca.ultimoPeso, estavel: balanca.pesoEstavel, bytesTotal: balanca.bytesTotal },
+        balanca:   { portaAberta: balanca.portaAberta, recebendo: balancaRecebendo(), ultimoPeso: balanca.ultimoPeso, estavel: balanca.pesoEstavel, bytesTotal: balanca.bytesTotal },
         bling:     { autenticado: !!(tk.accessToken || tk.refreshToken), token_expira_em_s: tk.expiresAt ? Math.max(0, Math.round((tk.expiresAt - Date.now())/1000)) : null, simulacao: configGet('bling_simular', '1') === '1' },
         banco:     counts,
       });
@@ -3911,6 +3919,60 @@ const requestHandler = async (req, res) => {
         }
         setTimeout(() => process.exit(0), 700);
       }, 200);
+      return;
+    }
+
+    // ─── POST /sistema/atualizar  { senha } ───
+    // Dispara, a partir de OUTRA máquina na rede, a atualização do código a
+    // partir do GitHub. Quem executa o git NÃO é este processo: ele apenas
+    // grava a bandeira e sai. O INICIAR.bat já é um laço supervisor que
+    // reinicia o node — ele vê a bandeira, aplica o git e sobe de novo.
+    // Isso evita SSH, tarefa agendada e credencial de Windows guardada.
+    //
+    // Três travas, nesta ordem:
+    //   1. senha de supervisor (a mesma da trava de saída das telas)
+    //   2. nenhuma sessão aberta — não se reinicia por cima de operação
+    //   3. o próprio git: merge --ff-only nunca inventa merge
+    if (pathname === '/sistema/atualizar' && req.method === 'POST') {
+      let body;
+      try { body = await lerBodyJson(req); } catch(e) { return jsonErr(res, 400, e.message); }
+
+      const hashAtual = configGet('senha_saida_hash', hashSenha('1234'));
+      if (hashSenha((body && body.senha) || '') !== hashAtual) {
+        logDesvio({ tipo: 'tentativa_atualizacao_senha_incorreta', tela: 'remoto',
+                    detalhe: 'senha incorreta em /sistema/atualizar' });
+        return jsonErr(res, 401, 'Senha de supervisor incorreta.');
+      }
+
+      const abertas = db.prepare(
+        `SELECT id, tipo, turno_codigo, operador, maquina, inicio
+           FROM sessoes WHERE fim IS NULL ORDER BY inicio`
+      ).all();
+      if (abertas.length) {
+        logW('sistema', `Atualização recusada: ${abertas.length} sessão(ões) aberta(s)`);
+        return jsonErr(res, 409,
+          `Há ${abertas.length} sessão(ões) aberta(s). Finalize ou cancele antes de atualizar.`,
+          { abertas });
+      }
+
+      const pend = db.prepare(
+        `SELECT COUNT(*) AS n FROM sessoes WHERE bling_status IN ('pendente','pendente_config','erro')`
+      ).get().n;
+
+      jsonOk(res, {
+        atualizando: true,
+        versao_atual: VERSION,
+        pendentes_bling: pend,
+        aviso: 'O servidor vai encerrar e voltar em alguns segundos. A tela reabre sozinha.',
+      });
+      logI('sistema', 'Atualização remota autorizada — encerrando para o INICIAR.bat aplicar o git.');
+      setTimeout(() => {
+        try { fs.writeFileSync(path.join(__dirname, 'eko-atualizar.flag'), String(Date.now())); } catch (e) {
+          logE('sistema', 'Não consegui gravar eko-atualizar.flag — abortando', { erro: e.message });
+          return;   // sem a bandeira, NÃO encerra: melhor seguir rodando
+        }
+        setTimeout(() => process.exit(0), 500);
+      }, 250);
       return;
     }
 
