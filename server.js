@@ -1718,6 +1718,11 @@ let balanca = {
   portaAberta:  false,
   bytesTotal:   0,
   ultimoByteTs: null,
+  // O módulo nativo carregou? null = ainda não tentou, true = carregou,
+  // false = ausente. Sem isto, "portaAberta: false" no /healthcheck é
+  // ambíguo: pode ser cabo solto ou o serialport nem ter carregado — que
+  // são problemas completamente diferentes e com soluções diferentes.
+  moduloSerial: null,
 };
 let _balancaReconectando = false;   // B5: guarda contra empilhamento de reconexões
 
@@ -1755,8 +1760,10 @@ function iniciarBalanca() {
   try {
     ({ SerialPort }     = require('serialport'));
     ({ ReadlineParser } = require('@serialport/parser-readline'));
+    balanca.moduloSerial = true;
   } catch(e) {
-    logW('balanca', 'Módulo serialport não disponível — balança desativada');
+    balanca.moduloSerial = false;
+    logW('balanca', 'Módulo serialport não disponível — balança desativada', { erro: e.message });
     _balancaReconectando = false;
     return;
   }
@@ -3836,7 +3843,7 @@ const requestHandler = async (req, res) => {
           outras:      getProximoSeq('outras'),
         },
         totalEtiquetas: counts.etiquetas,                   // alias
-        balanca:   { portaAberta: balanca.portaAberta, recebendo: balancaRecebendo(), ultimoPeso: balanca.ultimoPeso, estavel: balanca.pesoEstavel, bytesTotal: balanca.bytesTotal },
+        balanca:   { modulo_serial: balanca.moduloSerial, portaAberta: balanca.portaAberta, recebendo: balancaRecebendo(), ultimoPeso: balanca.ultimoPeso, estavel: balanca.pesoEstavel, bytesTotal: balanca.bytesTotal },
         bling:     { autenticado: !!(tk.accessToken || tk.refreshToken), token_expira_em_s: tk.expiresAt ? Math.max(0, Math.round((tk.expiresAt - Date.now())/1000)) : null, simulacao: configGet('bling_simular', '1') === '1' },
         banco:     counts,
       });

@@ -45,7 +45,7 @@ balança (porta serial COM1) e a impressora térmica (EPL2 via PowerShell). O VP
 
 | Máquina | Papel | Ferramentas | Rede |
 |---|---|---|---|
-| **PC de Pesagem** (onde este trabalho ocorre) | Desenvolvimento do sistema de pesagem. É a máquina do Frederico | Git 2.53.0, PowerShell, **sem Claude Code**, **sem Node** | Tailscale `100.81.107.73` · LAN `192.168.3.156` |
+| **PC de Pesagem** (onde este trabalho ocorre) | Desenvolvimento do sistema de pesagem. É a máquina do Frederico | Git 2.53.0, PowerShell, **Node instalado**, sem Claude Code | Tailscale `100.81.107.73` · LAN `192.168.3.156` |
 | **Mini PC TANCA** | **Produção do chão de fábrica.** Executa o sistema ao lado da balança, com tela touch | Node ≥22.5, Git instalado | Tailscale (acesso via Moonlight) · mesma LAN |
 | **VPS Contabo** | Dashboards, crons, ContaAzul, Bling (app dos dashboards) | Ubuntu, Python, Claude Code, Git | Tailscale `100.107.130.115` · painel HTTP `:8765` |
 | **PC do outro dev** | Desenvolvimento dos dashboards/Gestão Industrial | Claude Code, Git, SSH ao VPS | Tailscale |
@@ -57,10 +57,24 @@ balança (porta serial COM1) e a impressora térmica (EPL2 via PowerShell). O VP
 
 **Fluxo:** código desce (GitHub → Mini PC / VPS), dado sobe (Mini PC → Bling → VPS).
 
-⟲ **Consequência prática de "o PC de Pesagem não tem Node":** essa máquina
-**não consegue validar sozinha** se o `node_modules` versionado funciona.
-Qualquer prova de que a balança sobe tem que ser feita no Mini PC. É por isso
-que o diagnóstico da seção 4.4 roda lá, e não aqui.
+⟲ **CORREÇÃO 25/08/2026 — o PC de Pesagem TEM Node.** A revisão 1 deste
+documento dizia o contrário e a afirmação estava errada. Isso muda duas coisas:
+
+1. **A árvore vendorizada pode ser validada aqui.** Ela foi montada em Linux e
+   o `require` foi testado lá — mas quem carregou foi o binário de Linux. O
+   `prebuilds/win32-x64/node.napi.node` **nunca foi executado**. Rodar o
+   `diagnostico-serialport.js` na pasta v157 fecha esse buraco: a FASE 6 tem
+   que mostrar o binário `win32-x64` carregado e *dentro desta pasta*.
+2. **Existe portão de teste antes do push.** O `testes/piso-testes.js` sobe o
+   `server.js` real com banco temporário (`EKO_DB_FILE`), pasta de log
+   temporária, portas 13900/18900, e Bling e impressão em simulação. 36 testes,
+   nada encosta na produção. O `RODAR-TESTES.bat` passa a ser pré-requisito de
+   todo push.
+
+Atenção só a um efeito colateral novo: agora que o `serialport` está
+vendorizado, subir o `server.js` **neste** PC faz o `iniciarBalanca()` tentar
+abrir a `COM1` a cada 10s. Não quebra nada — só registra aviso no log. Para
+silenciar, `set EKO_SERIAL_PORT=COM99` antes de rodar.
 
 ---
 
@@ -623,6 +637,83 @@ Para o `enviar_raw.ps1` tem que sair `i/lf w/lf attr/text eol=lf`.
 Todos escrevem `OUTPUT_<NOME>.TXT` com escrita incremental por fase e
 `=== FIM DO DIAGNOSTICO ===` só na última — padrão da seção 5. Todos abrem o
 relatório no Notepad ao terminar. Todos são de duplo-clique.
+
+### 4.8 ⟲ NOVA — a rotina depois de publicado
+
+**O `CORRIGIR-COMMIT.bat` está aposentado.** A verificação 9 dele exige que
+*não* exista remote, porque `--amend` reescreve o commit e só é seguro
+enquanto nada foi publicado. Agora que o repositório está no GitHub, ele se
+recusa a rodar — e isso é o comportamento certo. Ele fica na pasta como
+registro do que foi feito na baseline, e não é mais usado.
+
+No lugar dele, dois scripts, um em cada máquina:
+
+| Onde | Script | O que faz |
+|---|---|---|
+| PC de Pesagem | **`ENVIAR-ATUALIZACAO.bat`** | confere que você está em dia com o GitHub, **roda os 36 testes de piso e barra se falharem**, mostra o que mudou, pede a mensagem e uma tag opcional, commita e empurra |
+| Mini PC | **`ATUALIZAR.bat`** | exige o servidor parado, exige pasta limpa, mostra o que vem antes de aplicar, copia os três arquivos do banco, faz `merge --ff-only`, sobe o sistema e confere o `/healthcheck` |
+
+Nenhum dos dois é automático. O Mini PC nunca busca sozinho.
+
+Detalhes de projeto que valem registro:
+
+- O `ENVIAR-ATUALIZACAO.bat` **aborta se o GitHub tiver commit que você não
+  tem**. Assim que houver um segundo colaborador, esse é o caso comum, e o
+  aviso evita um push rejeitado no meio do caminho.
+- O portão de teste tem escape, mas com atrito: se os testes falharem, é
+  preciso **digitar `IGNORAR`** para seguir, e isso fica gravado no relatório.
+  Uma flag seria usada por reflexo; digitar uma palavra, não.
+- O `ATUALIZAR.bat` **se recusa a rodar com o sistema no ar.** Trocar código
+  debaixo de uma operação em andamento é o risco que ele existe para evitar.
+- Ele usa `merge --ff-only`, nunca `pull` com merge. Se o Mini PC divergiu, ele
+  para e deixa a estação na versão anterior, funcionando.
+- Volta atrás é `git checkout <tag>` + `INICIAR.bat`. É para isso que serve
+  taguear as versões no envio.
+
+### 4.9 ⟲ NOVA — dar acesso a terceiros e ao VPS
+
+São **dois mecanismos diferentes** e trocá-los é erro de segurança:
+
+| | Colaborador | Deploy key |
+|---|---|---|
+| Representa | uma **pessoa** | uma **máquina** |
+| Onde | Settings → Collaborators | Settings → Deploy keys |
+| Credencial | conta do GitHub | par de chaves SSH |
+| Escrita | conforme o papel | só se marcar *Allow write access* |
+| Serve para | o outro dev | VPS, Mini PC |
+
+**Para o outro desenvolvedor:** Settings → Collaborators and teams → Add
+people → usuário do GitHub. Papel **Read** se ele só precisa ler o código para
+construir o lado do VPS; **Write** se vai contribuir alterações aqui.
+
+**Para o VPS:** deploy key **somente leitura** — nunca uma conta de usuário.
+No VPS, `ssh-keygen -t ed25519 -C "vps-ekoplastic-pesagem"`, e o conteúdo do
+`.pub` vai em Settings → Deploy keys → Add deploy key, com *Allow write access*
+**desmarcado**.
+
+> **Armadilha:** uma mesma chave SSH só pode ser deploy key de **um**
+> repositório na conta inteira. Se o VPS já usa uma deploy key para o repo dos
+> dashboards, o GitHub recusa a mesma chave aqui com *"key is already in use"*.
+> Gere um par novo e separe por alias no `~/.ssh/config` do VPS:
+>
+> ```
+> Host github-pesagem
+>   HostName github.com
+>   User git
+>   IdentityFile ~/.ssh/id_ed25519_pesagem
+>   IdentitiesOnly yes
+> ```
+>
+> e clone com `git clone git@github-pesagem:Baptista2107/ekoplastic-pesagem.git`.
+
+**O que o terceiro vai ver:** todo o código do sistema, incluindo os IDs de
+contato do Bling, o catálogo de produtos e a lógica de negócio. **Não vai ver
+credencial nenhuma** — o `client_id` e o `client_secret` saíram do `server.js`
+antes do primeiro push (seção 4.5). Se tivessem ficado, adicionar um
+colaborador entregaria a credencial do Bling junto com o código.
+
+Continua valendo a decisão 4.1.1: este repositório é **separado** do repo dos
+dashboards. Dar acesso a um deles não dá acesso ao outro.
 
 ---
 
