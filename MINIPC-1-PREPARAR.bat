@@ -12,6 +12,12 @@ REM ===================================================================
 set "REPO=git@github.com:Baptista2107/ekoplastic-pesagem.git"
 set "DESTINO=C:\Ekoplastic\pesagem"
 set "CHAVE=%USERPROFILE%\.ssh\id_ed25519_pesagem"
+REM  O git NAO usa o cmd para ler o GIT_SSH_COMMAND nem o core.sshCommand:
+REM  ele mesmo separa os argumentos, e trata "\" como escape. Um caminho
+REM  do Windows vira lixo:  C:\Users\usuario\.ssh\chave  ->  C:Usersusuario.sshchave
+REM  Por isso existe esta segunda forma, com barra normal, usada SO' nas
+REM  linhas que o git interpreta. O ssh do Windows aceita barra normal.
+set "CHAVE_GIT=%CHAVE:\=/%"
 REM ===================================================================
 
 set "LOG=%TEMP%\OUTPUT_TROCA_PARTE1.TXT"
@@ -51,6 +57,18 @@ if exist "%DESTINO%\.git" (
   call :L "FALHA: ja existe um clone em %DESTINO%"
   call :L "Se quer refazer, apague a pasta antes. Nao vou sobrescrever."
   goto :parar
+)
+REM  Tentativa anterior que falhou pode deixar a pasta criada e vazia.
+REM  O git clone recusa pasta nao vazia, entao limpamos se der - rmdir
+REM  sem /s so' funciona em pasta vazia, o que e' a trava que queremos.
+if exist "%DESTINO%" (
+  rmdir "%DESTINO%" 2>nul
+  if exist "%DESTINO%" (
+    call :L "FALHA: ja existe %DESTINO% e ela NAO esta vazia."
+    call :L "Confira o conteudo e apague a mao antes de tentar de novo."
+    goto :parar
+  )
+  call :L "OK: sobra vazia de tentativa anterior removida."
 )
 
 REM ---------- FASE 1 - fotografa o estado atual ----------
@@ -119,7 +137,9 @@ call :L ""
 call :L "------------------------------------------------------------"
 call :L "FASE 3 - TESTANDO O ACESSO AO GITHUB"
 call :L "------------------------------------------------------------"
-set "GIT_SSH_COMMAND=ssh -i %CHAVE% -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
+set "GIT_SSH_COMMAND=ssh -i '%CHAVE_GIT%' -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
+call :L "Comando que o git vai usar para autenticar:"
+call :L "   %GIT_SSH_COMMAND%"
 ssh -i "%CHAVE%" -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -T git@github.com >>"%LOG%" 2>&1
 findstr /I /C:"successfully authenticated" "%LOG%" >nul 2>&1
 if errorlevel 1 (
@@ -161,7 +181,7 @@ REM  ATUALIZAR.bat - o git tentaria a chave padrao, que nao e' esta, e
 REM  o fetch falharia com "Permission denied". Gravado no .git/config
 REM  do clone, vale para sempre. Aspas simples porque quem interpreta
 REM  esta linha e' o git, e ele entende aspas simples em toda plataforma.
-git -C "%DESTINO%" config core.sshCommand "ssh -i '%CHAVE%' -o IdentitiesOnly=yes" >>"%LOG%" 2>&1
+git -C "%DESTINO%" config core.sshCommand "ssh -i '%CHAVE_GIT%' -o IdentitiesOnly=yes" >>"%LOG%" 2>&1
 if errorlevel 1 ( call :L "FALHA ao gravar a chave no clone." & goto :parar )
 call :L "OK: chave desta maquina gravada no clone."
 

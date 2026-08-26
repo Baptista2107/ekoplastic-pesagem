@@ -9,15 +9,17 @@ REM  RODA NO MINI PC, DENTRO DA PASTA NOVA - a que veio do clone.
 REM  EXIGE O SISTEMA PARADO. E' a unica parte com janela de parada.
 REM  Nada e' apagado: a pasta antiga continua inteira e e' a volta.
 REM ===================================================================
-REM  A pasta de producao e' localizada por curinga de proposito: o nome
-REM  real tem acento, e arquivo .bat sem BOM e' lido pela codepage ANSI
-REM  do Windows, o que corromperia o caminho. "PROJETO*" evita o acento.
-set "PRODUCAO="
-for /d %%D in ("%USERPROFILE%\Desktop\PROJETO*") do set "PRODUCAO=%%D"
-if not defined PRODUCAO for /d %%D in ("%USERPROFILE%\OneDrive\Desktop\PROJETO*") do set "PRODUCAO=%%D"
-REM  Se nenhum dos dois achar, escreva o caminho a mao na linha abaixo,
-REM  salvando este arquivo como UTF-8 COM BOM:
-REM  set "PRODUCAO=C:\caminho\da\pasta"
+REM  A pasta de producao chega por tres caminhos, nesta ordem:
+REM   1. arrastada para cima do icone deste .bat  -> forma mais segura,
+REM      porque o Explorer entrega o caminho pronto e o acento do nome
+REM      "PROJETO AUTOMACAO" nao passa por interpretacao de texto
+REM   2. deteccao por curinga "PROJETO*", que evita digitar o acento
+REM   3. escrita a mao, se as duas acima falharem
+set "PRODUCAO=%~1"
+if defined PRODUCAO goto :tem_producao
+for /d %%D in (%USERPROFILE%\Desktop\PROJETO*) do set "PRODUCAO=%%D"
+if not defined PRODUCAO for /d %%D in (%USERPROFILE%\OneDrive\Desktop\PROJETO*) do set "PRODUCAO=%%D"
+:tem_producao
 REM ===================================================================
 
 set "LOG=%~dp0OUTPUT_TROCA_PARTE2.TXT"
@@ -37,10 +39,15 @@ call :L "------------------------------------------------------------"
 call :L "FASE 0 - VERIFICACOES"
 call :L "------------------------------------------------------------"
 if not exist "%~dp0.git" ( call :L "FALHA: rode este .bat DENTRO da pasta clonada." & goto :parar )
+if not defined PRODUCAO (
+  call :L "FALHA: nao localizei a pasta de producao."
+  call :L "Arraste a pasta de producao para cima do icone deste .bat."
+  goto :parar
+)
 if not exist "%PRODUCAO%\server.js" (
-  call :L "FALHA: nao achei a pasta de producao em:"
+  call :L "FALHA: nao ha server.js em:"
   call :L "   %PRODUCAO%"
-  call :L "Abra este .bat no bloco de notas e corrija a linha PRODUCAO."
+  call :L "Arraste a pasta CERTA para cima do icone deste .bat."
   goto :parar
 )
 if not exist "%REF%" (
@@ -63,6 +70,22 @@ if not errorlevel 1 (
   goto :parar
 )
 call :L "OK: sistema parado."
+call :L ""
+echo.
+echo ============================================================
+echo  CONFIRME OS DOIS CAMINHOS ANTES DE SEGUIR
+echo.
+echo   DE ONDE vem o banco:
+echo   %PRODUCAO%
+echo.
+echo   PARA ONDE vai:
+echo   %~dp0
+echo.
+echo  Nada foi copiado ainda. A pasta de origem so' e' LIDA.
+echo  Pressione uma tecla para copiar, ou feche para cancelar.
+echo ============================================================
+pause >nul
+call :L "Origem confirmada: %PRODUCAO%"
 call :L ""
 
 REM ---------- FASE 1 - o banco ----------
@@ -135,6 +158,25 @@ echo ------------------------------------------------------------
 curl -s "%URLSAUDE%"
 echo.
 echo ------------------------------------------------------------
+call :L ""
+call :L "------------------------------------------------------------"
+call :L "O SISTEMA SUJOU A PASTA AO SUBIR?"
+call :L "------------------------------------------------------------"
+call :L "O server.js reescreve o enviar_raw.ps1 no boot se os bytes nao"
+call :L "baterem. Se isso acontecer, a pasta fica suja para sempre e o"
+call :L "ATUALIZAR.bat passa a recusar toda atualizacao. E' o defeito de"
+call :L "fim de linha que foi corrigido no .gitattributes - aqui e' onde"
+call :L "se confirma que a correcao pegou, na maquina de verdade."
+set "SUJOU=0"
+for /f %%N in ('git status --porcelain ^| find /c /v ""') do set "SUJOU=%%N"
+git status --porcelain >>"%LOG%" 2>&1
+if "%SUJOU%"=="0" (
+  call :L "  OK: pasta continua limpa depois do boot."
+) else (
+  call :L "  ATENCAO: %SUJOU% arquivo mudou sozinho ao subir o sistema."
+  call :L "  Veja a lista no relatorio e me avise ANTES de trocar o atalho."
+  git status --short
+)
 call :L ""
 call :L "  modulo_serial: true  = o serialport carregou"
 call :L "  modulo_serial: false = modulo ausente, balanca desativada"
