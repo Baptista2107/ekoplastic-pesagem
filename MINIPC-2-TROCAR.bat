@@ -22,7 +22,7 @@ REM ===================================================================
 
 set "LOG=%~dp0OUTPUT_TROCA_PARTE2.TXT"
 set "URLSAUDE=http://localhost:3000/healthcheck"
-set "REF=%~dp0_referencia-troca.txt"
+set "REF=%~dp0OUTPUT_REFERENCIA_TROCA.TXT"
 
 > "%LOG%" echo ============================================================
 call :L "  TROCA DE PASTAS - PARTE 2 - TROCAR"
@@ -44,7 +44,7 @@ if not exist "%PRODUCAO%\server.js" (
   goto :parar
 )
 if not exist "%REF%" (
-  call :L "FALHA: falta o _referencia-troca.txt. Rode a PARTE 1 antes."
+  call :L "FALHA: falta o OUTPUT_REFERENCIA_TROCA.TXT. Rode a PARTE 1 antes."
   goto :parar
 )
 call :L "OK: pasta clonada, producao localizada, referencia presente."

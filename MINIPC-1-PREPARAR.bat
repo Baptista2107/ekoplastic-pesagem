@@ -41,7 +41,11 @@ git --version >>"%LOG%" 2>&1
 if errorlevel 1 ( call :L "FALHA: Git nao respondeu." & goto :parar )
 where node >nul 2>&1
 if errorlevel 1 ( call :L "FALHA: Node nao esta no PATH." & goto :parar )
-call :L "OK: pasta de producao, Git e Node."
+where ssh-keygen >nul 2>&1
+if errorlevel 1 ( call :L "FALHA: ssh-keygen nao esta no PATH - sem ele nao da' para gerar a chave." & goto :parar )
+where curl >nul 2>&1
+if errorlevel 1 ( call :L "FALHA: curl nao esta no PATH." & goto :parar )
+call :L "OK: pasta de producao, Git, Node, ssh-keygen e curl."
 
 if exist "%DESTINO%\.git" (
   call :L "FALHA: ja existe um clone em %DESTINO%"
@@ -151,6 +155,29 @@ if not exist "%DESTINO%\node_modules\serialport\package.json" (
 )
 call :L "OK: serialport presente no clone."
 
+REM  DEFEITO CORRIGIDO: sem isto, o clone so' autentica enquanto o
+REM  GIT_SSH_COMMAND desta janela existir. Na proxima vez - no
+REM  ATUALIZAR.bat - o git tentaria a chave padrao, que nao e' esta, e
+REM  o fetch falharia com "Permission denied". Gravado no .git/config
+REM  do clone, vale para sempre. Aspas simples porque quem interpreta
+REM  esta linha e' o git, e ele entende aspas simples em toda plataforma.
+git -C "%DESTINO%" config core.sshCommand "ssh -i '%CHAVE%' -o IdentitiesOnly=yes" >>"%LOG%" 2>&1
+if errorlevel 1 ( call :L "FALHA ao gravar a chave no clone." & goto :parar )
+call :L "OK: chave desta maquina gravada no clone."
+
+call :L "Testando se o clone fala com o GitHub SOZINHO, sem esta janela:"
+setlocal
+set "GIT_SSH_COMMAND="
+git -C "%DESTINO%" fetch origin >>"%LOG%" 2>&1
+if errorlevel 1 (
+  endlocal
+  call :L "FALHA: o clone nao autentica por conta propria."
+  call :L "O ATUALIZAR.bat falharia depois. NAO prossiga."
+  goto :parar
+)
+endlocal
+call :L "OK: o clone autentica sozinho - o ATUALIZAR.bat vai funcionar."
+
 REM ---------- FASE 5 - runtime que nao depende de parar ----------
 call :L ""
 call :L "------------------------------------------------------------"
@@ -163,8 +190,25 @@ call :L "O banco, o token do Bling e os logs ficam para a PARTE 2 -"
 call :L "eles mudam a todo instante e so' podem ser copiados com o"
 call :L "sistema parado."
 
-copy /y "%REF%" "%DESTINO%\_referencia-troca.txt" >nul 2>&1
-call :L "Referencia salva em %DESTINO%\_referencia-troca.txt"
+copy /y "%REF%" "%DESTINO%\OUTPUT_REFERENCIA_TROCA.TXT" >nul 2>&1
+call :L "Referencia salva em %DESTINO%\OUTPUT_REFERENCIA_TROCA.TXT"
+
+call :L ""
+call :L "------------------------------------------------------------"
+call :L "CONFERENCIA FINAL - o clone ficou limpo?"
+call :L "------------------------------------------------------------"
+call :L "O ATUALIZAR.bat se recusa a rodar com arquivo estranho na pasta."
+call :L "Tudo que copiamos para ca' tem que estar coberto pelo .gitignore."
+set "SUJO=0"
+for /f %%N in ('git -C "%DESTINO%" status --porcelain ^| find /c /v ""') do set "SUJO=%%N"
+git -C "%DESTINO%" status --porcelain >>"%LOG%" 2>&1
+if "%SUJO%"=="0" (
+  call :L "OK: clone limpo. O ATUALIZAR.bat vai aceitar esta pasta."
+) else (
+  call :L "ATENCAO: %SUJO% arquivo aparece como alteracao no clone."
+  call :L "Veja a lista no relatorio - algum arquivo copiado escapou do"
+  call :L ".gitignore e vai travar o ATUALIZAR.bat depois."
+)
 
 call :L ""
 call :L "------------------------------------------------------------"
