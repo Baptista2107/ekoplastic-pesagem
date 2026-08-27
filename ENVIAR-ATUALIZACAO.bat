@@ -16,9 +16,16 @@ REM  A porta 3000 do sistema escuta so' em 127.0.0.1 - de fora da propria
 REM  maquina ela nunca responde. Quem atende a rede e' a 3443, a mesma
 REM  que o celular usa, liberada no firewall pelo LIBERAR-ACESSO-CELULAR.bat.
 REM  O certificado e' auto-assinado, por isso o curl vai com -k.
-set "MINIPC=100.82.224.60"
+set "MINIPC="
 REM  exemplo:  set "MINIPC=192.168.3.42"
+REM
+REM  Quantas vezes insistir na FASE 5 quando a estacao estiver ocupada,
+REM  esperando 10s entre uma e outra. 30 = 5 minutos. Suba este numero
+REM  se quiser deixar o script cacando a janela por mais tempo
+REM  (180 = 30 minutos), por exemplo na virada de turno.
+set "TENTATIVAS=30"
 REM ===================================================================
+if not defined TENTATIVAS set "TENTATIVAS=30"
 set "LOG=%~dp0OUTPUT_ENVIAR_ATUALIZACAO.TXT"
 
 > "%LOG%" echo ============================================================
@@ -129,8 +136,24 @@ del "%SAIDA%" >nul 2>&1
 
 REM  Pergunta e resposta ficam FORA de bloco entre parenteses: variavel
 REM  lida no mesmo bloco onde foi setada nao expande sem delayed expansion.
+if not "%RCT%"=="0" goto :testes_falharam
+
+REM  Segundo portao: a janela segura da atualizacao remota. Leva uns 30s
+REM  porque ele espera o silencio de verdade e reinicia o servidor de
+REM  teste para provar que a sessao aberta sobrevive com as bipadas.
+if not exist "testes\janela-atualizacao.js" goto :testes_ok
+echo.
+echo  Rodando o teste da janela de atualizacao. Leva uns 30 segundos...
+echo.
+set "SAIDA2=%TEMP%\eko_testes2.tmp"
+node testes\janela-atualizacao.js > "%SAIDA2%" 2>&1
+set "RCT=%ERRORLEVEL%"
+type "%SAIDA2%"
+type "%SAIDA2%" >>"%LOG%"
+del "%SAIDA2%" >nul 2>&1
 if "%RCT%"=="0" goto :testes_ok
 
+:testes_falharam
 call :L ""
 call :L "TESTES FALHARAM - codigo de saida %RCT%."
 echo.
@@ -279,9 +302,18 @@ echo ------------------------------------------------------------
 echo.
 echo  Aplicar AGORA o commit %SHA% nesta estacao?
 echo.
-echo  O servidor vai encerrar e voltar em alguns segundos. A tela
-echo  do operador fecha e reabre sozinha. Se houver sessao aberta,
-echo  a propria estacao recusa e nada acontece.
+echo  Sessao aberta NAO impede mais. A Extrusao roda 24h e nunca
+echo  fecharia sessao. Quem impede e' trabalho no ar: bobina
+echo  impressa esperando bipe, sessao aberta ainda sem nenhuma
+echo  bipada, ou movimento nos ultimos segundos.
+echo.
+echo  Estando ocupada, eu fico tentando a cada 10s por ate 5 min e
+echo  aplico no primeiro momento de silencio. Se nao aparecer
+echo  janela, nada acontece na estacao.
+echo.
+echo  Quando aplicar, o servidor encerra e volta em alguns segundos.
+echo  A tela do operador fecha e reabre sozinha. As sessoes abertas
+echo  continuam abertas, com tudo que ja foi bipado.
 echo.
 set "APLICAR="
 set /p "APLICAR=Digite S para aplicar, ou ENTER para deixar para depois: "
@@ -300,32 +332,72 @@ if not defined SENHA (
   goto :fim_ok
 )
 
+call :L "Disparando a atualizacao. Se a estacao estiver ocupada, insisto a"
+call :L "cada 10s, ate' %TENTATIVAS% vezes, ate' aparecer um momento de silencio."
+set "RESP=%TEMP%\eko_mini_resp.tmp"
+set /a _t=0
+
+:tentar_aplicar
+set /a _t+=1
 REM  O corpo vai por arquivo: montar JSON com aspas na linha de comando
 REM  do cmd e' fonte garantida de dor de cabeca.
 > "%TMPJ%" echo {"senha":"%SENHA%"}
-set "SENHA="
-call :L "Disparando a atualizacao..."
-curl -s -k --max-time 15 -X POST "%URLMINI%/sistema/atualizar" -H "Content-Type: application/json" -d "@%TMPJ%" > "%TEMP%\eko_mini_resp.tmp" 2>nul
+curl -s -k --max-time 25 -X POST "%URLMINI%/sistema/atualizar" -H "Content-Type: application/json" -d "@%TMPJ%" > "%RESP%" 2>nul
 del "%TMPJ%" >nul 2>&1
-type "%TEMP%\eko_mini_resp.tmp" >>"%LOG%"
+type "%RESP%" >>"%LOG%"
 echo.
-echo  Resposta da estacao:
-type "%TEMP%\eko_mini_resp.tmp"
+echo  Tentativa %_t% de %TENTATIVAS% - resposta da estacao:
+type "%RESP%"
 echo.
 REM  O "." no lugar da aspa e' proposital: dentro de findstr /C: nao ha
 REM  escape de barra invertida, entao \" chegaria literal e nunca casaria.
 REM  Com /R, o ponto casa a aspa sem precisar escrever a aspa.
-findstr /R /C:"ok.:true" "%TEMP%\eko_mini_resp.tmp" >nul 2>&1
-if errorlevel 1 (
-  call :L ""
-  call :L "A ESTACAO RECUSOU. Nada foi alterado la'."
-  call :L "Motivos comuns: senha de supervisor errada, ou sessao aberta"
-  call :L "no turno. A resposta acima diz qual foi."
-  del "%TEMP%\eko_mini_resp.tmp" >nul 2>&1
-  call :L "=== FIM DO DIAGNOSTICO ==="
-  goto :fim_ok
-)
-del "%TEMP%\eko_mini_resp.tmp" >nul 2>&1
+findstr /R /C:"ok.:true" "%RESP%" >nul 2>&1
+if not errorlevel 1 goto :aplicar_aceito
+
+REM  So' insistimos quando a recusa foi por ESTACAO OCUPADA. Duas marcas,
+REM  porque a estacao pode ainda estar com o server.js antigo:
+REM    tente_de_novo -> versao nova, janela fechada agora
+REM    abertas       -> as duas versoes listam as sessoes abertas
+REM  Senha errada e falha de verdade nao trazem nenhuma das duas.
+findstr /C:"tente_de_novo" "%RESP%" >nul 2>&1
+if not errorlevel 1 goto :aplicar_insistir
+findstr /C:"abertas" "%RESP%" >nul 2>&1
+if errorlevel 1 goto :aplicar_recusado
+
+:aplicar_insistir
+if %_t% geq %TENTATIVAS% goto :aplicar_sem_janela
+echo  Estacao ocupada. Tento de novo em 10 segundos...
+timeout /t 10 /nobreak >nul
+goto :tentar_aplicar
+
+:aplicar_recusado
+set "SENHA="
+call :L ""
+call :L "A ESTACAO RECUSOU. Nada foi alterado la'."
+call :L "Motivo mais comum: senha de supervisor errada. A resposta"
+call :L "acima diz qual foi."
+del "%RESP%" >nul 2>&1
+del "%TMPHC%" >nul 2>&1
+call :L "=== FIM DO DIAGNOSTICO ==="
+goto :fim_ok
+
+:aplicar_sem_janela
+set "SENHA="
+call :L ""
+call :L "NAO APARECEU JANELA em %TENTATIVAS% tentativas - a estacao ficou"
+call :L "ocupada o tempo todo. NADA foi alterado la': ela segue na versao"
+call :L "antiga, com as sessoes e as etiquetas intactas."
+call :L "O GitHub ja esta atualizado. Rode este .bat de novo mais tarde"
+call :L "que ele vai direto para a FASE 5."
+del "%RESP%" >nul 2>&1
+del "%TMPHC%" >nul 2>&1
+call :L "=== FIM DO DIAGNOSTICO ==="
+goto :fim_ok
+
+:aplicar_aceito
+set "SENHA="
+del "%RESP%" >nul 2>&1
 
 call :L "Aceito. Esperando a estacao voltar com o commit %SHA% ..."
 echo.

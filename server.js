@@ -3632,10 +3632,103 @@ async function enviarBlingIndividualExtrusao(etiquetaId) {
 }
 
 // ════════════════════════════════════════════════════════════════════
+//  OPERAÇÕES EM VOO — usado só pela atualização remota
+// ────────────────────────────────────────────────────────────────────
+//  Conta quantas requisições de ESCRITA estão sendo atendidas neste
+//  instante e quando terminou a última. Isso inclui o envio ao Bling,
+//  porque ele acontece dentro do próprio POST /sessoes/:id/finalizar.
+//  Nada disso altera o comportamento das rotas: é só um contador.
+// ════════════════════════════════════════════════════════════════════
+let OPS_EM_VOO   = 0;
+let ULTIMA_OP_MS = 0;
+
+// ════════════════════════════════════════════════════════════════════
+//  JANELA SEGURA PARA ATUALIZAR   (usada por POST /sistema/atualizar)
+// ────────────────────────────────────────────────────────────────────
+//  A trava antiga era "nenhuma sessão aberta". Numa fábrica que roda
+//  24h a Extrusão nunca fecha sessão, então aquilo era impossível de
+//  satisfazer. O que precisa mesmo de proteção é outra coisa:
+//
+//   1. NADA IMPRESSO SEM BIPAR. Uma etiqueta em 'aguardando_bipe' é
+//      uma bobina física esperando o operador. Reiniciar aí atrapalha
+//      a operação.
+//
+//   2. A LIMPEZA DE STARTUP. limparSessoesOrfas(), ao subir, fecha
+//      toda sessão aberta que NÃO tenha nenhuma etiqueta em
+//      ('aguardando_bipe','bipada'). Por isso só liberamos a
+//      atualização quando CADA sessão aberta já tem ao menos uma
+//      etiqueta nesse conjunto: aí o NOT EXISTS dela dá falso e a
+//      sessão atravessa o reinício inteira, com tudo que foi bipado.
+//
+//   3. SILÊNCIO. Nada impresso, bipado ou finalizado nos últimos
+//      QUIETO_S segundos.
+//
+//   4. NADA EM VOO. Zero requisições de escrita sendo atendidas.
+//
+//  Falhando qualquer uma delas, devolve o motivo e NÃO atualiza.
+//  Nenhuma etiqueta é apagada, cancelada ou perdida em nenhum caso:
+//  esta função só LÊ o banco.
+// ════════════════════════════════════════════════════════════════════
+function avaliarJanelaAtualizacao(quietoS) {
+  const agora = Date.now();
+
+  const abertas = db.prepare(
+    `SELECT id, tipo, turno_codigo, operador, maquina, inicio
+       FROM sessoes WHERE fim IS NULL ORDER BY inicio`
+  ).all();
+
+  // ── 1 e 2: estado de cada sessão aberta ──
+  const semBipada = [];
+  let aguardando  = 0;
+  for (const s of abertas) {
+    const c = db.prepare(
+      `SELECT
+         SUM(CASE WHEN status = 'aguardando_bipe' THEN 1 ELSE 0 END) AS pendentes,
+         SUM(CASE WHEN status IN ('aguardando_bipe','bipada') THEN 1 ELSE 0 END) AS vivas
+       FROM etiquetas WHERE sessao_id = ?`
+    ).get(s.id);
+    aguardando += (c && c.pendentes) || 0;
+    if (((c && c.vivas) || 0) === 0) semBipada.push(s);
+  }
+
+  if (aguardando > 0) {
+    return { pode: false, regra: 'aguardando_bipe', abertas,
+      motivo: `Há ${aguardando} etiqueta(s) impressa(s) esperando bipe. Bipe ou cancele antes de atualizar.` };
+  }
+  if (semBipada.length) {
+    return { pode: false, regra: 'sessao_sem_bipada', abertas, sessoes_sem_bipada: semBipada,
+      motivo: `Há ${semBipada.length} sessão(ões) aberta(s) sem nenhuma etiqueta bipada — o reinício fecharia essa(s) sessão(ões). Espere a primeira bipagem.` };
+  }
+
+  // ── 3: silêncio ──
+  const u = db.prepare(`SELECT MAX(hora_impressao) AS imp, MAX(hora_bipagem) AS bip FROM etiquetas`).get();
+  const f = db.prepare(`SELECT MAX(fim) AS fim FROM sessoes`).get();
+  let ultimoMs = ULTIMA_OP_MS;
+  for (const t of [u && u.imp, u && u.bip, f && f.fim]) {
+    if (!t) continue;
+    const ms = Date.parse(t);
+    if (!isNaN(ms) && ms > ultimoMs) ultimoMs = ms;
+  }
+  const paradoS = ultimoMs ? Math.round((agora - ultimoMs) / 1000) : 999999;
+  if (paradoS < quietoS) {
+    return { pode: false, regra: 'movimento', abertas, parado_s: paradoS, silencio_exigido_s: quietoS,
+      motivo: `A estação teve movimento há ${paradoS}s. Preciso de ${quietoS}s de silêncio para atualizar com segurança.` };
+  }
+
+  // ── 4: nada em voo ──
+  if (OPS_EM_VOO > 0) {
+    return { pode: false, regra: 'em_voo', abertas, em_voo: OPS_EM_VOO,
+      motivo: `Há ${OPS_EM_VOO} operação(ões) sendo atendida(s) agora mesmo.` };
+  }
+
+  return { pode: true, regra: 'ok', abertas, parado_s: paradoS, motivo: 'janela aberta' };
+}
+
+// ════════════════════════════════════════════════════════════════════
 //  ROTAS — Servidor principal (porta 3000)
 // ════════════════════════════════════════════════════════════════════
 
-const requestHandler = async (req, res) => {
+const requestHandlerBase = async (req, res) => {
   const parsed = url.parse(req.url, true);
   const pathname = parsed.pathname;
 
@@ -3929,10 +4022,17 @@ const requestHandler = async (req, res) => {
     // reinicia o node — ele vê a bandeira, aplica o git e sobe de novo.
     // Isso evita SSH, tarefa agendada e credencial de Windows guardada.
     //
-    // Três travas, nesta ordem:
+    // Travas, nesta ordem:
     //   1. senha de supervisor (a mesma da trava de saída das telas)
-    //   2. nenhuma sessão aberta — não se reinicia por cima de operação
-    //   3. o próprio git: merge --ff-only nunca inventa merge
+    //   2. janela segura — ver avaliarJanelaAtualizacao() lá em cima:
+    //      nada esperando bipe, toda sessão aberta já com etiqueta viva
+    //      (à prova da limpeza de startup), silêncio e nada em voo
+    //   3. segunda conferência depois de uma pausa: se um comando da
+    //      operação chegar nesse meio-tempo, o operador ganha
+    //   4. o próprio git: merge --ff-only nunca inventa merge
+    //
+    //  Sessão aberta NÃO impede mais a atualização — a Extrusão roda
+    //  24h e nunca teria sessão fechada. O que impede é trabalho no ar.
     if (pathname === '/sistema/atualizar' && req.method === 'POST') {
       let body;
       try { body = await lerBodyJson(req); } catch(e) { return jsonErr(res, 400, e.message); }
@@ -3944,35 +4044,53 @@ const requestHandler = async (req, res) => {
         return jsonErr(res, 401, 'Senha de supervisor incorreta.');
       }
 
-      const abertas = db.prepare(
-        `SELECT id, tipo, turno_codigo, operador, maquina, inicio
-           FROM sessoes WHERE fim IS NULL ORDER BY inicio`
-      ).all();
-      if (abertas.length) {
-        logW('sistema', `Atualização recusada: ${abertas.length} sessão(ões) aberta(s)`);
+      const QUIETO_S = Math.max(10, parseInt(configGet('atualizar_silencio_s', '45'), 10) || 45);
+
+      const janela = avaliarJanelaAtualizacao(QUIETO_S);
+      if (!janela.pode) {
+        logW('sistema', `Atualização adiada: ${janela.motivo}`);
+        return jsonErr(res, 409, janela.motivo, { janela, tente_de_novo: true });
+      }
+
+      // Pausa curta e segunda conferência. Se qualquer comando da
+      // operação chegar aqui no meio, ele ganha: a atualização é
+      // adiada e NADA acontece na estação.
+      await new Promise(r => setTimeout(r, 1200));
+      const confirma = avaliarJanelaAtualizacao(QUIETO_S);
+      if (!confirma.pode) {
+        logW('sistema', `Atualização adiada na conferência final: ${confirma.motivo}`);
         return jsonErr(res, 409,
-          `Há ${abertas.length} sessão(ões) aberta(s). Finalize ou cancele antes de atualizar.`,
-          { abertas });
+          'Chegou operação bem na hora — atualização adiada. Nada foi alterado na estação.',
+          { janela: confirma, tente_de_novo: true });
       }
 
       const pend = db.prepare(
         `SELECT COUNT(*) AS n FROM sessoes WHERE bling_status IN ('pendente','pendente_config','erro')`
       ).get().n;
 
+      // A bandeira é gravada ANTES de responder: se não der para
+      // gravar, ninguém encerra e a estação segue exatamente como está.
+      try {
+        fs.writeFileSync(path.join(__dirname, 'eko-atualizar.flag'), String(Date.now()));
+      } catch (e) {
+        logE('sistema', 'Não consegui gravar eko-atualizar.flag — atualização cancelada', { erro: e.message });
+        return jsonErr(res, 500, 'Não consegui gravar a bandeira de atualização. Nada foi alterado.');
+      }
+
       jsonOk(res, {
         atualizando: true,
         versao_atual: VERSION,
+        commit_atual: commitAtual(),
         pendentes_bling: pend,
-        aviso: 'O servidor vai encerrar e voltar em alguns segundos. A tela reabre sozinha.',
+        parado_s: confirma.parado_s,
+        sessoes_abertas: confirma.abertas.length,
+        sessoes_preservadas: confirma.abertas.map(s => ({
+          id: s.id, tipo: s.tipo, turno_codigo: s.turno_codigo, operador: s.operador,
+        })),
+        aviso: 'O servidor vai encerrar e voltar em alguns segundos. As sessões abertas continuam abertas, com tudo que já foi bipado.',
       });
-      logI('sistema', 'Atualização remota autorizada — encerrando para o INICIAR.bat aplicar o git.');
-      setTimeout(() => {
-        try { fs.writeFileSync(path.join(__dirname, 'eko-atualizar.flag'), String(Date.now())); } catch (e) {
-          logE('sistema', 'Não consegui gravar eko-atualizar.flag — abortando', { erro: e.message });
-          return;   // sem a bandeira, NÃO encerra: melhor seguir rodando
-        }
-        setTimeout(() => process.exit(0), 500);
-      }, 250);
+      logI('sistema', `Atualização remota autorizada — ${confirma.abertas.length} sessão(ões) aberta(s) preservada(s); estação parada há ${confirma.parado_s}s.`);
+      setTimeout(() => process.exit(0), 400);
       return;
     }
 
@@ -6067,6 +6185,24 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
     if (!res.headersSent) jsonErr(res, 500, 'Erro interno', { detalhe: e.message });
   }
 };
+
+// Envelope do handler: só conta operação de escrita em voo. Não muda
+// rota nenhuma — chama o handler original e devolve o que ele devolver.
+const requestHandler = async (req, res) => {
+  const metodo  = (req.method || 'GET').toUpperCase();
+  const escreve = metodo === 'POST' || metodo === 'PUT' || metodo === 'PATCH' || metodo === 'DELETE';
+  let conta = false;
+  try {
+    conta = escreve && url.parse(req.url, true).pathname !== '/sistema/atualizar';
+  } catch(e) { conta = escreve; }
+  if (conta) OPS_EM_VOO++;
+  try {
+    return await requestHandlerBase(req, res);
+  } finally {
+    if (conta) { OPS_EM_VOO--; ULTIMA_OP_MS = Date.now(); }
+  }
+};
+
 const server = http.createServer(requestHandler);
 
 // ════════════════════════════════════════════════════════════════════

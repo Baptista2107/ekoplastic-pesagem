@@ -36,8 +36,13 @@ backups/
 *.log
 npm-debug.log*
 
-# --- Flag de encerramento criada pela tela - server.js /sistema/encerrar ---
+# --- Bandeiras criadas pelo server.js em tempo de execucao ---
+# eko-encerrar.flag  : /sistema/encerrar (botao de sair da tela)
+# eko-atualizar.flag : /sistema/atualizar (atualizacao remota) - o
+#                      INICIAR.bat apaga assim que a ve', mas se o
+#                      processo cair antes ela nao pode virar commit.
 eko-encerrar.flag
+eko-atualizar.flag
 
 # --- Relatorios dos scripts de manutencao - padrao OUTPUT_<NOME>.TXT ---
 SETUP-GIT-LOG.txt
