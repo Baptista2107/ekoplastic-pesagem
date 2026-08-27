@@ -225,7 +225,7 @@ h1 {
   </div>
 
   <div class="rodape">
-    <span>Servidor em <b id="ver-host">localhost:3000</b> · Banco: <b id="ver-db">— etiquetas, — sessões</b></span>
+    <span>Servidor em <b id="ver-host">localhost:3000</b> · Banco: <b id="ver-db">— etiquetas, — sessões</b> · Versão: <b id="ver-codigo">—</b></span>
     <a href="#" onclick="ekoEntrarProtegido('/manutencao.html');return false;" class="rodape-link">⚙ OPÇÕES 🔒</a>
   </div>
 </main>
@@ -287,6 +287,11 @@ async function atualizarStatus() {
     }
 
     document.getElementById('ver-db').textContent = `${d.banco.etiquetas} etiquetas, ${d.banco.sessoes} sessões`;
+    // Versão do código que ESTA estação está rodando. O commit vem do
+    // /healthcheck (lido do .git pelo server.js). Serve para conferir,
+    // sem ferramenta nenhuma, se uma atualização chegou aqui.
+    document.getElementById('ver-codigo').textContent =
+      d.versao + (d.commit ? ' \u00b7 ' + d.commit : '');
   } catch(e) {
     document.getElementById('dot-bling').className = 'dot off';
     document.getElementById('txt-bling').textContent = 'Servidor offline';
