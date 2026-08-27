@@ -364,30 +364,29 @@ Say ''
 Say ('Endereco da estacao: ' + $escolha.Ip)
 Say ''
 
-# ---------- [6] gravar no ENVIAR-ATUALIZACAO.bat ----------
-$bat = Join-Path $raiz 'ENVIAR-ATUALIZACAO.bat'
-if (-not (Test-Path $bat)) {
-  Say 'Nao achei o ENVIAR-ATUALIZACAO.bat nesta pasta.'
-  Say ('Anote o endereco e escreva na mao a linha:   set "MINIPC=' + $escolha.Ip + '"')
-  Say '=== FIM ==='
-  return
-}
+# ---------- [6] gravar o endereco em estacao.txt ----------
+#  Fica num arquivo separado de proposito: o ENVIAR-ATUALIZACAO.bat le
+#  ele e da preferencia a ele. Assim, quando o .bat for atualizado, a
+#  sua configuracao nao vai junto. O estacao.txt fica fora do Git.
+$cfg = Join-Path $raiz 'estacao.txt'
 
-$linhas = Get-Content -Path $bat
-$atual  = ''
-foreach ($l in $linhas) {
-  if ($l -match '^\s*set\s+"MINIPC=(.*)"\s*$') { $atual = $matches[1]; break }
+$atual = ''
+if (Test-Path $cfg) {
+  foreach ($l in (Get-Content -Path $cfg)) {
+    $t = ($l + '').Trim()
+    if ($t -and -not $t.StartsWith('#')) { $atual = $t; break }
+  }
 }
 if ($atual -eq $escolha.Ip) {
-  Say 'O ENVIAR-ATUALIZACAO.bat ja esta com esse endereco. Nada a fazer.'
+  Say 'O estacao.txt ja esta com esse endereco. Nada a fazer.'
   Say '=== FIM ==='
   return
 }
 
-if ($atual) { Say ('Hoje o ENVIAR-ATUALIZACAO.bat aponta para: ' + $atual) }
-else        { Say  'Hoje a linha MINIPC do ENVIAR-ATUALIZACAO.bat esta vazia.' }
+if ($atual) { Say ('Hoje o estacao.txt aponta para: ' + $atual) }
+else        { Say  'Ainda nao existe estacao.txt nesta pasta.' }
 Say ''
-$g = Read-Host ('Gravar ' + $escolha.Ip + ' nessa linha? (S para gravar, ENTER para nao)')
+$g = Read-Host ('Gravar ' + $escolha.Ip + ' no estacao.txt? (S para gravar, ENTER para nao)')
 Add-Content -Path $log -Value ('gravar: ' + $g) -Encoding ASCII
 if (-not $g -or $g.ToUpper() -ne 'S') {
   Say 'Nada foi alterado.'
@@ -395,46 +394,35 @@ if (-not $g -or $g.ToUpper() -ne 'S') {
   return
 }
 
-$novo   = @()
-$trocou = $false
-foreach ($l in $linhas) {
-  if (-not $trocou -and ($l -match '^\s*set\s+"MINIPC=')) {
-    $novo  += ('set "MINIPC=' + $escolha.Ip + '"')
-    $trocou = $true
-  } else {
-    $novo += $l
-  }
-}
-if (-not $trocou) {
-  Say 'Nao achei a linha MINIPC dentro do arquivo. Nada foi alterado.'
-  Say ('Escreva na mao, no topo dele:   set "MINIPC=' + $escolha.Ip + '"')
-  Say '=== FIM ==='
-  return
-}
-
 try {
-  Set-Content -Path $bat -Value $novo -Encoding ASCII -ErrorAction Stop
+  Set-Content -Path $cfg -Encoding ASCII -ErrorAction Stop -Value @(
+    '# Endereco da estacao de pesagem, lido pelo ENVIAR-ATUALIZACAO.bat.',
+    '# Linhas com # sao ignoradas. Fora do Git de proposito.',
+    ('# Gravado por DESCOBRIR-MINIPC.bat em ' + (Get-Date).ToString('dd/MM/yyyy HH:mm')),
+    $escolha.Ip
+  )
 } catch {
   Say ('Nao consegui gravar: ' + $_.Exception.Message)
-  Say ('Escreva na mao, no topo dele:   set "MINIPC=' + $escolha.Ip + '"')
+  Say ('Crie o arquivo estacao.txt nesta pasta com uma linha:   ' + $escolha.Ip)
   Say '=== FIM ==='
   return
 }
 
 # confere o que ficou gravado
 $conf = ''
-foreach ($l in (Get-Content -Path $bat)) {
-  if ($l -match '^\s*set\s+"MINIPC=(.*)"\s*$') { $conf = $matches[1]; break }
+foreach ($l in (Get-Content -Path $cfg)) {
+  $t = ($l + '').Trim()
+  if ($t -and -not $t.StartsWith('#')) { $conf = $t; break }
 }
 if ($conf -eq $escolha.Ip) {
-  Say ('GRAVADO. A linha agora e:   set "MINIPC=' + $conf + '"')
+  Say ('GRAVADO em estacao.txt:   ' + $conf)
   Say ''
-  Say 'Proximo passo: rode o ENVIAR-ATUALIZACAO.bat. Ele vai publicar'
-  Say 'essa mudanca de linha no GitHub e, no fim, perguntar se voce quer'
-  Say 'aplicar na estacao. Responda S.'
+  Say 'Proximo passo: rode o ENVIAR-ATUALIZACAO.bat. Ele le esse arquivo'
+  Say 'sozinho e, havendo algo a enviar, oferece aplicar na estacao.'
+  Say 'Nao havendo nada novo, ele vai direto para a FASE 5.'
 } else {
-  Say 'A gravacao nao conferiu. Abra o arquivo e escreva na mao:'
-  Say ('    set "MINIPC=' + $escolha.Ip + '"')
+  Say 'A gravacao nao conferiu. Crie o estacao.txt na mao com a linha:'
+  Say ('    ' + $escolha.Ip)
 }
 Say ''
 Say '=== FIM ==='

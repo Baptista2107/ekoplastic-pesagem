@@ -44,6 +44,11 @@ npm-debug.log*
 eko-encerrar.flag
 eko-atualizar.flag
 
+# --- Config local desta maquina - endereco da estacao de pesagem ---
+# Escrito pelo DESCOBRIR-MINIPC.bat e lido pelo ENVIAR-ATUALIZACAO.bat.
+# Nao versionar: cada PC aponta para a sua estacao.
+estacao.txt
+
 # --- Relatorios dos scripts de manutencao - padrao OUTPUT_<NOME>.TXT ---
 SETUP-GIT-LOG.txt
 OUTPUT_*.TXT

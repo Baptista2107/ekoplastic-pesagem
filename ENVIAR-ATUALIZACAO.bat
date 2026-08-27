@@ -26,6 +26,13 @@ REM  (180 = 30 minutos), por exemplo na virada de turno.
 set "TENTATIVAS=30"
 REM ===================================================================
 if not defined TENTATIVAS set "TENTATIVAS=30"
+
+REM  O arquivo estacao.txt, se existir nesta pasta, MANDA MAIS que a
+REM  linha MINIPC acima. E' nele que o DESCOBRIR-MINIPC.bat grava o
+REM  endereco. Assim uma versao nova deste .bat nunca apaga a sua
+REM  configuracao - foi o que aconteceu antes. Ele fica fora do Git.
+if exist "%~dp0estacao.txt" for /f "usebackq eol=# delims=" %%E in ("%~dp0estacao.txt") do if not "%%E"=="" set "MINIPC=%%E"
+
 set "LOG=%~dp0OUTPUT_ENVIAR_ATUALIZACAO.TXT"
 
 > "%LOG%" echo ============================================================
