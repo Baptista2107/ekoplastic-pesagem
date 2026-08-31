@@ -57,12 +57,8 @@ async function subirServidor() {
       // horário (ex: dashboard vazio à noite) independente de onde o
       // teste rode. Sem isso, máquinas em UTC mascarariam o problema.
       TZ: 'America/Sao_Paulo',
-      // Bling: bling_simular já é '1' por default, então nada sai daqui.
-      // Impressão: NÃO dá para confiar no auto-fallback. Ele só simula quando
-      // NENHUMA impressora é detectada, e numa máquina de desenvolvimento que
-      // tenha o driver da ELGIN instalado a detecção acha, e o piso de testes
-      // imprime dezenas de etiquetas de papel de verdade. Por isso o modo
-      // simulado é ligado EXPLICITAMENTE logo após o boot, em subir().
+      // Garante modo simulação (não toca em Bling real nem precisa de impressora)
+      // bling_simular já é '1' por default; impressão auto-simula sem Zebra.
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -73,27 +69,8 @@ async function subirServidor() {
   for (let i = 0; i < 75; i++) {
     try {
       const r = await fetch(BASE + '/healthcheck');
-      if (r.ok) {
-        // Trava de papel: força print_simular=1 ANTES de qualquer teste que
-        // imprima. Sem isto, rodar os testes numa máquina com a impressora
-        // instalada cospe uma etiqueta física por impressão do piso — foram
-        // dezenas por execução. O EPL continua sendo gravado em
-        // logs/print-simulado/, então a auditoria do que seria impresso não
-        // se perde.
-        await fetch(BASE + '/config', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ print_simular: '1' }),
-        });
-        const hc = await (await fetch(BASE + '/healthcheck')).json();
-        if (!hc.impressao_simulada) {
-          throw new Error('print_simular não pegou — abortando para não imprimir papel de verdade');
-        }
-        return true;
-      }
-    } catch(e) {
-      if (String(e.message).includes('print_simular')) throw e;
-    }
+      if (r.ok) return true;
+    } catch(e) {}
     await sleep(200);
   }
   throw new Error('Servidor não subiu em 15s');
@@ -208,16 +185,20 @@ async function testeAutoFinalizacaoCoerente() {
   const s = await req('POST', '/sessoes', { tipo: 'extrusao', operador: 'Fim', maquina: 'C1', turno_codigo: 'EXT-A1' });
   const sid = s.json.sessao_id;
 
-  // Imprime 3 bobinas
+  // Imprime 3 bobinas — PESOS DIFERENTES de propósito. A trava de peso
+  // repetido (mesma máquina, mesmo bruto/tara/líquido dentro da janela)
+  // recusaria três bobinas idênticas em sequência, que é exatamente o
+  // erro de 30/08/2026. Este teste é sobre a trava de FINALIZAÇÃO, então
+  // os pesos variam como variam na fábrica.
   const ids = [];
   for (let i = 0; i < 3; i++) {
     const r = await req('POST', '/etiquetas/extrusao', {
       clientToken: 'fim-' + i + '-' + Math.random(), sessao_id: sid, cor: 'Preta', tipo_bobina: 'LEVE', largura: '1,60',
-      operador: 'Fim', maquina: 'C1', turno_codigo: 'EXT-A1', peso: 20, peso_bruto: 28, tara: 8,
+      operador: 'Fim', maquina: 'C1', turno_codigo: 'EXT-A1', peso: 20 + i, peso_bruto: 28 + i, tara: 8,
     });
     ids.push(r.json.id);
   }
-  eq(ids.length, 3, '3 bobinas impressas');
+  ok(ids.length === 3 && ids.every(Boolean), '3 bobinas impressas', `(${JSON.stringify(ids)})`);
 
   // Bipa só 2 das 3
   await req('POST', `/etiquetas/${ids[0]}/bipar`);

@@ -148,6 +148,22 @@ if not "%RCT%"=="0" goto :testes_falharam
 REM  Segundo portao: a janela segura da atualizacao remota. Leva uns 30s
 REM  porque ele espera o silencio de verdade e reinicia o servidor de
 REM  teste para provar que a sessao aberta sobrevive com as bipadas.
+REM  Terceiro portao: as travas de extrusao (bipagem duplicada, peso
+REM  repetido por maquina, auto-fim de turno). Reproduz o caso real de
+REM  30/08/2026 num servidor de teste.
+if not exist "testes\travas-extrusao.js" goto :sem_travas
+echo.
+echo  Rodando o teste das travas de extrusao. Leva uns 25 segundos...
+echo.
+set "SAIDA3=%TEMP%\eko_testes3.tmp"
+node testes\travas-extrusao.js > "%SAIDA3%" 2>&1
+set "RCT=%ERRORLEVEL%"
+type "%SAIDA3%"
+type "%SAIDA3%" >>"%LOG%"
+del "%SAIDA3%" >nul 2>&1
+if not "%RCT%"=="0" goto :testes_falharam
+
+:sem_travas
 if not exist "testes\janela-atualizacao.js" goto :testes_ok
 echo.
 echo  Rodando o teste da janela de atualizacao. Leva uns 30 segundos...
@@ -429,28 +445,69 @@ call :L "=== FIM DO DIAGNOSTICO ==="
 goto :fim_ok
 
 :minivoltou
+REM  ---- espera a deteccao da impressora --------------------------------
+REM  detectarImpressora roda PowerShell e e' ASSINCRONA: a estacao ja
+REM  responde /healthcheck varios segundos antes de PRINTER_DETECTADA
+REM  virar true. Ler cedo demais mostra "impressora nao detectada" e da'
+REM  um susto que nao existe - mas o susto tambem pode ser real, e nesse
+REM  caso a etiqueta sairia em SIMULACAO, sem papel. Entao esperamos ate'
+REM  30s e, nao vindo, pedimos a re-deteccao pelo endpoint proprio.
+echo.
+echo  Esperando a impressora ser detectada na estacao...
+set /a _i=0
+:esperaimp
+findstr /R /C:"impressora_detectada.:true" "%TMPHC%" >nul 2>&1
+if not errorlevel 1 goto :impok
+set /a _i+=1
+if %_i% geq 15 goto :impforca
+timeout /t 2 /nobreak >nul
+curl -s -k --max-time 5 "%URLMINI%/healthcheck" > "%TMPHC%" 2>nul
+goto :esperaimp
+
+:impforca
+call :L "Impressora nao apareceu em 30s - pedindo re-deteccao na estacao..."
+curl -s -k --max-time 20 -X POST "%URLMINI%/impressora/redetectar" >>"%LOG%" 2>&1
+timeout /t 3 /nobreak >nul
+curl -s -k --max-time 5 "%URLMINI%/healthcheck" > "%TMPHC%" 2>nul
+
+:impok
 type "%TMPHC%" >>"%LOG%"
 echo.
 echo ------------------------------------------------------------
 type "%TMPHC%"
 echo.
 echo ------------------------------------------------------------
+findstr /R /C:"impressora_detectada.:true" "%TMPHC%" >nul 2>&1
+if errorlevel 1 goto :impruim
+call :L ""
+call :L "OK: impressora detectada - impressao real, sem simulacao."
+goto :impfim
+
+:impruim
+call :L ""
+call :L "ATENCAO: a impressora NAO foi detectada na estacao."
+call :L "A pesagem funciona, mas a etiqueta sai em SIMULACAO - ou seja,"
+call :L "NAO sai no papel. Confira se a ELGIN esta ligada e reconhecida"
+call :L "no Windows do Mini PC, e teste uma impressao antes de liberar"
+call :L "o turno."
+
+:impfim
 del "%TMPHC%" >nul 2>&1
 call :L ""
 call :L "------------------------------------------------------------"
 call :L "ESTACAO ATUALIZADA no commit %SHA%."
 call :L "------------------------------------------------------------"
 call :L ""
-call :L "Confira no healthcheck acima: modulo_serial e portaAberta"
-call :L "devem estar true, e a impressora detectada. Se a alteracao"
-call :L "mexeu em tela, ela ja reabriu sozinha com a versao nova."
+call :L "No healthcheck acima, balanca.portaAberta deve estar true e as"
+call :L "contagens do banco devem ser as mesmas de antes - nada se perde"
+call :L "num reinicio. As sessoes que estavam abertas continuam abertas."
+call :L "Se a alteracao mexeu em tela, ela ja reabriu com a versao nova."
 call :L ""
 call :L "=== FIM DO DIAGNOSTICO ==="
 goto :fim_ok
 
 :mini_inalcancavel
 call :L "Nao consegui falar com a estacao em %URLMINI%"
-call :L "O GitHub JA foi atualizado - isso nao se perdeu."
 call :L "O GitHub nao se perdeu - a estacao e' que nao atendeu."
 call :L "Confira, nesta ordem:"
 call :L "  1. a estacao esta ligada e com o INICIAR.bat rodando?"

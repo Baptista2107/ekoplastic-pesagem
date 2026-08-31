@@ -3474,6 +3474,7 @@ function calcularLimiteAutoFim(turnoCodigo, inicioISO) {
 }
 
 const _avisos30minDados = new Set();   // memoria pra não logar WARN repetido
+const _pendenteAvisado  = new Set();   // desvio de turno preso: registra uma vez por sessão
 
 async function checarSessoesParaAutoFim() {
   let abertas;
@@ -3526,21 +3527,35 @@ async function autoFinalizarSessaoExtrusao(sessaoId, motivo) {
 
   const agoraISO = new Date().toISOString();
 
-  // Cancela pendentes órfãs (não bipadas) com carimbo de auditoria
+  // ── TRAVA 3: o auto-fim NÃO fecha turno com bipagem pendente ──────────
+  // Antes, o auto-fim das 19h (turno A) e das 07h (turno C) CANCELAVA em
+  // silêncio toda bobina impressa e não bipada. Uma bobina real podia
+  // desaparecer da produção sem ninguém ver — justamente na virada de
+  // turno, quando os operadores estão tirando bobina de cada máquina.
+  // Agora o turno fica ABERTO e o desvio é registrado. A verificação roda
+  // a cada 5 min: assim que alguém bipar (ou excluir) as pendentes, o
+  // turno fecha sozinho na passada seguinte.
   if (pendentes.length > 0) {
-    const upd = db.prepare(`UPDATE etiquetas SET status = 'cancelada' WHERE id = ?`);
-    const trCancel = makeTransaction(() => { for (const e of pendentes) upd.run(e.id); });
-    trCancel();
-    logW('sessao', `Sessão #${sessaoId}: ${pendentes.length} bobina(s) NÃO bipada(s) canceladas no auto-fim`, {
-      ids: pendentes.map(e => e.id),
-    });
+    const ids = pendentes.map(e => e.id);
+    if (!_pendenteAvisado.has(sessaoId)) {
+      _pendenteAvisado.add(sessaoId);
+      logDesvio({
+        tipo: 'turno_nao_fechado_bipagem_pendente',
+        tela: 'extrusao',
+        detalhe: `Sessão #${sessaoId} (${sessao.turno_codigo || '—'}, op=${sessao.operador || '—'}) — ` +
+                 `${ids.length} bobina(s) impressa(s) e NÃO bipada(s): ${ids.join(', ')}`,
+      });
+    }
+    logW('sessao', `Sessão #${sessaoId} NÃO foi fechada no auto-fim: ${ids.length} bobina(s) aguardando bipagem`, { ids });
+    return { ok: false, erro: 'bipagem_pendente', pendentes: ids, sessao_id: sessaoId };
   }
+  _pendenteAvisado.delete(sessaoId);
 
   if (bipadas.length === 0) {
     // Nenhuma bipada → cancela a sessão inteira (nada a enviar)
     db.prepare(
       `UPDATE sessoes SET fim = ?, bling_status = 'cancelada', bling_erro = ? WHERE id = ?`
-    ).run(agoraISO, `AUTO-CANCELADA: ${motivo} (nenhuma bobina bipada${pendentes.length ? `; ${pendentes.length} pendente(s) cancelada(s)` : ', sessão vazia'})`, sessaoId);
+    ).run(agoraISO, `AUTO-CANCELADA: ${motivo} (nenhuma bobina bipada, sessão vazia)`, sessaoId);
     logI('sessao', `Sessão #${sessaoId} (${sessao.turno_codigo}) auto-CANCELADA (${motivo}) — sem bipadas`);
     return { ok: true, modo: 'cancelada_vazia', pendentes_canceladas: pendentes.length };
   }
@@ -3550,13 +3565,13 @@ async function autoFinalizarSessaoExtrusao(sessaoId, motivo) {
   db.prepare(
     `UPDATE sessoes SET fim = ?, total_kg = ?, total_etiquetas = ?, bling_status = 'pendente' WHERE id = ?`
   ).run(agoraISO, totalKg, bipadas.length, sessaoId);
-  logI('sessao', `Sessão #${sessaoId} (${sessao.turno_codigo}, op=${sessao.operador||'—'}) auto-FINALIZADA por ${motivo} — ${bipadas.length} bobinas bipadas, ${totalKg.toFixed(1)} kg${pendentes.length ? ` (${pendentes.length} pendente(s) cancelada(s))` : ''}`);
+  logI('sessao', `Sessão #${sessaoId} (${sessao.turno_codigo}, op=${sessao.operador||'—'}) auto-FINALIZADA por ${motivo} — ${bipadas.length} bobinas bipadas, ${totalKg.toFixed(1)} kg`);
 
   const r = await enviarSessaoBling(sessaoId);
   // Carimba a observação adicional pra rastreio (mesmo após envio bem-sucedido)
   if (r.ok) {
     try {
-      const erroAdicional = `AUTO-FINALIZADA: ${motivo} - enviado bling_id=${r.bling_id || '?'}${pendentes.length ? ` - ${pendentes.length} pendente(s) cancelada(s)` : ''}`;
+      const erroAdicional = `AUTO-FINALIZADA: ${motivo} - enviado bling_id=${r.bling_id || '?'}`;
       db.prepare(`UPDATE sessoes SET bling_erro = COALESCE(bling_erro, ?) WHERE id = ? AND bling_erro IS NULL`)
         .run(erroAdicional, sessaoId);
     } catch(e) {}
@@ -4207,6 +4222,40 @@ const requestHandlerBase = async (req, res) => {
     if ((m = pathname.match(/^\/etiquetas?\/([RTSEO]\d+)\/bipar$/)) && req.method === 'POST') {
       const et = dbStmts.getEtiqueta.get(m[1]);
       if (!et) return jsonErr(res, 404, `Etiqueta ${m[1]} não encontrada`);
+
+      // ── TRAVA 1: bipagem duplicada (EXTRUSÃO) ────────────────────────
+      // Até aqui o /bipar não olhava o status. Consequências reais, vistas
+      // no turno de 30/08/2026:
+      //   · bipar de novo uma já bipada reescrevia hora_bipagem, gravava
+      //     outra linha no CSV de produção e, no modo 'individual',
+      //     disparava um SEGUNDO pedido no Bling;
+      //   · bipar uma CANCELADA a trazia de volta para 'bipada' — foi o que
+      //     aconteceu às 14:55:19 com a E0001292, cancelada às 14:55:05.
+      // Agora só 'aguardando_bipe' passa. Escopo: extrusão, conforme
+      // definido com o Frederico. MP/PA seguem como antes.
+      if (et.tipo === 'extrusao' && et.status !== 'aguardando_bipe') {
+        const quando = et.hora_bipagem
+          ? new Date(et.hora_bipagem).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })
+          : null;
+        let motivo;
+        if (et.status === 'bipada') {
+          motivo = `A bobina ${et.id} já foi bipada${quando ? ' em ' + quando : ''}. Ela já está contada — não bipe de novo.`;
+        } else if (et.status === 'cancelada') {
+          motivo = `A bobina ${et.id} foi CANCELADA e não volta atrás. Se a bobina é boa, pese e imprima uma etiqueta nova.`;
+        } else {
+          motivo = `A bobina ${et.id} está com status "${et.status}" e não pode ser bipada.`;
+        }
+        logDesvio({
+          tipo: 'bipagem_recusada_' + et.status,
+          tela: 'extrusao',
+          detalhe: `${et.id} · maquina ${et.maquina || '—'} · turno ${et.turno_codigo || '—'} · sessao ${et.sessao_id || '—'}`,
+        });
+        return jsonErr(res, 409, motivo, {
+          etiqueta_id: et.id, status: et.status, ja_bipada_em: et.hora_bipagem || null,
+          trava: 'bipagem_duplicada',
+        });
+      }
+
       dbStmts.marcarBipada.run('bipada', new Date().toISOString(), m[1]);
 
       // v52: registra a bipagem no log de produção (CSV por área, p/ dashboard)
@@ -4723,6 +4772,76 @@ const requestHandlerBase = async (req, res) => {
       // Fornecedor (turno) → herda da sessão se não vier
       const turno = body.turno_codigo || sessao.turno_codigo;
       if (!turno) return jsonErr(res, 400, 'turno_codigo obrigatório (sessão sem turno)');
+
+      // ── TRAVA 2: peso repetido na MESMA MÁQUINA ──────────────────────
+      // Duas etiquetas com bruto, tara e líquido idênticos, na mesma
+      // máquina, dentro da janela, são quase sempre a MESMA bobina pesada
+      // duas vezes (tela recarregada, segunda aba, celular, clique repetido).
+      // Foi o caso de 30/08/2026: E0001291 e E0001292, C1, 713.500 / 8.000
+      // / 705.500, com 5 segundos de diferença.
+      //
+      // POR MÁQUINA de propósito: na virada de turno os operadores tiram
+      // uma bobina de CADA máquina e pesam quase juntas. C1 e C2 não se
+      // atrapalham.
+      //
+      // Bloqueia de vez para o operador. A única saída é a senha de
+      // supervisor — sem ela, uma bobina legítima com peso repetido pararia
+      // a produção, o que não é aceitável nesta fábrica.
+      // ATENÇÃO à ordem: um retry com o MESMO clientToken é legítimo (a
+      // resposta se perdeu na rede) e já é resolvido pela idempotência lá
+      // dentro do imprimirEPersistirEtiqueta. Se a trava rodasse antes dela,
+      // o retry honesto viraria "peso repetido" e o operador ficaria preso.
+      const jaProcessado = !!idempotenciaGet(body.clientToken);
+
+      const janelaMin = Math.max(1, parseInt(configGet('extrusao_janela_peso_min', '15'), 10) || 15);
+      const maqAtual  = String(body.maquina || sessao.maquina || '').trim().toUpperCase();
+      const pLiq      = Number(body.peso);
+      const pBruto    = body.peso_bruto != null ? Number(body.peso_bruto) : null;
+      const pTara     = body.tara       != null ? Number(body.tara)       : null;
+      const desdeISO  = new Date(Date.now() - janelaMin * 60000).toISOString();
+
+      const gemea = db.prepare(`
+        SELECT id, seq_sessao, hora_impressao, status, peso, peso_bruto, tara
+          FROM etiquetas
+         WHERE sessao_id = ? AND tipo = 'extrusao' AND status != 'cancelada'
+           AND UPPER(TRIM(COALESCE(maquina, ''))) = ?
+           AND hora_impressao >= ?
+           AND ROUND(peso, 3) = ROUND(?, 3)
+           AND ROUND(COALESCE(peso_bruto, -1), 3) = ROUND(?, 3)
+           AND ROUND(COALESCE(tara,       -1), 3) = ROUND(?, 3)
+         ORDER BY hora_impressao DESC
+         LIMIT 1
+      `).get(sessao.id, maqAtual, desdeISO, pLiq,
+             pBruto == null ? -1 : pBruto, pTara == null ? -1 : pTara);
+
+      if (gemea && !jaProcessado) {
+        const hashSup = configGet('senha_saida_hash', hashSenha('1234'));
+        const autorizada = body.senha_supervisor && hashSenha(body.senha_supervisor) === hashSup;
+        const quando = new Date(gemea.hora_impressao)
+          .toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+        if (!autorizada) {
+          if (body.senha_supervisor) {
+            logDesvio({ tipo: 'peso_repetido_senha_incorreta', tela: 'extrusao',
+                        detalhe: `${maqAtual} · ${pLiq} kg · gemea ${gemea.id}` });
+          }
+          logW('extrusao', `Impressão bloqueada: peso repetido na ${maqAtual}`, {
+            gemea: gemea.id, peso: pLiq, peso_bruto: pBruto, tara: pTara, janela_min: janelaMin });
+          logDesvio({ tipo: 'impressao_bloqueada_peso_repetido', tela: 'extrusao',
+                      detalhe: `${maqAtual} · liq ${pLiq} · bruto ${pBruto} · tara ${pTara} · igual a ${gemea.id} de ${quando}` });
+          return jsonErr(res, 409,
+            `A ${maqAtual} já registrou este mesmo peso às ${quando} — bobina ${gemea.id}` +
+            (gemea.seq_sessao ? ` (Bobina #${gemea.seq_sessao})` : '') +
+            `. Bruto ${Number(gemea.peso_bruto).toFixed(3)} · tara ${Number(gemea.tara).toFixed(3)} · líquido ${Number(gemea.peso).toFixed(3)}. ` +
+            `Se é a MESMA bobina, não imprima de novo. Se é outra bobina com o peso idêntico, chame o supervisor.`,
+            { trava: 'peso_repetido', exige_senha_supervisor: true,
+              gemea: { id: gemea.id, seq_sessao: gemea.seq_sessao, hora: gemea.hora_impressao,
+                       peso: gemea.peso, peso_bruto: gemea.peso_bruto, tara: gemea.tara, status: gemea.status },
+              janela_min: janelaMin, maquina: maqAtual });
+        }
+        logDesvio({ tipo: 'peso_repetido_autorizado_supervisor', tela: 'extrusao',
+                    detalhe: `${maqAtual} · ${pLiq} kg · gemea ${gemea.id} de ${quando}` });
+        logW('extrusao', `Peso repetido LIBERADO por senha de supervisor na ${maqAtual}`, { gemea: gemea.id, peso: pLiq });
+      }
 
       // seq é reservado atomicamente dentro de imprimirEPersistirEtiqueta (C1)
       return imprimirEPersistirEtiqueta({

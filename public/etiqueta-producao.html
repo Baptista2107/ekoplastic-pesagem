@@ -563,6 +563,7 @@ header {
 
 <header>
   <div class="logo">
+    <div class="logo-icon">⚙</div>
     EXTRUSÃO
   </div>
   <div class="header-center">
@@ -803,6 +804,39 @@ header {
     <div class="modal-acoes">
       <button class="btn-modal secundario" onclick="fecharConfirm(false)">Cancelar</button>
       <button class="btn-modal danger"     onclick="fecharConfirm(true)" id="confirm-ok">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: trava (bloqueante, so informa e fecha) -->
+<div class="modal-overlay" id="modal-trava">
+  <div class="modal">
+    <div class="modal-titulo" id="trava-titulo">Bloqueado</div>
+    <div class="modal-corpo" id="trava-corpo">…</div>
+    <div class="modal-acoes">
+      <button class="btn-modal primary" onclick="fecharTrava()">Entendi</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: peso repetido — liberação por supervisor -->
+<div class="modal-overlay" id="modal-peso-repetido">
+  <div class="modal">
+    <div class="modal-titulo">Peso repetido nesta máquina</div>
+    <div class="modal-corpo">
+      <div id="peso-rep-texto" style="margin-bottom:14px;"></div>
+      <div style="margin-bottom:14px;">
+        Se é a <b>mesma bobina</b>, feche esta janela: ela já está registrada.<br>
+        Se é <b>outra bobina</b> com o peso idêntico, o supervisor libera abaixo.
+      </div>
+      <input type="password" id="peso-rep-senha" inputmode="numeric"
+             placeholder="Senha de supervisor"
+             style="width:100%;padding:12px;font-size:1.1rem;text-align:center;letter-spacing:.3em"
+             onkeydown="if(event.key==='Enter') liberarPesoRepetido()">
+    </div>
+    <div class="modal-acoes">
+      <button class="btn-modal secundario" onclick="fecharPesoRepetido()">É a mesma bobina</button>
+      <button class="btn-modal danger" onclick="liberarPesoRepetido()">Liberar e imprimir</button>
     </div>
   </div>
 </div>
@@ -1366,7 +1400,27 @@ function atualizarBotaoImprimir() {
 }
 
 // ─── IMPRIMIR ───
-async function imprimirEtiqueta() {
+// Guarda a tentativa recusada por peso repetido, para o supervisor liberar.
+let _pesoRepetidoPendente = false;
+
+function fecharPesoRepetido() {
+  document.getElementById('modal-peso-repetido').classList.remove('on');
+  document.getElementById('peso-rep-senha').value = '';
+  _pesoRepetidoPendente = false;
+  document.getElementById('btn-imprimir').disabled = false;
+  atualizarBotaoImprimir();
+}
+
+function liberarPesoRepetido() {
+  const senha = document.getElementById('peso-rep-senha').value;
+  if (!senha) { toast('Digite a senha de supervisor', 'warn'); return; }
+  document.getElementById('modal-peso-repetido').classList.remove('on');
+  document.getElementById('peso-rep-senha').value = '';
+  _pesoRepetidoPendente = false;
+  imprimirEtiqueta(senha);
+}
+
+async function imprimirEtiqueta(senhaSupervisor) {
   // TRAVA: não imprime nova bobina se há pendência de bipagem
   if (bloqueadoPorBipagem()) return;
 
@@ -1396,9 +1450,28 @@ async function imprimirEtiqueta() {
         peso:        state.pesoAtual,
         peso_bruto:  state.pesoBruto || null,
         tara:        state.tara || null,
+        senha_supervisor: senhaSupervisor || undefined,
       }),
     });
     const d = await r.json();
+
+    // TRAVA DE PESO REPETIDO: a estação recusou porque esta máquina já
+    // registrou exatamente este bruto/tara/líquido na janela. O token de
+    // idempotência NÃO é queimado — se o supervisor liberar, a mesma
+    // tentativa segue com a senha.
+    if (!d.ok && d.trava === 'peso_repetido') {
+      const g = d.gemea || {};
+      const hora = g.hora ? new Date(g.hora).toLocaleTimeString('pt-BR') : '—';
+      document.getElementById('peso-rep-texto').textContent =
+        `A ${d.maquina || state.maquina} já registrou este mesmo peso às ${hora} — bobina ${g.id}` +
+        (g.seq_sessao ? ` (Bobina #${g.seq_sessao})` : '') + '. ' +
+        `Bruto ${Number(g.peso_bruto).toFixed(3)} · tara ${Number(g.tara).toFixed(3)} · líquido ${Number(g.peso).toFixed(3)} kg.`;
+      document.getElementById('modal-peso-repetido').classList.add('on');
+      _pesoRepetidoPendente = true;
+      setTimeout(() => { try { document.getElementById('peso-rep-senha').focus(); } catch(e) {} }, 120);
+      return;
+    }
+
     if (!d.ok) throw new Error(d.erro || 'Falha na impressão');
     state.tokenPendente = null;   // sucesso confirmado → próxima usa token novo
     toast(`✓ Etiqueta ${d.id} impressa (Bobina #${d.seq_sessao})`, 'success');
@@ -1754,6 +1827,15 @@ async function excluirItem(id) {
   toast('Pesagem excluída', 'info');
 }
 
+function abrirTrava(titulo, corpo) {
+  document.getElementById('trava-titulo').textContent = titulo;
+  document.getElementById('trava-corpo').textContent  = corpo;
+  document.getElementById('modal-trava').classList.add('on');
+}
+function fecharTrava() {
+  document.getElementById('modal-trava').classList.remove('on');
+}
+
 async function biparItem(id) {
   if (!/^E\d+$/.test(id)) {
     toast(`ID inválido: ${id} (esperado E0000000)`, 'error');
@@ -1762,6 +1844,19 @@ async function biparItem(id) {
   try {
     const r = await fetch(URL_BASE + '/etiquetas/' + id + '/bipar', { method: 'POST' });
     const d = await r.json();
+
+    // Trava de bipagem duplicada: a estacao recusou. Modal em vez de toast —
+    // o operador PRECISA ler, nao pode passar batido.
+    if (!d.ok && d.trava === 'bipagem_duplicada') {
+      abrirTrava('Esta bobina nao pode ser bipada', d.erro || 'Bipagem recusada.');
+      const it = state.itens.find(i => i.id === id);
+      if (it) { it.status = d.status || 'bipada'; renderHistorico(); renderHistoricoCapa(); }
+      if (pendentesBipagem().length === 0) fecharModalBipagemPendente();
+      else renderListaPendentesModal();
+      atualizarBotaoImprimir();
+      atualizarBotaoImprimirCapa();
+      return;
+    }
     if (!d.ok) throw new Error(d.erro || 'Erro');
     const item = state.itens.find(i => i.id === id);
     if (item) {

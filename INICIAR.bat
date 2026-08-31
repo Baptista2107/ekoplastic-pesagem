@@ -9,6 +9,7 @@ set EKO_SERIAL_PORT=COM1
 REM ===================================================================
 
 if "%~1"=="abrir" goto abrir
+if "%~1"=="autostart" goto autostart
 
 REM --- Garante dependencias na 1a vez (node-forge p/ HTTPS da rede) ---
 if not exist "node_modules\node-forge" (
@@ -27,6 +28,9 @@ if not errorlevel 1 (
 
 title Ekoplastic - Servidor de Etiquetas
 start "Abrindo navegador" /min "%~f0" abrir
+REM  Confere o atalho de inicio automatico em segundo plano - nunca
+REM  atrasa a subida do servidor. Ver o bloco :autostart la embaixo.
+start "Conferindo inicio automatico" /min "%~f0" autostart
 
 :loop
 echo ============================================================
@@ -132,6 +136,32 @@ start "Abrindo navegador" /min "%~f0" abrir
 echo  Subindo o servidor...
 timeout /t 2 /nobreak >nul
 goto loop
+
+REM ===================================================================
+REM  INICIO AUTOMATICO - AUTO-CORRECAO
+REM  Em 29/08/2026 o Mini PC foi reiniciado e subiu o sistema ANTIGO.
+REM  Quem manda no que sobe e' o atalho da pasta Inicializar do Windows,
+REM  e ele continuava apontando para "Desktop\PROJETO AUTOMACAO". Trocar
+REM  a pasta de onde o sistema roda nao mexe nesse atalho.
+REM
+REM  Agora, toda vez que o sistema sobe, ele mesmo confere e corrige o
+REM  atalho, e desativa atalhos de outras instalacoes que disputariam a
+REM  porta 3000 no boot. A proxima atualizacao remota ja deixa o inicio
+REM  automatico certo, sem ninguem precisar ir ate a estacao.
+REM
+REM  Roda em segundo plano; o servidor nao espera por isto.
+REM  Relatorio em OUTPUT_INICIO_AUTOMATICO.TXT
+REM ===================================================================
+:autostart
+if not exist "%~dp0conferir-inicio-automatico.ps1" exit /b
+set "ALVO=%~dp0INICIAR.bat"
+set "PASTA=%~dp0"
+set "LINK=%AppData%\Microsoft\Windows\Start Menu\Programs\Startup\Ekoplastic - Sistema de Etiquetas.lnk"
+set "PS=powershell"
+where powershell >nul 2>&1
+if errorlevel 1 set "PS=%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe"
+"%PS%" -NoProfile -ExecutionPolicy Bypass -File "%~dp0conferir-inicio-automatico.ps1" > "%~dp0OUTPUT_INICIO_AUTOMATICO.TXT" 2>&1
+exit /b
 
 :abrir
 REM Espera o servidor responder
