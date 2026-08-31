@@ -34,6 +34,23 @@ $alvo  = $env:ALVO
 $pasta = $env:PASTA
 $link  = $env:LINK
 
+# Estado em JSON ao lado do sistema. O /healthcheck le este arquivo e
+# devolve no campo inicio_automatico - assim da' para conferir de outra
+# maquina se o atalho da estacao esta certo, sem ir ate ela.
+$estado = [ordered]@{
+  verificado_em = (Get-Date).ToString('o')
+  esperado      = $alvo
+  encontrado    = $null
+  ok            = $false
+  corrigido     = $false
+  desativados   = @()
+  erro          = $null
+}
+$arqEstado = Join-Path (Split-Path $alvo -Parent) 'eko-autostart.json'
+function GravarEstado {
+  try { $estado | ConvertTo-Json -Depth 4 | Set-Content -Path $arqEstado -Encoding ASCII } catch {}
+}
+
 Diga '============================================================'
 Diga '  INICIO AUTOMATICO - CONFERENCIA'
 Diga '============================================================'
@@ -43,6 +60,8 @@ Diga ''
 
 if (-not $alvo -or -not (Test-Path $alvo)) {
   Diga 'ERRO: nao encontrei o INICIAR.bat desta pasta. Nada foi alterado.'
+  $estado.erro = 'INICIAR.bat nao encontrado'
+  GravarEstado
   exit 1
 }
 
@@ -57,8 +76,10 @@ if (Test-Path $link) {
   Diga 'Atalho oficial: NAO EXISTE.'
 }
 
+$estado.encontrado = $alvoAtual
 if ($alvoAtual -and ($alvoAtual.TrimEnd('\') -ieq $alvo.TrimEnd('\'))) {
   Diga 'OK: o atalho ja aponta para esta pasta. Nada a fazer.'
+  $estado.ok = $true
 } else {
   try {
     $s = $shell.CreateShortcut($link)
@@ -68,13 +89,18 @@ if ($alvoAtual -and ($alvoAtual.TrimEnd('\') -ieq $alvo.TrimEnd('\'))) {
     $s.Description       = 'Inicia o sistema Ekoplastic automaticamente'
     $s.Save()
     $conf = $shell.CreateShortcut($link).TargetPath
+    $estado.encontrado = $conf
     if ($conf.TrimEnd('\') -ieq $alvo.TrimEnd('\')) {
       Diga 'CORRIGIDO: o atalho de inicializacao agora aponta para esta pasta.'
+      $estado.ok = $true
+      $estado.corrigido = $true
     } else {
       Diga ('FALHOU a gravacao. O atalho continua em: ' + $conf)
+      $estado.erro = 'gravacao nao conferiu'
     }
   } catch {
     Diga ('ERRO ao gravar o atalho: ' + $_.Exception.Message)
+    $estado.erro = $_.Exception.Message
   }
 }
 Diga ''
@@ -116,6 +142,7 @@ foreach ($dir in $pastas) {
       while (Test-Path $novo) { $novo = $f.FullName + '.desativado' + $i; $i++ }
       Rename-Item -LiteralPath $f.FullName -NewName (Split-Path $novo -Leaf) -ErrorAction Stop
       Diga ('     DESATIVADO: renomeado para ' + (Split-Path $novo -Leaf) + ' (nada foi apagado).')
+      $estado.desativados += ($f.Name + ' -> ' + $destino)
     } catch {
       Diga ('     NAO consegui desativar: ' + $_.Exception.Message)
     }
@@ -161,4 +188,6 @@ Diga ''
 Diga 'Lembrete: para o sistema abrir sozinho apos queda de energia, o'
 Diga 'Windows precisa ENTRAR SOZINHO na conta (Windows+R, netplwiz,'
 Diga 'desmarcar "Os usuarios devem digitar um nome e senha").'
+GravarEstado
+Diga ('Estado gravado em ' + $arqEstado)
 Diga '=== FIM ==='

@@ -401,6 +401,30 @@ const logD = (src, m, x) => log('DEBUG', src, m, x);
 // serve para conferir DE OUTRA MAQUINA, pelo /healthcheck, qual versao a
 // estacao esta executando de fato. Sem isto, "atualizei?" so' se responde
 // indo ate' o Mini PC. Devolve null quando a pasta nao veio de um clone.
+// Estado do inicio automatico do Windows, gravado pelo
+// conferir-inicio-automatico.ps1 a cada subida e a cada atualizacao
+// remota. Vai no /healthcheck para dar para conferir de OUTRA maquina se
+// o atalho da estacao aponta para a pasta certa - sem ir ate ela.
+// Foi o que faltou em 29/08/2026: o Mini PC reiniciou e subiu o sistema
+// antigo, e nao havia como saber disso de longe.
+function estadoInicioAutomatico() {
+  try {
+    const bruto = fs.readFileSync(path.join(__dirname, 'eko-autostart.json'), 'utf8');
+    const e = JSON.parse(bruto);
+    return {
+      ok:            e.ok === true,
+      corrigido:     e.corrigido === true,
+      esperado:      e.esperado || null,
+      encontrado:    e.encontrado || null,
+      verificado_em: e.verificado_em || null,
+      desativados:   Array.isArray(e.desativados) ? e.desativados.length : 0,
+      erro:          e.erro || null,
+    };
+  } catch (err) {
+    return { ok: null, motivo: 'ainda nao verificado nesta instalacao' };
+  }
+}
+
 function commitAtual() {
   try {
     const head = fs.readFileSync(path.join(__dirname, '.git', 'HEAD'), 'utf8').trim();
@@ -3948,6 +3972,7 @@ const requestHandlerBase = async (req, res) => {
         servidor: 'online',
         versao: VERSION,
         commit: commitAtual(),
+        inicio_automatico: estadoInicioAutomatico(),
         impressora: PRINTER_DETECTADA ? PRINTER_ATIVA : null,    // A6: null se não detectada
         impressora_detectada: PRINTER_DETECTADA,
         impressao_simulada: !PRINTER_DETECTADA || configGet('print_simular', '0') === '1',

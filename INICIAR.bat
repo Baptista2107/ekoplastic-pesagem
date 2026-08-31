@@ -127,12 +127,24 @@ if /I "%ANTES%"=="%DEPOIS%" (
 )
 >>"%LOGA%" echo === FIM DO DIAGNOSTICO ===
 
+REM  O git ACABOU de substituir este proprio .bat. O cmd le o arquivo por
+REM  deslocamento de bytes, entao cair na proxima linha depois de uma troca
+REM  de arquivo e' loteria. O desvio abaixo obriga o cmd a varrer de novo
+REM  e achar o rotulo na versao NOVA - e a partir daqui ele executa o
+REM  codigo atualizado, nao o antigo.
+goto atualizar_fim
+
 :atualizar_fim
 REM  Fecha o navegador para ele reabrir ja com a tela nova. Sem isto,
 REM  mudanca de HTML ou JS so' apareceria depois de um F5 manual.
 taskkill /IM chrome.exe /F >nul 2>&1
 taskkill /IM msedge.exe /F >nul 2>&1
 start "Abrindo navegador" /min "%~f0" abrir
+REM  Reconfere o atalho de inicializacao a CADA atualizacao remota. Sem
+REM  isto, o ramo :autostart so' rodaria quando alguem abrisse o
+REM  INICIAR.bat desta pasta - o que nao acontece justamente quando o
+REM  atalho aponta para a pasta errada. Era o circulo vicioso.
+start "Conferindo inicio automatico" /min "%~f0" autostart
 echo  Subindo o servidor...
 timeout /t 2 /nobreak >nul
 goto loop
