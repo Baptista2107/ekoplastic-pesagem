@@ -392,7 +392,11 @@ h1 {
     </div>
     <div class="card-acoes" style="margin-top:14px;">
       <button class="btn" onclick="carregarPendentesBling()">↻ ATUALIZAR LISTA</button>
+      <!-- Reenvia uma a uma, na ordem. Sessão já enviada é pulada pelo
+           servidor (não força), então não há risco de pedido duplicado. -->
+      <button class="btn btn-primary" id="pend-todas" onclick="reenviarTodasPendentes()">↻↻ REENVIAR TODAS</button>
     </div>
+    <div id="pend-todas-msg" style="font-size:12.5px; margin-top:8px;"></div>
   </div>
 
   <div class="card">
@@ -694,6 +698,40 @@ async function carregarPendentesBling() {
     }).join('');
   } catch(e) {
     cont.innerHTML = '<div style="color:var(--danger); font-size:13px;">Erro ao carregar: ' + e.message + '</div>';
+  }
+}
+
+// Reenvia todas as pendentes, uma a uma. Serve para o dia em que muitas
+// sessões falharam pela mesma causa (ex.: o Bling bloqueou o endereço
+// antigo em 01/09/2026) e a causa já foi corrigida.
+async function reenviarTodasPendentes() {
+  const btn = document.getElementById('pend-todas');
+  const msg = document.getElementById('pend-todas-msg');
+  const dizer = (t, cor) => { if (msg) { msg.style.color = cor || 'var(--muted)'; msg.innerHTML = t; } };
+  try {
+    const r = await fetch(URL_BASE + '/sessoes/pendentes-bling');
+    const d = await r.json();
+    const ss = (d && d.sessoes) || [];
+    if (!ss.length) { dizer('✓ Nenhuma sessão pendente.', '#16a34a'); return; }
+    if (!confirm(`Reenviar ${ss.length} sessão(ões) pendente(s) ao Bling?\n\nSessão que já foi enviada é pulada — não gera pedido repetido.`)) return;
+    if (btn) { btn.disabled = true; btn.textContent = 'ENVIANDO...'; }
+    let okN = 0; const ruins = [];
+    for (let i = 0; i < ss.length; i++) {
+      dizer(`Enviando ${i + 1} de ${ss.length}...`);
+      try {
+        const rr = await fetch(URL_BASE + '/sessoes/' + ss[i].id + '/reenviar-bling', { method: 'POST' });
+        const dd = await rr.json();
+        const b = (dd && dd.bling) || {};
+        if (b.ok) okN++; else ruins.push(`#${ss[i].id}: ${b.erro || b.status || 'falhou'}`);
+      } catch (e) { ruins.push(`#${ss[i].id}: ${e.message}`); }
+    }
+    dizer(`✓ ${okN} enviada(s).` + (ruins.length ? `<br><span style="color:#ffb648">${ruins.length} ainda com problema:<br>${ruins.join('<br>')}</span>` : ''),
+          ruins.length ? 'var(--muted)' : '#16a34a');
+    carregarPendentesBling();
+  } catch (e) {
+    dizer('Erro: ' + e.message, '#ff6b6b');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '↻↻ REENVIAR TODAS'; }
   }
 }
 

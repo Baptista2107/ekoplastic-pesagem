@@ -198,6 +198,24 @@ del "%SAIDA5%" >nul 2>&1
 if not "%RCT%"=="0" goto :testes_falharam
 
 :sem_cores
+REM  Sexto portao: endereco do Bling. O Bling passou a recusar chamadas
+REM  de API em www.bling.com.br (403). Este teste sobe um "Bling de
+REM  mentira" local e prova que as chamadas saem em api.bling.com.br,
+REM  que o sistema se corrige sozinho se o endereco mudar de novo, e
+REM  que nenhuma pesagem se perde quando o envio falha.
+if not exist "testes\bling-endpoint.js" goto :sem_bling
+echo.
+echo  Rodando o teste do endereco do Bling. Leva uns 15 segundos...
+echo.
+set "SAIDA6=%TEMP%\eko_testes6.tmp"
+node testes\bling-endpoint.js > "%SAIDA6%" 2>&1
+set "RCT=%ERRORLEVEL%"
+type "%SAIDA6%"
+type "%SAIDA6%" >>"%LOG%"
+del "%SAIDA6%" >nul 2>&1
+if not "%RCT%"=="0" goto :testes_falharam
+
+:sem_bling
 if not exist "testes\janela-atualizacao.js" goto :testes_ok
 echo.
 echo  Rodando o teste da janela de atualizacao. Leva uns 30 segundos...
