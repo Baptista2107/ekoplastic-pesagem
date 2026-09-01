@@ -1585,6 +1585,11 @@ body.modo-retorno .menu-item.active { border-color: var(--devol); background: rg
       <button class="btn-relatorio" id="btn-corrigir" onclick="abrirCorrecao()" title="Corrigir as informações de uma etiqueta de recebimento sem repesar">✎ Corrigir etiqueta</button>
       <button class="btn-relatorio" id="btn-relatorio" onclick="relatorioAtual()" disabled>🧾 Relatório atual</button>
     </div>
+    <!-- Só no RETORNO. Desde 01/09/2026 o retorno não imprime resumo sozinho
+         ao finalizar: acumula e sai de uma vez por aqui. O RECEBIMENTO segue
+         imprimindo ao finalizar, então não precisa deste botão. -->
+    <button class="btn-relatorio" id="btn-resumo-dia" style="display:none"
+            onclick="abrirResumoDia('retorno')">📅 Resumo do dia (retorno)</button>
     <div class="acoes-recebimento">
       <button class="btn-finalizar" id="btn-finalizar" onclick="finalizar()" disabled>
         ✓ FINALIZAR · ENVIAR AO BLING
@@ -2154,6 +2159,10 @@ function atualizarAcoes() {
   document.getElementById('btn-finalizar').disabled = !temConteudo;
   document.getElementById('btn-cancelar').disabled  = !temConteudo;
   document.getElementById('btn-relatorio').disabled = !temConteudo;
+  // O "Resumo do dia" é do RETORNO e não depende de haver sessão aberta —
+  // ele imprime o dia inteiro, inclusive o que já foi finalizado.
+  const btnDia = document.getElementById('btn-resumo-dia');
+  if (btnDia) btnDia.style.display = (estado.modo === 'retorno') ? '' : 'none';
 }
 
 // ─── AÇÕES ───
@@ -2806,7 +2815,12 @@ async function enviarSessaoParaBling(modo, qtdEt, totalKg) {
 
     setTimeout(() => beep(1100, 0.18), 180);
     const blingResp = d.bling || {};
-    const notaResumo = (d.resumo && d.resumo.ok) ? ` · 🧾 resumo impresso (${d.resumo.itens})` : '';
+    // Recebimento segue imprimindo o resumo; o RETORNO não — ele acumula no
+    // 📅 Resumo do dia. O aviso muda conforme o caso, pra ninguém procurar um
+    // papel que não vai sair agora.
+    const notaResumo = (d.resumo && d.resumo.ok) ? ` · 🧾 resumo impresso (${d.resumo.itens})`
+                     : (d.resumo && d.resumo.motivo === 'impressao_opcional') ? ' · resumo no 📅 Resumo do dia'
+                     : '';
     if (blingResp.ok) {
       const modoLabel = blingResp.modo === 'simulacao' ? '🧪 SIMULAÇÃO' : '';
       showToast('sucesso', '✓', `${modoLabel} ${modo === 'retorno' ? 'Retorno' : 'Recebimento'} enviado · ${qtdEt} ${qtdEt === 1 ? 'item' : 'itens'} · ${totalKg.toFixed(1)} kg · Bling: ${blingResp.bling_id || 'OK'}${notaResumo}`);
@@ -3937,6 +3951,9 @@ function comAcesso(tela, aoEntrar) {
 }
 comAcesso('mp', iniciarTelaMP);
 </script>
+
+<!-- Resumo do dia (Retorno de MP): janela compartilhada, ver /resumo-dia.js -->
+<script src="/resumo-dia.js"></script>
 
 </body>
 </html>

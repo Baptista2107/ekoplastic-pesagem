@@ -468,6 +468,8 @@ header {
   grid-template-columns: 1fr 56px;
   gap: 8px;
 }
+.linha-relatorios { display: flex; gap: 8px; margin-bottom: 10px; }
+.linha-relatorios .btn-relatorio { margin-bottom: 0; }
 .btn-relatorio {
   width: 100%; margin-bottom: 10px; padding: 10px 14px;
   background: transparent; color: var(--muted);
@@ -736,7 +738,14 @@ header {
     <!-- ═══════════════════════════════════════════ -->
     <!-- AÇÕES                                        -->
     <!-- ═══════════════════════════════════════════ -->
-    <button class="btn-relatorio" id="btn-relatorio" onclick="relatorioAtual()" disabled>🧾 Relatório atual</button>
+    <!-- "Relatório atual" = só a sessão aberta agora (parcial).
+         "Resumo do dia"   = tudo o que foi retirado no dia, somando todas as
+         operações. Desde 01/09/2026 a retirada não imprime mais sozinha ao
+         finalizar; este botão é quem tira o papel, uma vez só. -->
+    <div class="linha-relatorios">
+      <button class="btn-relatorio" id="btn-relatorio" onclick="relatorioAtual()" disabled>🧾 Relatório atual</button>
+      <button class="btn-relatorio" id="btn-resumo-dia" onclick="abrirResumoDia('retirada')">📅 Resumo do dia</button>
+    </div>
     <div class="acoes">
       <button class="btn-finalizar" id="btn-finalizar" onclick="finalizar()" disabled>
         ✓ FINALIZAR · ENVIAR AO BLING
@@ -1405,9 +1414,13 @@ async function finalizar() {
     if (!d.ok) throw new Error(d.erro || 'falha ao finalizar');
 
     const bling = d.bling || {};
+    // Desde 01/09/2026 a retirada não imprime resumo ao finalizar — ele sai
+    // uma vez só, no 📅 Resumo do dia. Avisar aqui evita o operador achar que
+    // a impressora falhou e ficar procurando o papel.
+    const semPapel = d.resumo && d.resumo.motivo === 'impressao_opcional' ? ' · resumo no 📅 Resumo do dia' : '';
     if (bling.ok) {
       const modoLbl = bling.modo === 'simulacao' ? '🧪 SIMULAÇÃO · ' : '';
-      showToast('sucesso', '✓', `${modoLbl}Retirada enviada · Bling: ${bling.bling_id || 'OK'}`);
+      showToast('sucesso', '✓', `${modoLbl}Retirada enviada · Bling: ${bling.bling_id || 'OK'}${semPapel}`);
       beepOk();
       setTimeout(()=> beep(1100, 0.18), 180);
     } else if (bling.status === 'pendente_config') {
@@ -1579,6 +1592,9 @@ carregarCatalogoRetirada().then(() => { renderFornecedores(); });
 restaurarSessaoAberta();
 
 </script>
+
+<!-- Resumo do dia (Retirada de MP): janela compartilhada, ver /resumo-dia.js -->
+<script src="/resumo-dia.js"></script>
 
 </body>
 </html>

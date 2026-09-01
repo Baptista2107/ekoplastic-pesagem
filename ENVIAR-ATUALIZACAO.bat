@@ -164,6 +164,23 @@ del "%SAIDA3%" >nul 2>&1
 if not "%RCT%"=="0" goto :testes_falharam
 
 :sem_travas
+REM  Quarto portao: resumo opcional / resumo do dia. Prova que extrusao,
+REM  recebimento e produto acabado seguem imprimindo o resumo ao finalizar
+REM  e que retirada, retorno e residuos acumulam no resumo do dia sem
+REM  perder nenhum dado.
+if not exist "testes\resumo-opcional.js" goto :sem_resumo
+echo.
+echo  Rodando o teste do resumo do dia. Leva uns 20 segundos...
+echo.
+set "SAIDA4=%TEMP%\eko_testes4.tmp"
+node testes\resumo-opcional.js > "%SAIDA4%" 2>&1
+set "RCT=%ERRORLEVEL%"
+type "%SAIDA4%"
+type "%SAIDA4%" >>"%LOG%"
+del "%SAIDA4%" >nul 2>&1
+if not "%RCT%"=="0" goto :testes_falharam
+
+:sem_resumo
 if not exist "testes\janela-atualizacao.js" goto :testes_ok
 echo.
 echo  Rodando o teste da janela de atualizacao. Leva uns 30 segundos...

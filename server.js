@@ -1986,6 +1986,18 @@ async function proxyChamada(token, method, blingPath, search, body) {
 let PRINTER_ATIVA = PRINTER_NAMES[0];
 let PRINTER_DETECTADA = false;     // true só quando detectarImpressora confirma uma instalada
 
+// ── Trava de segurança dos testes: EKO_PRINT_SIMULAR=1 ──────────────
+// A detecção de impressora é ASSÍNCRONA (spawna um PowerShell e leva
+// segundos). Até ela responder, PRINTER_DETECTADA é false e a impressão
+// cai na simulação; depois que responde, passa a imprimir DE VERDADE.
+// Numa máquina com a Zebra instalada isso faz um teste começar simulando
+// e, no meio do caminho, começar a cuspir papel — foi o que aconteceu no
+// PC de desenvolvimento em 01/09/2026.
+// Esta variável de ambiente força a simulação desde o primeiro
+// milissegundo, sem depender do banco nem da detecção. Em produção ela
+// não existe, e nada muda.
+const PRINT_SIMULAR_ENV = process.env.EKO_PRINT_SIMULAR === '1';
+
 // Garante que o script de impressão (enviar_raw.ps1) exista. Se faltar
 // (ex: não foi copiado pra esta máquina), gera automaticamente com o
 // método RAW via spooler do Windows (winspool) — o mesmo comprovado em
@@ -2520,6 +2532,72 @@ function montarResumoProdutoAcabadoEPL(s, itens, dataHora, parcial) {
   return { epl, nPaginas };
 }
 
+// ── Layout genérico do resumo (etiqueta 100 x 150 mm) ──────────────
+// O MESMO desenho serve para o resumo de UMA sessão e para o RESUMO DO
+// DIA (que soma várias sessões do mesmo tipo). Recebe os grupos já
+// montados e a função que desenha cada linha de item; devolve o job EPL
+// paginado. Foi extraído de imprimirResumoSessao sem mudar uma vírgula
+// do desenho — a prova está em testes/resumo-opcional.js, que compara o
+// EPL gerado byte a byte com a fotografia do layout anterior.
+function montarResumoGenericoEPL({ titulo, sub1, dataHora, parcial, grupos, itemLinha, totalItens, totalKg }) {
+  const fmtKg = kg => Number(kg || 0).toFixed(1).replace('.', ',') + ' kg';
+
+  // Cada etiqueta 100x150 reserva o topo p/ título/sub/data; o corpo recebe
+  // os grupos (cabeçalho + itens + subtotal) e, no fim, o total geral.
+  // Fontes: título/total = font4, grupo/subtotal = font3, itens = font2.
+  // Quebra em 2+ etiquetas quando não couber; grupo que vira de página
+  // repete o cabeçalho com (CONT.).
+  const ALT    = { grupo: 40, item: 30, subtotal: 40, total: 60 };
+  const Y_TOPO = 160;
+  const Y_FIM  = 1170;   // etiqueta 100x150mm (1200 dots)
+  const paginas = [];
+  let cur = [], y = Y_TOPO, nGlobal = 0;
+  const fecharPagina = () => { if (cur.length) paginas.push(cur); cur = []; y = Y_TOPO; };
+  const push = (k, txt) => { cur.push({ k, y, txt }); y += ALT[k]; };
+
+  for (const g of grupos) {
+    const rotulo = _eplSafe(g.label.toUpperCase(), 42);
+    if (y + ALT.grupo + ALT.item > Y_FIM) fecharPagina();   // não separa cabeçalho do 1º item
+    push('grupo', rotulo);
+    for (const it of g.itens) {
+      if (y + ALT.item > Y_FIM) { fecharPagina(); push('grupo', rotulo + ' (CONT.)'); }
+      nGlobal++;
+      push('item', itemLinha(it, nGlobal));
+    }
+    if (y + ALT.subtotal > Y_FIM) fecharPagina();
+    push('subtotal', `Subtotal: ${g.count} itens   ${fmtKg(g.kg)}`);
+  }
+  if (y + ALT.total > Y_FIM) fecharPagina();
+  push('total', `TOTAL GERAL: ${totalItens} itens   ${fmtKg(totalKg)}`);
+  fecharPagina();
+
+  const nPaginas = paginas.length;
+  let epl = '';
+  paginas.forEach((linhas, pi) => {
+    let bloco = 'N\nq800\nQ1200,24\n';
+    bloco += `A30,24,0,4,1,1,N,"${_eplSafe(titulo + (parcial ? ' - PARCIAL' : ''))}"\n`;
+    bloco += `A30,82,0,3,1,1,N,"${sub1}"\n`;
+    bloco += `A30,120,0,2,1,1,N,"${dataHora}   Pag ${pi + 1}/${nPaginas}"\n`;
+    bloco += 'LO20,150,760,3\n';
+    for (const ln of linhas) {
+      if (ln.k === 'grupo') {
+        bloco += `LO20,${ln.y + 2},760,1\n`;
+        bloco += `A30,${ln.y + 10},0,3,1,1,N,"${ln.txt}"\n`;
+      } else if (ln.k === 'item') {
+        bloco += `A50,${ln.y},0,2,1,1,N,"${ln.txt}"\n`;
+      } else if (ln.k === 'subtotal') {
+        bloco += `A50,${ln.y},0,3,1,1,N,"${ln.txt}"\n`;
+      } else {   // total geral
+        bloco += `LO20,${ln.y},760,3\n`;
+        bloco += `A30,${ln.y + 12},0,4,1,1,N,"${ln.txt}"\n`;
+      }
+    }
+    bloco += 'P1\n';
+    epl += bloco;
+  });
+  return { epl, nPaginas };
+}
+
 function imprimirResumoSessao(s, opts) {
   try {
     const parcial = !!(opts && opts.parcial);
@@ -2602,59 +2680,11 @@ function imprimirResumoSessao(s, opts) {
         : _pad(horaBip(it), 6) + _pad('#' + n, 4) + _pad('L' + (it.largura || '-'), 6) + _pad(it.tipo_bobina, 7) + _pad(it.cor, 8) + _padR(fmtKg(it.peso), 11);
     }
 
-    // ── Monta as "linhas de impressão" agrupadas, paginando por cursor Y.
-    //    Cada etiqueta 100x100 reserva o topo p/ título/sub/data; o corpo
-    //    recebe os grupos (cabeçalho + itens + subtotal) e, no fim, o total
-    //    geral. Fontes: título/total = font4, grupo/subtotal = font3, itens =
-    //    font2 (maiores que a versão antiga). Quebra em 2+ etiquetas quando
-    //    não couber; grupo que vira de página repete o cabeçalho com (CONT.).
-    const ALT    = { grupo: 40, item: 30, subtotal: 40, total: 60 };
-    const Y_TOPO = 160;
-    const Y_FIM  = 1170;   // etiqueta 100x150mm (1200 dots)
-    const paginas = [];
-    let cur = [], y = Y_TOPO, nGlobal = 0;
-    const fecharPagina = () => { if (cur.length) paginas.push(cur); cur = []; y = Y_TOPO; };
-    const push = (k, txt) => { cur.push({ k, y, txt }); y += ALT[k]; };
-
-    for (const g of grupos) {
-      const rotulo = _eplSafe(g.label.toUpperCase(), 42);
-      if (y + ALT.grupo + ALT.item > Y_FIM) fecharPagina();   // não separa cabeçalho do 1º item
-      push('grupo', rotulo);
-      for (const it of g.itens) {
-        if (y + ALT.item > Y_FIM) { fecharPagina(); push('grupo', rotulo + ' (CONT.)'); }
-        nGlobal++;
-        push('item', itemLinha(it, nGlobal));
-      }
-      if (y + ALT.subtotal > Y_FIM) fecharPagina();
-      push('subtotal', `Subtotal: ${g.count} itens   ${fmtKg(g.kg)}`);
-    }
-    if (y + ALT.total > Y_FIM) fecharPagina();
-    push('total', `TOTAL GERAL: ${itens.length} itens   ${fmtKg(totalKg)}`);
-    fecharPagina();
-
-    const nPaginas = paginas.length;
-    let epl = '';
-    paginas.forEach((linhas, pi) => {
-      let bloco = 'N\nq800\nQ1200,24\n';
-      bloco += `A30,24,0,4,1,1,N,"${_eplSafe(titulo + (parcial ? ' - PARCIAL' : ''))}"\n`;
-      bloco += `A30,82,0,3,1,1,N,"${sub1}"\n`;
-      bloco += `A30,120,0,2,1,1,N,"${dataHora}   Pag ${pi + 1}/${nPaginas}"\n`;
-      bloco += 'LO20,150,760,3\n';
-      for (const ln of linhas) {
-        if (ln.k === 'grupo') {
-          bloco += `LO20,${ln.y + 2},760,1\n`;
-          bloco += `A30,${ln.y + 10},0,3,1,1,N,"${ln.txt}"\n`;
-        } else if (ln.k === 'item') {
-          bloco += `A50,${ln.y},0,2,1,1,N,"${ln.txt}"\n`;
-        } else if (ln.k === 'subtotal') {
-          bloco += `A50,${ln.y},0,3,1,1,N,"${ln.txt}"\n`;
-        } else {   // total geral
-          bloco += `LO20,${ln.y},760,3\n`;
-          bloco += `A30,${ln.y + 12},0,4,1,1,N,"${ln.txt}"\n`;
-        }
-      }
-      bloco += 'P1\n';
-      epl += bloco;
+    // Desenho e paginação ficam em montarResumoGenericoEPL — o mesmo layout
+    // é reaproveitado pelo RESUMO DO DIA.
+    const { epl, nPaginas } = montarResumoGenericoEPL({
+      titulo, sub1, dataHora, parcial, grupos, itemLinha,
+      totalItens: itens.length, totalKg,
     });
 
     imprimir(epl, null, (ok, out, err, printer) => {
@@ -2668,6 +2698,121 @@ function imprimirResumoSessao(s, opts) {
   }
 }
 
+// ══════════════════════════════════════════════════════════════════
+//  RESUMO AUTOMÁTICO  x  RESUMO DO DIA        (decisão de 01/09/2026)
+// ------------------------------------------------------------------
+//  EXTRUSÃO, RECEBIMENTO de MP e PRODUTO ACABADO seguem imprimindo o
+//  resumo ao finalizar. São fechamentos: turno, carga recebida,
+//  produção do turno. O papel é o comprovante daquele fechamento e
+//  alguém confere com ele na mão.
+//
+//  RETIRADA de MP, RETORNO de MP e RESÍDUOS (Outras Pesagens) NÃO
+//  imprimem mais nada ao finalizar. Ao longo do dia são muitas
+//  operações curtas — um papel por operação vira lixo. No lugar, cada
+//  uma dessas telas ganhou o botão "Resumo do dia", que imprime de uma
+//  vez tudo o que foi pesado naquele dia, somando TODAS as sessões
+//  daquele tipo. O efeito é o mesmo, com um papel só.
+//
+//  Nada foi removido do sistema: o resumo por sessão continua
+//  existindo (é o "Relatório atual", enquanto a sessão está aberta) e
+//  a lista de tipos que imprimem sozinhos é configurável pela chave
+//  resumo_auto_tipos — mudar de ideia não exige mexer no código.
+// ══════════════════════════════════════════════════════════════════
+const RESUMO_AUTO_PADRAO = 'recebimento,extrusao,produto-acabado';
+const RESUMO_DIA_TIPOS   = ['retirada', 'retorno', 'outras'];
+const RESUMO_DIA_TITULO  = { retirada: 'RESUMO DO DIA - RETIRADA',
+                             retorno:  'RESUMO DO DIA - RETORNO',
+                             outras:   'RESUMO DO DIA - RESIDUOS' };
+
+function resumoAutomaticoAtivo(tipo) {
+  const lista = String(configGet('resumo_auto_tipos', RESUMO_AUTO_PADRAO) || '')
+    .split(',').map(x => x.trim().toLowerCase()).filter(Boolean);
+  return lista.includes(String(tipo || '').toLowerCase());
+}
+
+// Junta tudo o que foi pesado num DIA LOCAL, dentro de um tipo de
+// operação, somando TODAS as sessões daquele dia (fechadas ou ainda
+// abertas). Não imprime nada — só devolve os números, para a tela poder
+// mostrar a prévia antes de gastar etiqueta.
+//
+// O que define o dia é a hora da PESAGEM, não a hora em que a sessão
+// foi aberta ou fechada: uma sessão que atravessa a meia-noite cai,
+// corretamente, nos dois dias. Etiqueta já 'consumida' usa a hora de
+// impressão, porque nela o campo hora_bipagem passou a marcar a hora da
+// RETIRADA — usá-lo jogaria uma entrada antiga para o dia da saída.
+function coletarResumoDia(tipo, dia) {
+  const { ini, fim } = rangeUTCdoDiaLocal(dia);
+  const statusOk = (tipo === 'recebimento' || tipo === 'retorno')
+    ? `('bipada','consumida')`
+    : `('bipada')`;
+  const QUANDO = `CASE WHEN e.status = 'consumida' THEN e.hora_impressao
+                       ELSE COALESCE(e.hora_bipagem, e.hora_impressao) END`;
+  const itens = db.prepare(`
+    SELECT e.* FROM etiquetas e
+      JOIN sessoes s ON s.id = e.sessao_id
+     WHERE s.tipo = ?
+       AND e.status IN ${statusOk}
+       AND ${QUANDO} >= ? AND ${QUANDO} < ?
+     ORDER BY ${QUANDO}, e.id`).all(tipo, ini, fim);
+
+  const idsSessao = [...new Set(itens.map(it => it.sessao_id).filter(Boolean))];
+  let abertas = 0;
+  if (idsSessao.length) {
+    const r = db.prepare(
+      `SELECT COUNT(*) AS n FROM sessoes WHERE fim IS NULL AND id IN (${idsSessao.map(() => '?').join(',')})`
+    ).get(...idsSessao);
+    abertas = (r && r.n) || 0;
+  }
+  const totalKg = itens.reduce((a, b) => a + (b.peso || 0), 0);
+  const grupos  = (tipo === 'outras') ? _grupoOutras(itens) : _grupoMP(itens);
+  return { itens, grupos, totalKg, sessoes: idsSessao.length, abertas };
+}
+
+function imprimirResumoDia(tipo, dia) {
+  try {
+    tipo = String(tipo || '').toLowerCase();
+    if (!RESUMO_DIA_TIPOS.includes(tipo)) return { ok: false, motivo: 'tipo_nao_aplicavel' };
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(dia || ''))) return { ok: false, motivo: 'data_invalida' };
+
+    const d = coletarResumoDia(tipo, dia);
+    if (!d.itens.length) return { ok: false, motivo: 'sem_itens', dia, tipo };
+
+    const [aa, mm, dd] = dia.split('-');
+    const diaBR    = `${dd}/${mm}/${aa}`;
+    const dataHora = `${new Date().toLocaleDateString('pt-BR')} ${new Date().toLocaleTimeString('pt-BR').substring(0,5)}`;
+    const fmtKg    = kg => Number(kg || 0).toFixed(1).replace('.', ',') + ' kg';
+
+    // Cada linha traz a HORA da pesagem — é o que permite conferir o dia
+    // inteiro item a item, já que o número da sessão não aparece.
+    const hora = it => {
+      const h = (it.status === 'consumida') ? it.hora_impressao : (it.hora_bipagem || it.hora_impressao);
+      return h ? new Date(h).toLocaleTimeString('pt-BR', { hour12: false }).slice(0, 5) : '--:--';
+    };
+    const itemLinha = (tipo === 'retirada')
+      ? (it, n) => _pad(hora(it), 6) + _pad(it.fornecedor || '-', 15) + _pad(it.ref_id || it.id, 10) + _padR(fmtKg(it.peso), 12)
+      : (it, n) => _pad(hora(it), 6) + _pad('#' + n, 4) + _pad(it.id, 10) + _padR(fmtKg(it.peso), 12);
+
+    const sub1 = _eplSafe(
+      `Dia ${diaBR}   ${d.sessoes} ${d.sessoes === 1 ? 'operacao' : 'operacoes'}`
+      + (d.abertas ? ` (${d.abertas} aberta${d.abertas > 1 ? 's' : ''})` : ''), 46);
+
+    const { epl, nPaginas } = montarResumoGenericoEPL({
+      titulo: RESUMO_DIA_TITULO[tipo], sub1, dataHora, parcial: false,
+      grupos: d.grupos, itemLinha, totalItens: d.itens.length, totalKg: d.totalKg,
+    });
+
+    imprimir(epl, null, (ok, out, err, printer) => {
+      if (ok) logI('resumo', `Resumo do DIA ${dia} (${tipo}) impresso — ${d.itens.length} itens de ${d.sessoes} operacao(oes), ${nPaginas} pág.`, { printer });
+      else    logW('resumo', `Falha ao imprimir resumo do dia ${dia} (${tipo})`, { erro: err });
+    });
+    return { ok: true, tipo, dia, itens: d.itens.length, sessoes: d.sessoes,
+             abertas: d.abertas, total_kg: Number(d.totalKg.toFixed(3)), paginas: nPaginas };
+  } catch (e) {
+    logW('resumo', 'Erro ao gerar resumo do dia', { erro: e && e.message });
+    return { ok: false, motivo: 'erro', erro: e && e.message };
+  }
+}
+
 function imprimir(eplString, printerOverride, callback) {
   const printer = printerOverride || PRINTER_ATIVA;
 
@@ -2676,7 +2821,7 @@ function imprimir(eplString, printerOverride, callback) {
   // (auto-fallback pra que testes/demos rodem sem Zebra física).
   // Em ambos os casos: pula PowerShell e retorna sucesso imediato,
   // gravando o EPL gerado em logs/print-simulado/ pra auditoria.
-  const simExplicito = configGet('print_simular', '0') === '1';
+  const simExplicito = PRINT_SIMULAR_ENV || configGet('print_simular', '0') === '1';
   const simAutomatico = !PRINTER_DETECTADA;
   if (simExplicito || simAutomatico) {
     try {
@@ -3975,8 +4120,16 @@ const requestHandlerBase = async (req, res) => {
         inicio_automatico: estadoInicioAutomatico(),
         impressora: PRINTER_DETECTADA ? PRINTER_ATIVA : null,    // A6: null se não detectada
         impressora_detectada: PRINTER_DETECTADA,
-        impressao_simulada: !PRINTER_DETECTADA || configGet('print_simular', '0') === '1',
+        impressao_simulada: !PRINTER_DETECTADA || PRINT_SIMULAR_ENV || configGet('print_simular', '0') === '1',
+        impressao_simulada_forcada: PRINT_SIMULAR_ENV,   // true só em servidor de teste
         printer: PRINTER_DETECTADA ? PRINTER_ATIVA : null,       // alias
+        // Quem imprime resumo sozinho ao finalizar, e quem acumula no dia.
+        // Dá pra conferir de outra máquina se a estação está com a regra certa.
+        resumo: {
+          automatico: String(configGet('resumo_auto_tipos', RESUMO_AUTO_PADRAO) || '')
+                        .split(',').map(x => x.trim()).filter(Boolean),
+          sob_demanda: RESUMO_DIA_TIPOS,
+        },
         proximoSeq: {                                       // compatibilidade com HTML antigo
           recebimento: getProximoSeq('recebimento'),
           retorno:     getProximoSeq('retorno'),
@@ -5034,6 +5187,47 @@ const requestHandlerBase = async (req, res) => {
       return jsonOk(res, { resumo: r, parcial: true });
     }
 
+    // ─── RESUMO DO DIA (retirada / retorno / resíduos) ───
+    // GET  /resumo-dia?tipo=retirada&data=AAAA-MM-DD  → PRÉVIA, não imprime.
+    //      A tela usa isto pra mostrar "12 operações · 4.800 kg" ANTES de
+    //      gastar etiqueta — e pra desabilitar o botão em dia sem movimento.
+    // POST /resumo-dia  { tipo, data }                → imprime de fato.
+    if (pathname === '/resumo-dia' && (req.method === 'GET' || req.method === 'POST')) {
+      let p = {};
+      if (req.method === 'POST') { try { p = await lerBodyJson(req); } catch(e) { return jsonErr(res, 400, e.message); } }
+      else p = parsed.query || {};
+
+      const tipo = String(p.tipo || '').trim().toLowerCase();
+      const dia  = String(p.data || '').trim() || dataLocalISO();
+      if (!RESUMO_DIA_TIPOS.includes(tipo)) {
+        return jsonErr(res, 400, `Resumo do dia não se aplica a "${tipo || '(vazio)'}" (use: ${RESUMO_DIA_TIPOS.join(', ')})`);
+      }
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dia)) return jsonErr(res, 400, 'data inválida (use AAAA-MM-DD)');
+
+      if (req.method === 'GET') {
+        const d = coletarResumoDia(tipo, dia);
+        return jsonOk(res, {
+          tipo, data: dia,
+          itens: d.itens.length,
+          sessoes: d.sessoes,
+          abertas: d.abertas,
+          total_kg: Number(d.totalKg.toFixed(3)),
+          grupos: d.grupos.map(g => ({ label: g.label, itens: g.count, kg: Number(g.kg.toFixed(3)) })),
+        });
+      }
+
+      const r = imprimirResumoDia(tipo, dia);
+      if (!r.ok) {
+        const msg = r.motivo === 'sem_itens'
+          ? `Nada foi pesado em ${dia.split('-').reverse().join('/')} — não há o que imprimir.`
+          : r.motivo === 'data_invalida' ? 'data inválida (use AAAA-MM-DD)'
+          : r.motivo === 'tipo_nao_aplicavel' ? 'Resumo do dia não se aplica a este tipo'
+          : 'Não foi possível imprimir o resumo do dia';
+        return jsonErr(res, 400, msg, { motivo: r.motivo });
+      }
+      return jsonOk(res, { resumo: r });
+    }
+
     if ((m = pathname.match(/^\/sessoes\/(\d+)\/finalizar$/)) && req.method === 'POST') {
       const id = parseInt(m[1]);
       const s = dbStmts.getSessao.get(id);
@@ -5059,8 +5253,18 @@ const requestHandlerBase = async (req, res) => {
       const tot = totaisDaSessao(s, id);
       dbStmts.fecharSessao.run(new Date().toISOString(), tot.total_kg, tot.qtd, 'pendente', id);
       logI('sessao', `Finalizando #${id}`, { kg: tot.total_kg, etiquetas: tot.qtd, pendentes_canceladas: pendentes.length });
-      // v53/v55: imprime o resumo na térmica 100x100 (recebimento → big bags; extrusão → bobinas)
-      const resumo = imprimirResumoSessao(s);
+      // v53/v55: imprime o resumo na térmica 100x150 (recebimento → big bags;
+      // extrusão → bobinas). Desde 01/09/2026 isso vale só para os tipos de
+      // FECHAMENTO (resumo_auto_tipos). Retirada, retorno e resíduos não
+      // imprimem aqui: acumulam no "Resumo do dia" (POST /resumo-dia).
+      let resumo;
+      if (resumoAutomaticoAtivo(s.tipo)) {
+        resumo = imprimirResumoSessao(s);
+      } else {
+        resumo = { ok: false, motivo: 'impressao_opcional', tipo: s.tipo,
+                   dica: 'use o botao "Resumo do dia" nesta tela' };
+        logI('resumo', `Sessão #${id} (${s.tipo}) finalizada sem imprimir resumo — impressão acumulada no resumo do dia`);
+      }
       const blingResp = await enviarSessaoBling(id);
       return jsonOk(res, { sessao_id: id, totais: tot, pendentes_canceladas: pendentes.length, bling: blingResp, resumo });
     }

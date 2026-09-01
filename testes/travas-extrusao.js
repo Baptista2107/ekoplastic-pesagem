@@ -64,7 +64,9 @@ async function subir() {
   servidor = spawn('node', [SERVER], {
     env: { ...process.env,
       EKO_PORT: String(PORT), EKO_PORT_CB: String(PORT_CB),
-      EKO_DB_FILE: TMP_DB, EKO_LOG_DIR: TMP_LOG, TZ: 'America/Sao_Paulo' },
+      EKO_DB_FILE: TMP_DB, EKO_LOG_DIR: TMP_LOG, TZ: 'America/Sao_Paulo',
+      // NUNCA imprimir de verdade (ver comentario em piso-testes.js)
+      EKO_PRINT_SIMULAR: '1' },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   servidor.stdout.on('data', () => {});

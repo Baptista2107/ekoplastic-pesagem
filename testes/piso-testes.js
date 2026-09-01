@@ -53,6 +53,9 @@ async function subirServidor() {
       EKO_PORT_CB: String(PORT_CB),
       EKO_DB_FILE: TMP_DB,
       EKO_LOG_DIR: TMP_LOGS,
+      // NUNCA imprimir de verdade: o portao de testes nao pode gastar
+      // etiqueta nem depender de a Zebra estar instalada nesta maquina.
+      EKO_PRINT_SIMULAR: '1',
       // Roda no fuso de Goiânia (UTC-3) para reproduzir bugs de fuso
       // horário (ex: dashboard vazio à noite) independente de onde o
       // teste rode. Sem isso, máquinas em UTC mascarariam o problema.
@@ -95,7 +98,11 @@ async function testeHealthcheck() {
   ok(json && json.ok === true, 'healthcheck ok=true');
   console.log(`      → versão do servidor testado: \x1b[36m${json && json.versao ? json.versao : '(sem versão — server.js ANTIGO!)'}\x1b[0m`);
   ok('impressora_detectada' in json, 'reporta impressora_detectada (A6)');
-  ok(json.impressao_simulada === true, 'impressao_simulada=true sem Zebra (A6)');
+  ok(json.impressao_simulada === true, 'impressao_simulada=true (A6)');
+  // Trava: o portao de testes NUNCA pode imprimir de verdade. A deteccao de
+  // impressora e' assincrona, entao sem EKO_PRINT_SIMULAR=1 o teste comeca
+  // simulando e passa a imprimir no meio do caminho, numa maquina com Zebra.
+  ok(json.impressao_simulada_forcada === true, 'impressao travada em SIMULACAO pelo ambiente (nao gasta etiqueta)');
   ok(json.bling && typeof json.bling.simulacao === 'boolean', 'reporta bling.simulacao (A2)');
   ok(json.balanca && 'estavel' in json.balanca, 'reporta balanca.estavel (A6)');
 }
