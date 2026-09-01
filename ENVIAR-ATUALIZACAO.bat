@@ -181,6 +181,23 @@ del "%SAIDA4%" >nul 2>&1
 if not "%RCT%"=="0" goto :testes_falharam
 
 :sem_resumo
+REM  Quinto portao: catalogo de cores de MP. Prova que cor nova entra
+REM  pela sincronizacao e pela mao, e - o que mais importa - que a
+REM  abreviacao da cor na SKU nao muda (e ela que casa o produto no
+REM  Bling; PTO no grao e PRE no pigmento, de proposito).
+if not exist "testes\catalogo-cores.js" goto :sem_cores
+echo.
+echo  Rodando o teste do catalogo de cores. Leva uns 15 segundos...
+echo.
+set "SAIDA5=%TEMP%\eko_testes5.tmp"
+node testes\catalogo-cores.js > "%SAIDA5%" 2>&1
+set "RCT=%ERRORLEVEL%"
+type "%SAIDA5%"
+type "%SAIDA5%" >>"%LOG%"
+del "%SAIDA5%" >nul 2>&1
+if not "%RCT%"=="0" goto :testes_falharam
+
+:sem_cores
 if not exist "testes\janela-atualizacao.js" goto :testes_ok
 echo.
 echo  Rodando o teste da janela de atualizacao. Leva uns 30 segundos...

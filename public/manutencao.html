@@ -470,6 +470,43 @@ h1 {
       <div id="cg-lista"></div>
     </div>
   </div>
+
+  <div class="card">
+    <div class="card-titulo">🎨 Cores de cada matéria-prima</div>
+    <div class="card-desc">
+      Estas são as cores que a tela de Recebimento oferece ao operador. A sincronização
+      com o Bling já cadastra cor nova sozinha; use aqui quando o nome no Bling não for o
+      nome que a fábrica usa, ou para acertar a <b>abreviação da SKU</b> — o pedaço que
+      entra no código do produto (ex.: <code>GBD.<b>CAN</b>.CEDRO</code>). Renomear
+      arrasta junto os códigos gravimétricos e o vínculo com o Bling.
+    </div>
+    <div class="cg-form">
+      <label for="cor-mat">Material</label>
+      <select id="cor-mat" onchange="corRender()"></select>
+
+      <label for="cor-nome">Cor</label>
+      <div class="cg-linha-cod">
+        <input id="cor-nome" readonly onclick="corAbrirTeclado('nome')" placeholder="toque para digitar (ex.: Amarelo)" />
+        <button class="btn" onclick="corAbrirTeclado('nome')">⌨</button>
+      </div>
+
+      <label for="cor-label">Abreviação na SKU</label>
+      <div class="cg-linha-cod">
+        <input id="cor-label" readonly onclick="corAbrirTeclado('label')" placeholder="ex.: AMA" />
+        <button class="btn" onclick="corAbrirTeclado('label')">⌨</button>
+      </div>
+
+      <div class="cg-msg" id="cor-msg"></div>
+    </div>
+    <div class="card-acoes" style="margin-top:12px;">
+      <button class="btn btn-primary" onclick="corSalvar()">💾 CADASTRAR COR</button>
+    </div>
+
+    <div class="cg-lista">
+      <div class="cg-lista-tit" id="cor-lista-tit">Cores cadastradas</div>
+      <div id="cor-lista"></div>
+    </div>
+  </div>
     </div>
   </section>
 
@@ -826,9 +863,19 @@ async function cgCarregar() {
     cgMsg('Não consegui carregar o catálogo do servidor: ' + e.message, 'erro');
     return;
   }
-  const selM = document.getElementById('cg-mat');
-  selM.innerHTML = Object.keys(_cgCat.materiais)
+  const opcoes = Object.keys(_cgCat.materiais)
     .map(k => `<option value="${k}">${_cgCat.materiais[k].popular} (${k})</option>`).join('');
+  const selM = document.getElementById('cg-mat');
+  selM.innerHTML = opcoes;
+  // O card de cores usa o mesmo catálogo — preenche junto para os dois
+  // ficarem sempre com a mesma lista de materiais.
+  const selCor = document.getElementById('cor-mat');
+  if (selCor) {
+    const antes = selCor.value;
+    selCor.innerHTML = opcoes;
+    if (antes && _cgCat.materiais[antes]) selCor.value = antes;
+    if (typeof corRender === 'function') corRender();
+  }
   cgMaterialMudou();
 }
 
@@ -1015,6 +1062,122 @@ function cgAbrirTeclado() {
   });
 }
 
+/* ══════════════════════════════════════════════════════════════════
+   CORES DE CADA MATÉRIA-PRIMA
+   As cores que a tela de Recebimento oferece. Até 01/09/2026 elas eram
+   fixas no código e não havia como cadastrar uma nova — nem por aqui,
+   nem pela sincronização. Este bloco e as rotas /catalogo-mp/cor* são
+   o caminho que faltava.
+   ══════════════════════════════════════════════════════════════════ */
+let _corRenomeando = null;   // nome antigo, quando se está renomeando
+
+function corMsg(t, c) {
+  const el = document.getElementById('cor-msg');
+  if (el) el.innerHTML = t ? `<span class="${c||''}">${t}</span>` : '';
+}
+
+// A tecla na tela devolve tudo em maiúsculo. No NOME da cor isso ficaria
+// "AMARELO", diferente de "Canela"/"Preto" que já estão cadastrados — e o
+// nome é comparado letra a letra no vínculo com o Bling. Então padroniza.
+function corCapitalizar(v) {
+  const s = String(v||'').trim().toLowerCase();
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
+}
+
+function corAbrirTeclado(campo) {
+  const mk = document.getElementById('cor-mat').value;
+  if (campo === 'nome') {
+    kbAbrir(`Nome da cor · ${mk}`, document.getElementById('cor-nome').value, v => {
+      document.getElementById('cor-nome').value = corCapitalizar(v);
+      const lab = document.getElementById('cor-label');
+      if (!lab.value) lab.value = corCapitalizar(v).replace(/[^A-Za-z0-9]/g,'').substring(0,3).toUpperCase();
+    });
+  } else {
+    kbAbrir(`Abreviação na SKU · ${mk}`, document.getElementById('cor-label').value, v => {
+      document.getElementById('cor-label').value = String(v||'').replace(/[^A-Za-z0-9]/g,'').toUpperCase().substring(0,6);
+    });
+  }
+}
+
+function corRender() {
+  const mk = document.getElementById('cor-mat').value;
+  const mat = _cgCat.materiais[mk] || { cores: [], corLabel: {} };
+  const cores = Array.isArray(mat.cores) ? mat.cores : [];
+  const labs  = mat.corLabel || {};
+  document.getElementById('cor-lista-tit').textContent =
+    `Cores cadastradas · ${(mat.popular || mk)}`;
+  const lista = document.getElementById('cor-lista');
+  if (!cores.length) {
+    lista.innerHTML = '<div class="cg-vazio">Este material não usa cor. Cadastrar uma aqui faz a tela de Recebimento passar a pedir a cor.</div>';
+    return;
+  }
+  lista.innerHTML = cores.map(c => `
+    <div style="display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid rgba(255,255,255,0.06)">
+      <b style="flex:1">${c}</b>
+      <code style="opacity:.75">${labs[c] || '—'}</code>
+      <button class="btn" onclick="corEditar('${c.replace(/'/g,"\\'")}')">✎ renomear</button>
+      <button class="btn" onclick="corRemover('${c.replace(/'/g,"\\'")}')">🗑</button>
+    </div>`).join('');
+  _corRenomeando = null;
+}
+
+function corEditar(cor) {
+  const mk = document.getElementById('cor-mat').value;
+  const mat = _cgCat.materiais[mk] || {};
+  _corRenomeando = cor;
+  document.getElementById('cor-nome').value  = cor;
+  document.getElementById('cor-label').value = (mat.corLabel || {})[cor] || '';
+  corMsg(`Renomeando <b>${cor}</b>. Salvar troca o nome e leva junto os códigos gravimétricos e o vínculo com o Bling.`, 'aviso');
+}
+
+async function corSalvar() {
+  const mk   = document.getElementById('cor-mat').value;
+  const nome = corCapitalizar(document.getElementById('cor-nome').value);
+  const lab  = String(document.getElementById('cor-label').value||'').replace(/[^A-Za-z0-9]/g,'').toUpperCase();
+  if (!nome) { corMsg('Informe o nome da cor.', 'erro'); return; }
+  const corpo = { matKey: mk, cor: nome, label: lab || undefined };
+  if (_corRenomeando) corpo.renomear_de = _corRenomeando;
+  try {
+    const r = await fetch(URL_BASE + '/catalogo-mp/cor', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corpo) });
+    const d = await r.json();
+    if (!r.ok || !d.ok) { corMsg((d && d.erro) || 'Não consegui salvar.', 'erro'); return; }
+    const mig = d.migrado || {};
+    corMsg(d.renomeado
+      ? `✓ Renomeada para <b>${d.cor}</b> (SKU ${d.label}). ${mig.codigos||0} código(s) e ${mig.produtos_bling||0} produto(s) do Bling acompanharam.`
+      : `✓ Cor <b>${d.cor}</b> cadastrada (SKU ${d.label}). Abra a tela de Recebimento de novo para vê-la.`, 'ok');
+    document.getElementById('cor-nome').value = '';
+    document.getElementById('cor-label').value = '';
+    _corRenomeando = null;
+    await cgCarregar();
+    document.getElementById('cor-mat').value = mk;
+    corRender();
+  } catch (e) { corMsg('Erro: ' + e.message, 'erro'); }
+}
+
+async function corRemover(cor) {
+  const mk = document.getElementById('cor-mat').value;
+  if (!confirm(`Tirar "${cor}" da lista de ${mk}?\n\nEtiquetas já impressas não mudam — a cor só deixa de aparecer para o operador escolher.`)) return;
+  const enviar = async (forcar) => {
+    const r = await fetch(URL_BASE + '/catalogo-mp/cor/remover', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ matKey: mk, cor, forcar: !!forcar }) });
+    return { r, d: await r.json() };
+  };
+  try {
+    let { r, d } = await enviar(false);
+    if (!r.ok && d && d.em_uso) {
+      if (!confirm(d.erro + '\n\nRemover mesmo assim?')) { corMsg('Remoção cancelada.', 'aviso'); return; }
+      ({ r, d } = await enviar(true));
+    }
+    if (!r.ok || !d.ok) { corMsg((d && d.erro) || 'Não consegui remover.', 'erro'); return; }
+    corMsg(`✓ "${cor}" saiu da lista de ${mk}.`, 'ok');
+    await cgCarregar();
+    document.getElementById('cor-mat').value = mk;
+    corRender();
+  } catch (e) { corMsg('Erro: ' + e.message, 'erro'); }
+}
+
 kbMontar();
 cgCarregar();
 
@@ -1096,6 +1259,57 @@ function alternarGrupo(id){
 
 // ── Sincronizar matéria-prima com o Bling ────────────────────────────
 let SYNC_NOVOS = [];
+let SYNC_CORES = [];
+
+// Cores que o Bling tem e o catálogo do material não. Aparecem separadas
+// dos produtos de propósito: até 01/09/2026 uma cor nova simplesmente não
+// entrava, e o operador não tinha como saber que faltava. Repare que a cor
+// aparece aqui mesmo quando o PRODUTO já estava cadastrado — foi assim que
+// o AMARELO do grão ficou invisível.
+function syncHtmlCores(){
+  if(!SYNC_CORES.length) return '';
+  return `<div style="background:rgba(255,182,72,0.10); border:1px solid rgba(255,182,72,0.35);
+                      border-radius:10px; padding:12px; margin-bottom:12px;">
+      <div style="font-weight:800; color:#ffb648; margin-bottom:4px">
+        ⚠ ${SYNC_CORES.length} cor(es) do Bling ainda fora do catálogo</div>
+      <div style="font-size:12.5px; opacity:.8; margin-bottom:10px">
+        Enquanto não entrarem aqui, a tela de Recebimento não oferece essas cores ao operador.
+        A abreviação é o pedaço que vai na SKU (ex.: <code>GBD.AMA.CEDRO</code>) — confira antes de salvar.</div>`
+    + SYNC_CORES.map((c,i) => `
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
+          <input type="checkbox" class="sync-cor-ck" data-i="${i}" checked>
+          <b style="min-width:70px">${c.material}</b>
+          <span style="min-width:110px">${c.cor}</span>
+          <input class="sync-cor-lab" data-i="${i}" value="${c.label||''}" maxlength="6"
+                 style="width:80px; text-transform:uppercase" placeholder="SKU">
+          <span style="font-size:12px; opacity:.6">${c.produtos} produto(s) · ex.: ${(c.exemplos&&c.exemplos[0])||''}</span>
+        </div>`).join('')
+    + `<button class="btn btn-primary" onclick="syncCadastrarCores()">✓ CADASTRAR CORES</button>
+      </div>`;
+}
+
+async function syncCadastrarCores(){
+  const el=document.getElementById('sync-res');
+  const pedidos=[];
+  document.querySelectorAll('.sync-cor-ck').forEach(ck => {
+    if(!ck.checked) return;
+    const i=ck.dataset.i, base=SYNC_CORES[i];
+    const lab=document.querySelector(`.sync-cor-lab[data-i="${i}"]`);
+    pedidos.push({ matKey:base.material, cor:base.cor, label:(lab?lab.value.trim():'')||base.label });
+  });
+  if(!pedidos.length){ alert('Marque ao menos uma cor.'); return; }
+  let ok=0; const falhas=[];
+  for(const p of pedidos){
+    try{
+      const r=await fetch('/catalogo-mp/cor',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)});
+      const d=await r.json();
+      if(r.ok && d.ok) ok++; else falhas.push(`${p.matKey}/${p.cor}: ${(d&&d.erro)||'falhou'}`);
+    }catch(e){ falhas.push(`${p.matKey}/${p.cor}: ${e.message}`); }
+  }
+  el.innerHTML = `<div style="color:#2ee6a6">✓ ${ok} cor(es) cadastrada(s). Abra a tela de Recebimento de novo para vê-las.</div>`
+    + (falhas.length ? '<div style="color:#ffb648; margin-top:8px">'+falhas.join('<br>')+'</div>' : '');
+  if(typeof cgCarregar==="function") cgCarregar();
+}
 
 async function syncProcurar(){
   const el=document.getElementById('sync-res');
@@ -1105,12 +1319,18 @@ async function syncProcurar(){
     const d=await r.json();
     if(!r.ok || !d.ok){ el.innerHTML = '<div style="color:#ff6b6b">'+((d&&d.erro)||'Falha na consulta')+'</div>'; return; }
     SYNC_NOVOS = d.novos || [];
-    if(!SYNC_NOVOS.length){
+    SYNC_CORES = d.cores_pendentes || [];
+    if(!SYNC_NOVOS.length && !SYNC_CORES.length){
       el.innerHTML = `<div style="color:#2ee6a6">✓ Nada novo. ${d.ja_cadastrados} produto(s) de matéria-prima já estão no sistema.</div>`;
       return;
     }
-    el.innerHTML =
-      `<div style="margin-bottom:10px; font-size:14px;">
+    if(!SYNC_NOVOS.length){
+      el.innerHTML = syncHtmlCores()
+        + `<div style="color:#2ee6a6">Nenhum produto novo — ${d.ja_cadastrados} já estavam cadastrados.</div>`;
+      return;
+    }
+    el.innerHTML = syncHtmlCores()
+      + `<div style="margin-bottom:10px; font-size:14px;">
          <b>${SYNC_NOVOS.length} produto(s) novo(s)</b> encontrados no Bling
          <span style="opacity:.6">· ${d.ja_cadastrados} já estavam cadastrados</span>
        </div>`
@@ -1124,9 +1344,11 @@ async function syncProcurar(){
               <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;">
                 <input class="sync-in" data-c="material" data-i="${i}" value="${n.material||''}" placeholder="material" style="width:90px">
                 <input class="sync-in" data-c="cor" data-i="${i}" value="${n.cor||''}" placeholder="cor (se tiver)" style="width:120px">
+                <input class="sync-in" data-c="cor_label" data-i="${i}" value="${n.cor_label||''}" placeholder="SKU cor" maxlength="6" style="width:80px; text-transform:uppercase">
                 <input class="sync-in" data-c="fornecedor" data-i="${i}" value="${n.fornecedor||''}" placeholder="fornecedor" style="width:170px">
                 <input class="sync-in" data-c="codigo_gravimetrico" data-i="${i}" value="" placeholder="cód. gravim." style="width:110px">
               </div>
+              ${n.cor_nova ? '<div style="font-size:12px; color:#ffb648; margin-top:6px">🎨 cor nova neste material — vai ser cadastrada junto</div>' : ''}
               ${!n.fornecedor ? '<div style="font-size:12px; color:#ffb648; margin-top:6px">⚠ fornecedor não reconhecido — digite o nome exato</div>' : ''}
             </div>
           </label>
@@ -1145,6 +1367,7 @@ async function syncConfirmar(){
     const base=SYNC_NOVOS[i];
     itens.push({ bling_id:base.bling_id, codigo:base.codigo, formato:base.formato,
                  material:val('material'), cor:val('cor')||null, fornecedor:val('fornecedor'),
+                 cor_label:val('cor_label')||null,
                  codigo_gravimetrico:val('codigo_gravimetrico')||null });
   });
   if(!itens.length){ alert('Marque ao menos um produto.'); return; }
@@ -1167,8 +1390,12 @@ async function syncConfirmar(){
     const r=await fetch('/sync/mp/confirmar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({itens})});
     const d=await r.json();
     if(!r.ok || !d.ok){ el.innerHTML='<div style="color:#ff6b6b">'+((d&&d.erro)||'Falha ao cadastrar')+'</div>'; return; }
+    const nc = d.cores_cadastradas || [];
     el.innerHTML = `<div style="color:#2ee6a6">✓ ${d.cadastrados} produto(s) cadastrados. Já aparecem nas telas de matéria-prima.</div>`
+      + (nc.length ? '<div style="color:#2ee6a6; margin-top:6px">🎨 '+nc.length+' cor(es) nova(s) no catálogo: '
+          + nc.map(c=>`${c.material}/${c.cor} (${c.label})`).join(', ')+'</div>' : '')
       + (d.erros && d.erros.length ? '<div style="color:#ffb648; margin-top:8px">'+d.erros.length+' com problema — confira os campos.</div>' : '');
+    if(typeof cgCarregar==="function") cgCarregar();
   }catch(e){ el.innerHTML='<div style="color:#ff6b6b">Erro: '+e.message+'</div>'; }
 }
 

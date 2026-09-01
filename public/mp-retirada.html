@@ -1580,6 +1580,17 @@ async function carregarCatalogoRetirada() {
         if (Array.isArray(cat.fornecedores[k])) ADITIVOS[k].fornecedores = cat.fornecedores[k];
       }
     }
+    // Cores dos aditivos também vêm do banco — se o Pigmento ganhar uma cor
+    // nova, ela aparece aqui sem precisar de atualização de sistema. Material
+    // que não tem cor (Dessecante) continua com null, que é o que esconde o
+    // bloco de cor na tela.
+    if (cat && cat.materiais) {
+      for (const k of Object.keys(ADITIVOS)) {
+        const m = cat.materiais[k];
+        if (!m || !Array.isArray(m.cores)) continue;
+        ADITIVOS[k].cores = m.cores.length ? m.cores.slice() : null;
+      }
+    }
   } catch (e) { /* fallback: mantém os fornecedores embutidos */ }
 }
 
@@ -1588,7 +1599,7 @@ renderFornecedores();
 renderCores();
 ajustarSacos(0);
 renderHistorico();
-carregarCatalogoRetirada().then(() => { renderFornecedores(); });
+carregarCatalogoRetirada().then(() => { renderFornecedores(); renderCores(); });
 restaurarSessaoAberta();
 
 </script>

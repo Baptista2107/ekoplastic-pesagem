@@ -1192,6 +1192,50 @@ function seedInicial() {
 }
 migrarLegacy();
 
+// ──────────────────────────────────────────────────────────────────
+//  MATERIAIS DE MP: nome popular, cores válidas e a abreviação da cor
+//  dentro da SKU (ex: GBD.CAN.CED → "CAN" é o corLabel de Canela).
+//
+//  As abreviações viviam fixas no HTML da tela de Recebimento; passaram
+//  para cá porque cor nova precisa nascer com a dela. Foram copiadas uma
+//  a uma do que já rodava em produção — repare que Preto é "PTO" no grão
+//  e "PRE" no pigmento. NÃO uniformizar: a SKU vai para o Bling, e casar
+//  o produto errado lá é lançamento errado de estoque.
+// ──────────────────────────────────────────────────────────────────
+const MP_MATERIAIS_PADRAO = {
+  GBD:    { popular: 'Grão Baixa Densidade', cores: ['Colorido','Canela','Preto','Leitoso'],
+            corLabel: { 'Colorido':'COL', 'Canela':'CAN', 'Preto':'PTO', 'Leitoso':'LEI' } },
+  POLI:   { popular: 'Polinylon',            cores: ['Colorido','Canela','Cristal','Leitoso'],
+            corLabel: { 'Colorido':'COL', 'Canela':'CAN', 'Cristal':'CRIS', 'Leitoso':'LEI' } },
+  CARBO:  { popular: 'Carbonato',            cores: [], corLabel: {} },
+  PIG:    { popular: 'Pigmento',             cores: ['Amarelo','Branco','Preto','Verde'],
+            corLabel: { 'Amarelo':'AMA', 'Branco':'BRA', 'Preto':'PRE', 'Verde':'VER' } },
+  DESSEC: { popular: 'Dessecante',           cores: [], corLabel: {} },
+};
+
+// Nomes de cor que o sistema sabe RECONHECER num produto do Bling, mesmo
+// que ainda não estejam cadastrados em nenhum material. Sem esta lista,
+// uma cor inédita não é reconhecida e o produto entra sem cor nenhuma —
+// foi o que aconteceu com o AMARELO do grão em 01/09/2026.
+// O valor é a grafia que a fábrica usa; a chave é como vem escrito.
+const MP_CORES_CONHECIDAS = {
+  AMARELO: 'Amarelo', AMARELA: 'Amarelo', AZUL: 'Azul', BEGE: 'Bege',
+  BRANCO: 'Branco', BRANCA: 'Branco', CANELA: 'Canela', CINZA: 'Cinza',
+  COLORIDO: 'Colorido', COLORIDA: 'Colorido', CRISTAL: 'Cristal',
+  FUME: 'Fumê', LARANJA: 'Laranja', LEITOSO: 'Leitoso', LEITOSA: 'Leitoso',
+  MARROM: 'Marrom', NATURAL: 'Natural', PRETO: 'Preto', PRETA: 'Preto',
+  ROSA: 'Rosa', ROXO: 'Roxo', TRANSPARENTE: 'Cristal',
+  VERDE: 'Verde', VERMELHO: 'Vermelho', VERMELHA: 'Vermelho',
+};
+
+// Abreviação de 3 letras usada na SKU quando a cor ainda não tem uma
+// cadastrada. É só um ponto de partida: quem confirma o cadastro pode
+// trocar, e é isso que vai para o Bling.
+function corLabelPadrao(cor) {
+  return String(cor || '').normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^A-Za-z0-9]/g, '').substring(0, 3).toUpperCase();
+}
+
 // ─── Seed de configs Bling: mapa fornecedor + mapa produtos + ID Ekoplastic ───
 // Só insere se a chave NÃO existir (não sobrescreve customização do usuário).
 // Os mapas refletem o cadastro Bling fornecido em 21/05/2026.
@@ -1390,9 +1434,8 @@ function seedConfigsBling() {
   }
   // Estrutura dos materiais (nome popular + cores válidas). Usada pela tela de
   // Manutenção para montar as opções de cadastro do código gravimétrico.
-  const mpMateriaisPadrao = {"GBD": {"popular": "Grão Baixa Densidade", "cores": ["Colorido", "Canela", "Preto", "Leitoso"]}, "POLI": {"popular": "Polinylon", "cores": ["Colorido", "Canela", "Cristal", "Leitoso"]}, "CARBO": {"popular": "Carbonato", "cores": []}, "PIG": {"popular": "Pigmento", "cores": ["Amarelo", "Branco", "Preto", "Verde"]}, "DESSEC": {"popular": "Dessecante", "cores": []}};
   if (!dbStmts.configGet.get('mp_materiais')) {
-    dbStmts.configSet.run('mp_materiais', JSON.stringify(mpMateriaisPadrao));
+    dbStmts.configSet.run('mp_materiais', JSON.stringify(MP_MATERIAIS_PADRAO));
     inseridas++;
   }
 
@@ -1709,6 +1752,16 @@ function aplicarPatchsCatalogoMP() {
         logI('db', `Patch catálogo: material ${k} renomeado para "${nome}"`);
         mats[k].popular = nome; mudouMat = true;
       }
+    }
+    // Bancos que já existem não têm corLabel (a abreviação da SKU vivia no
+    // HTML). Semeia a partir do padrão, sem sobrescrever o que já estiver lá.
+    for (const [k, def] of Object.entries(MP_MATERIAIS_PADRAO)) {
+      if (!mats[k]) continue;
+      if (!mats[k].corLabel || typeof mats[k].corLabel !== 'object') { mats[k].corLabel = {}; mudouMat = true; }
+      for (const [cor, lab] of Object.entries(def.corLabel || {})) {
+        if (!mats[k].corLabel[cor]) { mats[k].corLabel[cor] = lab; mudouMat = true; }
+      }
+      if (mudouMat) logI('db', `Patch catálogo: abreviações de cor do material ${k} gravadas no banco`);
     }
     if (mudouMat) configSet('mp_materiais', JSON.stringify(mats));
   } catch (e) { logW('db', 'Falha no patch de nomes de material', { erro: e && e.message }); }
@@ -5539,7 +5592,16 @@ const requestHandlerBase = async (req, res) => {
         // "Cristal". Nomes mais longos têm prioridade pelo mesmo motivo.
         const porTamanho = (a, b) => norm(b).length - norm(a).length;
         const fornOrdenados  = [...fornConhecidos].sort(porTamanho);
-        const coresOrdenadas = [...coresConhecidas].sort(porTamanho);
+        // Termos de cor: o que já está cadastrado MAIS o dicionário de cores
+        // conhecidas. Sem o dicionário, uma cor inédita no Bling não casa com
+        // nada e o produto entra sem cor — foi o caso do AMARELO do grão.
+        // Cada termo aponta para a grafia que a fábrica usa.
+        const termosCor = new Map();
+        for (const c of coresConhecidas) termosCor.set(norm(c), c);
+        for (const [termo, cor] of Object.entries(MP_CORES_CONHECIDAS)) {
+          if (!termosCor.has(norm(termo))) termosCor.set(norm(termo), cor);
+        }
+        const coresOrdenadas = [...termosCor.keys()].sort((a, b) => b.length - a.length);
         const interpretar = (nome, codigo) => {
           let N = norm(nome) + ' ' + norm(codigo);
           const apelidos = { GBD: ['GBD', 'GRAO BAIXA', 'BAIXA DENSIDADE'], POLI: ['POLI', 'POLINYLON', 'NYLON'],
@@ -5557,7 +5619,8 @@ const requestHandlerBase = async (req, res) => {
             N = N.split(norm(forn)).join(' ');
             N = N.split(' ').map(p => p.includes(semEspaco(forn)) ? ' ' : p).join(' ');
           }
-          const cor = coresOrdenadas.find(c => N.includes(norm(c))) || null;
+          const termo = coresOrdenadas.find(t => N.includes(t)) || null;
+          const cor = termo ? termosCor.get(termo) : null;
           return { material, cor, fornecedor: forn };
         };
 
@@ -5576,6 +5639,13 @@ const requestHandlerBase = async (req, res) => {
             const info = interpretar(nome, codigo);
             if (!info.material) continue;                       // não é matéria-prima reconhecida
             const chave = chaveProduto(info.material, info.cor || '', info.fornecedor || '');
+            // A cor pode ser conhecida no sistema e mesmo assim não existir
+            // NESTE material — "Amarelo" existia no Pigmento e não no Grão.
+            // Enquanto ela não entra no catálogo do material, a tela de
+            // Recebimento não tem como oferecê-la ao operador.
+            const coresDoMaterial = (cat.materiais[info.material] && cat.materiais[info.material].cores) || [];
+            const corNova = !!(info.cor && !coresDoMaterial.includes(info.cor));
+            const labelAtual = (cat.materiais[info.material] && cat.materiais[info.material].corLabel) || {};
             achados.push({
               bling_id: String(p.id), codigo, nome,
               material: info.material, cor: info.cor, fornecedor: info.fornecedor,
@@ -5583,6 +5653,8 @@ const requestHandlerBase = async (req, res) => {
               ja_existe: !!mapaProd[chave],
               formato: p.formato || null,                        // 'S' simples / 'V' com variação
               completo: !!(info.material && info.fornecedor),     // dá para cadastrar direto?
+              cor_nova: corNova,                                  // precisa entrar no catálogo do material
+              cor_label: info.cor ? (labelAtual[info.cor] || corLabelPadrao(info.cor)) : null,
             });
           }
           if (lista.length < 100) break;
@@ -5590,11 +5662,33 @@ const requestHandlerBase = async (req, res) => {
         }
 
         const novos = achados.filter(a => !a.ja_existe);
+
+        // Cores que faltam no catálogo do material — inclusive as de produtos
+        // JÁ mapeados. Isto é o que conserta o caso do AMARELO: o produto podia
+        // já ter sido cadastrado numa sincronização anterior (e por isso sumir
+        // da lista de "novos"), mas a cor nunca entrou no material, então a tela
+        // de Recebimento continuava sem ela. Aqui ela aparece de qualquer jeito.
+        const pend = new Map();
+        for (const a of achados) {
+          if (!a.cor_nova) continue;
+          const k = a.material + '|' + a.cor;
+          if (!pend.has(k)) pend.set(k, { material: a.material, cor: a.cor, label: a.cor_label, exemplos: [], produtos: 0 });
+          const p = pend.get(k);
+          p.produtos++;
+          if (p.exemplos.length < 3) p.exemplos.push(a.nome);
+        }
+        const coresPendentes = [...pend.values()];
+        if (coresPendentes.length) {
+          logI('sync', `Sincronização: ${coresPendentes.length} cor(es) ainda fora do catálogo — `
+            + coresPendentes.map(c => `${c.material}/${c.cor}`).join(', '));
+        }
+
         return jsonOk(res, {
           paginas_lidas: paginasLidas,
           total_mp_encontrados: achados.length,
           ja_cadastrados: achados.length - novos.length,
           novos,
+          cores_pendentes: coresPendentes,
           fornecedores_sem_contato: [...new Set(novos.filter(n => n.fornecedor && !mapaForn[n.fornecedor]).map(n => n.fornecedor))],
         });
       } catch(e) {
@@ -5630,6 +5724,9 @@ const requestHandlerBase = async (req, res) => {
       const fornCat  = JSON.parse(configGet('mp_fornecedores', '{}'));
       const codigos  = JSON.parse(configGet('mp_codigos_gravimetricos', '[]'));
 
+      const mats = JSON.parse(configGet('mp_materiais', '{}'));
+      const coresCadastradas = [];
+
       const feitos = [], erros = [];
       for (const it of itens) {
         try {
@@ -5638,6 +5735,19 @@ const requestHandlerBase = async (req, res) => {
           const forn = String(it.fornecedor || '').trim();
           if (!material || !forn) { erros.push({ item: it, erro: 'material e fornecedor são obrigatórios' }); continue; }
           if (!cat.materiais[material]) { erros.push({ item: it, erro: `material ${material} desconhecido` }); continue; }
+
+          // Cor que ainda não existe NESTE material entra agora no catálogo —
+          // é isso que faz ela aparecer na tela de Recebimento. Sem esta parte,
+          // o fornecedor entrava e a cor não (bug encontrado em 01/09/2026).
+          if (cor && mats[material]) {
+            if (!Array.isArray(mats[material].cores)) mats[material].cores = [];
+            if (!mats[material].corLabel || typeof mats[material].corLabel !== 'object') mats[material].corLabel = {};
+            if (!mats[material].cores.includes(cor)) {
+              mats[material].cores.push(cor);
+              mats[material].corLabel[cor] = String(it.cor_label || mats[material].corLabel[cor] || corLabelPadrao(cor)).toUpperCase();
+              coresCadastradas.push({ material, cor, label: mats[material].corLabel[cor] });
+            }
+          }
 
           const chave = chaveProduto(material, cor || '', forn);
           mapaProd[chave] = String(it.bling_id);
@@ -5661,8 +5771,12 @@ const requestHandlerBase = async (req, res) => {
       configSet('mapa_sku_variacao_mp', JSON.stringify(mapaSku));
       configSet('mp_fornecedores', JSON.stringify(fornCat));
       configSet('mp_codigos_gravimetricos', JSON.stringify(codigos));
+      if (coresCadastradas.length) {
+        configSet('mp_materiais', JSON.stringify(mats));
+        for (const c of coresCadastradas) logI('sync', `Cor cadastrada pelo Bling: ${c.material} · ${c.cor} (SKU ${c.label})`);
+      }
       for (const f of feitos) logI('sync', `Cadastrado pelo Bling: ${f.chave} → produto ${f.bling_id}${f.codigo_gravimetrico ? ' · código ' + f.codigo_gravimetrico : ''}`);
-      return jsonOk(res, { cadastrados: feitos.length, feitos, erros });
+      return jsonOk(res, { cadastrados: feitos.length, feitos, erros, cores_cadastradas: coresCadastradas });
     }
 
     if (pathname === '/produto-acabado/etiqueta-gaiola' && req.method === 'POST') {
@@ -6409,6 +6523,127 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
     if (pathname === '/catalogo-mp' && req.method === 'GET') {
       const c = lerCatalogoMP();
       return jsonOk(res, { fornecedores: c.fornecedores, codigos: c.codigos, materiais: c.materiais });
+    }
+
+    // ─── CORES DE UM MATERIAL ───────────────────────────────────────
+    // Até 01/09/2026 as cores eram fixas no código e não havia como
+    // cadastrar uma nova — nem pela sincronização com o Bling, nem por
+    // tela nenhuma. Estas duas rotas fecham esse buraco.
+    //
+    // POST /catalogo-mp/cor  { matKey, cor, label?, renomear_de? }
+    //   Sem renomear_de: cadastra a cor no material.
+    //   Com renomear_de: troca o nome e ARRASTA JUNTO tudo que aponta
+    //   para o nome antigo — códigos gravimétricos e os mapas do Bling.
+    //   Renomear sem arrastar deixaria a etiqueta com um nome e o
+    //   lançamento no Bling com outro.
+    if (pathname === '/catalogo-mp/cor' && req.method === 'POST') {
+      let body; try { body = await lerBodyJson(req); } catch(e) { return jsonErr(res, 400, e.message); }
+      const matKey = String(body.matKey || '').trim().toUpperCase();
+      const cor    = String(body.cor || '').trim();
+      const antiga = body.renomear_de ? String(body.renomear_de).trim() : null;
+      if (!matKey) return jsonErr(res, 400, 'Informe o material');
+      if (!cor)    return jsonErr(res, 400, 'Informe o nome da cor');
+      if (cor.length > 24) return jsonErr(res, 400, 'Nome de cor muito longo (máximo 24 caracteres)');
+
+      const mats = JSON.parse(configGet('mp_materiais', '{}'));
+      if (!mats[matKey]) return jsonErr(res, 400, `Material desconhecido: ${matKey}`);
+      if (!Array.isArray(mats[matKey].cores)) mats[matKey].cores = [];
+      if (!mats[matKey].corLabel || typeof mats[matKey].corLabel !== 'object') mats[matKey].corLabel = {};
+
+      const label = String(body.label || mats[matKey].corLabel[cor] || corLabelPadrao(cor))
+        .replace(/[^A-Za-z0-9]/g, '').toUpperCase().substring(0, 6);
+      if (!label) return jsonErr(res, 400, 'A abreviação da SKU não pode ficar vazia');
+
+      const migrado = { codigos: 0, produtos_bling: 0, skus_variacao: 0 };
+
+      if (antiga) {
+        if (!mats[matKey].cores.includes(antiga)) return jsonErr(res, 404, `A cor "${antiga}" não existe em ${matKey}`);
+        if (antiga !== cor && mats[matKey].cores.includes(cor)) {
+          return jsonErr(res, 409, `${matKey} já tem uma cor chamada "${cor}"`);
+        }
+        mats[matKey].cores = mats[matKey].cores.map(c => (c === antiga ? cor : c));
+        delete mats[matKey].corLabel[antiga];
+
+        // Códigos gravimétricos que apontavam para o nome antigo.
+        const codigos = JSON.parse(configGet('mp_codigos_gravimetricos', '[]'));
+        for (const c of codigos) {
+          if (c.matKey === matKey && (c.cor || null) === antiga) { c.cor = cor; migrado.codigos++; }
+        }
+        if (migrado.codigos) configSet('mp_codigos_gravimetricos', JSON.stringify(codigos));
+
+        // Mapas do Bling: a chave é material:cor:fornecedor. Sem re-chavear,
+        // o produto some do envio e a sessão vira pendente_config.
+        for (const chaveCfg of ['mapa_produto_bling', 'mapa_sku_variacao_mp']) {
+          const mapa = JSON.parse(configGet(chaveCfg, '{}'));
+          let mudou = 0;
+          for (const k of Object.keys(mapa)) {
+            const [m, c, f] = k.split(':');
+            if (m === matKey && c === antiga) {
+              const nova = chaveProduto(matKey, cor, f);
+              if (nova !== k) { mapa[nova] = mapa[k]; delete mapa[k]; mudou++; }
+            }
+          }
+          if (mudou) configSet(chaveCfg, JSON.stringify(mapa));
+          if (chaveCfg === 'mapa_produto_bling') migrado.produtos_bling = mudou;
+          else migrado.skus_variacao = mudou;
+        }
+      } else {
+        if (mats[matKey].cores.includes(cor)) {
+          // Já existe: só atualiza a abreviação, se veio uma diferente.
+          if (body.label && mats[matKey].corLabel[cor] !== label) {
+            mats[matKey].corLabel[cor] = label;
+            configSet('mp_materiais', JSON.stringify(mats));
+            logI('db', `Catálogo: abreviação de ${matKey}/${cor} agora é ${label}`);
+            return jsonOk(res, { atualizado: true, matKey, cor, label, materiais: mats });
+          }
+          return jsonErr(res, 409, `${matKey} já tem a cor "${cor}"`);
+        }
+        mats[matKey].cores.push(cor);
+      }
+
+      mats[matKey].corLabel[cor] = label;
+      configSet('mp_materiais', JSON.stringify(mats));
+      logI('db', antiga
+        ? `Catálogo: cor ${matKey}/${antiga} renomeada para ${cor} (SKU ${label}) — ${migrado.codigos} código(s), ${migrado.produtos_bling} produto(s) Bling migrado(s)`
+        : `Catálogo: cor ${matKey}/${cor} cadastrada (SKU ${label})`);
+      return jsonOk(res, { cadastrado: !antiga, renomeado: !!antiga, matKey, cor, label, migrado, materiais: mats });
+    }
+
+    // POST /catalogo-mp/cor/remover  { matKey, cor, forcar? }
+    // Não apaga cor que ainda está amarrada a código gravimétrico ou a
+    // produto do Bling — nesse caso devolve o que está preso, e só sai com
+    // forcar:true. Etiquetas já impressas guardam a cor no próprio registro
+    // e não são afetadas: sumir do catálogo só tira a cor da lista de escolha.
+    if (pathname === '/catalogo-mp/cor/remover' && req.method === 'POST') {
+      let body; try { body = await lerBodyJson(req); } catch(e) { return jsonErr(res, 400, e.message); }
+      const matKey = String(body.matKey || '').trim().toUpperCase();
+      const cor    = String(body.cor || '').trim();
+      if (!matKey || !cor) return jsonErr(res, 400, 'Informe o material e a cor');
+
+      const mats = JSON.parse(configGet('mp_materiais', '{}'));
+      if (!mats[matKey] || !Array.isArray(mats[matKey].cores) || !mats[matKey].cores.includes(cor)) {
+        return jsonErr(res, 404, `A cor "${cor}" não existe em ${matKey}`);
+      }
+
+      const codigos = JSON.parse(configGet('mp_codigos_gravimetricos', '[]'));
+      const presosCod = codigos.filter(c => c.matKey === matKey && (c.cor || null) === cor);
+      const mapaProdC = JSON.parse(configGet('mapa_produto_bling', '{}'));
+      const presosBling = Object.keys(mapaProdC).filter(k => {
+        const [m, c] = k.split(':'); return m === matKey && c === cor;
+      });
+      if ((presosCod.length || presosBling.length) && !body.forcar) {
+        return jsonErr(res, 409,
+          `A cor "${cor}" ainda está em uso: ${presosCod.length} código(s) gravimétrico(s) e ${presosBling.length} produto(s) do Bling. `
+          + 'Remova esses vínculos antes, ou confirme a remoção mesmo assim.',
+          { codigos: presosCod, produtos_bling: presosBling, em_uso: true });
+      }
+
+      mats[matKey].cores = mats[matKey].cores.filter(c => c !== cor);
+      if (mats[matKey].corLabel) delete mats[matKey].corLabel[cor];
+      configSet('mp_materiais', JSON.stringify(mats));
+      logI('db', `Catálogo: cor ${matKey}/${cor} removida da lista${body.forcar ? ' (forçado)' : ''}`);
+      return jsonOk(res, { removido: true, matKey, cor, materiais: mats,
+                           avisos: { codigos: presosCod.length, produtos_bling: presosBling.length } });
     }
 
     // Cadastro de código gravimétrico pela tela de Manutenção (material + cor +

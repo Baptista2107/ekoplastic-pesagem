@@ -3906,6 +3906,23 @@ async function carregarCatalogoMP() {
         if (Array.isArray(cat.fornecedores[k])) MATERIAIS[k].forn = cat.fornecedores[k];
       }
     }
+    // CORES: até 01/09/2026 esta tela ignorava cat.materiais e usava só a
+    // lista fixa acima — por isso uma cor nova cadastrada no Bling (e até no
+    // catálogo) nunca chegava ao operador. Agora o banco manda; a lista fixa
+    // fica como reserva para quando o /catalogo-mp não responder.
+    if (cat && cat.materiais && typeof cat.materiais === 'object') {
+      for (const k of Object.keys(MATERIAIS)) {
+        const m = cat.materiais[k];
+        if (!m) continue;
+        if (Array.isArray(m.cores)) MATERIAIS[k].cores = m.cores.slice();
+        // A abreviação da SKU vem junto. O que o banco traz tem prioridade;
+        // o que não vier continua valendo do embutido, e cor sem abreviação
+        // nenhuma cai nas 3 primeiras letras (mesma regra de sempre).
+        if (m.corLabel && typeof m.corLabel === 'object') {
+          MATERIAIS[k].corLabel = Object.assign({}, MATERIAIS[k].corLabel, m.corLabel);
+        }
+      }
+    }
     if (cat && Array.isArray(cat.codigos) && cat.codigos.length) {
       CODIGOS_GRAVIMETRICOS = cat.codigos;
     }
