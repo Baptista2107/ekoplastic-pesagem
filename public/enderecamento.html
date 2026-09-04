@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Endereçamento — Ekoplastic</title>
+<!-- Leitor de QR servido pela própria estação (nada de CDN: o galpão não
+     pode depender de internet para endereçar). É a mesma biblioteca que o
+     inventário já usa há meses no celular. -->
+<script src="/acesso-colaborador.js"></script>
+<script src="/vendor/html5-qrcode.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=IBM+Plex+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0a0e0c; --surface:#121a16; --panel:#18231e; --panel-hi:#1f2f27;
+  --border:#22322b; --text:#eaf5ef; --muted:#6f8a7d;
+  --accent:#2ee6a6;                 /* esmeralda — produto acabado */
+  --livre:#1d2b24; --ocupada:#2ee6a6; --bloqueada:#ff4466; --warn:#ffaa00;
+  --radius:14px;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{min-height:100vh;font-family:'Nunito',sans-serif;background:var(--bg);color:var(--text)}
+body{padding-bottom:24px}
+
+header{display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--surface);
+  border-bottom:1px solid var(--border);position:sticky;top:0;z-index:50}
+.logo{display:flex;align-items:center;gap:9px;font-weight:900;letter-spacing:1px;font-size:14px}
+.logo .ic{width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,var(--accent),#12b980);
+  color:#04140d;display:flex;align-items:center;justify-content:center;font-size:15px}
+header .sp{flex:1}
+.btn-ic{background:transparent;border:1px solid var(--border);border-radius:8px;width:34px;height:34px;
+  color:var(--muted);font-size:15px;cursor:pointer}
+.btn-ic:hover{color:var(--text)}
+
+.abas{display:flex;gap:8px;padding:12px 14px 0}
+.aba{flex:1;padding:11px;border:1px solid var(--border);background:var(--panel);border-radius:11px;
+  color:var(--muted);font-family:inherit;font-size:13.5px;font-weight:800;letter-spacing:.4px;cursor:pointer}
+.aba.on{background:linear-gradient(135deg,var(--accent),#12b980);color:#04140d;border-color:transparent}
+.pg{display:none;padding:14px}
+.pg.on{display:block}
+
+/* ─── Resumo ─── */
+.resumo{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:8px;margin-bottom:14px}
+.rz{background:var(--panel);border:1px solid var(--border);border-radius:11px;padding:10px 12px}
+.rz b{display:block;font-size:20px;font-weight:900;line-height:1.15}
+.rz span{font-size:10.5px;font-weight:800;letter-spacing:.9px;color:var(--muted);text-transform:uppercase}
+
+.barra{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+.busca{flex:1;min-width:150px;background:var(--panel);border:1px solid var(--border);border-radius:10px;
+  padding:10px 12px;color:var(--text);font-family:inherit;font-size:14px}
+.chip{padding:9px 14px;border:1px solid var(--border);background:var(--panel);border-radius:9px;
+  color:var(--muted);font-family:inherit;font-size:12.5px;font-weight:800;cursor:pointer}
+.chip.on{color:var(--text);border-color:var(--accent)}
+
+/* ─── Mapa ─── */
+.rua{margin-bottom:18px}
+.rua-tit{font-size:12px;font-weight:900;letter-spacing:1.4px;color:var(--muted);margin-bottom:8px}
+.niveis{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:10px;overflow-x:auto}
+.nivel{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.nivel:last-child{margin-bottom:0}
+.nivel-lb{flex:0 0 76px;font-size:10.5px;font-weight:900;letter-spacing:.6px;color:var(--muted);line-height:1.25}
+.nivel-lb small{display:block;font-weight:700;color:#4d6459;letter-spacing:.3px}
+.vaos{display:flex;gap:4px}
+.vao{width:30px;height:38px;flex:0 0 30px;border-radius:6px;border:1px solid var(--border);
+  background:var(--livre);color:var(--muted);font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:700;
+  display:flex;align-items:center;justify-content:center;cursor:pointer;transition:transform .08s}
+.vao:hover{transform:translateY(-2px)}
+.vao.ocupada{background:var(--ocupada);border-color:var(--ocupada);color:#04140d;font-weight:700}
+.vao.bloqueada{background:repeating-linear-gradient(45deg,#2a1218,#2a1218 4px,#3a171f 4px,#3a171f 8px);
+  border-color:var(--bloqueada);color:#ff8ba3;cursor:not-allowed}
+.vao.velha{box-shadow:inset 0 0 0 2px var(--warn)}
+.vao.achado{outline:2px solid #fff;outline-offset:1px}
+.legenda{display:flex;gap:14px;flex-wrap:wrap;font-size:11.5px;color:var(--muted);margin-top:4px}
+.legenda i{display:inline-block;width:11px;height:11px;border-radius:3px;vertical-align:-1px;margin-right:5px}
+
+/* ─── Detalhe ─── */
+.det{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:14px}
+.det h3{font-family:'IBM Plex Mono',monospace;font-size:19px;font-weight:700;letter-spacing:1px;margin-bottom:2px}
+.det .sub{font-size:12px;color:var(--muted);margin-bottom:12px}
+.linha{display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:1px solid var(--border);font-size:13.5px}
+.linha:last-of-type{border-bottom:none}
+.linha span:first-child{color:var(--muted)}
+.linha span:last-child{font-weight:800;text-align:right}
+.vazio{color:var(--muted);font-size:13.5px;line-height:1.6}
+
+.btn{padding:12px 16px;border-radius:10px;border:1px solid var(--border);background:var(--panel);
+  color:var(--text);font-family:inherit;font-size:13.5px;font-weight:800;cursor:pointer}
+.btn:hover{background:var(--panel-hi)}
+.btn.ok{border:none;background:linear-gradient(135deg,var(--accent),#12b980);color:#04140d}
+.btn.perigo{border-color:var(--bloqueada);color:#ff8ba3}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.acoes{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+
+/* ─── Endereçar ─── */
+#reader{width:100%;max-width:460px;margin:0 auto 12px;border-radius:12px;overflow:hidden;display:none}
+#reader.on{display:block}
+.slot{background:var(--panel);border:1.5px dashed var(--border);border-radius:12px;padding:14px;margin-bottom:10px}
+.slot.cheio{border-style:solid;border-color:var(--accent);background:var(--panel-hi)}
+.slot .rot{font-size:10.5px;font-weight:900;letter-spacing:1.1px;color:var(--muted);text-transform:uppercase}
+.slot .val{font-family:'IBM Plex Mono',monospace;font-size:20px;font-weight:700;margin-top:4px}
+.slot .val.vazio2{color:#3f5349;font-size:15px;font-family:'Nunito',sans-serif;font-weight:700}
+.slot .extra{font-size:12.5px;color:var(--muted);margin-top:4px}
+.aviso{border-radius:10px;padding:11px 13px;font-size:13px;line-height:1.5;margin-bottom:10px}
+.aviso.err{background:rgba(255,68,102,.12);border:1px solid rgba(255,68,102,.4);color:#ff8ba3}
+.aviso.ok{background:rgba(46,230,166,.12);border:1px solid rgba(46,230,166,.4);color:var(--accent)}
+.aviso.at{background:rgba(255,170,0,.12);border:1px solid rgba(255,170,0,.4);color:var(--warn)}
+.hist{margin-top:16px}
+.hist-item{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:12.5px}
+.hist-item span:last-child{color:var(--muted);white-space:nowrap;font-family:'IBM Plex Mono',monospace}
+.dica{font-size:12px;color:var(--muted);line-height:1.55;margin-top:10px}
+</style>
+</head>
+<body data-tela="Endereçamento">
+
+<header>
+  <div class="logo"><div class="ic">🗺</div> ENDEREÇAMENTO</div>
+  <div class="sp"></div>
+  <button class="btn-ic" onclick="carregarMapa()" title="Atualizar">↻</button>
+  <button class="btn-ic" onclick="location.href='/produto-acabado.html'" title="Produto Acabado">📦</button>
+  <button class="btn-ic" onclick="location.href='/'" title="Menu">🏠</button>
+</header>
+
+<div class="abas">
+  <button class="aba on" id="ab-mapa" onclick="irAba('mapa')">🗺 MAPA</button>
+  <button class="aba" id="ab-acao" onclick="irAba('acao')">📷 ENDEREÇAR</button>
+</div>
+
+<!-- ═══════════ MAPA ═══════════ -->
+<div class="pg on" id="pg-mapa">
+  <div class="resumo" id="resumo"></div>
+
+  <div class="barra">
+    <input class="busca" id="busca" placeholder="Buscar endereço, gaiola ou formato…" oninput="desenhar()">
+    <button class="chip on" data-rua="0" onclick="filtrarRua(0,this)">Todas</button>
+    <button class="chip" data-rua="1" onclick="filtrarRua(1,this)">Rua 01</button>
+    <button class="chip" data-rua="2" onclick="filtrarRua(2,this)">Rua 02</button>
+  </div>
+
+  <div id="detalhe"></div>
+  <div id="mapa"><div class="vazio">Carregando o mapa…</div></div>
+
+  <div class="legenda">
+    <span><i style="background:var(--livre);border:1px solid var(--border)"></i>livre</span>
+    <span><i style="background:var(--ocupada)"></i>ocupada</span>
+    <span><i style="background:#3a171f;border:1px solid var(--bloqueada)"></i>bloqueada</span>
+    <span><i style="background:var(--livre);box-shadow:inset 0 0 0 2px var(--warn)"></i>parada há 30 dias ou mais</span>
+  </div>
+</div>
+
+<!-- ═══════════ ENDEREÇAR ═══════════ -->
+<div class="pg" id="pg-acao">
+  <div class="barra">
+    <button class="chip on" id="md-entrada" onclick="irModo('entrada')">➕ COLOCAR</button>
+    <button class="chip" id="md-saida" onclick="irModo('saida')">➖ RETIRAR</button>
+  </div>
+
+  <div id="msg"></div>
+
+  <div id="reader"></div>
+  <div class="acoes" style="margin-top:0">
+    <button class="btn ok" id="btn-cam" onclick="toggleCamera()">▶ LIGAR CÂMERA</button>
+    <button class="btn" onclick="digitar()">⌨ DIGITAR</button>
+  </div>
+
+  <div style="margin-top:14px">
+    <div class="slot" id="slot-end" onclick="limparSlot('end')">
+      <div class="rot">Endereço</div>
+      <div class="val vazio2" id="v-end">leia a etiqueta da prateleira</div>
+      <div class="extra" id="e-end"></div>
+    </div>
+    <div class="slot" id="slot-gai" onclick="limparSlot('gai')">
+      <div class="rot">Gaiola</div>
+      <div class="val vazio2" id="v-gai">leia a etiqueta da gaiola</div>
+      <div class="extra" id="e-gai"></div>
+    </div>
+  </div>
+
+  <div class="acoes">
+    <button class="btn ok" id="btn-confirmar" onclick="confirmar()" disabled style="flex:1">✓ CONFIRMAR</button>
+    <button class="btn" onclick="limparTudo()">LIMPAR</button>
+  </div>
+
+  <div class="dica" id="dica-modo"></div>
+
+  <div class="hist">
+    <div class="rua-tit">ÚLTIMOS MOVIMENTOS</div>
+    <div id="hist"><div class="vazio">—</div></div>
+  </div>
+</div>
+
+<script>
+const URL_BASE = '';
+let MAPA = { posicoes: [], resumo: {}, layout: null };
+let FILTRO_RUA = 0;
+let SELECIONADA = null;
+let MODO = 'entrada';
+const ESCOLHA = { end: null, gai: null };
+let scanner = null, camLigada = false, CAMERA_ID = null;
+const ultimaLeitura = {};
+// Conta as leituras. Depois de confirmar, a tela se limpa sozinha em 2,2 s
+// — mas se nesse meio tempo o operador já leu a PRÓXIMA etiqueta, a
+// limpeza não pode apagar o que ele acabou de ler. O contador é o que
+// distingue "ninguém mexeu" de "já tem coisa nova aqui".
+let GERACAO = 0;
+
+/* ══════════════ utilidades ══════════════ */
+const $ = id => document.getElementById(id);
+const fmtKg = v => Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' kg';
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function beep(f, d) {
+  try { const c = new (window.AudioContext || window.webkitAudioContext)(); const o = c.createOscillator(), g = c.createGain();
+    o.connect(g); g.connect(c.destination); o.frequency.value = f; o.type = 'sine';
+    g.gain.setValueAtTime(.25, c.currentTime); g.gain.exponentialRampToValueAtTime(.001, c.currentTime + d);
+    o.start(); o.stop(c.currentTime + d); } catch (e) {}
+}
+function vibrar(p) { try { navigator.vibrate && navigator.vibrate(p); } catch (e) {} }
+function dizer(tipo, txt, ms) {
+  $('msg').innerHTML = '<div class="aviso ' + tipo + '">' + txt + '</div>';
+  if (ms) setTimeout(() => { if ($('msg').textContent.replace(/\s/g,'') === String(txt).replace(/<[^>]+>/g,'').replace(/\s/g,'')) $('msg').innerHTML = ''; }, ms);
+}
+
+function irAba(qual) {
+  $('ab-mapa').classList.toggle('on', qual === 'mapa');
+  $('ab-acao').classList.toggle('on', qual === 'acao');
+  $('pg-mapa').classList.toggle('on', qual === 'mapa');
+  $('pg-acao').classList.toggle('on', qual === 'acao');
+  if (qual === 'mapa') { pararCamera(); carregarMapa(); }
+}
+
+/* ══════════════ MAPA ══════════════ */
+async function carregarMapa() {
+  try {
+    const r = await fetch(URL_BASE + '/enderecamento/mapa');
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.erro || 'falha');
+    MAPA = d;
+    desenharResumo();
+    desenhar();
+  } catch (e) {
+    $('mapa').innerHTML = '<div class="vazio">Não consegui carregar o mapa: ' + esc(e.message) + '</div>';
+  }
+}
+
+function desenharResumo() {
+  const r = MAPA.resumo || {};
+  $('resumo').innerHTML = [
+    ['ocupadas', r.ocupadas], ['livres', r.livres], ['bloqueadas', r.bloqueadas],
+    ['fardos', r.fardos], ['em estoque', fmtKg(r.kg)],
+  ].map(([rot, v]) => `<div class="rz"><b>${typeof v === 'number' ? v : esc(v)}</b><span>${rot}</span></div>`).join('');
+}
+
+function filtrarRua(n, el) {
+  FILTRO_RUA = n;
+  document.querySelectorAll('.chip[data-rua]').forEach(c => c.classList.toggle('on', c === el));
+  desenhar();
+}
+
+// Casa a busca com o endereço, a gaiola, o formato ou a cor.
+function casa(p, termo) {
+  if (!termo) return false;
+  const t = termo.toLowerCase();
+  const g = p.gaiola || {};
+  return [p.codigo, g.id, g.formato, g.cor].filter(Boolean).some(v => String(v).toLowerCase().includes(t));
+}
+
+function desenhar() {
+  const termo = ($('busca').value || '').trim();
+  const ruas = Object.keys(MAPA.layout ? MAPA.layout.ruas : { 1: 0, 2: 0 }).map(Number)
+                 .filter(r => !FILTRO_RUA || r === FILTRO_RUA);
+  let html = '';
+  for (const rua of ruas) {
+    const doRua = MAPA.posicoes.filter(p => p.rua === rua);
+    if (!doRua.length) continue;
+    const ocup = doRua.filter(p => p.ocupada).length;
+    const uteis = doRua.filter(p => !p.bloqueada).length;
+    html += `<div class="rua"><div class="rua-tit">RUA ${String(rua).padStart(2,'0')} · ${ocup} de ${uteis} ocupadas</div><div class="niveis">`;
+    // Desenha de cima para baixo, como a prateleira é vista de frente.
+    for (const nivel of [3, 2, 1]) {
+      const vaos = doRua.filter(p => p.nivel === nivel).sort((a, b) => a.posicao - b.posicao);
+      if (!vaos.length) continue;
+      const tipo = (vaos[0] || {}).tipo_gaiola || '';
+      html += `<div class="nivel"><div class="nivel-lb">NÍVEL ${String(nivel).padStart(2,'0')}<small>${tipo === 'GRANDE' ? 'gaiola grande' : 'gaiola pequena'}</small></div><div class="vaos">`;
+      for (const p of vaos) {
+        const cls = ['vao'];
+        if (p.bloqueada) cls.push('bloqueada');
+        else if (p.ocupada) cls.push('ocupada');
+        if (p.gaiola && p.gaiola.dias >= 30) cls.push('velha');
+        if (casa(p, termo)) cls.push('achado');
+        const tt = p.bloqueada ? `${p.codigo} — ${p.motivo}`
+                 : p.ocupada ? `${p.codigo} — ${p.gaiola.id} · ${p.gaiola.formato || ''} ${p.gaiola.cor || ''} · ${p.gaiola.fardos || 0} fardos`
+                 : `${p.codigo} — livre`;
+        html += `<div class="${cls.join(' ')}" title="${esc(tt)}" onclick="verPosicao('${p.codigo}')">${String(p.posicao).padStart(2,'0')}</div>`;
+      }
+      html += '</div></div>';
+    }
+    html += '</div></div>';
+  }
+  $('mapa').innerHTML = html || '<div class="vazio">Nada para mostrar.</div>';
+}
+
+async function verPosicao(codigo) {
+  SELECIONADA = codigo;
+  const p = MAPA.posicoes.find(x => x.codigo === codigo);
+  if (!p) return;
+  const g = p.gaiola;
+  let corpo;
+  if (p.bloqueada) {
+    corpo = `<div class="vazio">Posição <b>bloqueada</b>: ${esc(p.motivo || '')}.<br>Não recebe palete.</div>`;
+  } else if (!g) {
+    corpo = `<div class="vazio">Livre. Espera uma gaiola <b>${p.tipo_gaiola === 'GRANDE' ? 'grande' : 'pequena'}</b>.</div>`;
+  } else {
+    const quando = g.entrada ? new Date(g.entrada).toLocaleString('pt-BR') : '—';
+    corpo = `
+      <div class="linha"><span>Gaiola</span><span>${esc(g.id)}</span></div>
+      <div class="linha"><span>Formato</span><span>${esc(g.formato || '—')}</span></div>
+      <div class="linha"><span>Cor</span><span>${esc(g.cor || '—')}</span></div>
+      <div class="linha"><span>Fardos</span><span>${g.fardos != null ? g.fardos : '—'}</span></div>
+      <div class="linha"><span>Peso</span><span>${g.kg != null ? fmtKg(g.kg) : '—'}</span></div>
+      <div class="linha"><span>Guardada em</span><span>${esc(quando)}</span></div>
+      <div class="linha"><span>Parada há</span><span>${g.dias != null ? g.dias + (g.dias === 1 ? ' dia' : ' dias') : '—'}</span></div>
+      ${g.operador ? `<div class="linha"><span>Quem guardou</span><span>${esc(g.operador)}</span></div>` : ''}
+      <div class="acoes"><button class="btn perigo" onclick="liberarDaqui('${p.codigo}')">➖ RETIRAR DAQUI</button></div>`;
+  }
+  $('detalhe').innerHTML = `<div class="det">
+      <h3>${esc(p.codigo)}</h3>
+      <div class="sub">Rua ${String(p.rua).padStart(2,'0')} · nível ${String(p.nivel).padStart(2,'0')} · posição ${String(p.posicao).padStart(3,'0')}
+        · vão de gaiola ${p.tipo_gaiola === 'GRANDE' ? 'GRANDE' : 'PEQUENA'}</div>
+      ${corpo}
+    </div>`;
+  $('detalhe').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+
+async function liberarDaqui(codigo) {
+  const p = MAPA.posicoes.find(x => x.codigo === codigo);
+  const g = p && p.gaiola;
+  if (!g) return;
+  if (!confirm(`Retirar a gaiola ${g.id} de ${codigo}?\n\nO endereço fica livre. O histórico guarda que ela esteve aqui.`)) return;
+  try {
+    const r = await fetch(URL_BASE + '/enderecamento/liberar', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ posicao: codigo, operador: window.EKO_RESPONSAVEL || null, motivo: 'retirada pelo mapa' }) });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.erro || 'falha');
+    await carregarMapa();
+    verPosicao(codigo);
+  } catch (e) { alert('Não consegui liberar: ' + e.message); }
+}
+
+/* ══════════════ ENDEREÇAR ══════════════ */
+function irModo(m) {
+  MODO = m;
+  // Trocar de COLOCAR para RETIRAR e reler a MESMA etiqueta é intenção,
+  // não repetição acidental. Sem limpar a memória do anti-repetição, a
+  // segunda leitura ficaria 2,5 s no vazio e pareceria que a câmera falhou.
+  for (const k of Object.keys(ultimaLeitura)) delete ultimaLeitura[k];
+  $('md-entrada').classList.toggle('on', m === 'entrada');
+  $('md-saida').classList.toggle('on', m === 'saida');
+  limparTudo();
+  $('slot-gai').style.display = (m === 'saida') ? 'none' : '';
+  $('dica-modo').innerHTML = (m === 'entrada')
+    ? 'Leia os dois QR, na ordem que for mais fácil: a etiqueta da prateleira e a da gaiola. Toque num quadro para apagar e ler de novo.'
+    : 'Leia <b>ou</b> a etiqueta da prateleira <b>ou</b> a da gaiola — o sistema descobre o resto sozinho.';
+  $('v-end').textContent = (m === 'entrada') ? 'leia a etiqueta da prateleira' : 'leia a prateleira ou a gaiola';
+}
+
+// Descobre sozinho o que foi lido: o QR do endereço é o código puro
+// (01-02-007) e o da gaiola começa com EKOPA. Assim o operador não
+// precisa dizer de antemão o que vai ler.
+function interpretar(texto) {
+  const t = String(texto || '').trim();
+  if (/^\d{2}-\d{2}-\d{3}$/.test(t)) return { tipo: 'endereco', codigo: t };
+  if (/^EKOPA\|/i.test(t)) {
+    const p = t.split('|');
+    return { tipo: 'gaiola', id: (p[1] || '').toUpperCase(), formato: p[2] || null,
+             corKey: p[3] || null, fardos: parseInt(p[4], 10) || null, kg: Number(p[5]) || null,
+             tipo_gaiola: (p[6] || '').toUpperCase() || null };
+  }
+  if (/^G\d+$/i.test(t)) return { tipo: 'gaiola', id: t.toUpperCase() };
+  return { tipo: null, bruto: t };
+}
+
+async function onLeu(texto) {
+  const agora = Date.now();
+  if (ultimaLeitura[texto] && agora - ultimaLeitura[texto] < 2500) return;
+  ultimaLeitura[texto] = agora;
+  const info = interpretar(texto);
+
+  if (!info.tipo) {
+    beep(320, .2); vibrar(150);
+    dizer('err', 'Isso não é etiqueta de endereço nem de gaiola: <code>' + esc(String(texto).slice(0, 40)) + '</code>', 5000);
+    return;
+  }
+  beep(880, .09); vibrar(40);
+  GERACAO++;
+
+  if (MODO === 'saida') {
+    // Na saída tanto faz o que foi lido — os dois resolvem o endereço.
+    ESCOLHA.end = info.tipo === 'endereco' ? { codigo: info.codigo } : null;
+    ESCOLHA.gai = info.tipo === 'gaiola' ? info : null;
+    await pintarSaida(info);
+    return;
+  }
+
+  if (info.tipo === 'endereco') { ESCOLHA.end = { codigo: info.codigo }; await detalharEndereco(); }
+  else                          { ESCOLHA.gai = info;                    await detalharGaiola(); }
+  pintar();
+}
+
+async function detalharEndereco() {
+  const c = ESCOLHA.end && ESCOLHA.end.codigo;
+  if (!c) return;
+  try {
+    const r = await fetch(URL_BASE + '/enderecamento/posicao/' + encodeURIComponent(c));
+    const d = await r.json();
+    if (!d.ok) { ESCOLHA.end = null; dizer('err', d.erro || 'endereço não existe', 5000); return; }
+    ESCOLHA.end.info = d;
+    if (d.posicao.bloqueada) { dizer('err', `Endereço ${c} está bloqueado: ${esc(d.posicao.motivo || '')}`, 6000); ESCOLHA.end = null; return; }
+    if (d.atual) dizer('at', `Atenção: ${c} já tem a gaiola <b>${esc(d.atual.gaiola_id)}</b>. Retire antes de colocar outra.`, 7000);
+  } catch (e) { /* segue com o pouco que tem */ }
+}
+
+async function detalharGaiola() {
+  const g = ESCOLHA.gai;
+  if (!g || !g.id) return;
+  try {
+    const r = await fetch(URL_BASE + '/enderecamento/gaiola/' + encodeURIComponent(g.id));
+    const d = await r.json();
+    if (d.ok) {
+      if (d.gaiola) { g.formato = d.gaiola.formato || g.formato; g.fardos = d.gaiola.fardos ?? g.fardos;
+                      g.kg = d.gaiola.kg ?? g.kg; g.tipo_gaiola = g.tipo_gaiola || d.gaiola.tipo_gaiola || null; }
+      if (d.atual) dizer('at', `A gaiola ${esc(g.id)} já está endereçada em <b>${esc(d.atual.posicao)}</b>. Retire de lá primeiro.`, 7000);
+    }
+  } catch (e) {}
+}
+
+async function pintarSaida(info) {
+  const alvo = info.tipo === 'endereco' ? { posicao: info.codigo } : { gaiola_id: info.id };
+  try {
+    const url = info.tipo === 'endereco'
+      ? '/enderecamento/posicao/' + encodeURIComponent(info.codigo)
+      : '/enderecamento/gaiola/' + encodeURIComponent(info.id);
+    const d = await (await fetch(URL_BASE + url)).json();
+    const ocup = d.ok ? d.atual : null;
+    if (!ocup) {
+      dizer('err', info.tipo === 'endereco' ? `O endereço ${esc(info.codigo)} já está vazio.`
+                                            : `A gaiola ${esc(info.id)} não está endereçada.`, 6000);
+      limparSlots(); return;
+    }
+    ESCOLHA.end = { codigo: ocup.posicao, ocupacao: ocup };
+    ESCOLHA.gai = { id: ocup.gaiola_id, formato: ocup.formato, cor: ocup.cor, fardos: ocup.fardos, kg: ocup.kg };
+    pintar();
+    dizer('ok', `Vai retirar <b>${esc(ocup.gaiola_id)}</b> de <b>${esc(ocup.posicao)}</b>. Confirme.`, 0);
+  } catch (e) { dizer('err', 'Erro: ' + esc(e.message), 5000); }
+}
+
+function pintar() {
+  const e = ESCOLHA.end, g = ESCOLHA.gai;
+  $('slot-end').classList.toggle('cheio', !!e);
+  $('v-end').className = 'val' + (e ? '' : ' vazio2');
+  $('v-end').textContent = e ? e.codigo : (MODO === 'entrada' ? 'leia a etiqueta da prateleira' : 'leia a prateleira ou a gaiola');
+  const pos = e && e.info && e.info.posicao;
+  $('e-end').textContent = pos ? `Rua ${String(pos.rua).padStart(2,'0')} · nível ${String(pos.nivel).padStart(2,'0')} · vão ${pos.tipo_gaiola === 'GRANDE' ? 'grande' : 'pequeno'}` : '';
+
+  $('slot-gai').classList.toggle('cheio', !!g);
+  $('v-gai').className = 'val' + (g ? '' : ' vazio2');
+  $('v-gai').textContent = g ? g.id : 'leia a etiqueta da gaiola';
+  $('e-gai').textContent = g ? [g.formato, g.cor, g.fardos ? g.fardos + ' fardos' : null, g.kg ? fmtKg(g.kg) : null]
+                                .filter(Boolean).join(' · ') : '';
+
+  const pronto = MODO === 'saida' ? !!e : (!!e && !!g);
+  $('btn-confirmar').disabled = !pronto;
+  $('btn-confirmar').textContent = MODO === 'saida' ? '✓ CONFIRMAR RETIRADA' : '✓ CONFIRMAR';
+}
+
+function limparSlot(qual) { ESCOLHA[qual] = null; GERACAO++; pintar(); }
+// Limpa os quadros SEM apagar o recado da tela — quando o recado explica
+// justamente por que os quadros foram limpos.
+function limparSlots() { ESCOLHA.end = null; ESCOLHA.gai = null; GERACAO++; pintar(); }
+function limparTudo() { $('msg').innerHTML = ''; limparSlots(); }
+
+async function confirmar() {
+  const e = ESCOLHA.end, g = ESCOLHA.gai;
+  $('btn-confirmar').disabled = true;
+  try {
+    if (MODO === 'saida') {
+      const r = await fetch(URL_BASE + '/enderecamento/liberar', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ posicao: e.codigo, operador: window.EKO_RESPONSAVEL || null }) });
+      const d = await r.json();
+      if (!d.ok) throw new Error(d.erro || 'falha');
+      beep(1100, .15); vibrar([50, 40, 50]);
+      dizer('ok', `✓ ${esc(d.gaiola_id)} retirada de <b>${esc(d.posicao)}</b>. Endereço livre.`, 0);
+    } else {
+      const r = await fetch(URL_BASE + '/enderecamento/ocupar', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ posicao: e.codigo, gaiola_id: g.id, formato: g.formato,
+                               cor: g.cor, fardos: g.fardos, kg: g.kg, tipo_gaiola: g.tipo_gaiola,
+                               operador: window.EKO_RESPONSAVEL || null }) });
+      const d = await r.json();
+      if (!d.ok) throw new Error(d.erro || 'falha');
+      beep(1100, .15); vibrar([50, 40, 50]);
+      dizer(d.aviso ? 'at' : 'ok',
+        `✓ <b>${esc(g.id)}</b> guardada em <b>${esc(e.codigo)}</b>.` + (d.aviso ? '<br>' + esc(d.aviso) : ''), 0);
+    }
+    const geracao = ++GERACAO;
+    setTimeout(() => { if (GERACAO === geracao) limparTudo(); }, 2200);
+    carregarHistorico();
+  } catch (err) {
+    beep(320, .25); vibrar([120, 60, 120]);
+    dizer('err', esc(err.message), 0);
+    $('btn-confirmar').disabled = false;
+  }
+}
+
+async function digitar() {
+  const v = prompt(MODO === 'saida'
+    ? 'Digite o endereço (01-02-007) ou a gaiola (G0000123):'
+    : 'Digite o endereço (01-02-007) ou a gaiola (G0000123):');
+  if (!v) return;
+  delete ultimaLeitura[v.trim()];
+  await onLeu(v.trim().toUpperCase());
+}
+
+async function carregarHistorico() {
+  try {
+    const d = await (await fetch(URL_BASE + '/enderecamento/historico?limit=12')).json();
+    const ms = (d.movimentos || []);
+    if (!ms.length) { $('hist').innerHTML = '<div class="vazio">Nenhum movimento ainda.</div>'; return; }
+    $('hist').innerHTML = ms.map(m => {
+      const saiu = !!m.saida;
+      const q = new Date(saiu ? m.saida : m.entrada).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+      return `<div class="hist-item"><span>${saiu ? '➖' : '➕'} ${esc(m.gaiola_id)} ${saiu ? 'saiu de' : 'em'} <b>${esc(m.posicao)}</b></span><span>${esc(q)}</span></div>`;
+    }).join('');
+  } catch (e) {}
+}
+
+/* ══════════════ câmera ══════════════
+   Mesma receita do inventário, que já roda no celular do galpão:
+   escolhe a traseira "simples" (a ultra-angular não foca de perto),
+   pede resolução alta e mira ampla. Se a câmera não abrir, o botão
+   DIGITAR resolve — a tela nunca fica sem saída.                    */
+async function escolherCameraId() {
+  try {
+    const cams = await Html5Qrcode.getCameras();
+    if (!cams || !cams.length) return null;
+    const rot = c => (c.label || '').toLowerCase();
+    const tras = cams.filter(c => /traseira|back|rear|trás/.test(rot(c)));
+    if (tras.length) {
+      const semUltra = tras.filter(c => !/ultra/.test(rot(c)));
+      const lista = semUltra.length ? semUltra : tras;
+      const simples = lista.find(c => !/dupla|dual|tripla|grande|wide/.test(rot(c)));
+      return (simples || lista[lista.length - 1]).id;
+    }
+    return cams[cams.length - 1].id;
+  } catch (e) { return null; }
+}
+
+async function toggleCamera() {
+  if (camLigada) { await pararCamera(); return; }
+  if (typeof Html5Qrcode === 'undefined') { dizer('err', 'A biblioteca de leitura não carregou. Use DIGITAR.', 0); return; }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    dizer('err', 'O navegador não liberou a câmera. Isso costuma ser o certificado do servidor não confiável neste aparelho — use DIGITAR enquanto isso.', 0);
+    return;
+  }
+  $('reader').classList.add('on');
+  $('btn-cam').textContent = '⏹ DESLIGAR CÂMERA';
+  camLigada = true;
+
+  const qrboxFn = (vw, vh) => { const l = Math.floor(Math.min(vw, vh) * 0.92); return { width: Math.max(120, l), height: Math.max(120, l) }; };
+  const config = { fps: 10, qrbox: qrboxFn, aspectRatio: 1.0,
+                   videoConstraints: { facingMode: 'environment', width: { ideal: 3840 }, height: { ideal: 2160 } } };
+  const id = CAMERA_ID || await escolherCameraId();
+  CAMERA_ID = id || null;
+  const alvos = []; if (id) alvos.push(id);
+  alvos.push({ facingMode: 'environment' }); alvos.push({ facingMode: 'user' });
+
+  let ok = false, ultimo = '';
+  for (const alvo of alvos) {
+    try { if (scanner) { try { await scanner.stop(); } catch (e) {} try { scanner.clear(); } catch (e) {} } } catch (e) {}
+    scanner = new Html5Qrcode('reader', { verbose: false });
+    try { await scanner.start(alvo, config, onLeu, () => {}); ok = true; break; }
+    catch (err) { ultimo = (err && (err.name || err.message)) || 'erro'; if (/NotAllowed|Permission/i.test(String(ultimo))) break; }
+  }
+  if (!ok) {
+    camLigada = false; $('reader').classList.remove('on'); $('btn-cam').textContent = '▶ LIGAR CÂMERA';
+    dizer('err', 'A câmera não abriu (' + esc(ultimo) + '). Use DIGITAR.', 0);
+    return;
+  }
+  try { await scanner.applyVideoConstraints({ advanced: [{ focusMode: 'continuous' }] }); } catch (e) {}
+}
+
+async function pararCamera() {
+  camLigada = false;
+  $('btn-cam').textContent = '▶ LIGAR CÂMERA';
+  try { if (scanner) { await scanner.stop(); scanner.clear(); } } catch (e) {}
+  $('reader').classList.remove('on');
+}
+
+/* ══════════════ início ══════════════ */
+function iniciar() {
+  irModo('entrada');
+  carregarMapa();
+  carregarHistorico();
+  // No celular a tela nasce no leitor; no computador, no mapa.
+  if (window.innerWidth < 760) irAba('acao');
+}
+function comAcesso(tela, aoEntrar) {
+  if (window.EkoAcesso && typeof EkoAcesso.exigir === 'function') return EkoAcesso.exigir(tela, aoEntrar);
+  try { aoEntrar(); } catch (e) { console.error(e); }
+}
+comAcesso('pa', iniciar);
+</script>
+</body>
+</html>

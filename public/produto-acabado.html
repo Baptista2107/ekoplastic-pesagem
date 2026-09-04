@@ -132,8 +132,11 @@
   .fardos-num { font-family: 'IBM Plex Mono', monospace; font-size: 30px; font-weight: 700; min-width: 88px; text-align: center; color: var(--accent); }
   .fardos-num small { display:block; font-family:'Inter'; font-size: 9px; color: var(--muted); letter-spacing: 1px; font-weight: 800; margin-top: -2px; }
   .quick-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 7px; }
+  /* O tipo da gaiola sao so' duas opcoes: nao faz sentido espremer em 4 colunas */
+  #g-tipo-grid { grid-template-columns: repeat(2, 1fr); }
   .quick-btn { padding: 7px 4px; border-radius: 9px; border: 1px solid var(--border); background: var(--panel-hi); color: var(--text); font-size: 15px; font-weight: 800; cursor: pointer; }
   .quick-btn:hover { border-color: var(--accent); }
+  .quick-btn.selected { border-color: var(--accent); background: rgba(46,230,166,0.16); color: var(--accent); }
 
   .preview {
     margin-top: 7px; border: 1px dashed var(--border); border-radius: 10px; padding: 7px 11px;
@@ -202,11 +205,13 @@
 <body data-tela="Produto Acabado">
 
 <header>
-  <div class="logo">PRODUTO ACABADO</div>
+  <div class="logo"><div class="logo-icon">📦</div> PRODUTO ACABADO</div>
   <div class="clock" id="clock">--:--:--</div>
   <div class="header-right">
     <div class="srv-status off" id="srv-status">SERVIDOR…</div>
     <button class="btn-icon" onclick="trocarTurno()" title="Trocar turno">⇄</button>
+    <!-- Mapa de enderecamento do galpao: onde cada gaiola esta guardada -->
+    <button class="btn-icon" onclick="location.href='/enderecamento.html'" title="Mapa de endereçamento">🗺</button>
     <button class="btn-icon" onclick="voltarPagina()" title="Voltar ao menu">🏠</button>
   </div>
 </header>
@@ -289,6 +294,12 @@
         </div>
         <div class="quick-grid" id="g-quick-grid"></div>
       </div>
+
+      <!-- Tipo da gaiola: entra no QR e serve ao endereçamento (o nível 01
+           da prateleira é o das grandes). Opcional — sem escolher, a
+           etiqueta sai exatamente como sempre saiu. -->
+      <div class="step-lbl" style="margin:14px 0 8px;"><span class="n">4</span> Tipo da gaiola <small style="font-weight:600;opacity:.6">(para o endereçamento)</small></div>
+      <div class="quick-grid" id="g-tipo-grid"></div>
 
       <div class="preview" id="g-preview" style="margin-top:14px;"><span>Escolha formato, cor e fardos</span></div>
     </div>
@@ -804,11 +815,11 @@ function init() {
 //  ETIQUETA DE GAIOLA (QR) — só para contagem no inventário.
 //  Fluxo separado do lançamento: nada aqui vai para o Bling.
 // ══════════════════════════════════════════════════════════════════
-const gState = { formato: null, cor: null, fardos: 0 };
+const gState = { formato: null, cor: null, fardos: 0, tipo: null };
 
 function abrirGaiola() {
   document.getElementById('modal-gaiola').classList.add('on');
-  gRenderFormatos(); gRenderCores(); gRenderRapidos(); gAtualizar();
+  gRenderFormatos(); gRenderCores(); gRenderRapidos(); gRenderTipos(); gAtualizar();
   gCarregarHoje();
 }
 function fecharGaiola() { document.getElementById('modal-gaiola').classList.remove('on'); }
@@ -854,6 +865,23 @@ function gRenderRapidos() {
 }
 function gIncFardos(d) { gState.fardos = Math.max(0, gState.fardos + d); gAtualizar(); }
 
+// Tipo da gaiola (GRANDE/PEQUENA). Vai no QR como 7o campo e e' o que o
+// enderecamento usa para conferir o nivel da prateleira. Fica opcional:
+// etiqueta sem tipo continua valida, e a escolha e' perguntada na hora
+// de enderecar quando faltar.
+function gRenderTipos() {
+  const g = document.getElementById('g-tipo-grid');
+  if (!g) return;
+  g.innerHTML = '';
+  [['GRANDE', 'Grande'], ['PEQUENA', 'Pequena']].forEach(([k, rot]) => {
+    const b = document.createElement('button');
+    b.className = 'quick-btn' + (gState.tipo === k ? ' selected' : '');
+    b.textContent = rot;
+    b.onclick = () => { gState.tipo = (gState.tipo === k ? null : k); gRenderTipos(); gAtualizar(); };
+    g.appendChild(b);
+  });
+}
+
 function gAtualizar() {
   document.getElementById('g-fardos-num').textContent = gState.fardos;
   const pronto = !!(gState.formato && gState.cor && gState.fardos >= 1);
@@ -862,7 +890,8 @@ function gAtualizar() {
   if (!pronto) { p.innerHTML = '<span>Escolha formato, cor e fardos</span>'; return; }
   const kg = gState.fardos * 25;
   p.innerHTML = `${corBolinha(gState.cor, 18)}<b>${gState.formato.replace('x',' × ')} ${corNome(gState.cor)}</b>
-     · <b>${gState.fardos} fardos</b> · ${kg.toLocaleString('pt-BR')} kg`;
+     · <b>${gState.fardos} fardos</b> · ${kg.toLocaleString('pt-BR')} kg`
+     + (gState.tipo ? ` · gaiola <b>${gState.tipo === 'GRANDE' ? 'grande' : 'pequena'}</b>` : '');
 }
 
 async function imprimirGaiola() {
@@ -872,6 +901,7 @@ async function imprimirGaiola() {
     const r = await fetch(URL_BASE + '/produto-acabado/etiqueta-gaiola', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ corKey: gState.cor, formato: gState.formato, fardos: gState.fardos,
+                             tipo_gaiola: gState.tipo || null,
                              operador: (window.EKO_RESPONSAVEL || null) }),
     });
     const d = await r.json();

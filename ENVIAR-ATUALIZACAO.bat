@@ -216,6 +216,23 @@ del "%SAIDA6%" >nul 2>&1
 if not "%RCT%"=="0" goto :testes_falharam
 
 :sem_bling
+REM  Setimo portao: enderecamento do galpao. Prova as 138 posicoes, as
+REM  duas travas de banco (um endereco um morador; uma gaiola num lugar
+REM  so'), a retirada preservando o historico e que a etiqueta da gaiola
+REM  ganhou o tipo sem quebrar a leitura do inventario.
+if not exist "testes\enderecamento.js" goto :sem_enderecamento
+echo.
+echo  Rodando o teste do enderecamento. Leva uns 20 segundos...
+echo.
+set "SAIDA7=%TEMP%\eko_testes7.tmp"
+node testes\enderecamento.js > "%SAIDA7%" 2>&1
+set "RCT=%ERRORLEVEL%"
+type "%SAIDA7%"
+type "%SAIDA7%" >>"%LOG%"
+del "%SAIDA7%" >nul 2>&1
+if not "%RCT%"=="0" goto :testes_falharam
+
+:sem_enderecamento
 if not exist "testes\janela-atualizacao.js" goto :testes_ok
 echo.
 echo  Rodando o teste da janela de atualizacao. Leva uns 30 segundos...

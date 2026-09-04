@@ -642,15 +642,113 @@ function aplicarSchema() {
       valor TEXT
     );
 
+    -- ── ENDEREÇAMENTO DO GALPÃO (04/09/2026) ──────────────────────
+    -- Uma linha por vão de prateleira. Código RR-NN-PPP: rua, nível de
+    -- ALTURA (01 chão, 02 meio, 03 alto) e posição ao longo da rua.
+    -- O nível 01 é mais alto de propósito: é onde entram as gaiolas
+    -- grandes. Duas posições existem no papel mas não recebem palete
+    -- (hidrante e espaço da informação) e nascem bloqueadas.
+    CREATE TABLE IF NOT EXISTS posicoes (
+      codigo      TEXT PRIMARY KEY,
+      rua         INTEGER NOT NULL,
+      nivel       INTEGER NOT NULL,
+      posicao     INTEGER NOT NULL,
+      tipo_gaiola TEXT,
+      bloqueada   INTEGER NOT NULL DEFAULT 0,
+      motivo      TEXT
+    );
+
+    -- Quem morou em cada endereço, e quando. Não é só o estado atual: a
+    -- linha continua depois da saída, com a data de saída preenchida. É
+    -- o que permite responder "o que estava nesta posição semana passada".
+    -- O retrato da gaiola (formato, cor, fardos, kg) fica gravado aqui
+    -- porque a etiqueta pode ser reimpressa com outros números.
+    CREATE TABLE IF NOT EXISTS ocupacoes (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      posicao       TEXT NOT NULL,
+      gaiola_id     TEXT NOT NULL,
+      entrada       TEXT NOT NULL,
+      saida         TEXT,
+      operador_e    TEXT,
+      operador_s    TEXT,
+      motivo_saida  TEXT,
+      formato       TEXT,
+      cor           TEXT,
+      fardos        INTEGER,
+      kg            REAL,
+      tipo_gaiola   TEXT,
+      FOREIGN KEY (posicao) REFERENCES posicoes(codigo)
+    );
+
     CREATE INDEX IF NOT EXISTS idx_etiq_tipo_status ON etiquetas(tipo, status);
     CREATE INDEX IF NOT EXISTS idx_etiq_sessao      ON etiquetas(sessao_id);
     CREATE INDEX IF NOT EXISTS idx_etiq_hora        ON etiquetas(hora_impressao DESC);
     CREATE INDEX IF NOT EXISTS idx_sessoes_status   ON sessoes(bling_status);
 
+    -- As duas regras do endereçamento viram TRAVA DE BANCO, não de código:
+    -- um endereço só tem um morador, e uma gaiola só mora num lugar.
+    -- Índice parcial (só as ocupações abertas) — código com erro esbarra
+    -- aqui antes de sujar o dado.
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_ocup_posicao_aberta ON ocupacoes(posicao)   WHERE saida IS NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_ocup_gaiola_aberta  ON ocupacoes(gaiola_id) WHERE saida IS NULL;
+    CREATE INDEX IF NOT EXISTS idx_ocup_gaiola ON ocupacoes(gaiola_id);
+
     INSERT OR IGNORE INTO seqs(tipo, valor) VALUES ('recebimento', 1), ('retorno', 1), ('retirada', 1), ('extrusao', 1);
   `);
 }
 aplicarSchema();
+
+// ══════════════════════════════════════════════════════════════════
+//  LAYOUT DO GALPÃO  (endereçamento — 04/09/2026)
+// ------------------------------------------------------------------
+//  Levantado do ENDEREÇAMENTO.xlsx em 27/08/2026. As duas ruas são
+//  regulares: rua 01 tem 20 vãos, rua 02 tem 26, cada uma com 3
+//  níveis de altura. 138 posições, 136 úteis.
+//
+//  O nível 01 (chão) foi construído mais alto de propósito, para
+//  receber as GAIOLAS GRANDES; os níveis 02 e 03 recebem as pequenas.
+//  Isso é o que o sistema usa para AVISAR quando uma gaiola grande vai
+//  para um nível de cima. Aviso, não bloqueio: uma gaiola pequena no
+//  nível do chão é só desperdício de vão, não é erro; e uma grande em
+//  cima o galpão já impede sozinho, porque não cabe.
+// ══════════════════════════════════════════════════════════════════
+const GALPAO_RUAS = { 1: 20, 2: 26 };                       // rua → vãos por nível
+const GALPAO_NIVEIS = { 1: 'GRANDE', 2: 'PEQUENA', 3: 'PEQUENA' };
+const GALPAO_BLOQUEADAS = {
+  '01-01-005': 'HIDRANTE',
+  '01-01-006': 'ESPACO DA INFORMACAO',
+};
+const codigoPosicao = (rua, nivel, pos) =>
+  `${String(rua).padStart(2,'0')}-${String(nivel).padStart(2,'0')}-${String(pos).padStart(3,'0')}`;
+
+// Semeia as 138 posições na primeira subida. Não sobrescreve nada: se a
+// posição já existe (estação que já rodou), fica como está — inclusive
+// um bloqueio que o usuário tenha criado depois.
+function semearPosicoes() {
+  try {
+    const ins = db.prepare(`INSERT OR IGNORE INTO posicoes (codigo, rua, nivel, posicao, tipo_gaiola, bloqueada, motivo)
+                            VALUES (?, ?, ?, ?, ?, ?, ?)`);
+    let n = 0;
+    const tr = makeTransaction(() => {
+      for (const [ruaTxt, vaos] of Object.entries(GALPAO_RUAS)) {
+        const rua = Number(ruaTxt);
+        for (const [nivelTxt, tipo] of Object.entries(GALPAO_NIVEIS)) {
+          const nivel = Number(nivelTxt);
+          for (let p = 1; p <= vaos; p++) {
+            const cod = codigoPosicao(rua, nivel, p);
+            const motivo = GALPAO_BLOQUEADAS[cod] || null;
+            const r = ins.run(cod, rua, nivel, p, tipo, motivo ? 1 : 0, motivo);
+            if (r.changes) n++;
+          }
+        }
+      }
+    });
+    tr();
+    if (n) logI('db', `Endereçamento: ${n} posição(ões) do galpão cadastradas`);
+  } catch (e) {
+    logE('db', 'Falha ao semear as posições do galpão', { erro: e && e.message });
+  }
+}
 
 // ─── Migração v3: estender CHECK das tabelas pra aceitar tipo='retirada' ───
 // SQLite não permite ALTER de CHECK; recria a tabela mantendo os dados.
@@ -749,6 +847,7 @@ function migrarSchemaParaV3() {
   logI('db', 'Schema migrado para v3 com sucesso');
 }
 migrarSchemaParaV3();
+semearPosicoes();
 
 // ──────────────────────────────────────────────────────────────────
 // Migração v4 — coluna seq_sessao (numeração da etiqueta DENTRO da sessão)
@@ -2326,7 +2425,14 @@ function gerarEPLGaiolaPA(dados) {
   const cor = PA_CORES[dados.corKey] || { nome: dados.corKey };
   const fardos = Number(dados.fardos) || 0;
   const kg = fardos * PA_KG_FARDO;
-  const conteudo = `EKOPA|${dados.id}|${dados.formato}|${dados.corKey}|${fardos}|${kg}`;
+  // 7º campo (04/09/2026): GRANDE ou PEQUENA — o endereçamento precisa
+  // saber o tipo da gaiola para conferir o nível da prateleira. É
+  // APÊNDICE de propósito: o leitor do inventário exige 6 campos ou
+  // mais, então etiqueta antiga (6 campos) continua sendo lida.
+  const tipo = String(dados.tipo_gaiola || '').toUpperCase() === 'GRANDE' ? 'GRANDE'
+             : String(dados.tipo_gaiola || '').toUpperCase() === 'PEQUENA' ? 'PEQUENA' : '';
+  const conteudo = `EKOPA|${dados.id}|${dados.formato}|${dados.corKey}|${fardos}|${kg}`
+                 + (tipo ? `|${tipo}` : '');
 
   const LARG = 800, ALT = 1200;   // etiqueta 100x150mm (dots)
 
@@ -2354,7 +2460,7 @@ function gerarEPLGaiolaPA(dados) {
   const yQR = Math.round(Y_TEXTO_FIM + ((Y_RODAPE - 20 - Y_TEXTO_FIM) - ladoQR) / 2);
 
   const linha1 = `${dados.formato.replace('x', ' X ')} ${cor.nome.toUpperCase()}`;
-  const linha2 = `${fardos} FARDOS`;
+  const linha2 = `${fardos} FARDOS` + (tipo ? `  -  GAIOLA ${tipo}` : '');
   const rodape = `${dados.id}  -  CONTAGEM DE GAIOLA`;
 
   return `N
@@ -5908,6 +6014,10 @@ const requestHandlerBase = async (req, res) => {
       if (!PA_FORMATOS.includes(formato)) return jsonErr(res, 400, `Formato inválido: ${formato}`);
       if (!Number.isFinite(fardos) || fardos < 1) return jsonErr(res, 400, 'Informe a quantidade de fardos (mínimo 1)');
       if (fardos > 999) return jsonErr(res, 400, 'Quantidade muito alta (máximo 999 fardos)');
+      // Tipo da gaiola (GRANDE/PEQUENA) — vai para o QR e serve ao
+      // endereçamento. Opcional: etiqueta sem tipo continua valendo.
+      const tipoGaiola = ['GRANDE','PEQUENA'].includes(String(body.tipo_gaiola || '').toUpperCase())
+        ? String(body.tipo_gaiola).toUpperCase() : null;
 
       // Garante que a sequência exista: sem a linha na tabela, o incremento
       // não tem efeito e o número repetiria — o que quebraria o bloqueio de
@@ -5916,7 +6026,7 @@ const requestHandlerBase = async (req, res) => {
       const seq = getProximoSeq('gaiola-pa');
       const id  = 'G' + String(seq).padStart(7, '0');
       const kg  = fardos * PA_KG_FARDO;
-      const epl = gerarEPLGaiolaPA({ id, corKey, formato, fardos });
+      const epl = gerarEPLGaiolaPA({ id, corKey, formato, fardos, tipo_gaiola: tipoGaiola });
 
       // Guarda o registro da gaiola (para reimpressão e para o inventário
       // conferir a etiqueta lida). Fica em config, fora da tabela de
@@ -5924,7 +6034,8 @@ const requestHandlerBase = async (req, res) => {
       try {
         let gaiolas = {};
         try { gaiolas = JSON.parse(configGet('gaiolas_pa', '{}')); } catch(e) {}
-        gaiolas[id] = { id, corKey, formato, fardos, kg, criadaEm: new Date().toISOString(), operador: body.operador || null };
+        gaiolas[id] = { id, corKey, formato, fardos, kg, tipo_gaiola: tipoGaiola,
+                        criadaEm: new Date().toISOString(), operador: body.operador || null };
         // mantém as 2000 mais recentes
         const chaves = Object.keys(gaiolas).sort();
         while (chaves.length > 2000) delete gaiolas[chaves.shift()];
@@ -5939,7 +6050,9 @@ const requestHandlerBase = async (req, res) => {
       logI('gaiola', `Etiqueta de gaiola ${id}: ${formato} ${PA_CORES[corKey].nome} · ${fardos} fardos (${kg} kg)`);
       return jsonOk(res, { id, corKey, formato, fardos, kg,
                            cor_nome: PA_CORES[corKey].nome,
-                           conteudo_qr: `EKOPA|${id}|${formato}|${corKey}|${fardos}|${kg}`,
+                           tipo_gaiola: tipoGaiola,
+                           conteudo_qr: `EKOPA|${id}|${formato}|${corKey}|${fardos}|${kg}`
+                                        + (tipoGaiola ? `|${tipoGaiola}` : ''),
                            impressao: impr });
     }
 
@@ -6017,6 +6130,186 @@ const requestHandlerBase = async (req, res) => {
       const g = gaiolas[id];
       if (!g) return jsonErr(res, 404, `Gaiola ${id} não encontrada no sistema`);
       return jsonOk(res, { gaiola: g });
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    //  ENDEREÇAMENTO DO GALPÃO  (04/09/2026)
+    //  Amarra uma GAIOLA de produto acabado a um ENDEREÇO de
+    //  prateleira. Os dois já têm QR impresso: o endereço carrega o
+    //  código puro (01-02-007) e a gaiola carrega EKOPA|...
+    // ══════════════════════════════════════════════════════════════
+
+    // GET /enderecamento/mapa — todas as posições com quem mora nelas.
+    if (pathname === '/enderecamento/mapa' && req.method === 'GET') {
+      const linhas = db.prepare(`
+        SELECT p.codigo, p.rua, p.nivel, p.posicao, p.tipo_gaiola, p.bloqueada, p.motivo,
+               o.gaiola_id, o.entrada, o.formato, o.cor, o.fardos, o.kg,
+               o.tipo_gaiola AS gaiola_tipo, o.operador_e
+          FROM posicoes p
+          LEFT JOIN ocupacoes o ON o.posicao = p.codigo AND o.saida IS NULL
+         ORDER BY p.rua, p.nivel, p.posicao`).all();
+
+      const agora = Date.now();
+      const posicoes = linhas.map(l => ({
+        codigo: l.codigo, rua: l.rua, nivel: l.nivel, posicao: l.posicao,
+        tipo_gaiola: l.tipo_gaiola, bloqueada: !!l.bloqueada, motivo: l.motivo,
+        ocupada: !!l.gaiola_id,
+        gaiola: l.gaiola_id ? {
+          id: l.gaiola_id, formato: l.formato, cor: l.cor,
+          fardos: l.fardos, kg: l.kg, tipo: l.gaiola_tipo,
+          entrada: l.entrada, operador: l.operador_e,
+          // Sem baixa automática na saída, o mapa envelhece calado. O
+          // número de dias é o que faz o esquecimento aparecer.
+          dias: l.entrada ? Math.floor((agora - new Date(l.entrada).getTime()) / 86400000) : null,
+        } : null,
+      }));
+
+      const ocupadas  = posicoes.filter(p => p.ocupada).length;
+      const bloqueadas = posicoes.filter(p => p.bloqueada).length;
+      return jsonOk(res, {
+        posicoes,
+        resumo: {
+          total: posicoes.length,
+          uteis: posicoes.length - bloqueadas,
+          ocupadas,
+          livres: posicoes.length - bloqueadas - ocupadas,
+          bloqueadas,
+          fardos: posicoes.reduce((a, p) => a + ((p.gaiola && p.gaiola.fardos) || 0), 0),
+          kg: Number(posicoes.reduce((a, p) => a + ((p.gaiola && p.gaiola.kg) || 0), 0).toFixed(1)),
+        },
+        layout: { ruas: GALPAO_RUAS, niveis: GALPAO_NIVEIS },
+      });
+    }
+
+    // GET /enderecamento/posicao/:codigo — detalhe + histórico curto.
+    if ((m = pathname.match(/^\/enderecamento\/posicao\/(\d{2}-\d{2}-\d{3})$/)) && req.method === 'GET') {
+      const p = db.prepare('SELECT * FROM posicoes WHERE codigo = ?').get(m[1]);
+      if (!p) return jsonErr(res, 404, `Endereço ${m[1]} não existe`);
+      const atual = db.prepare('SELECT * FROM ocupacoes WHERE posicao = ? AND saida IS NULL').get(m[1]);
+      const historico = db.prepare(
+        'SELECT * FROM ocupacoes WHERE posicao = ? ORDER BY id DESC LIMIT 20').all(m[1]);
+      return jsonOk(res, { posicao: { ...p, bloqueada: !!p.bloqueada }, atual: atual || null, historico });
+    }
+
+    // GET /enderecamento/gaiola/:id — onde esta gaiola está (ou esteve).
+    if ((m = pathname.match(/^\/enderecamento\/gaiola\/([A-Za-z0-9]+)$/)) && req.method === 'GET') {
+      const id = m[1].toUpperCase();
+      const atual = db.prepare('SELECT * FROM ocupacoes WHERE gaiola_id = ? AND saida IS NULL').get(id);
+      const historico = db.prepare(
+        'SELECT * FROM ocupacoes WHERE gaiola_id = ? ORDER BY id DESC LIMIT 20').all(id);
+      let gaiola = null;
+      try { gaiola = (JSON.parse(configGet('gaiolas_pa', '{}')))[id] || null; } catch(e) {}
+      return jsonOk(res, { gaiola_id: id, atual: atual || null, historico, gaiola });
+    }
+
+    // POST /enderecamento/ocupar
+    // { posicao, gaiola_id, formato?, cor?, fardos?, kg?, tipo_gaiola?, operador? }
+    // Os campos do produto são opcionais: se a gaiola estiver registrada
+    // no sistema, o que vale é o registro — a etiqueta pode ter sido
+    // reimpressa com outros números. O que vem do QR é só reserva.
+    if (pathname === '/enderecamento/ocupar' && req.method === 'POST') {
+      let body; try { body = await lerBodyJson(req); } catch(e) { return jsonErr(res, 400, e.message); }
+      const cod = String(body.posicao || '').trim().toUpperCase();
+      const gid = String(body.gaiola_id || '').trim().toUpperCase();
+      if (!/^\d{2}-\d{2}-\d{3}$/.test(cod)) return jsonErr(res, 400, 'Endereço inválido (esperado RR-NN-PPP)');
+      // Só gaiola de produto acabado. Se alguém bipar uma etiqueta de big
+      // bag (R…) ou de bobina (E…) aqui, é engano — e melhor recusar do
+      // que endereçar a coisa errada.
+      if (!/^G\d+$/.test(gid)) {
+        return jsonErr(res, 400, `"${gid || '(vazio)'}" não é uma etiqueta de gaiola. A etiqueta de gaiola começa com G.`);
+      }
+
+      const p = db.prepare('SELECT * FROM posicoes WHERE codigo = ?').get(cod);
+      if (!p) return jsonErr(res, 404, `Endereço ${cod} não existe`);
+      if (p.bloqueada) return jsonErr(res, 409, `Endereço ${cod} está bloqueado: ${p.motivo || 'não paletizar'}`, { bloqueada: true });
+
+      const ocupante = db.prepare('SELECT * FROM ocupacoes WHERE posicao = ? AND saida IS NULL').get(cod);
+      if (ocupante) {
+        if (ocupante.gaiola_id === gid) {
+          return jsonOk(res, { ja_estava: true, posicao: cod, ocupacao: ocupante,
+                               mensagem: `A gaiola ${gid} já está em ${cod}.` });
+        }
+        return jsonErr(res, 409, `Endereço ${cod} já tem a gaiola ${ocupante.gaiola_id}. Libere antes de colocar outra.`,
+                       { ocupada: true, ocupacao: ocupante });
+      }
+      const outroLugar = db.prepare('SELECT * FROM ocupacoes WHERE gaiola_id = ? AND saida IS NULL').get(gid);
+      if (outroLugar) {
+        return jsonErr(res, 409, `A gaiola ${gid} já está endereçada em ${outroLugar.posicao}. Libere de lá primeiro.`,
+                       { gaiola_em_outro_lugar: true, ocupacao: outroLugar });
+      }
+
+      // Dados da gaiola: registro do sistema tem prioridade sobre o QR.
+      let reg = null;
+      try { reg = (JSON.parse(configGet('gaiolas_pa', '{}')))[gid] || null; } catch(e) {}
+      const corNome = reg ? ((PA_CORES[reg.corKey] && PA_CORES[reg.corKey].nome) || reg.corKey)
+                          : (body.cor || null);
+      const dados = {
+        formato: reg ? reg.formato : (body.formato || null),
+        cor:     corNome,
+        fardos:  reg ? reg.fardos : (body.fardos != null ? parseInt(body.fardos, 10) : null),
+        kg:      reg ? reg.kg     : (body.kg     != null ? Number(body.kg)          : null),
+        tipo:    (body.tipo_gaiola ? String(body.tipo_gaiola).toUpperCase() : null),
+      };
+
+      const agoraISO = new Date().toISOString();
+      try {
+        db.prepare(`INSERT INTO ocupacoes (posicao, gaiola_id, entrada, operador_e, formato, cor, fardos, kg, tipo_gaiola)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+          .run(cod, gid, agoraISO, body.operador || null, dados.formato, dados.cor, dados.fardos, dados.kg, dados.tipo);
+      } catch (e) {
+        // As travas de "um por endereço" são do banco. Se duas leituras
+        // chegarem juntas, uma delas cai aqui em vez de duplicar o dado.
+        if (/UNIQUE/i.test(e.message)) {
+          return jsonErr(res, 409, 'Outra leitura ocupou este endereço (ou esta gaiola) neste instante. Confira o mapa.', { corrida: true });
+        }
+        throw e;
+      }
+
+      // Gaiola grande em nível de cima: avisa, não impede. Ver comentário
+      // do layout — quem impede de verdade é o tamanho do vão.
+      const aviso = (dados.tipo === 'GRANDE' && p.nivel !== 1)
+        ? `Atenção: gaiola GRANDE no nível ${String(p.nivel).padStart(2,'0')}, que foi feito para gaiolas pequenas.`
+        : (!dados.tipo && p.nivel === 1 ? null : null);
+
+      const ocup = db.prepare('SELECT * FROM ocupacoes WHERE posicao = ? AND saida IS NULL').get(cod);
+      logI('enderecamento', `Gaiola ${gid} endereçada em ${cod}`
+        + (dados.formato ? ` (${dados.formato} ${dados.cor || ''}, ${dados.fardos || 0} fardos)` : '')
+        + (body.operador ? ` — ${body.operador}` : ''));
+      return jsonOk(res, { posicao: cod, ocupacao: ocup, aviso, sem_registro: !reg });
+    }
+
+    // POST /enderecamento/liberar   { posicao? , gaiola_id? , motivo?, operador? }
+    // Aceita os dois caminhos porque no chão de fábrica tanto faz o que
+    // está mais à mão: a etiqueta do endereço ou a da gaiola.
+    if (pathname === '/enderecamento/liberar' && req.method === 'POST') {
+      let body; try { body = await lerBodyJson(req); } catch(e) { return jsonErr(res, 400, e.message); }
+      const cod = String(body.posicao || '').trim().toUpperCase();
+      const gid = String(body.gaiola_id || '').trim().toUpperCase();
+      if (!cod && !gid) return jsonErr(res, 400, 'Informe o endereço ou a gaiola');
+
+      const ocup = cod
+        ? db.prepare('SELECT * FROM ocupacoes WHERE posicao = ? AND saida IS NULL').get(cod)
+        : db.prepare('SELECT * FROM ocupacoes WHERE gaiola_id = ? AND saida IS NULL').get(gid);
+      if (!ocup) {
+        return jsonErr(res, 404, cod ? `O endereço ${cod} já está vazio.` : `A gaiola ${gid} não está endereçada.`,
+                       { ja_vazio: true });
+      }
+      if (cod && gid && ocup.gaiola_id !== gid) {
+        return jsonErr(res, 409, `Em ${cod} está a gaiola ${ocup.gaiola_id}, não a ${gid}.`,
+                       { divergente: true, ocupacao: ocup });
+      }
+      db.prepare('UPDATE ocupacoes SET saida = ?, operador_s = ?, motivo_saida = ? WHERE id = ?')
+        .run(new Date().toISOString(), body.operador || null, body.motivo || null, ocup.id);
+      logI('enderecamento', `Endereço ${ocup.posicao} liberado (gaiola ${ocup.gaiola_id})`
+        + (body.motivo ? ` — ${body.motivo}` : '') + (body.operador ? ` — ${body.operador}` : ''));
+      return jsonOk(res, { liberado: true, posicao: ocup.posicao, gaiola_id: ocup.gaiola_id });
+    }
+
+    // GET /enderecamento/historico?limit=
+    if (pathname === '/enderecamento/historico' && req.method === 'GET') {
+      const limite = Math.min(500, Math.max(1, parseInt(parsed.query.limit) || 100));
+      const linhas = db.prepare('SELECT * FROM ocupacoes ORDER BY id DESC LIMIT ?').all(limite);
+      return jsonOk(res, { movimentos: linhas });
     }
 
     if (pathname === '/dashboard/exportar-html' && req.method === 'GET') {
