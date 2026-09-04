@@ -1,0 +1,268 @@
+/* ══════════════════════════════════════════════════════════════════
+   CELULAR — ajuste automático de tela           (04/09/2026)
+   ------------------------------------------------------------------
+   O QUE ISTO RESOLVE
+
+   As telas foram desenhadas para a tela touch do Mini PC, que é larga.
+   No celular, três coisas quebravam ao mesmo tempo:
+
+     1. O CABEÇALHO. `display:flex` + `justify-content:space-between`,
+        altura travada e SEM quebra de linha. Logo + relógio + status +
+        botões somavam mais que a largura do aparelho e empurravam a
+        página inteira para os lados. Era a causa principal: sozinho,
+        ele estourava 104 px num celular de 375 px.
+
+     2. LAYOUT DE DUAS COLUNAS COM LARGURA FIXA. Uma coluna de 340 px
+        ao lado de outra não cabe em 375 px. E o estouro quase não
+        mudava entre um celular pequeno e um grande — porque a largura
+        era fixa, não proporcional.
+
+     3. ALTURA TRAVADA. `height: calc(100vh - 56px)` com
+        `overflow:hidden` funciona no computador, onde tudo cabe. No
+        celular, empilhado, não cabe — e sem rolagem o resto some.
+
+   COMO ESTÁ RESOLVIDO
+
+   Tudo aqui vive dentro de UMA regra: `@media (max-width: 900px)`.
+   Acima disso nenhuma linha deste arquivo é aplicada — a tela touch do
+   Mini PC (1024 px ou mais) enxerga exatamente o que enxergava antes.
+   Foi a condição combinada com o Frederico em 04/09/2026.
+
+   Não há tamanho de celular escrito aqui. O layout se adapta pela
+   largura disponível, então serve para o aparelho pequeno de 320 px e
+   para o grande de 430 px sem precisar saber o modelo.
+
+   MEDIDAS ADOTADAS
+     · alvo de toque mínimo de 44 px (guia da Apple e do Google) —
+       importa mais ainda no galpão, onde se usa luva;
+     · texto mínimo de 12 px;
+     · `100dvh` em vez de `100vh`: no celular a barra de endereço
+       aparece e some, e o `vh` não conta isso — a última linha da tela
+       ficava escondida atrás dela.
+
+   COMO USAR NUMA TELA NOVA
+     <link rel="stylesheet" href="/celular.css">
+   depois do <style> da própria página. As regras estruturais são
+   presas ao `data-tela` do <body>, então carregar este arquivo numa
+   tela que ele não conhece não muda o layout dela — só melhora
+   cabeçalho, alvo de toque e tamanho de texto.
+   ══════════════════════════════════════════════════════════════════ */
+
+@media (max-width: 900px) {
+
+  /* ─── 1. BASE ────────────────────────────────────────────────────
+     Devolve a rolagem vertical que as telas travam para o computador.
+     `overflow-x:hidden` fica só no body (não no html) para não quebrar
+     cabeçalho `position:sticky`, que depende do html poder rolar. */
+  html {
+    height: auto !important;
+    overflow-y: auto !important;
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    height: auto !important;
+    min-height: 100dvh;
+    overflow-x: hidden;
+    overflow-y: auto !important;
+  }
+
+  /* ─── 2. CABEÇALHO ───────────────────────────────────────────────
+     Passa a quebrar linha em vez de empurrar a página. */
+  header {
+    height: auto !important;
+    min-height: 52px;
+    flex-wrap: wrap !important;
+    row-gap: 8px;
+    column-gap: 10px;
+    padding: 8px 12px !important;
+  }
+  header > * { min-width: 0; }
+  header .logo      { font-size: 13px !important; letter-spacing: 1.2px !important; }
+  header .logo-icon { width: 28px !important; height: 28px !important; }
+  header .clock     { font-size: 15px !important; letter-spacing: 1px !important; }
+  header .header-right,
+  header .header-center,
+  header .status-mini { flex-wrap: wrap !important; gap: 6px !important; }
+  header .srv-status  { font-size: 10px !important; padding: 5px 8px !important; }
+
+  /* ─── 3. ALVO DE TOQUE: 44 px ────────────────────────────────────
+     Vale para o que se toca. Elementos decorativos não entram.
+
+     Campo sem `type` conta como texto (é o padrão do HTML), por isso a
+     regra de input é por exclusão e não por lista: assim um campo
+     escrito sem type — como a busca do Dashboard — também ganha 44 px. */
+  button, a.btn, a.voltar, a.btn-sair,
+  .btn, .btn-icon, .btn-ic, .btn-dia, .btn-modal, .btn-sair,
+  .chip, .aba, .opt, .touch-btn, .cor-btn, .fmt-btn, .maq-btn, .quick-btn,
+  select,
+  input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not([type="range"]) {
+    min-height: 44px !important;
+  }
+  .btn-icon, .btn-ic, .btn-sair, a.btn-sair { min-width: 44px !important; }
+
+  /* ─── 3b. CRACHÁ DO COLABORADOR ──────────────────────────────────
+     O crachá ("👤 NOME") é `position:fixed` no canto superior direito.
+     Na tela larga do Mini PC ele cai em espaço vazio; no celular caía
+     em cima do relógio e dos botões do cabeçalho. Vai para o canto
+     inferior ESQUERDO — o direito é do botão "Sair". */
+  .eko-resp-tag, #eko-resp-tag {
+    top: auto !important;
+    bottom: 12px !important;
+    right: auto !important;
+    left: 10px !important;
+    max-width: 52vw;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  /* ─── 4. TEXTO MÍNIMO: 12 px ─────────────────────────────────────
+     Os casos medidos abaixo de 12 px, um a um. */
+  .rodape-link                      { font-size: 12.5px !important; }
+  .btn-dia                          { font-size: 12.5px !important; }
+  .btn-peso-ok, .btn-peso-sim       { font-size: 12.5px !important; }
+  .sub, small                       { font-size: 12px !important; }
+  .campo label                      { font-size: 11.5px !important; }
+
+  /* ═══════════════════════════════════════════════════════════════
+     ESTRUTURA POR TELA — presa ao data-tela do <body>
+     ═══════════════════════════════════════════════════════════════ */
+
+  /* ─── MENU ─── */
+  body[data-tela="Menu"] .grid-principal { gap: 12px !important; }
+  body[data-tela="Menu"] .tile-big       { padding: 26px 14px !important; min-height: 120px !important; }
+  body[data-tela="Menu"] main,
+  body[data-tela="Menu"] .conteudo       { padding-left: 12px !important; padding-right: 12px !important; }
+
+  /* Abaixo de 400 px dois cartões lado a lado ficam estreitos demais
+     para o nome do setor caber sem quebrar feio. Vira um por linha. */
+  @media (max-width: 400px) {
+    body[data-tela="Menu"] .grid-principal { grid-template-columns: 1fr !important; }
+  }
+
+  /* ─── RESÍDUOS (Outras Pesagens) ───
+     Era duas colunas: painel de toque + coluna de preview de 360 px
+     fixos. Vira uma coluna, com o preview embaixo. */
+  body[data-tela="Resíduos"] .layout-content,
+  body[data-tela="Resíduos"] #banner-turno.on ~ .layout-content {
+    height: auto !important;
+    overflow: visible !important;
+  }
+  body[data-tela="Resíduos"] .page {
+    height: auto !important;
+    overflow: visible !important;
+    padding: 12px !important;
+  }
+  body[data-tela="Resíduos"] .page.active { display: block !important; }
+  body[data-tela="Resíduos"] .touch-panel { width: 100% !important; }
+  body[data-tela="Resíduos"] .preview-col {
+    width: 100% !important;
+    flex-shrink: 1 !important;
+    overflow: visible !important;
+    margin-top: 14px;
+  }
+  body[data-tela="Resíduos"] .touch-grid,
+  body[data-tela="Resíduos"] .touch-grid.cols-3 { grid-template-columns: repeat(2, 1fr) !important; }
+  body[data-tela="Resíduos"] .op-grid           { grid-template-columns: repeat(2, 1fr) !important; }
+  body[data-tela="Resíduos"] .row-2col          { grid-template-columns: 1fr !important; }
+  body[data-tela="Resíduos"] #banner-turno {
+    flex-wrap: wrap !important;
+    gap: 10px !important;
+    height: auto !important;
+    padding: 10px 12px !important;
+  }
+
+  /* ─── PRODUTO ACABADO ───
+     Era grid de duas colunas (seleção | lista do turno) ocupando a
+     altura toda. Vira uma coluna que rola. */
+  body[data-tela="Produto Acabado"] .main,
+  body[data-tela="Produto Acabado"] .main.on {
+    display: block !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+  body[data-tela="Produto Acabado"] .col-sel {
+    padding: 10px 12px !important;
+    overflow: visible !important;
+    height: auto !important;
+  }
+  body[data-tela="Produto Acabado"] .col-list {
+    border-left: none !important;
+    border-top: 2px solid var(--border);
+    min-height: 260px;
+  }
+  /* A escolha de turno é um overlay de tela cheia com cartões de 244 px
+     lado a lado. No celular vira um por linha, e o overlay rola.
+
+     O overlay começava 56 px abaixo do topo — a altura do cabeçalho na
+     tela larga. No celular o cabeçalho quebra em duas linhas e fica mais
+     alto, então sobrava uma faixa da tela de baixo aparecendo acima dele.
+     Aqui o overlay cobre a tela inteira e o cabeçalho passa a flutuar por
+     cima (`sticky`, z-index acima do overlay), de modo que os botões
+     ⇄ e 🏠 continuam ao alcance durante a escolha do turno. */
+  body[data-tela="Produto Acabado"] header {
+    position: sticky !important;
+    top: 0;
+    z-index: 60 !important;
+    background: var(--bg) !important;
+  }
+  body[data-tela="Produto Acabado"] #overlay-turno {
+    inset: 0 !important;
+  }
+  body[data-tela="Produto Acabado"] #overlay-turno.on {
+    justify-content: flex-start !important;
+    overflow-y: auto !important;
+    padding: 12px 12px 28px !important;
+    gap: 16px !important;
+  }
+  /* Espaço para o cabeçalho flutuante. Sobra é inofensiva: o overlay rola. */
+  body[data-tela="Produto Acabado"] #overlay-turno.on > :first-child { margin-top: 108px; }
+  body[data-tela="Produto Acabado"] .turno-grid { flex-direction: column !important; width: 100%; gap: 12px !important; }
+  body[data-tela="Produto Acabado"] .turno-card { width: 100% !important; }
+  body[data-tela="Produto Acabado"] #overlay-turno h2 { font-size: 20px !important; text-align: center; }
+
+  @media (max-width: 400px) {
+    body[data-tela="Produto Acabado"] .cor-grid { grid-template-columns: repeat(2, 1fr) !important; }
+  }
+
+  /* ─── OPÇÕES (Manutenção) ─── */
+  body[data-tela="Opções"] main { padding: 20px 12px !important; }
+  body[data-tela="Opções"] .cg-form { grid-template-columns: 1fr !important; max-width: 100% !important; }
+  body[data-tela="Opções"] .cg-form label { margin-bottom: -6px; }
+  body[data-tela="Opções"] .cg-linha-cod { flex-wrap: wrap; }
+  body[data-tela="Opções"] .card-acoes { flex-wrap: wrap; gap: 8px; }
+  body[data-tela="Opções"] .kb-box { width: 100% !important; padding: 14px !important; }
+
+  /* ─── DASHBOARD ─── */
+  body[data-tela="Dashboard"] header { padding: 10px 12px !important; }
+  body[data-tela="Dashboard"] header .voltar { margin-left: 0 !important; }
+  body[data-tela="Dashboard"] .filtros { padding: 12px !important; }
+  body[data-tela="Dashboard"] .campo { flex: 1 1 46%; min-width: 0; }
+  body[data-tela="Dashboard"] .campo select,
+  body[data-tela="Dashboard"] .campo input { min-width: 0 !important; width: 100%; }
+  body[data-tela="Dashboard"] .atalhos { margin-left: 0 !important; flex-wrap: wrap; }
+  body[data-tela="Dashboard"] main { padding: 14px 12px !important; }
+  body[data-tela="Dashboard"] table { font-size: 12px; }
+
+  /* Os cartões pediam 320 px de largura mínima (`minmax(320px,1fr)`).
+     Num celular de 320 px, descontada a margem da página, sobram 296 —
+     e a grade empurrava a página 20 px para o lado. `minmax(0,1fr)`
+     deixa o cartão encolher até o que houver. */
+  body[data-tela="Dashboard"] .grade { grid-template-columns: minmax(0, 1fr) !important; }
+  body[data-tela="Dashboard"] .kpis  { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)) !important; }
+  body[data-tela="Dashboard"] .cartao,
+  body[data-tela="Dashboard"] .kpi   { min-width: 0 !important; }
+  body[data-tela="Dashboard"] .cartao h3 { padding: 12px !important; gap: 8px; flex-wrap: wrap; }
+  body[data-tela="Dashboard"] .barra-linha { padding-left: 12px !important; padding-right: 12px !important; }
+  body[data-tela="Dashboard"] .barra-linha .val { min-width: 72px !important; font-size: 12px !important; }
+  /* Tabela larga rola dentro do próprio cartão, não empurra a página. */
+  body[data-tela="Dashboard"] .cartao .corpo { overflow: auto !important; }
+
+  /* ─── ENDEREÇAMENTO ───
+     Já nasceu para o celular; aqui só folga para o dedo. */
+  body[data-tela="Endereçamento"] .pg { padding: 12px 10px !important; }
+
+  /* ─── INVENTÁRIO / RETIRADA DE BOBINAS ───
+     Também já eram de celular. Sem regra estrutural: herdam só o
+     cabeçalho, o alvo de toque e o texto mínimo. */
+}

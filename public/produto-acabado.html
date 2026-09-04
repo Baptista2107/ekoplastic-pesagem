@@ -201,6 +201,8 @@
   .rev-item { display:flex; justify-content:space-between; gap:10px; padding:8px 0; border-bottom:1px solid var(--border); font-size:13px; }
   .rev-kg { font-weight:800; white-space:nowrap; }
 </style>
+<!-- Ajuste automatico para celular: so vale abaixo de 900px de largura -->
+<link rel="stylesheet" href="/celular.css">
 </head>
 <body data-tela="Produto Acabado">
 
@@ -951,6 +953,9 @@ async function gReimprimir(id) {
 function mostrarResponsavelPA() {
   if (!window.EKO_RESPONSAVEL) return;
   const el = document.createElement('div');
+  // A classe nao muda nada aqui: serve so para o celular.css poder tirar o
+  // cracha de cima do relogio quando a tela e' estreita.
+  el.className = 'eko-resp-tag';
   el.style.cssText = 'position:fixed; top:8px; right:12px; z-index:900; background:rgba(0,0,0,0.55);'
     + 'border:1px solid rgba(255,255,255,0.18); color:#cfe3ff; padding:6px 12px; border-radius:20px;'
     + 'font-size:12px; font-weight:800; pointer-events:none;';
