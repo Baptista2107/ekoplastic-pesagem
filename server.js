@@ -4136,26 +4136,46 @@ function avaliarJanelaAtualizacao(quietoS) {
   ).all();
 
   // ── 1 e 2: estado de cada sessão aberta ──
-  const semBipada = [];
+  //
+  // Sessão VAZIA x sessão SEM BIPADA — a distinção que faltava (04/09/2026).
+  // Uma sessão de Produto Acabado aberta e esquecida (o operador escolheu o
+  // turno e foi almoçar) não tem etiqueta NENHUMA. O reinício fecha essa
+  // sessão, sim — mas não há o que perder: nenhuma pesagem, nenhuma etiqueta,
+  // nenhum lançamento. O operador só reescolhe o turno.
+  //
+  // Já uma sessão que TEM etiqueta e mesmo assim não tem nenhuma "viva" é
+  // outra história. O caso perigoso: um recebimento cujos big bags já foram
+  // TODOS retirados para a produção — eles ficam 'consumida', que não conta
+  // como viva, e fechar a sessão perderia a ENTRADA no Bling. Essa continua
+  // bloqueando.
+  //
+  // Antes desta distinção, uma sessão de PA vazia travava a atualização
+  // indefinidamente: só saía do caminho quando alguém lançasse um fardo nela.
+  const semBipada = [];   // tem conteúdo e fechar perderia algo → BLOQUEIA
+  const vazias    = [];   // não tem etiqueta nenhuma → o reinício só fecha
   let aguardando  = 0;
   for (const s of abertas) {
     const c = db.prepare(
       `SELECT
+         COUNT(*) AS total,
          SUM(CASE WHEN status = 'aguardando_bipe' THEN 1 ELSE 0 END) AS pendentes,
          SUM(CASE WHEN status IN ('aguardando_bipe','bipada') THEN 1 ELSE 0 END) AS vivas
        FROM etiquetas WHERE sessao_id = ?`
     ).get(s.id);
     aguardando += (c && c.pendentes) || 0;
-    if (((c && c.vivas) || 0) === 0) semBipada.push(s);
+    if (((c && c.vivas) || 0) === 0) {
+      if (((c && c.total) || 0) === 0) vazias.push(s);
+      else                            semBipada.push(s);
+    }
   }
 
   if (aguardando > 0) {
-    return { pode: false, regra: 'aguardando_bipe', abertas,
+    return { pode: false, regra: 'aguardando_bipe', abertas, sessoes_vazias: vazias,
       motivo: `Há ${aguardando} etiqueta(s) impressa(s) esperando bipe. Bipe ou cancele antes de atualizar.` };
   }
   if (semBipada.length) {
-    return { pode: false, regra: 'sessao_sem_bipada', abertas, sessoes_sem_bipada: semBipada,
-      motivo: `Há ${semBipada.length} sessão(ões) aberta(s) sem nenhuma etiqueta bipada — o reinício fecharia essa(s) sessão(ões). Espere a primeira bipagem.` };
+    return { pode: false, regra: 'sessao_sem_bipada', abertas, sessoes_sem_bipada: semBipada, sessoes_vazias: vazias,
+      motivo: `Há ${semBipada.length} sessão(ões) aberta(s) com itens que o reinício perderia (etiquetas já retiradas ou canceladas). Finalize ou cancele essa(s) sessão(ões) antes de atualizar.` };
   }
 
   // ── 3: silêncio ──
@@ -4169,17 +4189,23 @@ function avaliarJanelaAtualizacao(quietoS) {
   }
   const paradoS = ultimoMs ? Math.round((agora - ultimoMs) / 1000) : 999999;
   if (paradoS < quietoS) {
-    return { pode: false, regra: 'movimento', abertas, parado_s: paradoS, silencio_exigido_s: quietoS,
+    return { pode: false, regra: 'movimento', abertas, sessoes_vazias: vazias, parado_s: paradoS, silencio_exigido_s: quietoS,
       motivo: `A estação teve movimento há ${paradoS}s. Preciso de ${quietoS}s de silêncio para atualizar com segurança.` };
   }
 
   // ── 4: nada em voo ──
   if (OPS_EM_VOO > 0) {
-    return { pode: false, regra: 'em_voo', abertas, em_voo: OPS_EM_VOO,
+    return { pode: false, regra: 'em_voo', abertas, sessoes_vazias: vazias, em_voo: OPS_EM_VOO,
       motivo: `Há ${OPS_EM_VOO} operação(ões) sendo atendida(s) agora mesmo.` };
   }
 
-  return { pode: true, regra: 'ok', abertas, parado_s: paradoS, motivo: 'janela aberta' };
+  // Passou. Se houver sessão vazia, ela vai ser fechada pelo reinício —
+  // isso vai junto na resposta e no log, para não acontecer calado.
+  return { pode: true, regra: 'ok', abertas, parado_s: paradoS,
+           sessoes_vazias: vazias,
+           motivo: vazias.length
+             ? `janela aberta — ${vazias.length} sessão(ões) vazia(s) será(ão) fechada(s) pelo reinício`
+             : 'janela aberta' };
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -4505,6 +4531,14 @@ const requestHandlerBase = async (req, res) => {
     //
     //  Sessão aberta NÃO impede mais a atualização — a Extrusão roda
     //  24h e nunca teria sessão fechada. O que impede é trabalho no ar.
+    // GET /sistema/janela-atualizacao — só CONSULTA, não atualiza nada.
+    // Serve para saber por que a estação está recusando a atualização sem
+    // precisar tentar (e sem a senha). Só lê o banco.
+    if (pathname === '/sistema/janela-atualizacao' && req.method === 'GET') {
+      const quieto = Math.max(10, parseInt(configGet('atualizar_silencio_s', '45'), 10) || 45);
+      return jsonOk(res, { janela: avaliarJanelaAtualizacao(quieto), silencio_exigido_s: quieto });
+    }
+
     if (pathname === '/sistema/atualizar' && req.method === 'POST') {
       let body;
       try { body = await lerBodyJson(req); } catch(e) { return jsonErr(res, 400, e.message); }
@@ -4540,6 +4574,17 @@ const requestHandlerBase = async (req, res) => {
         `SELECT COUNT(*) AS n FROM sessoes WHERE bling_status IN ('pendente','pendente_config','erro')`
       ).get().n;
 
+      // Sessão aberta e VAZIA vai ser fechada pelo reinício. Não perde
+      // pesagem nenhuma (não há etiqueta lá dentro), mas o operador vai
+      // ter que reescolher o turno — então fica registrado quem era.
+      const vaziasFechar = confirma.sessoes_vazias || [];
+      if (vaziasFechar.length) {
+        logW('sistema', `Atualização vai fechar ${vaziasFechar.length} sessão(ões) aberta(s) e VAZIA(s) `
+          + `(nenhuma etiqueta dentro): `
+          + vaziasFechar.map(s => `#${s.id} ${s.tipo}${s.turno_codigo ? ' turno ' + s.turno_codigo : ''}`
+                                 + `${s.operador ? ' — ' + s.operador : ''}`).join('; '));
+      }
+
       // A bandeira é gravada ANTES de responder: se não der para
       // gravar, ninguém encerra e a estação segue exatamente como está.
       try {
@@ -4556,10 +4601,16 @@ const requestHandlerBase = async (req, res) => {
         pendentes_bling: pend,
         parado_s: confirma.parado_s,
         sessoes_abertas: confirma.abertas.length,
-        sessoes_preservadas: confirma.abertas.map(s => ({
+        sessoes_preservadas: confirma.abertas
+          .filter(s => !vaziasFechar.some(v => v.id === s.id))
+          .map(s => ({ id: s.id, tipo: s.tipo, turno_codigo: s.turno_codigo, operador: s.operador })),
+        sessoes_vazias_fechadas: vaziasFechar.map(s => ({
           id: s.id, tipo: s.tipo, turno_codigo: s.turno_codigo, operador: s.operador,
         })),
-        aviso: 'O servidor vai encerrar e voltar em alguns segundos. As sessões abertas continuam abertas, com tudo que já foi bipado.',
+        aviso: 'O servidor vai encerrar e voltar em alguns segundos. As sessões abertas continuam abertas, com tudo que já foi bipado.'
+             + (vaziasFechar.length
+                 ? ` ATENÇÃO: ${vaziasFechar.length} sessão(ões) estava(m) VAZIA(s) e será(ão) fechada(s) — nenhuma pesagem se perde, mas o operador precisa reabrir o turno.`
+                 : ''),
       });
       logI('sistema', `Atualização remota autorizada — ${confirma.abertas.length} sessão(ões) aberta(s) preservada(s); estação parada há ${confirma.parado_s}s.`);
       setTimeout(() => process.exit(0), 400);

@@ -121,17 +121,60 @@ async function imprimir(sid, i) {
   await subir();
   await req('POST', '/config', { print_simular: '1', bling_simular: '1' });
 
-  // ── 1. Sessao aberta SEM nenhuma etiqueta ──
-  console.log('\n[1] Sessao de Extrusao aberta, ainda sem bobina nenhuma');
+  // ── 1. Sessao aberta e VAZIA nao trava mais a atualizacao ──
+  //  Ate 04/09/2026 travava. Uma sessao de Produto Acabado aberta e
+  //  esquecida (o operador escolheu o turno e foi almocar) nao tem
+  //  etiqueta NENHUMA: o reinicio a fecha, mas nao ha o que perder.
+  //  Na fabrica isso bloqueou uma atualizacao por 12 tentativas.
+  console.log('\n[1] Sessao aberta e VAZIA nao e mais motivo de bloqueio');
   const s = await req('POST', '/sessoes', { tipo: 'extrusao', operador: 'WALLISON', maquina: 'C2', turno_codigo: 'EXT-A2' });
   const sid = s.json && s.json.sessao_id;
   ok(!!sid, 'sessao de extrusao aberta');
 
+  let j = await req('GET', '/sistema/janela-atualizacao');
+  ok(j.json && j.json.ok, 'a consulta da janela responde (sem senha, so leitura)');
+  let jan = (j.json && j.json.janela) || {};
+  ok(jan.regra !== 'sessao_sem_bipada', 'a sessao VAZIA nao e mais o motivo do bloqueio', JSON.stringify(jan.regra));
+  ok(Array.isArray(jan.sessoes_vazias) && jan.sessoes_vazias.some(x => x.id === sid),
+     'ela e classificada como VAZIA (o reinicio so a fecha, sem perder pesagem)',
+     JSON.stringify(jan.sessoes_vazias));
+
+  // ── 1B. Sessao com etiqueta JA RETIRADA continua travando ──
+  //  Este e o caso perigoso: um recebimento cujos big bags foram todos
+  //  levados para a producao. Eles ficam 'consumida', que nao conta como
+  //  viva — e fechar a sessao perderia a ENTRADA no Bling.
+  console.log('\n[1B] Sessao com big bag ja retirado CONTINUA travando');
+  const sr = await req('POST', '/sessoes', { tipo: 'recebimento', operador: 'WALLISON', fornecedor: 'Cedro' });
+  const sidR = sr.json && sr.json.sessao_id;
+  const bb = await req('POST', '/etiquetas', {
+    clientToken: 'jan-bb-' + Math.random(), tipo: 'recebimento', materialKey: 'GBD',
+    materialNomeEt: 'BAIXA DENSIDADE', cor: 'Canela', fornecedor: 'Cedro', peso: 900,
+    lote: 'L1', codigo: 'CAN1', sku: 'GBD.CAN.CED | 900 | LL1', sessao_id: sidR,
+  });
+  await req('POST', '/etiquetas/' + bb.json.id + '/bipar');
+  const sret = await req('POST', '/sessoes', { tipo: 'retirada', operador: 'WALLISON' });
+  await req('POST', '/etiquetas/' + bb.json.id + '/consumir', { sessao_id: sret.json.sessao_id });
+
+  j = await req('GET', '/sistema/janela-atualizacao');
+  jan = (j.json && j.json.janela) || {};
+  ok(jan.pode === false && jan.regra === 'sessao_sem_bipada',
+     'sessao com etiqueta consumida TRAVA a atualizacao', JSON.stringify(jan.regra));
+  ok(Array.isArray(jan.sessoes_sem_bipada) && jan.sessoes_sem_bipada.some(x => x.id === sidR),
+     'e o motivo apontado e o recebimento, nao a sessao vazia',
+     JSON.stringify(jan.sessoes_sem_bipada));
+  ok(!(jan.sessoes_vazias || []).some(x => x.id === sidR),
+     'ela NAO e classificada como vazia — tem conteudo a perder');
+
+  // Devolve o cenario ao estado anterior: cancela a retirada (o big bag
+  // volta a 'bipada') e finaliza o recebimento.
+  await req('POST', '/sessoes/' + sret.json.sessao_id + '/cancelar');
+  await req('POST', '/sessoes/' + sidR + '/finalizar');
+  j = await req('GET', '/sistema/janela-atualizacao');
+  jan = (j.json && j.json.janela) || {};
+  ok(jan.regra !== 'sessao_sem_bipada', 'limpo o cenario, a trava do consumido sai do caminho', JSON.stringify(jan.regra));
+
   let r = await req('POST', '/sistema/atualizar', { senha: '1234' });
-  ok(r.status === 409, 'atualizacao RECUSADA com sessao sem bipada', JSON.stringify(r.json));
-  ok(r.json && r.json.janela && r.json.janela.regra === 'sessao_sem_bipada',
-     'motivo e a sessao sem etiqueta viva (a que o startup fecharia)',
-     JSON.stringify(r.json && r.json.janela && r.json.janela.regra));
+  ok(r.status === 409, 'ainda assim nao atualiza: falta o silencio', JSON.stringify(r.json && r.json.janela && r.json.janela.regra));
 
   // ── 2. Bobina impressa esperando bipe ──
   console.log('\n[2] Bobina impressa, ainda nao bipada');
