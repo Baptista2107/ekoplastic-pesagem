@@ -233,6 +233,27 @@ del "%SAIDA7%" >nul 2>&1
 if not "%RCT%"=="0" goto :testes_falharam
 
 :sem_enderecamento
+REM  --- Teste 8: separacao e carregamento ---
+REM  Percorre o ciclo inteiro: foto da guia, conferencia, ordem de
+REM  carregamento, plano de coleta, o bipe que da baixa no endereco,
+REM  a sobra virando etiqueta nova e o enderecamento dela. O que mais
+REM  importa aqui nao e a rota responder 200: e o alocador nao mandar
+REM  separar errado, porque instrucao errada faz o galpao inteiro
+REM  andar para o lado errado e ninguem percebe ate faltar produto
+REM  no caminhao.
+if not exist "testes\separacao.js" goto :sem_separacao
+echo.
+echo  Rodando o teste da separacao. Leva uns 25 segundos...
+echo.
+set "SAIDA8=%TEMP%\eko_testes8.tmp"
+node testes\separacao.js > "%SAIDA8%" 2>&1
+set "RCT=%ERRORLEVEL%"
+type "%SAIDA8%"
+type "%SAIDA8%" >>"%LOG%"
+del "%SAIDA8%" >nul 2>&1
+if not "%RCT%"=="0" goto :testes_falharam
+
+:sem_separacao
 if not exist "testes\janela-atualizacao.js" goto :testes_ok
 echo.
 echo  Rodando o teste da janela de atualizacao. Leva uns 30 segundos...

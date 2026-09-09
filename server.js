@@ -217,6 +217,9 @@ const PS_SCRIPT   = path.join(__dirname, 'enviar_raw.ps1');
 const DB_FILE     = process.env.EKO_DB_FILE || path.join(__dirname, 'etiquetas.db');
 const PUBLIC_DIR  = path.join(__dirname, 'public');
 const LOG_DIR     = process.env.EKO_LOG_DIR || path.join(__dirname, 'logs');
+// Fotos das guias de separação. Fora do Git de propósito (são documentos
+// de cliente) — ver a entrada /guias/ no .gitignore.
+const GUIAS_DIR   = process.env.EKO_GUIAS_DIR || path.join(__dirname, 'guias');
 const BACKUP_DIR  = path.join(__dirname, 'backups');
 const LEGACY_JSON = path.join(__dirname, 'etiquetas-db.json');   // import do print-server v2
 
@@ -693,6 +696,77 @@ function aplicarSchema() {
     CREATE UNIQUE INDEX IF NOT EXISTS idx_ocup_gaiola_aberta  ON ocupacoes(gaiola_id) WHERE saida IS NULL;
     CREATE INDEX IF NOT EXISTS idx_ocup_gaiola ON ocupacoes(gaiola_id);
 
+    -- ── SEPARAÇÃO E CARREGAMENTO (09/09/2026) ─────────────────────
+    -- Fecha o ciclo do endereçamento. O separador já vai até o vão e já
+    -- tira a gaiola de lá; bipar naquele instante não é trabalho a mais,
+    -- e é o que dá a BAIXA sem depender de alguém lembrar depois.
+
+    -- Uma carga. Nasce quando a foto da guia de separação é enviada.
+    CREATE TABLE IF NOT EXISTS separacoes (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      criada_em  TEXT NOT NULL,
+      arquivo    TEXT,               -- nome do arquivo da foto/PDF da guia
+      status     TEXT NOT NULL,      -- rascunho|conferida|em_separacao|concluida|cancelada
+      operador   TEXT,
+      obs        TEXT
+    );
+
+    -- Os pedidos da carga, na ORDEM DE CARREGAMENTO que o gestor definir.
+    -- Primeiro a carregar = último a entregar; quem decide é ele, não o
+    -- sistema — o alocador só respeita a sequência.
+    CREATE TABLE IF NOT EXISTS separacao_pedidos (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      separacao_id INTEGER NOT NULL,
+      ordem        INTEGER NOT NULL,
+      cliente      TEXT, cidade TEXT, uf TEXT,
+      FOREIGN KEY (separacao_id) REFERENCES separacoes(id)
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_sep_ordem ON separacao_pedidos(separacao_id, ordem);
+
+    -- As linhas do pedido, já em FARDOS (a guia vem em kg; 1 fardo = 25 kg).
+    CREATE TABLE IF NOT EXISTS separacao_itens (
+      id        INTEGER PRIMARY KEY AUTOINCREMENT,
+      pedido_id INTEGER NOT NULL,
+      cor_key   TEXT NOT NULL,
+      formato   TEXT NOT NULL,
+      fardos    INTEGER NOT NULL,
+      FOREIGN KEY (pedido_id) REFERENCES separacao_pedidos(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_sep_itens_pedido ON separacao_itens(pedido_id);
+
+    -- O plano: de qual endereço tirar e quanto vai para cada pedido.
+    CREATE TABLE IF NOT EXISTS separacao_coletas (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      separacao_id INTEGER NOT NULL,
+      gaiola_id    TEXT NOT NULL,
+      posicao      TEXT NOT NULL,
+      cor_key      TEXT, formato TEXT, tipo_gaiola TEXT,
+      fardos_na_gaiola INTEGER NOT NULL,
+      reparticao   TEXT NOT NULL,     -- JSON {"1":6,"2":14} = fardos por ordem de pedido
+      sobra        INTEGER NOT NULL DEFAULT 0,
+      status       TEXT NOT NULL,     -- planejada|coletada|nao_encontrada
+      coletada_em  TEXT, operador TEXT,
+      FOREIGN KEY (separacao_id) REFERENCES separacoes(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_sep_coletas ON separacao_coletas(separacao_id, status);
+
+    -- A fila de reetiquetagem: gaiola que saiu do endereço mas não foi
+    -- 100% usada. Enquanto não for endereçada de novo, fica aqui.
+    CREATE TABLE IF NOT EXISTS sobras (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      separacao_id  INTEGER,
+      gaiola_origem TEXT NOT NULL,
+      gaiola_nova   TEXT,
+      cor_key TEXT, formato TEXT, tipo_gaiola TEXT,
+      fardos        INTEGER NOT NULL,
+      posicao_origem   TEXT,
+      posicao_sugerida TEXT,
+      posicao_final    TEXT,
+      status        TEXT NOT NULL,   -- aguardando_impressao|impressa|enderecada
+      criada_em TEXT NOT NULL, resolvida_em TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_sobras_status ON sobras(status);
+
     INSERT OR IGNORE INTO seqs(tipo, valor) VALUES ('recebimento', 1), ('retorno', 1), ('retirada', 1), ('extrusao', 1);
   `);
 }
@@ -748,6 +822,275 @@ function semearPosicoes() {
   } catch (e) {
     logE('db', 'Falha ao semear as posições do galpão', { erro: e && e.message });
   }
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  ALOCADOR DE SEPARAÇÃO  (09/09/2026)
+// ------------------------------------------------------------------
+//  Dada a guia de separação conferida, com os pedidos na ORDEM DE
+//  CARREGAMENTO, e as gaiolas endereçadas, decide de qual endereço
+//  tirar cada fardo.
+//
+//  A IDEIA CENTRAL: a demanda é somada da CARGA INTEIRA antes de
+//  alocar. É isso, e só isso, que faz uma mesma gaiola atender o
+//  pedido de agora e o de depois. Se cada pedido for resolvido por
+//  si, cada um abre gaiola nova e cada um deixa uma sobra — que é o
+//  acúmulo de gaiolas com pouco produto que se quer eliminar.
+//
+//  PRIORIDADE
+//    1. Sobra ZERO, se existir conjunto que some exatamente a demanda.
+//    2. Senão, a MENOR sobra possível, concentrada em UMA gaiola só.
+//    3. Menos gaiolas abertas.
+//    4. FIFO: as mais antigas saem inteiras, a MAIS NOVA fica parcial.
+// ══════════════════════════════════════════════════════════════════
+
+// Escolhe o conjunto de gaiolas que cobre `demanda` fardos.
+// Devolve { escolhidas, sobra, deficit } — escolhidas já na ordem de
+// consumo, com a parcial (se houver) por último.
+function escolherGaiolas(gaiolas, demanda) {
+  if (demanda <= 0) return { escolhidas: [], sobra: 0, deficit: 0 };
+
+  const chaveFifo = g => `${g.entrada || ''}|${g.posicao}`;
+  const ordenadas = gaiolas.slice().sort((a, b) => chaveFifo(a) < chaveFifo(b) ? -1 : 1);
+  const total = ordenadas.reduce((s, g) => s + g.fardos, 0);
+  if (total < demanda) {
+    // Não há produto endereçado suficiente. Leva o que há e reporta o
+    // déficit — quem decide o que fazer é o gestor, não o sistema.
+    return { escolhidas: ordenadas, sobra: 0, deficit: demanda - total };
+  }
+
+  // PROGRAMAÇÃO DINÂMICA EM CAMADAS — uma camada por gaiola.
+  // A camada importa: montar a camada nova SEMPRE a partir da anterior
+  // é o que garante que cada gaiola entre no máximo uma vez. Uma versão
+  // com um único vetor de "pai" parece equivalente e NÃO é — ela pode
+  // reconstruir um caminho que usa a mesma gaiola duas vezes, e aí o
+  // sistema acha que tem mais fardos do que existe e manda separar
+  // menos do que o pedido pede. Isso aconteceu no protótipo e só
+  // apareceu em teste com centenas de cargas sorteadas.
+  let melhor = new Map([[0, { cnt: 0, somaIdx: 0, idxs: [] }]]);
+  for (let i = 0; i < ordenadas.length; i++) {
+    const q = ordenadas[i].fardos;
+    const nova = new Map(melhor);
+    for (const [s, v] of melhor) {
+      const ns = s + q;
+      if (ns > total) continue;
+      const atual = nova.get(ns);
+      const cnt = v.cnt + 1, somaIdx = v.somaIdx + i;
+      if (!atual || cnt < atual.cnt || (cnt === atual.cnt && somaIdx < atual.somaIdx)) {
+        nova.set(ns, { cnt, somaIdx, idxs: v.idxs.concat(i) });
+      }
+    }
+    melhor = nova;
+  }
+
+  let alvo = null;
+  for (let s = demanda; s <= total; s++) { if (melhor.has(s)) { alvo = s; break; } }
+  if (alvo === null) return { escolhidas: ordenadas, sobra: total - demanda, deficit: 0 };
+
+  const idxs = melhor.get(alvo).idxs;
+  let escolhidas = idxs.slice().sort((a, b) => a - b).map(i => ordenadas[i]);
+  const sobra = alvo - demanda;
+
+  if (sobra > 0) {
+    // A parcial tem que ser a ÚLTIMA consumida, e é a MAIS NOVA do
+    // conjunto: as antigas saem inteiras (FIFO) e a sobra é sempre a
+    // mercadoria que entrou por último.
+    const cabem = escolhidas.filter(g => g.fardos > sobra);
+    const pool = cabem.length ? cabem : escolhidas;
+    let parcial = pool[0];
+    for (const g of pool) if (chaveFifo(g) > chaveFifo(parcial)) parcial = g;
+    escolhidas = escolhidas.filter(g => g.id !== parcial.id).concat([parcial]);
+  }
+  return { escolhidas, sobra, deficit: 0 };
+}
+
+// Monta o plano de coleta da carga inteira.
+//   pedidos: [{ ordem, itens: [{ cor_key, formato, fardos }] }]
+//   gaiolas: [{ id, posicao, cor_key, formato, fardos, entrada, tipo_gaiola }]
+function alocarSeparacao(pedidos, gaiolas) {
+  const sku = x => `${x.cor_key}|${x.formato}`;
+
+  const demanda = new Map();
+  for (const p of pedidos)
+    for (const it of (p.itens || []))
+      demanda.set(sku(it), (demanda.get(sku(it)) || 0) + Number(it.fardos || 0));
+
+  const estoque = new Map();
+  for (const g of gaiolas) {
+    if (!estoque.has(sku(g))) estoque.set(sku(g), []);
+    estoque.get(sku(g)).push(g);
+  }
+
+  const coletas = [], faltas = [];
+  const ordenados = pedidos.slice().sort((a, b) => a.ordem - b.ordem);
+
+  for (const k of Array.from(demanda.keys()).sort()) {
+    const d = demanda.get(k);
+    const disponiveis = estoque.get(k) || [];
+    const { escolhidas, deficit } = escolherGaiolas(disponiveis, d);
+    const [corKey, formato] = k.split('|');
+    if (deficit) faltas.push({ cor_key: corKey, formato, faltam: deficit });
+
+    // Distribui as gaiolas escolhidas pelos pedidos NA ORDEM DE
+    // CARREGAMENTO. Consumir em sequência é o que faz o corte cair
+    // entre pedidos VIZINHOS — a gaiola compartilhada fica na doca de
+    // um pedido para o seguinte, não para um lá do fim da fila.
+    const restante = new Map(escolhidas.map(g => [g.id, g.fardos]));
+    const reparticao = new Map();
+    let i = 0;
+    for (const p of ordenados) {
+      let preciso = (p.itens || []).filter(it => sku(it) === k)
+                                   .reduce((s, it) => s + Number(it.fardos || 0), 0);
+      while (preciso > 0 && i < escolhidas.length) {
+        const g = escolhidas[i];
+        const pega = Math.min(preciso, restante.get(g.id));
+        if (pega > 0) {
+          if (!reparticao.has(g.id)) reparticao.set(g.id, {});
+          reparticao.get(g.id)[p.ordem] = (reparticao.get(g.id)[p.ordem] || 0) + pega;
+          restante.set(g.id, restante.get(g.id) - pega);
+          preciso -= pega;
+        }
+        if (restante.get(g.id) === 0) i++;
+      }
+    }
+
+    for (const g of escolhidas) {
+      const rep = reparticao.get(g.id);
+      if (!rep) continue;
+      coletas.push({
+        gaiola_id: g.id, posicao: g.posicao, cor_key: corKey, formato,
+        tipo_gaiola: g.tipo_gaiola || null,
+        fardos_na_gaiola: g.fardos, reparticao: rep, sobra: restante.get(g.id),
+      });
+    }
+  }
+  return { coletas, faltas };
+}
+
+// Ordem de visita: pedido a pedido (é como a separação é feita no chão),
+// e dentro de cada pedido caminhando pelo galpão — rua, depois vão
+// crescente, para não ir e voltar no corredor. Gaiola compartilhada é
+// buscada UMA vez, no primeiro pedido que a usa.
+function rotaDeColeta(coletas, pedidos) {
+  const buscadas = new Set(), rota = [];
+  for (const p of pedidos.slice().sort((a, b) => a.ordem - b.ordem)) {
+    const doPedido = coletas.filter(c => c.reparticao[p.ordem] && !buscadas.has(c.gaiola_id));
+    doPedido.sort((a, b) => {
+      const A = a.posicao.split('-').map(Number), B = b.posicao.split('-').map(Number);
+      return (A[0] - B[0]) || (A[2] - B[2]) || (A[1] - B[1]);
+    });
+    for (const c of doPedido) { buscadas.add(c.gaiola_id); rota.push({ ordem: p.ordem, coleta: c, buscar: true }); }
+    for (const c of coletas)
+      if (c.reparticao[p.ordem] && !doPedido.includes(c))
+        rota.push({ ordem: p.ordem, coleta: c, buscar: false });   // já está na doca
+  }
+  return rota;
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  O QUE FALTA NUMA SEPARAÇÃO
+// ------------------------------------------------------------------
+//  Quase nunca a guia inteira está pronta no galpão: parte está na
+//  máquina e fica pronta no dia do carregamento. Isso NÃO é erro — é o
+//  normal. O que seria erro é o sistema calar sobre isso e o caminhão
+//  sair faltando carga.
+//
+//  A falta é calculada AO VIVO, a partir do que os pedidos pedem menos
+//  o que as coletas (planejadas + já coletadas) entregam. Assim, no
+//  instante em que a produção for endereçada e o plano for refeito, a
+//  falta some sozinha — não fica um número velho gravado mentindo.
+// ══════════════════════════════════════════════════════════════════
+function faltasDaSeparacao(sepId) {
+  const pedidos = db.prepare(
+    'SELECT id, ordem, cliente FROM separacao_pedidos WHERE separacao_id = ? ORDER BY ordem').all(sepId);
+  const pedido = {};
+  const querem = new Map();                 // "ordem|cor|formato" -> fardos
+  for (const p of pedidos) {
+    pedido[p.ordem] = p;
+    for (const it of db.prepare(
+      'SELECT cor_key, formato, fardos FROM separacao_itens WHERE pedido_id = ?').all(p.id)) {
+      const k = `${p.ordem}|${it.cor_key}|${it.formato}`;
+      querem.set(k, (querem.get(k) || 0) + it.fardos);
+    }
+  }
+  // Só as coletas que ainda valem: uma marcada "não encontrada" não
+  // entrega nada, e o replanejamento já a substituiu.
+  for (const c of db.prepare(
+    `SELECT * FROM separacao_coletas WHERE separacao_id = ? AND status IN ('planejada','coletada')`).all(sepId)) {
+    let rep = {}; try { rep = JSON.parse(c.reparticao); } catch (e) {}
+    for (const [ordem, q] of Object.entries(rep)) {
+      const k = `${ordem}|${c.cor_key}|${c.formato}`;
+      if (querem.has(k)) querem.set(k, querem.get(k) - Number(q));
+    }
+  }
+
+  const porItem = [], porSku = new Map();
+  for (const [k, resto] of querem) {
+    if (resto <= 0) continue;
+    const [ordem, cor, formato] = k.split('|');
+    const p = pedido[ordem] || {};
+    porItem.push({ ordem: Number(ordem), cliente: p.cliente || null,
+                   cor_key: cor, formato, faltam: resto, kg: resto * PA_KG_FARDO });
+    const ks = `${cor}|${formato}`;
+    porSku.set(ks, (porSku.get(ks) || 0) + resto);
+  }
+  porItem.sort((a, b) => a.ordem - b.ordem);
+  const resumo = Array.from(porSku.entries()).map(([ks, q]) => {
+    const [cor_key, formato] = ks.split('|');
+    return { cor_key, formato, faltam: q, kg: q * PA_KG_FARDO };
+  }).sort((a, b) => a.cor_key.localeCompare(b.cor_key) || a.formato.localeCompare(b.formato));
+  return { por_item: porItem, por_produto: resumo,
+           fardos: porItem.reduce((a, x) => a + x.faltam, 0) };
+}
+
+// ── Apoio: registro das gaiolas e estoque endereçado ──
+function gaiolasRegistro() {
+  try { return JSON.parse(configGet('gaiolas_pa', '{}')); } catch (e) { return {}; }
+}
+function gaiolasSalvar(reg) { configSet('gaiolas_pa', JSON.stringify(reg)); }
+
+// Uma ocupação aberta é uma gaiola disponível no galpão. A cor gravada
+// na ocupação é o NOME ('Branca'); o alocador trabalha com a CHAVE
+// ('BC'), então o registro da gaiola tem prioridade e o nome é o
+// caminho de volta para gaiola antiga que não esteja no registro.
+function corKeyDaOcupacao(o, reg) {
+  const r = reg[o.gaiola_id];
+  if (r && r.corKey) return r.corKey;
+  for (const [k, v] of Object.entries(PA_CORES))
+    if (v.nome && o.cor && v.nome.toLowerCase() === String(o.cor).toLowerCase()) return k;
+  return null;
+}
+function estoqueEnderecado() {
+  const reg = gaiolasRegistro();
+  const linhas = db.prepare(`SELECT o.*, p.nivel, p.rua FROM ocupacoes o
+                             JOIN posicoes p ON p.codigo = o.posicao
+                             WHERE o.saida IS NULL`).all();
+  const out = [];
+  for (const o of linhas) {
+    const corKey = corKeyDaOcupacao(o, reg);
+    const r = reg[o.gaiola_id] || {};
+    const fardos = Number(o.fardos != null ? o.fardos : r.fardos) || 0;
+    if (!corKey || !o.formato || fardos <= 0) continue;
+    out.push({ id: o.gaiola_id, posicao: o.posicao, cor_key: corKey, formato: o.formato,
+               fardos, entrada: o.entrada, tipo_gaiola: o.tipo_gaiola || r.tipo_gaiola || null });
+  }
+  return out;
+}
+
+// Vãos livres, na ordem de preferência para receber uma SOBRA: nível do
+// chão primeiro (mais acessível — sobra costuma sair de novo em breve) e
+// vão de menor número, que é a ponta da rua mais perto da doca.
+function posicoesLivresPreferidas(tipoGaiola) {
+  const linhas = db.prepare(`SELECT p.* FROM posicoes p
+      LEFT JOIN ocupacoes o ON o.posicao = p.codigo AND o.saida IS NULL
+      WHERE p.bloqueada = 0 AND o.id IS NULL`).all();
+  const quer = String(tipoGaiola || '').toUpperCase();
+  return linhas.sort((a, b) => {
+    // gaiola GRANDE só cabe no nível 01; para as demais, o chão é o preferido
+    const pa = (quer === 'GRANDE') ? (a.nivel === 1 ? 0 : 1) : (a.nivel === 1 ? 0 : 1);
+    const pb = (quer === 'GRANDE') ? (b.nivel === 1 ? 0 : 1) : (b.nivel === 1 ? 0 : 1);
+    return (pa - pb) || (a.rua - b.rua) || (a.posicao - b.posicao);
+  }).map(p => p.codigo);
 }
 
 // ─── Migração v3: estender CHECK das tabelas pra aceitar tipo='retirada' ───
@@ -3167,6 +3510,29 @@ async function lerBodyJson(req) {
   const txt = await lerBody(req);
   if (!txt) return {};
   try { return JSON.parse(txt); } catch(e) { throw new Error('JSON inválido no corpo da requisição'); }
+}
+
+// Corpo BINÁRIO — usado só pela foto da guia de separação. O limite de
+// 1 MB do corpo de texto não serve aqui: foto de celular passa disso
+// fácil. A tela reduz a imagem antes de enviar (lado maior 2000 px,
+// JPEG), então na prática chega bem abaixo deste teto; o teto existe
+// para o caso de alguém mandar o arquivo cru.
+function lerBodyBinario(req, limite = 12 * 1024 * 1024) {
+  return new Promise((resolve, reject) => {
+    const partes = [];
+    let tamanho = 0;
+    req.on('data', c => {
+      tamanho += c.length;
+      if (tamanho > limite) {
+        reject(new Error(`Arquivo excede o limite de ${Math.round(limite / 1048576)} MB`));
+        req.destroy();
+        return;
+      }
+      partes.push(c);
+    });
+    req.on('end', () => resolve(Buffer.concat(partes)));
+    req.on('error', reject);
+  });
 }
 
 // Validações de campos obrigatórios
@@ -6270,6 +6636,22 @@ const requestHandlerBase = async (req, res) => {
         return jsonErr(res, 400, `"${gid || '(vazio)'}" não é uma etiqueta de gaiola. A etiqueta de gaiola começa com G.`);
       }
 
+      // Gaiola ENCERRADA: já saiu numa separação. Se a etiqueta antiga
+      // sobreviveu colada e alguém a bipa, o sistema recusa — aceitar
+      // seria endereçar uma quantidade que não existe mais. A etiqueta
+      // válida é a nova, gerada na aba Sobras.
+      {
+        const rEnc = gaiolasRegistro()[gid];
+        if (rEnc && rEnc.encerrada_em) {
+          const nova = db.prepare(
+            'SELECT gaiola_nova FROM sobras WHERE gaiola_origem = ? AND gaiola_nova IS NOT NULL ORDER BY id DESC').get(gid);
+          return jsonErr(res, 409,
+            `A gaiola ${gid} foi encerrada numa separação. Esta etiqueta não vale mais`
+            + (nova && nova.gaiola_nova ? ` — a etiqueta certa é a ${nova.gaiola_nova}.` : '.'),
+            { encerrada: true, gaiola_nova: (nova && nova.gaiola_nova) || null });
+        }
+      }
+
       const p = db.prepare('SELECT * FROM posicoes WHERE codigo = ?').get(cod);
       if (!p) return jsonErr(res, 404, `Endereço ${cod} não existe`);
       if (p.bloqueada) return jsonErr(res, 409, `Endereço ${cod} está bloqueado: ${p.motivo || 'não paletizar'}`, { bloqueada: true });
@@ -6323,10 +6705,27 @@ const requestHandlerBase = async (req, res) => {
         : (!dados.tipo && p.nivel === 1 ? null : null);
 
       const ocup = db.prepare('SELECT * FROM ocupacoes WHERE posicao = ? AND saida IS NULL').get(cod);
+      // Se esta gaiola é a etiqueta nova de uma SOBRA, endereçá-la é o
+      // que fecha a pendência. Nenhum passo a mais para o operador: ele
+      // bipa como bipa qualquer outra e a fila da aba Sobras diminui.
+      let sobraFechada = null;
+      try {
+        const sb = db.prepare(
+          `SELECT * FROM sobras WHERE gaiola_nova = ? AND status <> 'enderecada' ORDER BY id DESC`).get(gid);
+        if (sb) {
+          db.prepare(`UPDATE sobras SET status='enderecada', posicao_final=?, resolvida_em=? WHERE id=?`)
+            .run(cod, new Date().toISOString(), sb.id);
+          sobraFechada = { id: sb.id, sugerida: sb.posicao_sugerida, final: cod };
+          logI('separacao', `Sobra ${sb.id} endereçada: gaiola ${gid} em ${cod}`
+            + (sb.posicao_sugerida && sb.posicao_sugerida !== cod
+                ? ` (sugerido era ${sb.posicao_sugerida})` : ''));
+        }
+      } catch (e) { logW('separacao', 'Falha ao fechar a sobra: ' + e.message); }
+
       logI('enderecamento', `Gaiola ${gid} endereçada em ${cod}`
         + (dados.formato ? ` (${dados.formato} ${dados.cor || ''}, ${dados.fardos || 0} fardos)` : '')
         + (body.operador ? ` — ${body.operador}` : ''));
-      return jsonOk(res, { posicao: cod, ocupacao: ocup, aviso, sem_registro: !reg });
+      return jsonOk(res, { posicao: cod, ocupacao: ocup, aviso, sem_registro: !reg, sobra: sobraFechada });
     }
 
     // POST /enderecamento/liberar   { posicao? , gaiola_id? , motivo?, operador? }
@@ -6361,6 +6760,378 @@ const requestHandlerBase = async (req, res) => {
       const limite = Math.min(500, Math.max(1, parseInt(parsed.query.limit) || 100));
       const linhas = db.prepare('SELECT * FROM ocupacoes ORDER BY id DESC LIMIT ?').all(limite);
       return jsonOk(res, { movimentos: linhas });
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    //  SEPARAÇÃO E CARREGAMENTO
+    //  O ciclo: foto da guia → conferência → ordem de carregamento →
+    //  plano de coleta → bipe ao coletar (que é a BAIXA) → sobras.
+    // ══════════════════════════════════════════════════════════════
+
+    // POST /separacao/nova — abre a carga. A FOTO DA GUIA é o gatilho:
+    // o corpo é a imagem crua (image/jpeg ou image/png). Sem foto o
+    // processo não começa — é ela que prova de onde vieram os números.
+    if (pathname === '/separacao/nova' && req.method === 'POST') {
+      let img;
+      try { img = await lerBodyBinario(req); } catch (e) { return jsonErr(res, 413, e.message); }
+      if (!img || img.length < 100) {
+        return jsonErr(res, 400, 'Envie a foto da guia de separação para iniciar o processo.');
+      }
+      const ct = String(req.headers['content-type'] || '').toLowerCase();
+      const ext = ct.includes('png') ? 'png' : ct.includes('pdf') ? 'pdf' : 'jpg';
+      const agora = new Date().toISOString();
+      const info = db.prepare(`INSERT INTO separacoes (criada_em, arquivo, status, operador)
+                               VALUES (?, NULL, 'rascunho', ?)`)
+                     .run(agora, parsed.query.operador || null);
+      const id = Number(info.lastInsertRowid);
+      const nome = `guia-${String(id).padStart(5, '0')}.${ext}`;
+      try {
+        fs.mkdirSync(GUIAS_DIR, { recursive: true });
+        fs.writeFileSync(path.join(GUIAS_DIR, nome), img);
+        db.prepare('UPDATE separacoes SET arquivo = ? WHERE id = ?').run(nome, id);
+      } catch (e) {
+        logE('separacao', 'Não consegui gravar a foto da guia', { erro: e.message });
+        return jsonErr(res, 500, 'Não consegui gravar a foto da guia: ' + e.message);
+      }
+      logI('separacao', `Separação ${id} aberta com a guia ${nome} (${Math.round(img.length/1024)} KB)`);
+      return jsonOk(res, { id, arquivo: nome, bytes: img.length, status: 'rascunho' });
+    }
+
+    // GET /separacao/:id/guia — devolve a foto, para ficar na tela
+    // durante toda a conferência.
+    if ((m = pathname.match(/^\/separacao\/(\d+)\/guia$/)) && req.method === 'GET') {
+      const s = db.prepare('SELECT * FROM separacoes WHERE id = ?').get(Number(m[1]));
+      if (!s || !s.arquivo) return jsonErr(res, 404, 'Guia não encontrada');
+      const arq = path.join(GUIAS_DIR, path.basename(s.arquivo));
+      if (!fs.existsSync(arq)) return jsonErr(res, 404, 'Arquivo da guia não está mais no disco');
+      const ext = path.extname(arq).toLowerCase();
+      const tipo = ext === '.png' ? 'image/png' : ext === '.pdf' ? 'application/pdf' : 'image/jpeg';
+      res.writeHead(200, { 'Content-Type': tipo, 'Cache-Control': 'no-store' });
+      return res.end(fs.readFileSync(arq));
+    }
+
+    // POST /separacao/:id/conferir — grava os pedidos conferidos, na
+    // ordem de carregamento. Substitui o que houver: conferir de novo é
+    // corrigir, não duplicar.
+    // { pedidos: [{ ordem, cliente, cidade, uf, itens:[{cor_key, formato, fardos|kg}] }] }
+    if ((m = pathname.match(/^\/separacao\/(\d+)\/conferir$/)) && req.method === 'POST') {
+      const sepId = Number(m[1]);
+      let body; try { body = await lerBodyJson(req); } catch (e) { return jsonErr(res, 400, e.message); }
+      const s = db.prepare('SELECT * FROM separacoes WHERE id = ?').get(sepId);
+      if (!s) return jsonErr(res, 404, `Separação ${sepId} não existe`);
+      // Corrigir a guia é livre ENQUANTO NINGUÉM COLETOU. Depois que a
+      // primeira gaiola saiu do endereço, não é mais: mexer nos números
+      // aí faria o plano brigar com o que já está na doca.
+      const jaSaiu = db.prepare(
+        `SELECT COUNT(*) AS n FROM separacao_coletas WHERE separacao_id = ? AND status = 'coletada'`).get(sepId);
+      if (jaSaiu && jaSaiu.n > 0) {
+        return jsonErr(res, 409,
+          `Esta separação já tem ${jaSaiu.n} gaiola(s) coletada(s); não dá mais para reconferir a guia.`,
+          { coletadas: jaSaiu.n });
+      }
+      if (s.status === 'concluida' || s.status === 'cancelada') {
+        return jsonErr(res, 409, `Separação ${s.status}.`);
+      }
+      const pedidos = Array.isArray(body.pedidos) ? body.pedidos : [];
+      if (!pedidos.length) return jsonErr(res, 400, 'Nenhum pedido informado');
+
+      const avisos = [];
+      const ordens = new Set();
+      for (const p of pedidos) {
+        const o = parseInt(p.ordem, 10);
+        if (!Number.isFinite(o) || o < 1) return jsonErr(res, 400, 'Ordem de carregamento inválida');
+        if (ordens.has(o)) return jsonErr(res, 400, `Ordem de carregamento ${o} repetida`);
+        ordens.add(o);
+        for (const it of (p.itens || [])) {
+          if (!PA_CORES[it.cor_key]) return jsonErr(res, 400, `Cor desconhecida: ${it.cor_key}`);
+          if (!PA_FORMATOS.includes(it.formato)) return jsonErr(res, 400, `Formato desconhecido: ${it.formato}`);
+          // A guia vem em kg; o galpão trabalha em fardos de 25 kg. Se o
+          // kg não for múltiplo, o sistema NÃO arredonda calado: arredonda
+          // para cima e avisa, porque faltar produto no caminhão é pior
+          // que sobrar um fardo.
+          if (it.fardos == null && it.kg != null) {
+            const f = Number(it.kg) / PA_KG_FARDO;
+            it.fardos = Math.ceil(f);
+            if (Math.abs(f - Math.round(f)) > 1e-9) {
+              avisos.push(`${p.cliente || 'pedido ' + o}: ${it.kg} kg de ${it.cor_key} ${it.formato} `
+                        + `não fecha em fardos de ${PA_KG_FARDO} kg — arredondei para ${it.fardos}.`);
+            }
+          }
+          if (!(Number(it.fardos) > 0)) return jsonErr(res, 400, 'Quantidade inválida em um dos itens');
+        }
+      }
+
+      const tr = makeTransaction(() => {
+        const antigos = db.prepare('SELECT id FROM separacao_pedidos WHERE separacao_id = ?').all(sepId);
+        for (const a of antigos) db.prepare('DELETE FROM separacao_itens WHERE pedido_id = ?').run(a.id);
+        db.prepare('DELETE FROM separacao_pedidos WHERE separacao_id = ?').run(sepId);
+        for (const p of pedidos) {
+          const r = db.prepare(`INSERT INTO separacao_pedidos (separacao_id, ordem, cliente, cidade, uf)
+                                VALUES (?, ?, ?, ?, ?)`)
+                      .run(sepId, parseInt(p.ordem, 10), p.cliente || null, p.cidade || null, p.uf || null);
+          for (const it of (p.itens || []))
+            db.prepare(`INSERT INTO separacao_itens (pedido_id, cor_key, formato, fardos)
+                        VALUES (?, ?, ?, ?)`)
+              .run(Number(r.lastInsertRowid), it.cor_key, it.formato, parseInt(it.fardos, 10));
+        }
+        db.prepare(`UPDATE separacoes SET status = 'conferida' WHERE id = ?`).run(sepId);
+      });
+      tr();
+      logI('separacao', `Separação ${sepId} conferida: ${pedidos.length} pedido(s)`);
+      return jsonOk(res, { id: sepId, status: 'conferida', pedidos: pedidos.length, avisos });
+    }
+
+    // POST /separacao/:id/planejar — roda o alocador e grava o plano.
+    // Pode ser chamado de novo: replaneja o que ainda não foi coletado,
+    // descontando o que já saiu. É o que permite seguir em frente quando
+    // uma gaiola não está onde o mapa diz.
+    if ((m = pathname.match(/^\/separacao\/(\d+)\/planejar$/)) && req.method === 'POST') {
+      const sepId = Number(m[1]);
+      const s = db.prepare('SELECT * FROM separacoes WHERE id = ?').get(sepId);
+      if (!s) return jsonErr(res, 404, `Separação ${sepId} não existe`);
+      if (s.status === 'rascunho') return jsonErr(res, 409, 'Confira a guia antes de planejar.');
+      if (s.status === 'cancelada' || s.status === 'concluida')
+        return jsonErr(res, 409, `Separação ${s.status}.`);
+
+      const pedidos = db.prepare('SELECT * FROM separacao_pedidos WHERE separacao_id = ? ORDER BY ordem').all(sepId);
+      for (const p of pedidos)
+        p.itens = db.prepare('SELECT cor_key, formato, fardos FROM separacao_itens WHERE pedido_id = ?').all(p.id);
+
+      // Desconta o que JÁ foi coletado — replanejar não pode mandar
+      // separar de novo o que já está na doca.
+      const jaColetadas = db.prepare(
+        `SELECT * FROM separacao_coletas WHERE separacao_id = ? AND status = 'coletada'`).all(sepId);
+      const jaPorPedidoSku = new Map();
+      const fora = new Set();
+      for (const c of jaColetadas) {
+        fora.add(c.gaiola_id);
+        let rep = {}; try { rep = JSON.parse(c.reparticao); } catch (e) {}
+        for (const [ordem, q] of Object.entries(rep)) {
+          const k = `${ordem}|${c.cor_key}|${c.formato}`;
+          jaPorPedidoSku.set(k, (jaPorPedidoSku.get(k) || 0) + Number(q));
+        }
+      }
+      for (const c of db.prepare(
+        `SELECT gaiola_id FROM separacao_coletas WHERE separacao_id = ? AND status = 'nao_encontrada'`).all(sepId))
+        fora.add(c.gaiola_id);
+
+      const pedidosRestantes = pedidos.map(p => ({
+        ordem: p.ordem,
+        itens: p.itens.map(it => ({
+          cor_key: it.cor_key, formato: it.formato,
+          fardos: Math.max(0, it.fardos - (jaPorPedidoSku.get(`${p.ordem}|${it.cor_key}|${it.formato}`) || 0)),
+        })).filter(it => it.fardos > 0),
+      }));
+
+      const estoque = estoqueEnderecado().filter(g => !fora.has(g.id));
+      const plano = alocarSeparacao(pedidosRestantes, estoque);
+
+      const tr = makeTransaction(() => {
+        db.prepare(`DELETE FROM separacao_coletas WHERE separacao_id = ? AND status = 'planejada'`).run(sepId);
+        for (const c of plano.coletas)
+          db.prepare(`INSERT INTO separacao_coletas
+              (separacao_id, gaiola_id, posicao, cor_key, formato, tipo_gaiola,
+               fardos_na_gaiola, reparticao, sobra, status)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'planejada')`)
+            .run(sepId, c.gaiola_id, c.posicao, c.cor_key, c.formato, c.tipo_gaiola,
+                 c.fardos_na_gaiola, JSON.stringify(c.reparticao), c.sobra);
+        if (s.status === 'conferida')
+          db.prepare(`UPDATE separacoes SET status = 'em_separacao' WHERE id = ?`).run(sepId);
+      });
+      tr();
+
+      // Devolve as coletas COMO ESTÃO NO BANCO, com o id de cada uma —
+      // é esse id que a tela usa para confirmar o bipe. Devolver o
+      // objeto do alocador (sem id) deixaria a tela sem como confirmar.
+      const gravadas = db.prepare(
+        `SELECT * FROM separacao_coletas WHERE separacao_id = ? AND status = 'planejada' ORDER BY id`)
+        .all(sepId)
+        .map(c => ({ ...c, reparticao: (() => { try { return JSON.parse(c.reparticao); } catch (e) { return {}; } })() }));
+
+      // A falta é recalculada do banco, não vem do alocador: assim ela
+      // sai por PEDIDO (quem vai ficar faltando), e não só por produto.
+      // Precisa vir ANTES do log, que já a menciona.
+      const falta = faltasDaSeparacao(sepId);
+
+      const rota = rotaDeColeta(gravadas, pedidosRestantes);
+      logI('separacao', `Separação ${sepId} planejada: ${gravadas.length} coleta(s), `
+                      + `${gravadas.filter(c => c.sobra > 0).length} com sobra`
+                      + (falta.fardos ? `, faltam ${falta.fardos} fardo(s) (produção)` : ''));
+      return jsonOk(res, {
+        id: sepId, coletas: gravadas, faltas: falta.por_produto, falta,
+        rota: rota.map(r => ({ pedido: r.ordem, coleta_id: r.coleta.id, gaiola: r.coleta.gaiola_id,
+                               posicao: r.coleta.posicao, buscar: r.buscar })),
+        resumo: {
+          gaiolas: gravadas.length,
+          com_sobra: gravadas.filter(c => c.sobra > 0).length,
+          compartilhadas: gravadas.filter(c => Object.keys(c.reparticao).length > 1).length,
+          fardos: gravadas.reduce((a, c) => a + Object.values(c.reparticao).reduce((x, y) => x + y, 0), 0),
+          faltando: falta.fardos,
+        },
+      });
+    }
+
+    // GET /separacao/:id — estado completo.
+    if ((m = pathname.match(/^\/separacao\/(\d+)$/)) && req.method === 'GET') {
+      const sepId = Number(m[1]);
+      const s = db.prepare('SELECT * FROM separacoes WHERE id = ?').get(sepId);
+      if (!s) return jsonErr(res, 404, `Separação ${sepId} não existe`);
+      const pedidos = db.prepare('SELECT * FROM separacao_pedidos WHERE separacao_id = ? ORDER BY ordem').all(sepId);
+      for (const p of pedidos)
+        p.itens = db.prepare('SELECT cor_key, formato, fardos FROM separacao_itens WHERE pedido_id = ?').all(p.id);
+      const coletas = db.prepare('SELECT * FROM separacao_coletas WHERE separacao_id = ? ORDER BY id').all(sepId)
+        .map(c => ({ ...c, reparticao: (() => { try { return JSON.parse(c.reparticao); } catch (e) { return {}; } })() }));
+      const sobras = db.prepare('SELECT * FROM sobras WHERE separacao_id = ? ORDER BY id').all(sepId);
+      return jsonOk(res, { separacao: s, pedidos, coletas, sobras, falta: faltasDaSeparacao(sepId) });
+    }
+
+    // GET /separacao — as cargas, mais recentes primeiro.
+    if (pathname === '/separacao' && req.method === 'GET') {
+      const limite = Math.min(200, Math.max(1, parseInt(parsed.query.limit) || 30));
+      const linhas = db.prepare(`SELECT s.*,
+          (SELECT COUNT(*) FROM separacao_pedidos p WHERE p.separacao_id = s.id) AS pedidos,
+          (SELECT COUNT(*) FROM separacao_coletas c WHERE c.separacao_id = s.id AND c.status = 'planejada') AS pendentes
+          FROM separacoes s ORDER BY s.id DESC LIMIT ?`).all(limite);
+      for (const l of linhas) {
+        try { l.faltando = (l.pedidos ? faltasDaSeparacao(l.id).fardos : 0); } catch (e) { l.faltando = 0; }
+      }
+      return jsonOk(res, { separacoes: linhas });
+    }
+
+    // POST /separacao/coleta/:id/confirmar — O BIPE DA COLETA.
+    // É aqui que o ciclo fecha: a gaiola sai do endereço, o endereço é
+    // liberado na hora, e se não foi 100% usada nasce a pendência de
+    // reetiquetagem. { lido?, operador? }
+    if ((m = pathname.match(/^\/separacao\/coleta\/(\d+)\/confirmar$/)) && req.method === 'POST') {
+      let body; try { body = await lerBodyJson(req); } catch (e) { return jsonErr(res, 400, e.message); }
+      const c = db.prepare('SELECT * FROM separacao_coletas WHERE id = ?').get(Number(m[1]));
+      if (!c) return jsonErr(res, 404, 'Coleta não encontrada');
+      if (c.status === 'coletada') return jsonOk(res, { ja_estava: true, coleta: c });
+      if (c.status !== 'planejada') return jsonErr(res, 409, `Coleta está como "${c.status}".`);
+
+      // O que foi lido pode ser a etiqueta da gaiola ou a do endereço —
+      // no chão de fábrica tanto faz o que está mais à mão.
+      const lido = String(body.lido || '').trim().toUpperCase();
+      if (lido && lido !== c.gaiola_id && lido !== c.posicao) {
+        return jsonErr(res, 409,
+          `Leitura "${lido}" não bate com esta coleta (gaiola ${c.gaiola_id} em ${c.posicao}).`,
+          { divergente: true, coleta: c });
+      }
+
+      const agora = new Date().toISOString();
+      const reg = gaiolasRegistro();
+      let sobraId = null, sugerida = null;
+
+      const tr = makeTransaction(() => {
+        // 1. A gaiola sai do endereço — 100% usada ou não, ela não está
+        //    mais lá. O endereço fica livre imediatamente.
+        const ocup = db.prepare('SELECT * FROM ocupacoes WHERE gaiola_id = ? AND saida IS NULL').get(c.gaiola_id);
+        if (ocup)
+          db.prepare('UPDATE ocupacoes SET saida = ?, operador_s = ?, motivo_saida = ? WHERE id = ?')
+            .run(agora, body.operador || null, `separacao ${c.separacao_id}`, ocup.id);
+
+        // 2. A gaiola de origem é ENCERRADA. Se a etiqueta antiga
+        //    sobreviver colada em algum canto, a leitura dela será
+        //    recusada em vez de aceitar uma quantidade que não existe.
+        if (reg[c.gaiola_id]) { reg[c.gaiola_id].encerrada_em = agora; gaiolasSalvar(reg); }
+
+        db.prepare(`UPDATE separacao_coletas SET status='coletada', coletada_em=?, operador=? WHERE id=?`)
+          .run(agora, body.operador || null, c.id);
+
+        // 3. Sobra vira pendência de reetiquetagem, com endereço sugerido.
+        if (c.sobra > 0) {
+          const livres = posicoesLivresPreferidas(c.tipo_gaiola);
+          sugerida = livres[0] || null;
+          const r = db.prepare(`INSERT INTO sobras
+              (separacao_id, gaiola_origem, cor_key, formato, tipo_gaiola, fardos,
+               posicao_origem, posicao_sugerida, status, criada_em)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'aguardando_impressao', ?)`)
+            .run(c.separacao_id, c.gaiola_id, c.cor_key, c.formato, c.tipo_gaiola,
+                 c.sobra, c.posicao, sugerida, agora);
+          sobraId = Number(r.lastInsertRowid);
+        }
+      });
+      tr();
+
+      logI('separacao', `Coleta ${c.id}: gaiola ${c.gaiola_id} retirada de ${c.posicao}`
+                      + (c.sobra > 0 ? ` — sobram ${c.sobra} fardo(s), reetiquetar` : ' — usada 100%'));
+      return jsonOk(res, {
+        coleta_id: c.id, gaiola: c.gaiola_id, posicao_liberada: c.posicao,
+        usada_100: c.sobra === 0, sobra: c.sobra,
+        sobra_id: sobraId, posicao_sugerida: sugerida,
+      });
+    }
+
+    // POST /separacao/coleta/:id/nao-encontrada — a válvula de escape.
+    // O mapa envelhece; sem isto o primeiro erro trava a separação
+    // inteira e o pessoal abandona o sistema.
+    if ((m = pathname.match(/^\/separacao\/coleta\/(\d+)\/nao-encontrada$/)) && req.method === 'POST') {
+      let body; try { body = await lerBodyJson(req); } catch (e) { body = {}; }
+      const c = db.prepare('SELECT * FROM separacao_coletas WHERE id = ?').get(Number(m[1]));
+      if (!c) return jsonErr(res, 404, 'Coleta não encontrada');
+      if (c.status !== 'planejada') return jsonErr(res, 409, `Coleta está como "${c.status}".`);
+      const agora = new Date().toISOString();
+      const tr = makeTransaction(() => {
+        db.prepare(`UPDATE separacao_coletas SET status='nao_encontrada', coletada_em=?, operador=? WHERE id=?`)
+          .run(agora, body.operador || null, c.id);
+        // O mapa mentia: a ocupação é encerrada com o motivo explícito,
+        // para o histórico registrar POR QUE o endereço ficou livre.
+        const ocup = db.prepare('SELECT * FROM ocupacoes WHERE gaiola_id = ? AND saida IS NULL').get(c.gaiola_id);
+        if (ocup)
+          db.prepare('UPDATE ocupacoes SET saida = ?, operador_s = ?, motivo_saida = ? WHERE id = ?')
+            .run(agora, body.operador || null, 'nao encontrada na separacao', ocup.id);
+      });
+      tr();
+      logW('separacao', `Gaiola ${c.gaiola_id} NÃO estava em ${c.posicao} (separação ${c.separacao_id})`);
+      return jsonOk(res, { coleta_id: c.id, replanejar: `/separacao/${c.separacao_id}/planejar` });
+    }
+
+    // GET /sobras — a fila de reetiquetagem. É a aba do processo.
+    if (pathname === '/sobras' && req.method === 'GET') {
+      const todas = String(parsed.query.todas || '') === '1';
+      const linhas = todas
+        ? db.prepare('SELECT * FROM sobras ORDER BY id DESC LIMIT 200').all()
+        : db.prepare(`SELECT * FROM sobras WHERE status <> 'enderecada' ORDER BY id`).all();
+      return jsonOk(res, { sobras: linhas, pendentes: linhas.filter(s => s.status !== 'enderecada').length });
+    }
+
+    // POST /sobras/:id/imprimir — gera a etiqueta da gaiola que sobrou:
+    // NÚMERO NOVO, mesmo produto, quantidade nova.
+    if ((m = pathname.match(/^\/sobras\/(\d+)\/imprimir$/)) && req.method === 'POST') {
+      let body; try { body = await lerBodyJson(req); } catch (e) { body = {}; }
+      const sb = db.prepare('SELECT * FROM sobras WHERE id = ?').get(Number(m[1]));
+      if (!sb) return jsonErr(res, 404, 'Sobra não encontrada');
+      if (sb.status === 'enderecada') return jsonErr(res, 409, 'Esta sobra já foi endereçada.');
+
+      let id = sb.gaiola_nova;
+      if (!id) {
+        // Número novo. A gaiola antiga já foi encerrada na coleta.
+        try { db.prepare(`INSERT OR IGNORE INTO seqs (tipo, valor) VALUES ('gaiola-pa', 1)`).run(); } catch (e) {}
+        const seq = getProximoSeq('gaiola-pa');
+        id = 'G' + String(seq).padStart(7, '0');
+        incrementaSeq('gaiola-pa', seq);
+        const reg = gaiolasRegistro();
+        reg[id] = { id, corKey: sb.cor_key, formato: sb.formato, fardos: sb.fardos,
+                    kg: sb.fardos * PA_KG_FARDO, tipo_gaiola: sb.tipo_gaiola,
+                    criadaEm: new Date().toISOString(), operador: body.operador || null,
+                    origem_sobra: sb.gaiola_origem };
+        gaiolasSalvar(reg);
+        db.prepare('UPDATE sobras SET gaiola_nova = ? WHERE id = ?').run(id, sb.id);
+      }
+
+      const epl = gerarEPLGaiolaPA({ id, corKey: sb.cor_key, formato: sb.formato,
+                                     fardos: sb.fardos, tipo_gaiola: sb.tipo_gaiola });
+      const impr = await new Promise(resolve => {
+        try { imprimir(epl, body.impressora, (ok, saida, erro, impressora) =>
+                resolve({ ok: !!ok, impressora, erro: erro || null })); }
+        catch (e) { resolve({ ok: false, erro: e.message }); }
+      });
+      db.prepare(`UPDATE sobras SET status = 'impressa' WHERE id = ? AND status = 'aguardando_impressao'`).run(sb.id);
+      logI('separacao', `Sobra ${sb.id}: etiqueta ${id} (${sb.formato} ${sb.cor_key}, ${sb.fardos} fardos) — `
+                      + `endereço sugerido ${sb.posicao_sugerida || '(nenhum livre)'}`);
+      return jsonOk(res, { sobra_id: sb.id, gaiola_nova: id, fardos: sb.fardos,
+                           kg: sb.fardos * PA_KG_FARDO, posicao_sugerida: sb.posicao_sugerida,
+                           impressao: impr });
     }
 
     if (pathname === '/dashboard/exportar-html' && req.method === 'GET') {
