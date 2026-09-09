@@ -988,6 +988,278 @@ function rotaDeColeta(coletas, pedidos) {
 }
 
 // ══════════════════════════════════════════════════════════════════
+//  LEITURA DA GUIA DE SEPARAÇÃO (PDF)
+// ------------------------------------------------------------------
+//  O PDF da guia tem CAMADA DE TEXTO — não é imagem. Então não há OCR
+//  aqui: a tela extrai o texto com o pdf.js (servido pela própria
+//  estação, sem CDN) e manda as LINHAS para cá. Este código só
+//  interpreta as linhas. A divisão é de propósito: extrair texto é
+//  mecânico e cabe ao navegador; entender o documento é regra de
+//  negócio e tem que ser testável.
+//
+//  O LAYOUT (um bloco por cliente):
+//      NOME DO CLIENTE
+//      Cidade - UF
+//      FORMATO   PRODUTO   ORIGINAL   EDITADO      <- a âncora
+//      COLORIDA                                    <- cor corrente
+//      TAMANHO: 30x40 ......  800   750            <- item
+//      ...
+//
+//  A quantidade que vale é a ÚLTIMA da linha: a coluna EDITADO. A
+//  ORIGINAL é histórico e usar ela mandaria separar o que o cliente
+//  não vai levar.
+// ══════════════════════════════════════════════════════════════════
+const GUIA_CORES = {
+  COLORIDA: 'REC', COLORIDO: 'REC', RECICLADA: 'REC',
+  BRANCA: 'BC', BRANCO: 'BC', LEITOSA: 'BC',
+  PRETA: 'PT', PRETO: 'PT',
+  AMARELA: 'AM', AMARELO: 'AM',
+};
+const semAcento = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase();
+// As 27 UFs. Sem esta lista, "A C M DA SILVA COMERCIO - ME" vira cidade
+// "A C M DA SILVA COMERCIO" no estado "ME" — e o cliente some da guia,
+// porque a linha do nome dele foi consumida como se fosse a cidade.
+// Nome de empresa terminando em - ME, - EPP, - LTDA é regra, não exceção.
+const UFS = new Set(['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG',
+                     'PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO']);
+
+// Número no padrão brasileiro: 1.234,5 → 1234.5
+function guiaNumero(txt) {
+  const t = String(txt || '').replace(/\s/g, '');
+  if (!/\d/.test(t)) return null;
+  const limpo = t.replace(/\.(?=\d{3}\b)/g, '').replace(',', '.');
+  const n = Number(limpo.replace(/[^0-9.]/g, ''));
+  return Number.isFinite(n) ? n : null;
+}
+
+function interpretarGuia(linhasBrutas) {
+  const linhas = (linhasBrutas || []).map(l => String(l == null ? '' : l).replace(/\s+/g, ' ').trim());
+  const U = linhas.map(semAcento);
+
+  const ehAncora = i => U[i].includes('FORMATO') && U[i].includes('PRODUTO');
+  const ufDaLinha = i => {
+    const m = U[i].match(/[\s-]([A-Z]{2})\s*$/);
+    return m && UFS.has(m[1]) ? m[1] : null;
+  };
+  const ehCidade = i => {
+    const s = linhas[i];
+    if (!s || s.length > 55) return false;
+    if (/TAMANHO/.test(U[i])) return false;
+    return !!ufDaLinha(i);           // só é cidade se terminar numa UF de verdade
+  };
+  const ehLixoNome = i => {
+    const u = U[i];
+    if (!u) return true;
+    if (GUIA_CORES[u.replace(/\s/g, '')]) return true;
+    if (/TAMANHO|EDITADO|ORIGINAL|FORMATO|PRODUTO|SELE[CÇ]|TOTAL/.test(u)) return true;
+    // 'CLIENTE' sozinho é cabeçalho de coluna; 'CLIENTE X LTDA' é nome.
+    if (/^CLIENTES?\s*:?\s*$/.test(u)) return true;
+    if ((u.match(/[A-Z]/g) || []).length < 4) return true;
+    return false;
+  };
+
+  const ancoras = [];
+  for (let i = 0; i < linhas.length; i++) if (ehAncora(i)) ancoras.push(i);
+
+  const pedidos = [], avisos = [];
+  for (let k = 0; k < ancoras.length; k++) {
+    const a = ancoras[k];
+    const limiteAcima = k > 0 ? ancoras[k - 1] : -1;
+
+    // Cidade: até 6 linhas acima da âncora.
+    let cidade = null, uf = null, iCidade = a;
+    for (let j = a - 1; j > Math.max(limiteAcima, a - 7); j--) {
+      if (linhas[j] && ehCidade(j)) {
+        const s = linhas[j];
+        const p = s.includes(' - ') ? [s.slice(0, s.lastIndexOf(' - ')), s.slice(s.lastIndexOf(' - ') + 3)]
+                                    : (s.match(/^(.*?)\s+([A-Za-z]{2})\s*$/) || []).slice(1);
+        if (p && p.length === 2) {
+          cidade = p[0].replace(/^[^A-Za-zÀ-ÿ]+/, '').trim();
+          uf = (p[1].replace(/[^A-Za-z]/g, '') || '').slice(0, 2).toUpperCase();
+        }
+        iCidade = j; break;
+      }
+    }
+
+    // Nome: primeira linha "limpa" acima da cidade.
+    let cliente = null;
+    for (let j = (cidade ? iCidade : a) - 1; j > Math.max(limiteAcima, a - 10); j--) {
+      if (linhas[j] && !ehLixoNome(j) && !ehCidade(j)) {
+        cliente = linhas[j].replace(/^[\d.\s/-]+/, '').trim();
+        if ((cliente.replace(/[^A-Za-z]/g, '') || '').length >= 4) break;
+      }
+    }
+
+    // Itens: da âncora até a próxima.
+    const fim = k + 1 < ancoras.length ? ancoras[k + 1] : linhas.length;
+    const itens = [];
+    let corAtual = null;
+    for (let j = a + 1; j < fim; j++) {
+      const u = U[j];
+      if (!u) continue;
+      const soCor = GUIA_CORES[u.replace(/[^A-Z]/g, '')];
+      if (soCor) { corAtual = soCor; continue; }
+
+      const mt = u.match(/TAMANHO[:\s]*(\d{2,3})\s*[X×]\s*(\d{2,3})/);
+      if (!mt) {
+        // Linha curta e só de letras, dentro do bloco de itens: é um
+        // cabeçalho de cor que eu NÃO conheço (VERDE, AZUL...). Tem que
+        // APAGAR a cor corrente. Se deixasse a anterior valendo, os
+        // itens dessa cor entrariam como se fossem da cor de cima — o
+        // caminhão sairia com o produto errado e ninguém veria.
+        const palavras = u.trim().split(/\s+/).filter(Boolean);
+        const soLetras = /^[A-Z\s]+$/.test(u.trim());
+        if (soLetras && palavras.length <= 2 && u.trim().length >= 3
+            && !/FORMATO|PRODUTO|EDITADO|ORIGINAL|TOTAL|CLIENTE/.test(u)) {
+          corAtual = null;
+          avisos.push({ linha: linhas[j], cliente: cliente || null,
+                        motivo: `cor "${linhas[j].trim()}" não existe no galpão` });
+        }
+        continue;
+      }
+      const formato = PA_FORMATOS.find(f => f === `${Number(mt[1])}x${Number(mt[2])}`) || null;
+
+      // Cor escrita na própria linha vence a cor do cabeçalho do bloco.
+      let cor = corAtual;
+      for (const [nome, key] of Object.entries(GUIA_CORES)) if (u.includes(nome)) { cor = key; break; }
+
+      // A quantidade é a ÚLTIMA da linha — a coluna EDITADO.
+      const resto = linhas[j].slice(mt.index + mt[0].length);
+      const numeros = (resto.match(/[\d][\d.,]*/g) || []).map(guiaNumero).filter(n => n != null && n > 0);
+      const kg = numeros.length ? numeros[numeros.length - 1] : null;
+
+      if (!formato || !cor || !kg) {
+        avisos.push({ linha: linhas[j], cliente: cliente || null,
+          motivo: !formato ? `formato ${mt[1]}x${mt[2]} não é do galpão`
+                 : !cor ? 'não identifiquei a cor desta linha' : 'não identifiquei a quantidade' });
+        continue;
+      }
+      itens.push({ cor_key: cor, formato, kg, fardos: Math.ceil(kg / PA_KG_FARDO) });
+    }
+
+    if (itens.length) {
+      pedidos.push({ ordem: pedidos.length + 1, cliente: cliente || `(cliente ${pedidos.length + 1})`,
+                     cidade, uf, itens });
+    } else if (cliente) {
+      avisos.push({ linha: cliente, cliente, motivo: 'bloco sem nenhum item que eu tenha entendido' });
+    }
+  }
+
+  const totalKg = pedidos.reduce((a, p) => a + p.itens.reduce((x, i) => x + i.kg, 0), 0);
+  return { pedidos, avisos, total_kg: totalKg,
+           total_fardos: pedidos.reduce((a, p) => a + p.itens.reduce((x, i) => x + i.fardos, 0), 0),
+           blocos: ancoras.length };
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  PEDIDOS DIRETO DO BLING
+// ------------------------------------------------------------------
+//  A guia de separação é um RETRATO de um dado que já existe: ela sai
+//  do painel de carteira, que por sua vez existe porque os pedidos
+//  estão cadastrados no Bling. Fotografar a guia é fotografar uma
+//  imagem de um número que o sistema pode buscar exato — e obrigava
+//  alguém a redigitar a carga inteira.
+//
+//  Aqui a estação lê os pedidos na fonte. Nada de OCR, nada de
+//  digitação, e a quantidade é a do Bling, não a que o olho leu.
+// ══════════════════════════════════════════════════════════════════
+
+// Traduz um item de pedido do Bling para (cor, formato) do galpão.
+// O caminho bom é a SKU — 'BC.5060.5K' —, que é a mesma que a estação
+// já usa para lançar produção. A descrição é rede de segurança para
+// pedido antigo ou item cadastrado sem código.
+function mapearItemBling(item) {
+  const cod = String((item && (item.codigo || (item.produto && item.produto.codigo))) || '').toUpperCase().trim();
+  const desc = String((item && (item.descricao || (item.produto && item.produto.nome))) || '').toUpperCase();
+  const qtd = Number(item && item.quantidade) || 0;
+
+  const digitosDoFormato = f => f.replace('x', '');
+  let corKey = null, formato = null, via = null;
+
+  const m = cod.match(/^(AM|BC|PT|REC)\.(\d+)\.5K$/);
+  if (m) {
+    corKey = m[1];
+    formato = PA_FORMATOS.find(f => digitosDoFormato(f) === m[2]) || null;
+    via = 'sku';
+  }
+
+  if (!corKey || !formato) {
+    // Descrição: 'SACOLA SEMI VIRGEM BRANCA 30X45 (LEITOSA)'.
+    // A ordem importa: 'SEMI VIRGEM BRANCA' antes de só 'BRANCA'.
+    if (!corKey) {
+      if (/AMAREL/.test(desc)) corKey = 'AM';
+      else if (/BRANC|LEITOS/.test(desc)) corKey = 'BC';
+      else if (/PRET/.test(desc)) corKey = 'PT';
+      else if (/COLORID|RECICLAD/.test(desc)) corKey = 'REC';
+    }
+    if (!formato) {
+      const mf = desc.match(/(\d{2,3})\s*X\s*(\d{2,3})/);
+      if (mf) formato = PA_FORMATOS.find(f => f === `${Number(mf[1])}x${Number(mf[2])}`) || null;
+    }
+    if (corKey && formato) via = via || 'descricao';
+  }
+
+  const reconhecido = !!(corKey && formato);
+  return {
+    reconhecido, cor_key: corKey, formato, via,
+    kg: qtd,
+    fardos: reconhecido ? Math.ceil(qtd / PA_KG_FARDO) : 0,
+    codigo: cod || null, descricao: (item && item.descricao) || null, quantidade: qtd,
+    motivo: reconhecido ? null
+      : (!corKey && !formato ? 'não reconheci a cor nem o formato'
+         : !corKey ? 'não reconheci a cor' : 'não reconheci o formato'),
+  };
+}
+
+// Lista de pedidos de venda em aberto. Leve de propósito: só o
+// cabeçalho. Os itens só são buscados dos pedidos que entrarem na
+// carga — buscar item de tudo levaria minutos e ninguém precisa.
+async function blingPedidosAbertos(dias) {
+  const token = await getToken();
+  const desde = new Date(Date.now() - (dias || 45) * 86400000).toISOString().slice(0, 10);
+  const pedidos = [];
+  for (let pagina = 1; pagina <= 10; pagina++) {
+    const r = await proxyChamada(token, 'GET', '/Api/v3/pedidos/vendas',
+      `?pagina=${pagina}&limite=100&dataInicial=${desde}`, '');
+    let d = {}; try { d = JSON.parse(r.body); } catch (e) {}
+    const lista = Array.isArray(d.data) ? d.data : [];
+    if (!lista.length) break;
+    for (const p of lista) {
+      // Já faturado saiu da fábrica; não entra em separação.
+      const temNF = !!(p.notaFiscal && p.notaFiscal.id);
+      if (temNF) continue;
+      const nome = String((p.contato && p.contato.nome) || '');
+      // Pedido interno de produção não é carga de cliente.
+      if (/EKOPLASTIC|SACOLEIRAS/i.test(nome)) continue;
+      pedidos.push({
+        bling_id: p.id, numero: p.numero, data: p.data,
+        cliente: nome, total: p.total,
+        situacao: (p.situacao && (p.situacao.valor != null ? p.situacao.valor : p.situacao.id)) || null,
+      });
+    }
+    if (lista.length < 100) break;
+  }
+  pedidos.sort((a, b) => String(b.data || '').localeCompare(String(a.data || '')));
+  return pedidos;
+}
+
+// Itens de UM pedido, já traduzidos para o galpão.
+async function blingItensDoPedido(blingId) {
+  const token = await getToken();
+  const r = await proxyChamada(token, 'GET', '/Api/v3/pedidos/vendas/' + encodeURIComponent(blingId), '', '');
+  let d = {}; try { d = JSON.parse(r.body); } catch (e) {}
+  const p = d.data || {};
+  const itens = (Array.isArray(p.itens) ? p.itens : []).map(mapearItemBling);
+  return {
+    bling_id: p.id || blingId, numero: p.numero || null,
+    cliente: String((p.contato && p.contato.nome) || ''),
+    cidade: String((p.contato && p.contato.endereco && p.contato.endereco.municipio) || '') || null,
+    uf: String((p.contato && p.contato.endereco && p.contato.endereco.uf) || '') || null,
+    itens,
+  };
+}
+
+// ══════════════════════════════════════════════════════════════════
 //  O QUE FALTA NUMA SEPARAÇÃO
 // ------------------------------------------------------------------
 //  Quase nunca a guia inteira está pronta no galpão: parte está na
@@ -3472,6 +3744,9 @@ function imprimir(eplString, printerOverride, callback) {
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.js':   'application/javascript',
+  // Módulo ES. Sem esta linha o arquivo sai como text/plain e o
+  // navegador RECUSA o import — foi o que quebrou o leitor de PDF.
+  '.mjs':  'text/javascript; charset=utf-8',
   '.css':  'text/css',
   '.json': 'application/json',
   '.png':  'image/png',
@@ -6767,6 +7042,147 @@ const requestHandlerBase = async (req, res) => {
     //  O ciclo: foto da guia → conferência → ordem de carregamento →
     //  plano de coleta → bipe ao coletar (que é a BAIXA) → sobras.
     // ══════════════════════════════════════════════════════════════
+
+    // POST /separacao/de-guia — a carga sai do PDF da guia.
+    // A tela extrai o texto do PDF (pdf.js, servido pela estação) e
+    // manda as linhas; aqui elas viram pedidos. Sem OCR, sem digitação.
+    // { linhas: [...], arquivo?: 'nome.pdf', operador? }
+    if (pathname === '/separacao/de-guia' && req.method === 'POST') {
+      let body; try { body = await lerBodyJson(req); } catch (e) { return jsonErr(res, 400, e.message); }
+      const linhas = Array.isArray(body.linhas) ? body.linhas : [];
+      if (!linhas.length) return jsonErr(res, 400, 'A guia veio sem texto. O PDF é imagem?');
+
+      const lido = interpretarGuia(linhas);
+      if (!lido.pedidos.length) {
+        return jsonErr(res, 422,
+          'Li o PDF mas não reconheci nenhum cliente com itens. '
+          + (lido.blocos ? `Achei ${lido.blocos} bloco(s), mas nenhum item.` : 'Não achei o cabeçalho FORMATO/PRODUTO.'),
+          { avisos: lido.avisos, blocos: lido.blocos, linhas_lidas: linhas.length });
+      }
+
+      const agora = new Date().toISOString();
+      let sepId;
+      const tr = makeTransaction(() => {
+        const info = db.prepare(`INSERT INTO separacoes (criada_em, arquivo, status, operador, obs)
+                                 VALUES (?, NULL, 'conferida', ?, ?)`)
+          .run(agora, body.operador || null,
+               `Guia lida do PDF: ${lido.pedidos.length} cliente(s), ${Math.round(lido.total_kg)} kg`);
+        sepId = Number(info.lastInsertRowid);
+        for (const p of lido.pedidos) {
+          const r = db.prepare(`INSERT INTO separacao_pedidos (separacao_id, ordem, cliente, cidade, uf)
+                                VALUES (?, ?, ?, ?, ?)`)
+            .run(sepId, p.ordem, p.cliente, p.cidade, p.uf);
+          for (const it of p.itens)
+            db.prepare(`INSERT INTO separacao_itens (pedido_id, cor_key, formato, fardos)
+                        VALUES (?, ?, ?, ?)`).run(Number(r.lastInsertRowid), it.cor_key, it.formato, it.fardos);
+        }
+      });
+      tr();
+      logI('separacao', `Separação ${sepId} lida do PDF da guia: ${lido.pedidos.length} cliente(s), `
+        + `${lido.total_fardos} fardo(s), ${Math.round(lido.total_kg)} kg`
+        + (lido.avisos.length ? `, ${lido.avisos.length} linha(s) não entendida(s)` : ''));
+      return jsonOk(res, { id: sepId, status: 'conferida', ...lido });
+    }
+
+    // POST /separacao/guia/previa — mesma leitura, sem gravar nada.
+    // Serve para a tela mostrar o que entendeu ANTES de criar a carga.
+    if (pathname === '/separacao/guia/previa' && req.method === 'POST') {
+      let body; try { body = await lerBodyJson(req); } catch (e) { return jsonErr(res, 400, e.message); }
+      const linhas = Array.isArray(body.linhas) ? body.linhas : [];
+      return jsonOk(res, interpretarGuia(linhas));
+    }
+
+    // GET /separacao/bling/pedidos?dias=45 — os pedidos em aberto,
+    // direto da fonte. É isto que dispensa fotografar a guia.
+    if (pathname === '/separacao/bling/pedidos' && req.method === 'GET') {
+      const dias = Math.min(180, Math.max(1, parseInt(parsed.query.dias) || 45));
+      try {
+        const pedidos = await blingPedidosAbertos(dias);
+        return jsonOk(res, { pedidos, dias });
+      } catch (e) {
+        return jsonErr(res, 502, 'Não consegui ler os pedidos no Bling: ' + e.message);
+      }
+    }
+
+    // GET /separacao/bling/pedido/:id — os itens de um pedido, já
+    // traduzidos para cor/formato/fardos do galpão.
+    if ((m = pathname.match(/^\/separacao\/bling\/pedido\/(\d+)$/)) && req.method === 'GET') {
+      try { return jsonOk(res, { pedido: await blingItensDoPedido(m[1]) }); }
+      catch (e) { return jsonErr(res, 502, 'Não consegui ler o pedido no Bling: ' + e.message); }
+    }
+
+    // POST /separacao/de-bling — cria a carga a partir dos pedidos
+    // escolhidos. Zero digitação: as quantidades vêm do Bling.
+    // { pedidos: [{ bling_id, ordem? }], operador? }
+    if (pathname === '/separacao/de-bling' && req.method === 'POST') {
+      let body; try { body = await lerBodyJson(req); } catch (e) { return jsonErr(res, 400, e.message); }
+      const escolhidos = Array.isArray(body.pedidos) ? body.pedidos : [];
+      if (!escolhidos.length) return jsonErr(res, 400, 'Escolha ao menos um pedido');
+      if (escolhidos.length > 40) return jsonErr(res, 400, 'Muitos pedidos de uma vez (máximo 40)');
+
+      const buscados = [], naoReconhecidos = [];
+      for (const e of escolhidos) {
+        let p;
+        try { p = await blingItensDoPedido(e.bling_id); }
+        catch (err) { return jsonErr(res, 502, `Falha ao ler o pedido ${e.bling_id} no Bling: ${err.message}`); }
+        for (const it of p.itens) if (!it.reconhecido)
+          naoReconhecidos.push({ bling_id: p.bling_id, cliente: p.cliente,
+                                 codigo: it.codigo, descricao: it.descricao, motivo: it.motivo });
+        buscados.push({ ...p, ordem: parseInt(e.ordem, 10) || null });
+      }
+      // Ordem de carregamento: a informada; sem ela, a ordem da escolha.
+      buscados.forEach((p, i) => { if (!p.ordem) p.ordem = i + 1; });
+
+      const agora = new Date().toISOString();
+      let sepId;
+      const tr = makeTransaction(() => {
+        const info = db.prepare(`INSERT INTO separacoes (criada_em, arquivo, status, operador, obs)
+                                 VALUES (?, NULL, 'conferida', ?, ?)`)
+          .run(agora, body.operador || null,
+               'Pedidos lidos direto do Bling: ' + buscados.map(p => p.numero || p.bling_id).join(', '));
+        sepId = Number(info.lastInsertRowid);
+        for (const p of buscados) {
+          const r = db.prepare(`INSERT INTO separacao_pedidos (separacao_id, ordem, cliente, cidade, uf)
+                                VALUES (?, ?, ?, ?, ?)`)
+            .run(sepId, p.ordem, p.cliente || null, p.cidade || null, p.uf || null);
+          for (const it of p.itens) {
+            if (!it.reconhecido || it.fardos <= 0) continue;
+            db.prepare(`INSERT INTO separacao_itens (pedido_id, cor_key, formato, fardos)
+                        VALUES (?, ?, ?, ?)`).run(Number(r.lastInsertRowid), it.cor_key, it.formato, it.fardos);
+          }
+        }
+      });
+      tr();
+      logI('separacao', `Separação ${sepId} criada do Bling: ${buscados.length} pedido(s)`
+        + (naoReconhecidos.length ? `, ${naoReconhecidos.length} item(ns) não reconhecido(s)` : ''));
+      return jsonOk(res, {
+        id: sepId, status: 'conferida', pedidos: buscados.length,
+        // Item que a estação não soube traduzir NÃO some calado: volta
+        // aqui para a tela mostrar e alguém decidir.
+        nao_reconhecidos: naoReconhecidos,
+      });
+    }
+
+    // POST /separacao/:id/guia — anexa (ou troca) a foto da guia numa
+    // separação que já existe. Opcional: serve de comprovante quando a
+    // carga nasceu do Bling.
+    if ((m = pathname.match(/^\/separacao\/(\d+)\/guia$/)) && req.method === 'POST') {
+      const sepId = Number(m[1]);
+      const s = db.prepare('SELECT * FROM separacoes WHERE id = ?').get(sepId);
+      if (!s) return jsonErr(res, 404, `Separação ${sepId} não existe`);
+      let img;
+      try { img = await lerBodyBinario(req); } catch (e) { return jsonErr(res, 413, e.message); }
+      if (!img || img.length < 100) return jsonErr(res, 400, 'Arquivo vazio');
+      const ct = String(req.headers['content-type'] || '').toLowerCase();
+      const ext = ct.includes('png') ? 'png' : ct.includes('pdf') ? 'pdf' : 'jpg';
+      const nome = `guia-${String(sepId).padStart(5, '0')}.${ext}`;
+      try {
+        fs.mkdirSync(GUIAS_DIR, { recursive: true });
+        fs.writeFileSync(path.join(GUIAS_DIR, nome), img);
+        db.prepare('UPDATE separacoes SET arquivo = ? WHERE id = ?').run(nome, sepId);
+      } catch (e) { return jsonErr(res, 500, 'Não consegui gravar: ' + e.message); }
+      return jsonOk(res, { id: sepId, arquivo: nome, bytes: img.length });
+    }
 
     // POST /separacao/nova — abre a carga. A FOTO DA GUIA é o gatilho:
     // o corpo é a imagem crua (image/jpeg ou image/png). Sem foto o

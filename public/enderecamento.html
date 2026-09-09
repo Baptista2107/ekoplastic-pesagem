@@ -278,6 +278,10 @@ header .sp{flex:1}
      computador o mesmo campo abre o seletor de arquivo (serve PDF). -->
 <input type="file" id="arq-guia" accept="image/*,application/pdf" capture="environment"
        style="display:none" onchange="sepEnviarFoto(this)">
+<!-- Importar o PDF da guia. Sem `capture`: aqui queremos o seletor de
+     arquivo, nao a camera. -->
+<input type="file" id="arq-pdf" accept="application/pdf"
+       style="display:none" onchange="sepImportarPdf(this)">
 
 <script>
 const URL_BASE = '';
@@ -916,20 +920,277 @@ async function sepDesenharAbertura() {
     const dt = String(s.criada_em || '').slice(0, 16).replace('T', ' ');
     return `<div class="hist-item" style="cursor:pointer" onclick="sepAbrir(${s.id})">
       <span><b>#${s.id}</b> · ${esc(q)}${s.pedidos ? ' · ' + s.pedidos + ' pedido(s)' : ''}
-        ${s.pendentes ? ` · <span style="color:var(--warn)">${s.pendentes} a coletar</span>` : ''}</span>
+        ${s.pendentes ? ` · <span style="color:var(--warn)">${s.pendentes} a coletar</span>` : ''}
+        ${s.faltando ? ` · <span style="color:var(--warn)">faltam ${s.faltando}</span>` : ''}</span>
       <span>${esc(dt)}</span></div>`;
   }).join('');
 
   $('sep-corpo').innerHTML = `
-    <div class="foto-alvo" onclick="sepFotografar()">
-      <span class="ic2">📷</span>
-      <b>FOTOGRAFAR A GUIA DE SEPARAÇÃO</b>
-      <span>É a foto que inicia o processo. Ela fica na tela durante toda a
-        conferência, para você comparar linha por linha.</span>
+    <div class="foto-alvo" onclick="sepEscolherPdf()" style="border-style:solid;border-color:var(--accent)">
+      <span class="ic2">📄</span>
+      <b>IMPORTAR A GUIA DE SEPARAÇÃO</b>
+      <span>O PDF da guia. A estação lê o arquivo inteiro — clientes,
+        cores, formatos e quantidades — e já monta o plano. Ninguém digita.</span>
     </div>
-    <div class="dica">No celular abre a câmera direto. No computador, o mesmo
-      botão abre o seletor de arquivo e aceita PDF.</div>
-    ${linhas ? `<div class="hist"><div class="rua-tit">SEPARAÇÕES RECENTES</div>${linhas}</div>` : ''}`;
+    <div class="acoes" style="margin-bottom:6px">
+      <button class="btn" onclick="sepBuscarBling()">🧾 pedidos do Bling</button>
+      <button class="btn" onclick="sepFotografar()">📷 foto da guia</button>
+    </div>
+    <div class="dica">Os dois de cima são alternativas para quando não houver
+      o PDF. A foto obriga a digitar a carga inteira.</div>
+    ${linhas ? `<div class="hist" style="margin-top:16px"><div class="rua-tit">SEPARAÇÕES RECENTES</div>${linhas}</div>` : ''}`;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   IMPORTAR O PDF DA GUIA
+   ------------------------------------------------------------------
+   O PDF da guia tem camada de texto — não é imagem. Então aqui não há
+   OCR: o pdf.js (servido pela própria estação, sem CDN) extrai o texto
+   e o servidor interpreta as linhas. É exato, e é o que dispensa
+   digitar a carga inteira.
+   ══════════════════════════════════════════════════════════════════ */
+let PDF_LINHAS = null, PDF_NOME = null, PDF_LIDO = null;
+
+function sepEscolherPdf() { $('arq-pdf').click(); }
+
+// Reconstrói as LINHAS do PDF. O pdf.js devolve pedaços de texto soltos
+// com coordenadas; o que junta um pedaço ao outro é estarem na mesma
+// altura. Sem isso, "TAMANHO: 30x40" e "750" viriam separados e a
+// quantidade se perderia.
+async function pdfParaLinhas(arquivo) {
+  const pdfjs = await import('/vendor/pdf.min.mjs');
+  pdfjs.GlobalWorkerOptions.workerSrc = '/vendor/pdf.worker.min.mjs';
+  const dados = new Uint8Array(await arquivo.arrayBuffer());
+  const doc = await pdfjs.getDocument({ data: dados }).promise;
+  const linhas = [];
+  for (let n = 1; n <= doc.numPages; n++) {
+    const pag = await doc.getPage(n);
+    const cont = await pag.getTextContent();
+    const porAltura = new Map();
+    for (const it of cont.items) {
+      if (!it.str || !it.str.trim()) continue;
+      const y = Math.round(it.transform[5]);          // altura na página
+      const x = it.transform[4];
+      // tolerância de 2 pt: a mesma linha pode variar um fio
+      let chave = y;
+      for (const k of porAltura.keys()) if (Math.abs(k - y) <= 2) { chave = k; break; }
+      if (!porAltura.has(chave)) porAltura.set(chave, []);
+      porAltura.get(chave).push({ x, txt: it.str });
+    }
+    const alturas = [...porAltura.keys()].sort((a, b) => b - a);   // de cima para baixo
+    for (const y of alturas) {
+      const l = porAltura.get(y).sort((a, b) => a.x - b.x).map(p => p.txt).join(' ');
+      linhas.push(l.replace(/\s+/g, ' ').trim());
+    }
+  }
+  return linhas;
+}
+
+async function sepImportarPdf(input) {
+  const f = input.files && input.files[0];
+  input.value = '';
+  if (!f) return;
+  sepAviso('Lendo o PDF…', 'at');
+  $('sep-corpo').innerHTML = '<div class="vazio">Lendo a guia…</div>';
+  try {
+    PDF_NOME = f.name;
+    PDF_ARQUIVO = f;
+    PDF_LINHAS = await pdfParaLinhas(f);
+    if (!PDF_LINHAS.length) throw new Error('o PDF não tem texto — parece ser imagem digitalizada');
+    const r = await fetch(URL_BASE + '/separacao/guia/previa', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ linhas: PDF_LINHAS }) });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.erro || 'falha ao interpretar');
+    PDF_LIDO = d;
+    sepAviso('');
+    sepDesenharPrevia();
+  } catch (e) {
+    sepAviso('Não consegui ler o PDF: ' + esc(e.message), 'err');
+    sepDesenharAbertura();
+  }
+}
+let PDF_ARQUIVO = null;
+
+// Mostra o que foi entendido ANTES de criar a carga. Não é digitação:
+// é conferir de relance se o total bate com o da guia.
+function sepDesenharPrevia() {
+  const d = PDF_LIDO;
+  const blocos = d.pedidos.map(p => `
+    <div class="ped">
+      <div class="ped-top">
+        <div class="ped-ordem">${p.ordem}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:14.5px;font-weight:800">${esc(p.cliente)}</div>
+          <div style="font-size:12.5px;color:var(--muted)">${esc(p.cidade || '')}${p.uf ? '/' + esc(p.uf) : ''}</div>
+        </div>
+      </div>
+      ${p.itens.map(i => `<div class="linha"><span>${esc(i.formato)} ${esc(i.cor_key)}</span>
+        <span>${fmtKg(i.kg)} · ${i.fardos} fardo(s)</span></div>`).join('')}
+    </div>`).join('');
+
+  const avisos = (d.avisos || []).length ? `
+    <div class="det" style="border-color:var(--warn)">
+      <h3 style="font-family:inherit;font-size:14.5px;color:var(--warn)">
+        ⚠ ${d.avisos.length} linha(s) que não entendi</h3>
+      <div class="sub">Ficaram DE FORA da carga. Confira se são de produto acabado.</div>
+      ${d.avisos.map(a => `<div class="linha"><span>${esc(String(a.linha).slice(0, 42))}</span>
+        <span>${esc(a.motivo)}</span></div>`).join('')}
+    </div>` : '';
+
+  $('sep-corpo').innerHTML = `
+    <div class="guia-mini">
+      <div style="width:56px;height:56px;border-radius:8px;background:var(--surface);display:flex;
+        align-items:center;justify-content:center;font-size:22px">📄</div>
+      <div class="gt"><b>${esc(PDF_NOME || 'guia.pdf')}</b>
+        ${d.pedidos.length} cliente(s) · ${d.total_fardos} fardos</div>
+      <button class="btn" onclick="sepFechar()">✕</button>
+    </div>
+    <div class="resumo">
+      <div class="rz"><b>${d.pedidos.length}</b><span>clientes</span></div>
+      <div class="rz"><b>${fmtKg(d.total_kg).replace(' kg','')}</b><span>kg na guia</span></div>
+      <div class="rz"><b>${d.total_fardos}</b><span>fardos</span></div>
+    </div>
+    ${avisos}
+    <div class="acoes" style="margin-bottom:12px">
+      <button class="btn" onclick="sepFechar()">← voltar</button>
+      <button class="btn ok" style="flex:1" onclick="sepCriarDaGuia()">✓ CONFERE — MONTAR A CARGA</button>
+    </div>
+    <div class="dica" style="margin-bottom:12px">Compare o total acima com o
+      da guia impressa. Batendo, siga: a ordem de carregamento sai na ordem
+      dos clientes da guia e dá para acertar depois.</div>
+    ${blocos}`;
+}
+
+async function sepCriarDaGuia() {
+  sepAviso('Montando a carga…', 'at');
+  try {
+    const r = await fetch(URL_BASE + '/separacao/de-guia', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ linhas: PDF_LINHAS, arquivo: PDF_NOME,
+                             operador: window.EKO_RESPONSAVEL || null }) });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.erro || 'falha');
+    beep(880, .09); vibrar(40);
+    SEP = { id: d.id, status: d.status, arquivo: null };
+    SEP_UNIDADE = 'fardos'; SEP_CORRIGINDO = false;
+    // Guarda o PDF junto da carga, como comprovante do que foi lido.
+    try {
+      if (PDF_ARQUIVO) await fetch(URL_BASE + `/separacao/${d.id}/guia`,
+        { method: 'POST', headers: { 'Content-Type': 'application/pdf' }, body: PDF_ARQUIVO });
+    } catch (e) {}
+    await sepCarregarEstado();
+    sepAviso('');
+    await sepReplanejar();
+  } catch (e) { sepAviso('Não consegui montar a carga: ' + esc(e.message), 'err'); }
+}
+
+/* ── Pedidos direto do Bling ──────────────────────────────────────
+   A guia sai do painel de carteira, que existe porque os pedidos estão
+   no Bling. Ler na fonte é exato e não custa digitação nenhuma. */
+let BL_PEDIDOS = [], BL_ESCOLHA = [];
+
+async function sepBuscarBling() {
+  sepAviso('Buscando os pedidos em aberto no Bling…', 'at');
+  $('sep-corpo').innerHTML = '<div class="vazio">Carregando…</div>';
+  try {
+    const r = await fetch(URL_BASE + '/separacao/bling/pedidos?dias=60');
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.erro || 'falha');
+    BL_PEDIDOS = d.pedidos || [];
+    BL_ESCOLHA = [];
+    sepAviso('');
+    sepDesenharBling();
+  } catch (e) {
+    sepAviso('Não consegui falar com o Bling: ' + esc(e.message)
+      + '<br>Dá para seguir pela foto da guia enquanto isso.', 'err');
+    sepDesenharAbertura();
+  }
+}
+
+function blMarcar(id) {
+  const i = BL_ESCOLHA.indexOf(id);
+  if (i >= 0) BL_ESCOLHA.splice(i, 1); else BL_ESCOLHA.push(id);   // a ordem da escolha vira a de carregamento
+  sepDesenharBling();
+}
+function blMover(i, d) {
+  const j = i + d;
+  if (j < 0 || j >= BL_ESCOLHA.length) return;
+  const t = BL_ESCOLHA[i]; BL_ESCOLHA[i] = BL_ESCOLHA[j]; BL_ESCOLHA[j] = t;
+  sepDesenharBling();
+}
+
+function sepDesenharBling() {
+  const busca = (window.__blBusca || '').toLowerCase();
+  const visiveis = BL_PEDIDOS.filter(p => !busca
+    || String(p.cliente || '').toLowerCase().includes(busca)
+    || String(p.numero || '').includes(busca));
+
+  // A ORDEM DE CARREGAMENTO é a ordem em que foram marcados. Fica no
+  // topo, com setas, porque é decisão do gestor — o sistema não escolhe.
+  const escolhidos = BL_ESCOLHA.map((id, i) => {
+    const p = BL_PEDIDOS.find(x => x.bling_id === id) || {};
+    return `<div class="cl">
+      <div class="end">${i + 1}º</div>
+      <div class="cp"><div class="p1">${esc(p.cliente || '')}</div>
+        <div class="p2">pedido ${esc(String(p.numero || p.bling_id))}</div></div>
+      <div style="display:flex;gap:4px">
+        <button class="btn-ic" onclick="blMover(${i},-1)" title="Carregar antes">↑</button>
+        <button class="btn-ic" onclick="blMover(${i},1)" title="Carregar depois">↓</button>
+        <button class="btn-ic" onclick="blMarcar(${p.bling_id})" title="Tirar">✕</button>
+      </div></div>`;
+  }).join('');
+
+  const lista = visiveis.map(p => {
+    const on = BL_ESCOLHA.includes(p.bling_id);
+    return `<div class="cl ${on ? 'pronta' : ''}" style="cursor:pointer" onclick="blMarcar(${p.bling_id})">
+      <div class="end" style="font-size:15px">${on ? '✓' : '○'}</div>
+      <div class="cp"><div class="p1">${esc(p.cliente || '(sem nome)')}</div>
+        <div class="p2">pedido ${esc(String(p.numero || p.bling_id))} ·
+          ${esc(String(p.data || '').slice(0, 10))}</div></div></div>`;
+  }).join('');
+
+  $('sep-corpo').innerHTML = `
+    <div class="acoes" style="margin-bottom:12px">
+      <button class="btn" onclick="sepFechar()">← voltar</button>
+      <button class="btn ok" style="flex:1" onclick="sepCriarDoBling()"
+        ${BL_ESCOLHA.length ? '' : 'disabled'}>✓ MONTAR CARGA (${BL_ESCOLHA.length})</button>
+    </div>
+    ${escolhidos ? `<div class="rua-tit">ORDEM DE CARREGAMENTO</div>${escolhidos}
+      <div class="dica" style="margin-bottom:14px">O primeiro a carregar é o
+        último a entregar. Use as setas para acertar.</div>` : ''}
+    <div class="rua-tit">PEDIDOS EM ABERTO NO BLING (${BL_PEDIDOS.length})</div>
+    <input class="busca" style="width:100%;margin:8px 0 10px" placeholder="Buscar cliente ou número…"
+           value="${esc(window.__blBusca || '')}"
+           oninput="window.__blBusca=this.value; sepDesenharBling()">
+    ${lista || '<div class="vazio">Nenhum pedido em aberto encontrado.</div>'}`;
+}
+
+async function sepCriarDoBling() {
+  if (!BL_ESCOLHA.length) return;
+  sepAviso('Lendo os itens dos pedidos no Bling…', 'at');
+  try {
+    const r = await fetch(URL_BASE + '/separacao/de-bling', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ operador: window.EKO_RESPONSAVEL || null,
+        pedidos: BL_ESCOLHA.map((id, i) => ({ bling_id: id, ordem: i + 1 })) }) });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.erro || 'falha');
+    beep(880, .09); vibrar(40);
+    SEP = { id: d.id, status: d.status, arquivo: null };
+    SEP_UNIDADE = 'fardos'; SEP_CORRIGINDO = false;
+    await sepCarregarEstado();
+
+    // Item que a estação não soube traduzir NÃO some calado.
+    if ((d.nao_reconhecidos || []).length) {
+      sepAviso('<b>Não reconheci estes itens e eles ficaram de fora:</b><br>'
+        + d.nao_reconhecidos.map(x => `${esc(x.cliente || '')} — ${esc(x.descricao || x.codigo || '?')}`
+            + ` <i>(${esc(x.motivo)})</i>`).join('<br>')
+        + '<br>Confira se são de produto acabado. Se forem, dá para acrescentar em “corrigir a guia”.', 'at');
+    } else sepAviso('');
+
+    await sepReplanejar();
+  } catch (e) { sepAviso('Não consegui montar a carga: ' + esc(e.message), 'err'); }
 }
 
 function sepCabecalhoGuia() {

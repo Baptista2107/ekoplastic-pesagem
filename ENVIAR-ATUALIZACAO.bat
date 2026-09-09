@@ -254,6 +254,43 @@ del "%SAIDA8%" >nul 2>&1
 if not "%RCT%"=="0" goto :testes_falharam
 
 :sem_separacao
+REM  --- Teste 9: separacao a partir dos pedidos do Bling ---
+REM  A guia de separacao e um RETRATO de um dado que ja existe no
+REM  Bling. Ler na fonte dispensa foto e digitacao. Sobe um Bling de
+REM  mentira em localhost e confere que pedido faturado nao aparece,
+REM  que a SKU vira cor/formato do galpao, e que item nao reconhecido
+REM  e reportado em vez de sumir calado.
+if not exist "testes\separacao-bling.js" goto :sem_sepbling
+echo.
+echo  Rodando o teste da separacao pelo Bling. Leva uns 15 segundos...
+echo.
+set "SAIDA9=%TEMP%\eko_testes9.tmp"
+node testes\separacao-bling.js > "%SAIDA9%" 2>&1
+set "RCT=%ERRORLEVEL%"
+type "%SAIDA9%"
+type "%SAIDA9%" >>"%LOG%"
+del "%SAIDA9%" >nul 2>&1
+if not "%RCT%"=="0" goto :testes_falharam
+
+:sem_sepbling
+REM  --- Teste 10: leitura da guia de separacao em PDF ---
+REM  O PDF da guia tem camada de texto: a tela extrai com o pdf.js e o
+REM  servidor interpreta. O que mais importa e a coluna EDITADO - usar
+REM  a ORIGINAL mandaria separar o que o cliente nao vai levar, e
+REM  ninguem veria ate o caminhao estar carregado errado.
+if not exist "testes\guia-pdf.js" goto :sem_guiapdf
+echo.
+echo  Rodando o teste da leitura da guia. Leva uns 12 segundos...
+echo.
+set "SAIDA10=%TEMP%\eko_testes10.tmp"
+node testes\guia-pdf.js > "%SAIDA10%" 2>&1
+set "RCT=%ERRORLEVEL%"
+type "%SAIDA10%"
+type "%SAIDA10%" >>"%LOG%"
+del "%SAIDA10%" >nul 2>&1
+if not "%RCT%"=="0" goto :testes_falharam
+
+:sem_guiapdf
 if not exist "testes\janela-atualizacao.js" goto :testes_ok
 echo.
 echo  Rodando o teste da janela de atualizacao. Leva uns 30 segundos...

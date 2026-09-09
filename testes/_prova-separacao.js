@@ -118,8 +118,35 @@ async function tirar(page, nome) {
     await page.click('#ab-sep');
     await sleep(700);
     ok(await page.isVisible('#pg-sep'), 'a aba SEPARAÇÃO abre');
-    ok(await page.isVisible('.foto-alvo'), 'o campo de fotografar a guia está lá — é o que inicia o processo');
+    const abertura = await page.innerText('#sep-corpo');
+    ok(/IMPORTAR A GUIA/.test(abertura), 'a ação principal é importar o PDF da guia');
+    ok(/foto da guia/.test(abertura), 'a foto continua como alternativa, em segundo plano');
     await tirar(page, '1-abertura');
+
+    // ── 1b. IMPORTAR O PDF DE VERDADE, COM O pdf.js ──
+    // Este é o ponto: o navegador abre o PDF, extrai o texto e a carga
+    // sai montada. Nenhuma digitação.
+    const pdfGuia = fs.readFileSync(path.join(ROOT, 'testes', 'dados', 'guia-exemplo.pdf'));
+    await page.setInputFiles('#arq-pdf', {
+      name: 'guia-exemplo.pdf', mimeType: 'application/pdf', buffer: pdfGuia });
+    await sleep(4000);
+    const previa = await page.innerText('#sep-corpo');
+    ok(/ILHA PLASTIC/.test(previa), 'o pdf.js leu o PDF e a prévia mostra os clientes da guia');
+    ok(/EMBALO EMBALAGENS/.test(previa) && /A C M DA SILVA/.test(previa),
+       'os três clientes, inclusive o de nome terminado em - ME');
+    ok(/3\s*CLIENTES/i.test(previa.replace(/\n/g, ' ')), 'o resumo conta 3 clientes');
+    ok(/132/.test(previa), 'e 132 fardos — a soma da coluna EDITADO');
+    ok(!/1\.200|800/.test(previa.split('CLIENTES')[1] || ''),
+       'sem números da coluna ORIGINAL na leitura');
+    await tirar(page, '1c-previa-do-pdf');
+
+    await page.click('text=CONFERE — MONTAR A CARGA');
+    await sleep(3000);
+    const plano0 = await page.innerText('#sep-corpo');
+    ok(/A CARREGAR/.test(plano0), 'e vai direto para o plano de coleta');
+    ok(/FALTAM/.test(plano0), 'apontando o que ainda está em produção');
+    await tirar(page, '1d-plano-do-pdf');
+    await page.click('text=fechar'); await sleep(800);
 
     // ── 2. Fotografar a guia ──
     // setInputFiles simula o que a câmera do celular entrega ao campo.
@@ -137,15 +164,17 @@ async function tirar(page, nome) {
       name: 'guia.png', mimeType: 'image/png', buffer: Buffer.from(png, 'base64') });
     await sleep(1800);
 
-    ok(await page.isVisible('.guia-mini'), 'a foto entrou e aparece no alto da conferência');
+    ok(await page.isVisible('.guia-mini'), 'pelo caminho da foto, ela aparece no alto da conferência');
     const temImg = await page.getAttribute('.guia-mini img', 'src');
     ok(temImg && temImg.includes('/guia'), 'a miniatura aponta para a guia guardada no servidor');
     ok(await page.isVisible('.ped'), 'a conferência já nasce com um pedido para preencher');
     await tirar(page, '2-conferencia-vazia');
 
-    const arqs = fs.readdirSync(TMP_GUIA);
-    ok(arqs.length === 1, `a foto foi gravada no servidor: ${arqs.join(', ')}`);
-    const bytes = fs.statSync(path.join(TMP_GUIA, arqs[0])).size;
+    // Dois arquivos: o PDF importado no passo 1b e esta foto.
+    const arqs = fs.readdirSync(TMP_GUIA).sort();
+    ok(arqs.length === 2 && arqs.some(a => a.endsWith('.pdf')) && arqs.some(a => a.endsWith('.jpg')),
+       `guias guardadas no servidor: ${arqs.join(', ')}`);
+    const bytes = fs.statSync(path.join(TMP_GUIA, arqs.find(a => a.endsWith('.jpg')))).size;
     ok(bytes > 500 && bytes < 900000, `a foto foi reduzida antes de subir: ${Math.round(bytes/1024)} KB`);
 
     // ── 3. Conferir dois pedidos ──
