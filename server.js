@@ -1009,6 +1009,65 @@ function rotaDeColeta(coletas, pedidos) {
 //  ORIGINAL é histórico e usar ela mandaria separar o que o cliente
 //  não vai levar.
 // ══════════════════════════════════════════════════════════════════
+// Extrai as LINHAS de texto de um PDF, aqui no servidor.
+//
+// POR QUE NO SERVIDOR E NÃO NO NAVEGADOR
+// A primeira versão fazia isso no celular, com `import()` de módulo ES.
+// Funcionou no laboratório e falhou no galpão: depende do navegador
+// suportar módulo ES, worker de módulo e do arquivo ser servido com o
+// tipo certo — três coisas que variam entre o aparelho de cada um e o
+// navegador da tela touch. Aqui é sempre o mesmo Node, sempre a mesma
+// versão. O celular só manda o arquivo, que é o que ele já fazia com a
+// foto e sempre funcionou.
+let _pdfjs = null;
+async function carregarPdfJs() {
+  if (_pdfjs) return _pdfjs;
+  const url = require('node:url');
+  const base = path.join(PUBLIC_DIR, 'vendor');
+  const lib = await import(url.pathToFileURL(path.join(base, 'pdf.min.mjs')).href);
+  lib.GlobalWorkerOptions.workerSrc = url.pathToFileURL(path.join(base, 'pdf.worker.min.mjs')).href;
+  _pdfjs = lib;
+  return lib;
+}
+
+async function conteudoDoPdf(buffer) {
+  const pdfjs = await carregarPdfJs();
+  const doc = await pdfjs.getDocument({
+    data: new Uint8Array(buffer),
+    useWorkerFetch: false, isEvalSupported: false, useSystemFonts: false,
+    verbosity: 0,                       // sem ruído de fonte no log
+  }).promise;
+
+  const linhas = [], itens = [];
+  for (let n = 1; n <= doc.numPages; n++) {
+    const pag = await doc.getPage(n);
+    const cont = await pag.getTextContent();
+    for (const it of cont.items) {
+      if (!it.str || !it.str.trim()) continue;
+      itens.push({ pagina: n, x: Math.round(it.transform[4]),
+                   y: Math.round(it.transform[5]), t: it.str.trim() });
+    }
+    // O PDF não tem "linhas": tem pedaços de texto com coordenadas. O
+    // que junta um pedaço ao outro é estarem na mesma ALTURA. Sem isso,
+    // "TAMANHO: 30x40" e "750" viriam separados e a quantidade sumiria.
+    const porAltura = new Map();
+    for (const it of cont.items) {
+      if (!it.str || !it.str.trim()) continue;
+      const y = Math.round(it.transform[5]);
+      let chave = y;
+      for (const k of porAltura.keys()) if (Math.abs(k - y) <= 2) { chave = k; break; }
+      if (!porAltura.has(chave)) porAltura.set(chave, []);
+      porAltura.get(chave).push({ x: it.transform[4], txt: it.str });
+    }
+    for (const y of [...porAltura.keys()].sort((a, b) => b - a)) {
+      linhas.push(porAltura.get(y).sort((a, b) => a.x - b.x)
+                    .map(p => p.txt).join(' ').replace(/\s+/g, ' ').trim());
+    }
+  }
+  try { await doc.destroy(); } catch (e) {}
+  return { linhas, itens };
+}
+
 const GUIA_CORES = {
   COLORIDA: 'REC', COLORIDO: 'REC', RECICLADA: 'REC',
   BRANCA: 'BC', BRANCO: 'BC', LEITOSA: 'BC',
@@ -1030,6 +1089,190 @@ function guiaNumero(txt) {
   const limpo = t.replace(/\.(?=\d{3}\b)/g, '').replace(',', '.');
   const n = Number(limpo.replace(/[^0-9.]/g, ''));
   return Number.isFinite(n) ? n : null;
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  A GUIA EM MATRIZ — o formato que a fábrica usa de verdade
+// ------------------------------------------------------------------
+//  A guia não é uma lista por cliente: é uma TABELA. Os produtos são as
+//  linhas e as cargas são as COLUNAS:
+//
+//     PRODUTO / FAMÍLIA   TOTAL kg  CARGA 1   CARGA 2   CARGA 3
+//                          fardos   Ped.1063  Ped.1113  Ped.1135
+//                                   F E A LIMA  CASA DO...
+//     ↳ SACOLA RECICLADA COLORIDA (25KG)
+//       TAMANHO:40X50              80 frd     —         24 frd
+//
+//  Por isso a COLUNA de cada número é dada pela POSIÇÃO HORIZONTAL, não
+//  pela ordem em que o texto aparece. Ler isso como linhas de texto
+//  perde exatamente a informação que importa — de quem é cada
+//  quantidade. Foi o erro da primeira versão.
+//
+//  A quantidade vem em FARDOS ("80 frd"), que é o que o galpão conta.
+// ══════════════════════════════════════════════════════════════════
+function interpretarGuiaMatriz(itens) {
+  if (!Array.isArray(itens) || !itens.length) return null;
+
+  // As colunas nascem dos "Ped.NNNN" do cabeçalho. Sem eles, não é
+  // este formato — e o leitor de linhas assume.
+  const peds = itens.filter(i => /^Ped\.\s*\d+/i.test(i.t));
+  if (peds.length < 1) return null;
+
+  const colunas = peds
+    .map(p => ({ x: p.x, y: p.y, pagina: p.pagina,
+                 pedido: (p.t.match(/\d+/) || [''])[0],
+                 cliente: null, cidade: null, uf: null, carga: null, itens: [] }))
+    .sort((a, b) => a.x - b.x);
+  // Distância típica entre colunas: serve de tolerância para dizer a
+  // qual coluna um número pertence.
+  const passo = colunas.length > 1
+    ? Math.min(...colunas.slice(1).map((c, i) => c.x - colunas[i].x)) : 120;
+  const daColuna = (x, pagina) => {
+    let melhor = null, dist = Infinity;
+    for (const c of colunas) {
+      if (pagina != null && c.pagina !== pagina) continue;
+      const d = Math.abs(x - c.x);
+      if (d < dist) { dist = d; melhor = c; }
+    }
+    return dist <= passo * 0.75 ? melhor : null;
+  };
+
+  const yPed = peds[0].y;
+  for (const it of itens) {
+    // Cabeçalho da coluna: nome do cliente (termina em "|"), cidade/UF
+    // e o rótulo "CARGA n · Entrega #m".
+    if (Math.abs(it.y - yPed) > 30) continue;
+    const c = daColuna(it.x, it.pagina);
+    if (!c) continue;
+    if (/\|\s*$/.test(it.t) && !c.cliente) {
+      c.cliente = it.t.replace(/\s*\|\s*$/, '').trim();
+    } else if (/^[A-Za-zÀ-ÿ .'-]+\/[A-Z]{2}$/.test(it.t) && !c.cidade) {
+      const [cid, uf] = it.t.split('/');
+      c.cidade = cid.trim(); c.uf = uf.trim().toUpperCase();
+    } else if (/CARGA\s*\d+/i.test(it.t) && !c.carga) {
+      c.carga = it.t.trim();
+    }
+  }
+
+  const corDoTexto = txt => {
+    const u = semAcento(txt);
+    for (const [k, v] of Object.entries(PA_CORES))
+      if (v.label && semAcento(v.label) === u) return k;         // casamento exato
+    if (/AMAREL/.test(u)) return 'AM';
+    if (/BRANC|LEITOS/.test(u)) return 'BC';
+    if (/PRET/.test(u)) return 'PT';
+    if (/COLORID/.test(u)) return 'REC';
+    return null;
+  };
+
+  const avisos = [];
+  const ordenados = itens.slice().sort((a, b) => (a.pagina - b.pagina) || (b.y - a.y) || (a.x - b.x));
+  let corAtual = null, rotuloCor = null;
+
+  for (const it of ordenados) {
+    // Cabeçalho de produto: "↳ SACOLA RECICLADA COLORIDA (25KG)" ou o
+    // título de família "Sacola Reciclada Colorida".
+    if (/\(25\s*KG\)/i.test(it.t) || /^SACOLA\s/i.test(it.t)) {
+      const c = corDoTexto(it.t);
+      // Cor que o galpão não conhece NÃO pode herdar a anterior: os
+      // fardos dela entrariam como se fossem da cor de cima.
+      corAtual = c; rotuloCor = it.t.trim();
+      if (!c) avisos.push({ linha: it.t.trim(), cliente: null,
+                            motivo: `produto "${it.t.trim()}" não é de uma cor do galpão` });
+      continue;
+    }
+
+    const mt = it.t.match(/TAMANHO\s*:?\s*(\d{2,3})\s*[Xx×]\s*(\d{2,3})/);
+    if (!mt) continue;
+
+    const formato = PA_FORMATOS.find(f => f === `${Number(mt[1])}x${Number(mt[2])}`) || null;
+    if (!formato) {
+      avisos.push({ linha: it.t.trim(), cliente: null,
+                    motivo: `formato ${mt[1]}x${mt[2]} não é do galpão` });
+      continue;
+    }
+    if (!corAtual) {
+      avisos.push({ linha: it.t.trim(), cliente: null,
+                    motivo: `não sei a cor deste item${rotuloCor ? ` (veio depois de "${rotuloCor}")` : ''}` });
+      continue;
+    }
+
+    // Os fardos desta linha, cada um na sua coluna.
+    const naLinha = itens.filter(o => o.pagina === it.pagina && Math.abs(o.y - it.y) <= 3
+                                   && /^\d[\d.,]*\s*frd$/i.test(o.t));
+    for (const q of naLinha) {
+      const col = daColuna(q.x, q.pagina);
+      if (!col) continue;
+      const n = parseInt(String(q.t).replace(/[^\d]/g, ''), 10);
+      if (!(n > 0)) continue;
+      col.itens.push({ cor_key: corAtual, formato, fardos: n, kg: n * PA_KG_FARDO });
+    }
+  }
+
+  const pedidos = colunas.filter(c => c.itens.length).map((c, i) => ({
+    ordem: i + 1,
+    cliente: c.cliente || (c.pedido ? `Pedido ${c.pedido}` : `Carga ${i + 1}`),
+    cidade: c.cidade, uf: c.uf, carga: c.carga, pedido_numero: c.pedido || null,
+    itens: c.itens,
+  }));
+  if (!pedidos.length) return null;
+
+  const totalFardos = pedidos.reduce((a, p) => a + p.itens.reduce((x, i) => x + i.fardos, 0), 0);
+
+  // ── CONFERÊNCIA CONTRA A PRÓPRIA GUIA ──────────────────────────
+  // A guia imprime os totais dela: "TOTAL GERAL 11.700 468" e, no
+  // rodapé, os fardos de cada carga. Comparar o que eu li com o que o
+  // documento afirma é a única checagem que não depende de eu ter
+  // entendido o layout — se um dia o formato mudar e minha leitura
+  // ficar torta, isto acusa na hora, em vez de mandar separar errado.
+  const conferencia = { ok: true, avisos: [] };
+  const geral = itens.find(i => /^TOTAL\s+GERAL/i.test(i.t));
+  if (geral) {
+    const naLinha = itens
+      .filter(o => o.pagina === geral.pagina && Math.abs(o.y - geral.y) <= 3 && o.x > geral.x)
+      .sort((a, b) => a.x - b.x)
+      .map(o => guiaNumero(o.t)).filter(n => n != null);
+    if (naLinha.length >= 2) {
+      conferencia.guia_kg = naLinha[0];
+      conferencia.guia_fardos = naLinha[1];
+      if (Math.round(conferencia.guia_kg) !== Math.round(totalFardos * PA_KG_FARDO)) {
+        conferencia.ok = false;
+        conferencia.avisos.push(`A guia diz ${conferencia.guia_kg} kg no total; eu li `
+          + `${totalFardos * PA_KG_FARDO} kg.`);
+      }
+      if (conferencia.guia_fardos !== totalFardos) {
+        conferencia.ok = false;
+        conferencia.avisos.push(`A guia diz ${conferencia.guia_fardos} fardos no total; eu li ${totalFardos}.`);
+      }
+    }
+  }
+  // Rodapé por carga: linha só de "N frd", sem TAMANHO nenhum.
+  const linhasFrd = new Map();
+  for (const o of itens) {
+    if (!/^\d[\d.,]*\s*frd$/i.test(o.t)) continue;
+    const chave = `${o.pagina}|${o.y}`;
+    if (!linhasFrd.has(chave)) linhasFrd.set(chave, []);
+    linhasFrd.get(chave).push(o);
+  }
+  for (const [chave, grupo] of linhasFrd) {
+    const [pagina, y] = chave.split('|').map(Number);
+    const temTamanho = itens.some(o => o.pagina === pagina && Math.abs(o.y - y) <= 3 && /TAMANHO/i.test(o.t));
+    if (temTamanho || grupo.length < 2) continue;          // é linha de item, não rodapé
+    for (const q of grupo) {
+      const col = daColuna(q.x, pagina);
+      if (!col) continue;
+      const n = parseInt(String(q.t).replace(/[^\d]/g, ''), 10);
+      const meu = col.itens.reduce((a, i) => a + i.fardos, 0);
+      if (n !== meu) {
+        conferencia.ok = false;
+        conferencia.avisos.push(`${col.cliente || 'coluna ' + col.pedido}: a guia diz ${n} fardos, eu li ${meu}.`);
+      }
+    }
+  }
+
+  return { pedidos, avisos, formato_lido: 'matriz', conferencia,
+           total_kg: totalFardos * PA_KG_FARDO, total_fardos: totalFardos,
+           blocos: colunas.length };
 }
 
 function interpretarGuia(linhasBrutas) {
@@ -1146,7 +1389,7 @@ function interpretarGuia(linhasBrutas) {
   }
 
   const totalKg = pedidos.reduce((a, p) => a + p.itens.reduce((x, i) => x + i.kg, 0), 0);
-  return { pedidos, avisos, total_kg: totalKg,
+  return { pedidos, avisos, linhas, total_kg: totalKg,
            total_fardos: pedidos.reduce((a, p) => a + p.itens.reduce((x, i) => x + i.fardos, 0), 0),
            blocos: ancoras.length };
 }
@@ -7043,21 +7286,57 @@ const requestHandlerBase = async (req, res) => {
     //  plano de coleta → bipe ao coletar (que é a BAIXA) → sobras.
     // ══════════════════════════════════════════════════════════════
 
+    // Recebe a guia das duas formas: o PDF cru (o caminho real — a tela
+    // só envia o arquivo, como já fazia com a foto) ou as linhas em
+    // JSON, que é como os testes exercitam o interpretador.
+    // Devolve null quando já respondeu por erro.
+    async function receberGuia(reqG, resG) {
+      const ct = String(reqG.headers['content-type'] || '').toLowerCase();
+      if (ct.includes('json')) {
+        let b; try { b = await lerBodyJson(reqG); } catch (e) { jsonErr(resG, 400, e.message); return null; }
+        return { linhas: Array.isArray(b.linhas) ? b.linhas : [], pdf: null, body: b };
+      }
+      let pdf;
+      try { pdf = await lerBodyBinario(reqG); } catch (e) { jsonErr(resG, 413, e.message); return null; }
+      if (!pdf || pdf.length < 100) { jsonErr(resG, 400, 'Arquivo vazio'); return null; }
+      if (pdf.slice(0, 5).toString('latin1') !== '%PDF-') {
+        jsonErr(resG, 415, 'Isso não é um PDF. Envie o arquivo da guia, não uma foto.');
+        return null;
+      }
+      let conteudo;
+      try { conteudo = await conteudoDoPdf(pdf); }
+      catch (e) {
+        logE('separacao', 'Falha ao ler o PDF da guia', { erro: e.message });
+        jsonErr(resG, 422, 'Não consegui abrir este PDF: ' + e.message);
+        return null;
+      }
+      return { linhas: conteudo.linhas, itens: conteudo.itens, pdf, body: {} };
+    }
+
     // POST /separacao/de-guia — a carga sai do PDF da guia.
     // A tela extrai o texto do PDF (pdf.js, servido pela estação) e
     // manda as linhas; aqui elas viram pedidos. Sem OCR, sem digitação.
     // { linhas: [...], arquivo?: 'nome.pdf', operador? }
     if (pathname === '/separacao/de-guia' && req.method === 'POST') {
-      let body; try { body = await lerBodyJson(req); } catch (e) { return jsonErr(res, 400, e.message); }
-      const linhas = Array.isArray(body.linhas) ? body.linhas : [];
-      if (!linhas.length) return jsonErr(res, 400, 'A guia veio sem texto. O PDF é imagem?');
+      // Aceita o PDF CRU (o caminho de verdade: o celular só manda o
+      // arquivo) ou as linhas em JSON (usado pelos testes).
+      const lido0 = await receberGuia(req, res);
+      if (!lido0) return;                       // receberGuia já respondeu
+      const { linhas, pdf } = lido0;
+      let body = lido0.body || {};
+      if (!linhas.length) return jsonErr(res, 400,
+        'Não achei texto nenhum no PDF. Se ele foi digitalizado (é uma imagem), '
+        + 'não dá para ler — peça o arquivo original do painel de carteira.');
 
-      const lido = interpretarGuia(linhas);
+      // Tenta primeiro a MATRIZ (o formato real da fábrica, que depende
+      // das coordenadas). Só cai no leitor de linhas se não for esse.
+      const lido = (lido0.itens && interpretarGuiaMatriz(lido0.itens)) || interpretarGuia(linhas);
       if (!lido.pedidos.length) {
         return jsonErr(res, 422,
           'Li o PDF mas não reconheci nenhum cliente com itens. '
           + (lido.blocos ? `Achei ${lido.blocos} bloco(s), mas nenhum item.` : 'Não achei o cabeçalho FORMATO/PRODUTO.'),
-          { avisos: lido.avisos, blocos: lido.blocos, linhas_lidas: linhas.length });
+          { avisos: lido.avisos, blocos: lido.blocos, linhas_lidas: linhas.length,
+            linhas: linhas.slice(0, 200) });
       }
 
       const agora = new Date().toISOString();
@@ -7066,7 +7345,8 @@ const requestHandlerBase = async (req, res) => {
         const info = db.prepare(`INSERT INTO separacoes (criada_em, arquivo, status, operador, obs)
                                  VALUES (?, NULL, 'conferida', ?, ?)`)
           .run(agora, body.operador || null,
-               `Guia lida do PDF: ${lido.pedidos.length} cliente(s), ${Math.round(lido.total_kg)} kg`);
+               `Guia lida do PDF (${lido.formato_lido || 'lista'}): `
+               + `${lido.pedidos.length} carga(s), ${Math.round(lido.total_kg)} kg`);
         sepId = Number(info.lastInsertRowid);
         for (const p of lido.pedidos) {
           const r = db.prepare(`INSERT INTO separacao_pedidos (separacao_id, ordem, cliente, cidade, uf)
@@ -7078,6 +7358,15 @@ const requestHandlerBase = async (req, res) => {
         }
       });
       tr();
+      // Guarda o PDF junto da carga, como comprovante do que foi lido.
+      if (pdf && pdf.length) {
+        try {
+          fs.mkdirSync(GUIAS_DIR, { recursive: true });
+          const nome = `guia-${String(sepId).padStart(5, '0')}.pdf`;
+          fs.writeFileSync(path.join(GUIAS_DIR, nome), pdf);
+          db.prepare('UPDATE separacoes SET arquivo = ? WHERE id = ?').run(nome, sepId);
+        } catch (e) { logW('separacao', 'Não consegui guardar o PDF: ' + e.message); }
+      }
       logI('separacao', `Separação ${sepId} lida do PDF da guia: ${lido.pedidos.length} cliente(s), `
         + `${lido.total_fardos} fardo(s), ${Math.round(lido.total_kg)} kg`
         + (lido.avisos.length ? `, ${lido.avisos.length} linha(s) não entendida(s)` : ''));
@@ -7087,9 +7376,17 @@ const requestHandlerBase = async (req, res) => {
     // POST /separacao/guia/previa — mesma leitura, sem gravar nada.
     // Serve para a tela mostrar o que entendeu ANTES de criar a carga.
     if (pathname === '/separacao/guia/previa' && req.method === 'POST') {
-      let body; try { body = await lerBodyJson(req); } catch (e) { return jsonErr(res, 400, e.message); }
-      const linhas = Array.isArray(body.linhas) ? body.linhas : [];
-      return jsonOk(res, interpretarGuia(linhas));
+      const lido0 = await receberGuia(req, res);
+      if (!lido0) return;
+      if (!lido0.linhas.length) return jsonErr(res, 400,
+        'Não achei texto nenhum no PDF. Se ele foi digitalizado (é uma imagem), '
+        + 'não dá para ler — peça o arquivo original do painel de carteira.',
+        { sem_texto: true });
+      // `linhas` volta junto para o diagnóstico: quando o layout não for
+      // o esperado, é olhando as linhas cruas que se descobre por quê.
+      const previa = (lido0.itens && interpretarGuiaMatriz(lido0.itens))
+                  || interpretarGuia(lido0.linhas);
+      return jsonOk(res, { ...previa, linhas: lido0.linhas.slice(0, 400) });
     }
 
     // GET /separacao/bling/pedidos?dias=45 — os pedidos em aberto,

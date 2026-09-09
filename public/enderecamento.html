@@ -949,57 +949,28 @@ async function sepDesenharAbertura() {
    e o servidor interpreta as linhas. É exato, e é o que dispensa
    digitar a carga inteira.
    ══════════════════════════════════════════════════════════════════ */
-let PDF_LINHAS = null, PDF_NOME = null, PDF_LIDO = null;
+let PDF_ARQUIVO = null, PDF_NOME = null, PDF_LIDO = null;
 
 function sepEscolherPdf() { $('arq-pdf').click(); }
 
-// Reconstrói as LINHAS do PDF. O pdf.js devolve pedaços de texto soltos
-// com coordenadas; o que junta um pedaço ao outro é estarem na mesma
-// altura. Sem isso, "TAMANHO: 30x40" e "750" viriam separados e a
-// quantidade se perderia.
-async function pdfParaLinhas(arquivo) {
-  const pdfjs = await import('/vendor/pdf.min.mjs');
-  pdfjs.GlobalWorkerOptions.workerSrc = '/vendor/pdf.worker.min.mjs';
-  const dados = new Uint8Array(await arquivo.arrayBuffer());
-  const doc = await pdfjs.getDocument({ data: dados }).promise;
-  const linhas = [];
-  for (let n = 1; n <= doc.numPages; n++) {
-    const pag = await doc.getPage(n);
-    const cont = await pag.getTextContent();
-    const porAltura = new Map();
-    for (const it of cont.items) {
-      if (!it.str || !it.str.trim()) continue;
-      const y = Math.round(it.transform[5]);          // altura na página
-      const x = it.transform[4];
-      // tolerância de 2 pt: a mesma linha pode variar um fio
-      let chave = y;
-      for (const k of porAltura.keys()) if (Math.abs(k - y) <= 2) { chave = k; break; }
-      if (!porAltura.has(chave)) porAltura.set(chave, []);
-      porAltura.get(chave).push({ x, txt: it.str });
-    }
-    const alturas = [...porAltura.keys()].sort((a, b) => b - a);   // de cima para baixo
-    for (const y of alturas) {
-      const l = porAltura.get(y).sort((a, b) => a.x - b.x).map(p => p.txt).join(' ');
-      linhas.push(l.replace(/\s+/g, ' ').trim());
-    }
-  }
-  return linhas;
-}
-
+// A tela só ENVIA o arquivo. Quem lê o PDF é o servidor.
+//
+// A primeira versão lia aqui, no navegador, com módulo ES. Funcionou no
+// laboratório e falhou no galpão: dependia do aparelho suportar módulo
+// ES e worker de módulo, e isso muda de celular para celular e para o
+// navegador da tela touch. Enviar o arquivo é o mesmo que a foto já
+// fazia — e a foto nunca falhou.
 async function sepImportarPdf(input) {
   const f = input.files && input.files[0];
   input.value = '';
   if (!f) return;
-  sepAviso('Lendo o PDF…', 'at');
+  PDF_NOME = f.name;
+  PDF_ARQUIVO = f;
+  sepAviso('Lendo a guia no servidor…', 'at');
   $('sep-corpo').innerHTML = '<div class="vazio">Lendo a guia…</div>';
   try {
-    PDF_NOME = f.name;
-    PDF_ARQUIVO = f;
-    PDF_LINHAS = await pdfParaLinhas(f);
-    if (!PDF_LINHAS.length) throw new Error('o PDF não tem texto — parece ser imagem digitalizada');
     const r = await fetch(URL_BASE + '/separacao/guia/previa', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ linhas: PDF_LINHAS }) });
+      method: 'POST', headers: { 'Content-Type': 'application/pdf' }, body: f });
     const d = await r.json();
     if (!d.ok) throw new Error(d.erro || 'falha ao interpretar');
     PDF_LIDO = d;
@@ -1010,24 +981,41 @@ async function sepImportarPdf(input) {
     sepDesenharAbertura();
   }
 }
-let PDF_ARQUIVO = null;
 
 // Mostra o que foi entendido ANTES de criar a carga. Não é digitação:
 // é conferir de relance se o total bate com o da guia.
 function sepDesenharPrevia() {
   const d = PDF_LIDO;
+  // Não reconheceu nada? Em vez de uma tela vazia e um botão que vai
+  // falhar, mostra O QUE FOI LIDO do PDF. É com essas linhas que se
+  // descobre em que o layout difere — sem elas, o problema é um beco
+  // sem saída para quem está no galpão.
+  if (!d.pedidos.length) { sepDesenharDiagnostico(); return; }
   const blocos = d.pedidos.map(p => `
     <div class="ped">
       <div class="ped-top">
         <div class="ped-ordem">${p.ordem}</div>
         <div style="flex:1;min-width:0">
           <div style="font-size:14.5px;font-weight:800">${esc(p.cliente)}</div>
-          <div style="font-size:12.5px;color:var(--muted)">${esc(p.cidade || '')}${p.uf ? '/' + esc(p.uf) : ''}</div>
+          <div style="font-size:12.5px;color:var(--muted)">${esc(p.cidade || '')}${p.uf ? '/' + esc(p.uf) : ''}${
+            p.pedido_numero ? ' · Ped.' + esc(p.pedido_numero) : ''}</div>
+          ${p.carga ? `<div style="font-size:11.5px;color:var(--accent);font-weight:700">${esc(p.carga)}</div>` : ''}
         </div>
       </div>
       ${p.itens.map(i => `<div class="linha"><span>${esc(i.formato)} ${esc(i.cor_key)}</span>
         <span>${fmtKg(i.kg)} · ${i.fardos} fardo(s)</span></div>`).join('')}
     </div>`).join('');
+
+  // A guia imprime os próprios totais. Bater com eles é a garantia que
+  // não depende de eu ter entendido o layout — e poupa conferência no olho.
+  const cf = d.conferencia;
+  const blocoConf = cf ? (cf.ok ? `
+    <div class="aviso ok">✓ <b>Confere com a guia:</b> ${cf.guia_fardos != null
+      ? `${cf.guia_fardos} fardos · ${fmtKg(cf.guia_kg)} — o mesmo que o documento imprime.`
+      : 'os totais por carga batem com o rodapé.'}</div>` : `
+    <div class="aviso err"><b>NÃO bate com os totais da guia:</b><br>
+      ${cf.avisos.map(a => esc(a)).join('<br>')}<br>
+      Não siga com esta carga sem conferir o documento.</div>`) : '';
 
   const avisos = (d.avisos || []).length ? `
     <div class="det" style="border-color:var(--warn)">
@@ -1051,34 +1039,66 @@ function sepDesenharPrevia() {
       <div class="rz"><b>${fmtKg(d.total_kg).replace(' kg','')}</b><span>kg na guia</span></div>
       <div class="rz"><b>${d.total_fardos}</b><span>fardos</span></div>
     </div>
+    ${blocoConf}
     ${avisos}
     <div class="acoes" style="margin-bottom:12px">
       <button class="btn" onclick="sepFechar()">← voltar</button>
       <button class="btn ok" style="flex:1" onclick="sepCriarDaGuia()">✓ CONFERE — MONTAR A CARGA</button>
     </div>
-    <div class="dica" style="margin-bottom:12px">Compare o total acima com o
-      da guia impressa. Batendo, siga: a ordem de carregamento sai na ordem
-      dos clientes da guia e dá para acertar depois.</div>
+    <div class="dica" style="margin-bottom:12px">A ordem abaixo é a das
+      colunas da guia. Dá para acertar com as setas depois de montar a carga.</div>
     ${blocos}`;
+}
+
+function sepDesenharDiagnostico() {
+  const linhas = (PDF_LIDO && PDF_LIDO.linhas) || [];
+  const amostra = linhas.filter(l => l && l.trim()).slice(0, 40);
+  $('sep-corpo').innerHTML = `
+    <div class="guia-mini">
+      <div style="width:56px;height:56px;border-radius:8px;background:var(--surface);display:flex;
+        align-items:center;justify-content:center;font-size:22px">📄</div>
+      <div class="gt"><b>${esc(PDF_NOME || 'guia.pdf')}</b>
+        ${linhas.length} linha(s) lidas · nenhum cliente reconhecido</div>
+      <button class="btn" onclick="sepFechar()">✕</button>
+    </div>
+    <div class="aviso err">O texto do PDF foi lido, mas o <b>layout é diferente</b>
+      do que eu conheço — não achei onde começa cada cliente.</div>
+    <div class="det">
+      <h3 style="font-family:inherit;font-size:14.5px">O que eu li do arquivo</h3>
+      <div class="sub">Estas são as primeiras linhas, como saíram do PDF.
+        Mande esta tela (ou o próprio PDF) que eu ajusto a leitura.</div>
+      <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;line-height:1.6;
+        background:var(--surface);border:1px solid var(--border);border-radius:8px;
+        padding:10px;overflow-x:auto;white-space:pre;max-height:420px;overflow-y:auto">${
+        amostra.map((l, i) => esc(String(i + 1).padStart(3, ' ') + '  ' + l)).join('\n')
+        || '(o PDF não tinha texto nenhum)'}</div>
+      <div class="acoes">
+        <button class="btn" onclick="sepCopiarLinhas()">📋 copiar as linhas</button>
+        <button class="btn" onclick="sepEscolherPdf()">📄 tentar outro PDF</button>
+      </div>
+    </div>`;
+}
+
+function sepCopiarLinhas() {
+  const txt = ((PDF_LIDO && PDF_LIDO.linhas) || []).join('\n');
+  try {
+    navigator.clipboard.writeText(txt);
+    sepAviso('Linhas copiadas. Cole na conversa para eu ajustar a leitura.', 'ok');
+  } catch (e) {
+    sepAviso('Não consegui copiar — mande um print desta tela.', 'at');
+  }
 }
 
 async function sepCriarDaGuia() {
   sepAviso('Montando a carga…', 'at');
   try {
     const r = await fetch(URL_BASE + '/separacao/de-guia', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ linhas: PDF_LINHAS, arquivo: PDF_NOME,
-                             operador: window.EKO_RESPONSAVEL || null }) });
+      method: 'POST', headers: { 'Content-Type': 'application/pdf' }, body: PDF_ARQUIVO });
     const d = await r.json();
     if (!d.ok) throw new Error(d.erro || 'falha');
     beep(880, .09); vibrar(40);
     SEP = { id: d.id, status: d.status, arquivo: null };
     SEP_UNIDADE = 'fardos'; SEP_CORRIGINDO = false;
-    // Guarda o PDF junto da carga, como comprovante do que foi lido.
-    try {
-      if (PDF_ARQUIVO) await fetch(URL_BASE + `/separacao/${d.id}/guia`,
-        { method: 'POST', headers: { 'Content-Type': 'application/pdf' }, body: PDF_ARQUIVO });
-    } catch (e) {}
     await sepCarregarEstado();
     sepAviso('');
     await sepReplanejar();

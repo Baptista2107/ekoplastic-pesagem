@@ -126,18 +126,18 @@ async function tirar(page, nome) {
     // ── 1b. IMPORTAR O PDF DE VERDADE, COM O pdf.js ──
     // Este é o ponto: o navegador abre o PDF, extrai o texto e a carga
     // sai montada. Nenhuma digitação.
-    const pdfGuia = fs.readFileSync(path.join(ROOT, 'testes', 'dados', 'guia-exemplo.pdf'));
+    // A guia REAL da fábrica: 4 cargas, 11.700 kg, formato matriz.
+    const pdfGuia = fs.readFileSync(path.join(ROOT, 'testes', 'dados', 'guia-imperatriz.pdf'));
     await page.setInputFiles('#arq-pdf', {
-      name: 'guia-exemplo.pdf', mimeType: 'application/pdf', buffer: pdfGuia });
-    await sleep(4000);
+      name: 'Guia separacao Imperatriz.pdf', mimeType: 'application/pdf', buffer: pdfGuia });
+    await sleep(5000);
     const previa = await page.innerText('#sep-corpo');
-    ok(/ILHA PLASTIC/.test(previa), 'o pdf.js leu o PDF e a prévia mostra os clientes da guia');
-    ok(/EMBALO EMBALAGENS/.test(previa) && /A C M DA SILVA/.test(previa),
-       'os três clientes, inclusive o de nome terminado em - ME');
-    ok(/3\s*CLIENTES/i.test(previa.replace(/\n/g, ' ')), 'o resumo conta 3 clientes');
-    ok(/132/.test(previa), 'e 132 fardos — a soma da coluna EDITADO');
-    ok(!/1\.200|800/.test(previa.split('CLIENTES')[1] || ''),
-       'sem números da coluna ORIGINAL na leitura');
+    ok(/F E A LIMA/.test(previa), 'o servidor leu a guia real e a prévia mostra os clientes');
+    ok(/CASA DO TEMPERO/.test(previa) && /T C DE SOUSA/.test(previa), 'as 4 cargas da guia');
+    ok(/Confere com a guia/.test(previa),
+       'e a tela mostra que a leitura BATE com os totais impressos no documento');
+    ok(/468/.test(previa), 'os 468 fardos da guia');
+    ok(/Ped\.1063/.test(previa), 'com o número do pedido de cada carga');
     await tirar(page, '1c-previa-do-pdf');
 
     await page.click('text=CONFERE — MONTAR A CARGA');
