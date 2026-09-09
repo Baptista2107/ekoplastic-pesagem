@@ -37,6 +37,11 @@ async function req(metodo, rota, corpo) {
   return { status: r.status, body: j };
 }
 
+// A guia real é uma MATRIZ e quem é o dono de um número é a posição
+// horizontal dele. Fabricar isso exige escrever um PDF com coordenadas —
+// o gerador mora à parte porque a prova visual usa o mesmo.
+const { pdfDeItens } = require('./_pdf-falso.js');
+
 // As linhas como o pdf.js as entrega: cada altura da página vira uma
 // linha, os pedaços juntados pela ordem horizontal.
 const GUIA = [
@@ -220,6 +225,94 @@ const GUIA = [
     const estR = await req('GET', `/separacao/${cj.id}`);
     ok(estR.body.pedidos.length === 4 && estR.body.pedidos[0].ordem === 1,
        'e fica gravada com as 4 cargas na ordem das colunas');
+
+    // ── [8c] A COLUNA DE UM NÚMERO É A DE CIMA DELE, NÃO A VIZINHA ──
+    // Na guia real os "N frd" ficam a 5–8 pt do centro da sua coluna e
+    // as colunas distam 111 pt. Numa guia de UMA carga não há distância
+    // entre colunas para medir, e a tolerância cai num padrão. Se esse
+    // padrão for largo, a coluna "TOTAL" — que fica à esquerda — entra
+    // como se fosse da carga e o caminhão sai com o dobro do pedido.
+    // Este teste é o que segura o teto da tolerância.
+    console.log('\n[8c] Numa guia de uma carga só, a coluna TOTAL não vira pedido');
+    const umaCarga = pdfDeItens([
+      { x:  60, y: 520, t: 'PRODUTO / FAMILIA' },
+      { x: 300, y: 520, t: 'TOTAL kg' },
+      { x: 300, y: 505, t: 'fardos' },
+      { x: 360, y: 520, t: 'CARGA 1 · Entrega #1' },
+      { x: 360, y: 505, t: 'Ped.2001' },
+      { x: 360, y: 492, t: 'CLIENTE UNICO LTDA |' },
+      { x: 360, y: 479, t: 'Teresina/PI' },
+      { x:  60, y: 440, t: 'SACOLA SEMI-VIRGEM BRANCA (25KG)' },
+      { x:  70, y: 425, t: 'TAMANHO:40X50' },
+      { x: 305, y: 425, t: '40 frd' },            // coluna TOTAL, a 55 pt
+      { x: 365, y: 425, t: '40 frd' },            // coluna da carga, a 5 pt
+      { x:  60, y: 400, t: 'TOTAL GERAL' },
+      { x: 200, y: 400, t: '1.000' },
+      { x: 260, y: 400, t: '40' },
+    ]);
+    const pvUma = await fetch(`${BASE}/separacao/guia/previa`,
+      { method: 'POST', headers: { 'Content-Type': 'application/pdf' }, body: umaCarga });
+    const ju = await pvUma.json();
+    ok(ju.pedidos && ju.pedidos.length === 1, `uma carga, um cliente: ${(ju.pedidos||[]).length}`, ju.erro);
+    ok(ju.total_fardos === 40,
+       `os 40 fardos da carga, não os 80 do total somado por engano: ${ju.total_fardos}`, ju.pedidos);
+    ok(ju.conferencia && ju.conferencia.ok === true,
+       'e a conferência contra o TOTAL GERAL impresso fecha', ju.conferencia);
+    ok(ju.pedidos[0].cliente === 'CLIENTE UNICO LTDA' && ju.pedidos[0].uf === 'PI',
+       'o cabeçalho da coluna dá cliente e UF', ju.pedidos[0]);
+
+    // ── [8d] O NÚMERO DO PEDIDO PODE VIR ESCRITO DE OUTRO JEITO ─────
+    // O rótulo sai do painel de carteira. Uma variação de grafia lá não
+    // pode derrubar a leitura aqui — seria um beco sem saída no galpão
+    // por causa de um ponto a menos.
+    console.log('\n[8d] "Pedido 2001" é reconhecido como coluna, igual a "Ped.2001"');
+    const outraGrafia = await fetch(`${BASE}/separacao/guia/previa`, {
+      method: 'POST', headers: { 'Content-Type': 'application/pdf' },
+      body: pdfDeItens([
+        { x: 360, y: 520, t: 'CARGA 1' },
+        { x: 360, y: 505, t: 'Pedido 2001' },
+        { x: 360, y: 492, t: 'CLIENTE UNICO LTDA |' },
+        { x:  60, y: 440, t: 'SACOLA SEMI-VIRGEM BRANCA (25KG)' },
+        { x:  70, y: 425, t: 'TAMANHO:40X50' },
+        { x: 365, y: 425, t: '12 frd' },
+      ]) });
+    const jg = await outraGrafia.json();
+    ok(jg.pedidos && jg.pedidos.length === 1 && jg.total_fardos === 12,
+       `leu a coluna mesmo escrita "Pedido 2001": ${(jg.pedidos||[]).length} carga, ${jg.total_fardos} fardos`, jg);
+
+    // ── [8e] QUANDO NÃO DÁ, A TELA DIZ QUAL PEÇA FALTOU ─────────────
+    // "Layout diferente" manda o galpão adivinhar. O diagnóstico diz
+    // qual das quatro peças não apareceu — e é isso que conserta rápido.
+    console.log('\n[8e] Guia não reconhecida diz o motivo, não só as linhas cruas');
+    const semColuna = await fetch(`${BASE}/separacao/guia/previa`, {
+      method: 'POST', headers: { 'Content-Type': 'application/pdf' },
+      body: pdfDeItens([
+        { x:  60, y: 520, t: 'RELATORIO DE CARGA' },
+        { x:  60, y: 500, t: 'SACOLA SEMI-VIRGEM BRANCA (25KG)' },
+        { x:  70, y: 485, t: 'TAMANHO:40X50' },
+        { x: 300, y: 485, t: '40 frd' },
+      ]) });
+    const jsc = await semColuna.json();
+    ok(jsc.diag && jsc.diag.faltou === 'colunas',
+       'sem o número do pedido no topo, aponta a coluna como a peça que faltou', jsc.diag);
+    ok(/Ped\.1063|número do pedido/.test((jsc.diag || {}).motivo || ''),
+       'e mostra o exemplo do que procurava', (jsc.diag || {}).motivo);
+    ok(jsc.diag.cabecalhos_produto === 1 && jsc.diag.quantidades_frd === 1,
+       'contando o que ACHOU também: 1 produto, 1 quantidade', jsc.diag);
+
+    const foraCatalogo = await fetch(`${BASE}/separacao/guia/previa`, {
+      method: 'POST', headers: { 'Content-Type': 'application/pdf' },
+      body: pdfDeItens([
+        { x: 360, y: 505, t: 'Ped.2002' },
+        { x: 360, y: 492, t: 'CLIENTE UNICO LTDA |' },
+        { x:  60, y: 440, t: 'SACOLA SEMI-VIRGEM BRANCA (25KG)' },
+        { x:  70, y: 425, t: 'TAMANHO:90X90' },
+        { x: 365, y: 425, t: '10 frd' },
+      ]) });
+    const jfc = await foraCatalogo.json();
+    ok(jfc.diag && jfc.diag.faltou === 'catalogo'
+       && (jfc.diag.formatos_fora || []).includes('90x90'),
+       'formato que a fábrica não produz é nomeado, não vira "layout diferente"', jfc.diag);
 
     // ── [7a] LAYOUT DESCONHECIDO VIRA DIAGNÓSTICO, NÃO BECO SEM SAÍDA ──
     console.log('\n[7a] Guia de layout diferente devolve o que foi lido');

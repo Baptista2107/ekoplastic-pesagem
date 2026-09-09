@@ -1053,6 +1053,33 @@ function sepDesenharPrevia() {
 function sepDesenharDiagnostico() {
   const linhas = (PDF_LIDO && PDF_LIDO.linhas) || [];
   const amostra = linhas.filter(l => l && l.trim()).slice(0, 40);
+  const d = (PDF_LIDO && PDF_LIDO.diag) || null;
+
+  // As quatro peças que o leitor precisa achar. Mostrar quais vieram e
+  // qual faltou vale mais que qualquer texto: o galpão manda um print
+  // desta tela e a causa já está nele.
+  const pecas = !d ? '' : [
+    ['colunas de pedido', d.colunas_pedido, 'Ped.1063'],
+    ['produtos', d.cabecalhos_produto, 'SACOLA … (25KG)'],
+    ['tamanhos', d.linhas_tamanho, 'TAMANHO:40X50'],
+    ['quantidades', d.quantidades_frd, '120 frd'],
+  ].map(([nome, n, ex]) => `
+    <div style="display:flex;align-items:center;gap:8px;padding:6px 0">
+      <span style="font-size:15px">${n ? '✓' : '✕'}</span>
+      <span style="flex:1">${nome}
+        <span style="opacity:.55;font-size:12px">(ex.: ${esc(ex)})</span></span>
+      <b style="color:${n ? 'var(--accent)' : 'var(--bloqueada)'}">${n}</b>
+    </div>`).join('');
+
+  const extras = !d ? '' : [
+    d.formatos_fora && d.formatos_fora.length
+      ? `Formato(s) que o galpão não tem: <b>${esc(d.formatos_fora.join(', '))}</b>.` : '',
+    d.cores_fora && d.cores_fora.length
+      ? `Produto(s) sem cor conhecida: <b>${esc(d.cores_fora.join(' / '))}</b>.` : '',
+    d.amostra_colunas && d.amostra_colunas.length
+      ? `Cabeçalhos de coluna que achei: ${esc(d.amostra_colunas.join(' · '))}.` : '',
+  ].filter(Boolean).join('<br>');
+
   $('sep-corpo').innerHTML = `
     <div class="guia-mini">
       <div style="width:56px;height:56px;border-radius:8px;background:var(--surface);display:flex;
@@ -1061,8 +1088,13 @@ function sepDesenharDiagnostico() {
         ${linhas.length} linha(s) lidas · nenhum cliente reconhecido</div>
       <button class="btn" onclick="sepFechar()">✕</button>
     </div>
-    <div class="aviso err">O texto do PDF foi lido, mas o <b>layout é diferente</b>
-      do que eu conheço — não achei onde começa cada cliente.</div>
+    <div class="aviso err">${d ? esc(d.motivo)
+      : 'O texto do PDF foi lido, mas o <b>layout é diferente</b> do que eu conheço.'}</div>
+    ${d ? `<div class="det" style="margin-bottom:12px">
+      <h3 style="font-family:inherit;font-size:14.5px">O que eu procurei no arquivo</h3>
+      ${pecas}
+      ${extras ? `<div class="sub" style="margin-top:8px">${extras}</div>` : ''}
+    </div>` : ''}
     <div class="det">
       <h3 style="font-family:inherit;font-size:14.5px">O que eu li do arquivo</h3>
       <div class="sub">Estas são as primeiras linhas, como saíram do PDF.

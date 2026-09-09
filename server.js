@@ -1082,6 +1082,33 @@ const semAcento = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').
 const UFS = new Set(['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG',
                      'PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO']);
 
+// O cabeçalho de cada coluna da guia traz o número do pedido. É esse
+// texto que faz a coluna existir — sem ele o leitor de matriz desiste e
+// a tela cai no diagnóstico. Como o rótulo sai do painel de carteira e
+// já foi visto como "Ped.1063", aceito também as grafias vizinhas, para
+// que uma vírgula de diferença no dashboard não derrube a leitura.
+const RE_PEDIDO_COL = /^(?:ped\.?|pedido)\s*\.?\s*n?º?\s*\d+/i;
+const RE_QTD_FRD    = /^\d[\d.,]*\s*frd$/i;
+const RE_TAMANHO    = /TAMANHO\s*:?\s*(\d{2,3})\s*[Xx×]\s*(\d{2,3})/;
+const RE_PRODUTO    = /\(25\s*KG\)|^SACOLA\s/i;
+
+// A cor da sacola a partir do cabeçalho de produto da guia. Fica fora
+// do leitor porque o diagnóstico precisa da mesma régua: só assim ele
+// consegue dizer "a cor VERDE não é do galpão" em vez de um genérico
+// "não entendi". Devolver null é resposta legítima — e é justamente o
+// null que impede um fardo de cor desconhecida entrar como se fosse da
+// cor da linha de cima.
+function corDaGuia(txt) {
+  const u = semAcento(txt);
+  for (const [k, v] of Object.entries(PA_CORES))
+    if (v.label && semAcento(v.label) === u) return k;           // casamento exato
+  if (/AMAREL/.test(u)) return 'AM';
+  if (/BRANC|LEITOS/.test(u)) return 'BC';
+  if (/PRET/.test(u)) return 'PT';
+  if (/COLORID/.test(u)) return 'REC';
+  return null;
+}
+
 // Número no padrão brasileiro: 1.234,5 → 1234.5
 function guiaNumero(txt) {
   const t = String(txt || '').replace(/\s/g, '');
@@ -1115,7 +1142,7 @@ function interpretarGuiaMatriz(itens) {
 
   // As colunas nascem dos "Ped.NNNN" do cabeçalho. Sem eles, não é
   // este formato — e o leitor de linhas assume.
-  const peds = itens.filter(i => /^Ped\.\s*\d+/i.test(i.t));
+  const peds = itens.filter(i => RE_PEDIDO_COL.test(i.t));
   if (peds.length < 1) return null;
 
   const colunas = peds
@@ -1127,6 +1154,16 @@ function interpretarGuiaMatriz(itens) {
   // qual coluna um número pertence.
   const passo = colunas.length > 1
     ? Math.min(...colunas.slice(1).map((c, i) => c.x - colunas[i].x)) : 120;
+  // TOLERÂNCIA — o teto de 45 pt não é enfeite.
+  //   Medido na guia real: os "N frd" ficam a 5–8 pt do centro da sua
+  //   coluna, e as colunas distam 111 pt entre si. Ou seja: 45 pt já é
+  //   cinco vezes a folga necessária e ainda assim menos da metade do
+  //   caminho até a coluna vizinha.
+  //   Sem o teto, uma guia de UMA carga só cairia no passo padrão (120)
+  //   e a tolerância viraria 90 pt — larga o bastante para a coluna
+  //   "TOTAL kg / fardos", que fica à esquerda das cargas, ser lida como
+  //   se fosse da carga. O caminhão sairia com o dobro do pedido.
+  const tolerancia = Math.min(passo * 0.6, 45);
   const daColuna = (x, pagina) => {
     let melhor = null, dist = Infinity;
     for (const c of colunas) {
@@ -1134,7 +1171,7 @@ function interpretarGuiaMatriz(itens) {
       const d = Math.abs(x - c.x);
       if (d < dist) { dist = d; melhor = c; }
     }
-    return dist <= passo * 0.75 ? melhor : null;
+    return dist <= tolerancia ? melhor : null;
   };
 
   const yPed = peds[0].y;
@@ -1154,16 +1191,7 @@ function interpretarGuiaMatriz(itens) {
     }
   }
 
-  const corDoTexto = txt => {
-    const u = semAcento(txt);
-    for (const [k, v] of Object.entries(PA_CORES))
-      if (v.label && semAcento(v.label) === u) return k;         // casamento exato
-    if (/AMAREL/.test(u)) return 'AM';
-    if (/BRANC|LEITOS/.test(u)) return 'BC';
-    if (/PRET/.test(u)) return 'PT';
-    if (/COLORID/.test(u)) return 'REC';
-    return null;
-  };
+  const corDoTexto = corDaGuia;
 
   const avisos = [];
   const ordenados = itens.slice().sort((a, b) => (a.pagina - b.pagina) || (b.y - a.y) || (a.x - b.x));
@@ -1172,7 +1200,7 @@ function interpretarGuiaMatriz(itens) {
   for (const it of ordenados) {
     // Cabeçalho de produto: "↳ SACOLA RECICLADA COLORIDA (25KG)" ou o
     // título de família "Sacola Reciclada Colorida".
-    if (/\(25\s*KG\)/i.test(it.t) || /^SACOLA\s/i.test(it.t)) {
+    if (RE_PRODUTO.test(it.t)) {
       const c = corDoTexto(it.t);
       // Cor que o galpão não conhece NÃO pode herdar a anterior: os
       // fardos dela entrariam como se fossem da cor de cima.
@@ -1182,7 +1210,7 @@ function interpretarGuiaMatriz(itens) {
       continue;
     }
 
-    const mt = it.t.match(/TAMANHO\s*:?\s*(\d{2,3})\s*[Xx×]\s*(\d{2,3})/);
+    const mt = it.t.match(RE_TAMANHO);
     if (!mt) continue;
 
     const formato = PA_FORMATOS.find(f => f === `${Number(mt[1])}x${Number(mt[2])}`) || null;
@@ -1199,7 +1227,7 @@ function interpretarGuiaMatriz(itens) {
 
     // Os fardos desta linha, cada um na sua coluna.
     const naLinha = itens.filter(o => o.pagina === it.pagina && Math.abs(o.y - it.y) <= 3
-                                   && /^\d[\d.,]*\s*frd$/i.test(o.t));
+                                   && RE_QTD_FRD.test(o.t));
     for (const q of naLinha) {
       const col = daColuna(q.x, q.pagina);
       if (!col) continue;
@@ -1249,7 +1277,7 @@ function interpretarGuiaMatriz(itens) {
   // Rodapé por carga: linha só de "N frd", sem TAMANHO nenhum.
   const linhasFrd = new Map();
   for (const o of itens) {
-    if (!/^\d[\d.,]*\s*frd$/i.test(o.t)) continue;
+    if (!RE_QTD_FRD.test(o.t)) continue;
     const chave = `${o.pagina}|${o.y}`;
     if (!linhasFrd.has(chave)) linhasFrd.set(chave, []);
     linhasFrd.get(chave).push(o);
@@ -1273,6 +1301,106 @@ function interpretarGuiaMatriz(itens) {
   return { pedidos, avisos, formato_lido: 'matriz', conferencia,
            total_kg: totalFardos * PA_KG_FARDO, total_fardos: totalFardos,
            blocos: colunas.length };
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  POR QUE NÃO DEU — o diagnóstico da guia
+// ------------------------------------------------------------------
+//  Uma tela que só diz "não entendi o layout" transforma cada falha
+//  numa viagem de ida e volta: o galpão manda um print, alguém olha o
+//  PDF, adivinha. Este diagnóstico usa as MESMAS réguas do leitor
+//  (RE_PEDIDO_COL, RE_QTD_FRD, RE_TAMANHO, RE_PRODUTO, corDaGuia) e diz
+//  qual peça faltou — porque a peça que falta é sempre uma destas
+//  quatro, e saber qual é já é metade do conserto.
+// ══════════════════════════════════════════════════════════════════
+function diagnosticoDaGuia(itens, linhas) {
+  const its = Array.isArray(itens) ? itens : [];
+  const lns = Array.isArray(linhas) ? linhas : [];
+  const conta = re => its.filter(i => re.test(i.t)).length;
+  const vazio = { pedacos: its.length, linhas: lns.length, paginas: 0, colunas_pedido: 0,
+                  quantidades_frd: 0, linhas_tamanho: 0, cabecalhos_produto: 0,
+                  tem_total_geral: false, formatos: [], formatos_fora: [], cores_fora: [],
+                  amostra_colunas: [] };
+
+  if (!its.length && !lns.length) {
+    return { ...vazio, faltou: 'texto',
+      motivo: 'O arquivo não trouxe texto nenhum — deve ser um PDF digitalizado '
+            + '(uma foto da folha). Preciso do arquivo original do painel de carteira.' };
+  }
+  // Sem coordenadas não existe matriz: sobra o leitor de LINHAS, e a
+  // única peça que ele procura é a âncora do cabeçalho. Diagnosticar
+  // aqui pela régua da matriz apontaria a peça errada.
+  if (!its.length) {
+    const U = lns.map(semAcento);
+    const ancora = U.some(l => l.includes('FORMATO') && l.includes('PRODUTO'));
+    return { ...vazio, sem_coordenadas: true,
+      linhas_tamanho: lns.filter(l => RE_TAMANHO.test(String(l))).length,
+      faltou: ancora ? 'itens' : 'ancora',
+      motivo: ancora
+        ? 'Achei o cabeçalho FORMATO/PRODUTO, mas nenhuma linha de item embaixo dele.'
+        : 'Não achei o cabeçalho FORMATO/PRODUTO, que é onde começa a lista de cada cliente.' };
+  }
+
+  const formatos = new Set(), formatosFora = new Set();
+  for (const i of its) {
+    const m = i.t.match(RE_TAMANHO);
+    if (!m) continue;
+    const f = `${Number(m[1])}x${Number(m[2])}`;
+    formatos.add(f);
+    if (!PA_FORMATOS.includes(f)) formatosFora.add(f);
+  }
+  const coresFora = new Set();
+  for (const i of its) if (RE_PRODUTO.test(i.t) && !corDaGuia(i.t)) coresFora.add(i.t.trim());
+
+  const d = {
+    pedacos: its.length,
+    linhas: lns.length,
+    paginas: its.length ? Math.max(...its.map(i => i.pagina)) : 0,
+    colunas_pedido: conta(RE_PEDIDO_COL),
+    quantidades_frd: conta(RE_QTD_FRD),
+    linhas_tamanho: conta(RE_TAMANHO),
+    cabecalhos_produto: conta(RE_PRODUTO),
+    tem_total_geral: conta(/^TOTAL\s+GERAL/i) > 0,
+    formatos: [...formatos],
+    formatos_fora: [...formatosFora],
+    cores_fora: [...coresFora],
+    amostra_colunas: its.filter(i => RE_PEDIDO_COL.test(i.t)).map(i => i.t.trim()).slice(0, 12),
+  };
+
+  // A ordem importa: cada pergunta só faz sentido se a anterior passou.
+  if (!d.pedacos) {
+    d.faltou = 'texto';
+    d.motivo = 'O arquivo não trouxe texto nenhum — deve ser um PDF digitalizado '
+             + '(uma foto da folha). Preciso do arquivo original do painel de carteira.';
+  } else if (!d.colunas_pedido) {
+    d.faltou = 'colunas';
+    d.motivo = 'Não achei o número do pedido no alto de nenhuma coluna (algo como '
+             + '"Ped.1063"). É esse texto que me diz onde começa cada carga.';
+  } else if (!d.quantidades_frd) {
+    d.faltou = 'quantidades';
+    d.motivo = `Achei ${d.colunas_pedido} coluna(s) de pedido, mas nenhuma quantidade `
+             + 'escrita em fardos (algo como "120 frd").';
+  } else if (!d.cabecalhos_produto) {
+    d.faltou = 'produto';
+    d.motivo = `Achei ${d.colunas_pedido} coluna(s) e ${d.quantidades_frd} quantidade(s), mas `
+             + 'nenhum cabeçalho de produto com "(25KG)" para eu saber a cor da sacola.';
+  } else if (!d.linhas_tamanho) {
+    d.faltou = 'tamanho';
+    d.motivo = `Achei ${d.colunas_pedido} coluna(s) e ${d.cabecalhos_produto} produto(s), mas `
+             + 'nenhuma linha de "TAMANHO: 40X50" para eu saber o formato.';
+  } else if (d.formatos_fora.length || d.cores_fora.length) {
+    d.faltou = 'catalogo';
+    d.motivo = 'Li a guia inteira, mas o que está nela não é do galpão: '
+             + [d.formatos_fora.length ? `formato(s) ${d.formatos_fora.join(', ')}` : null,
+                d.cores_fora.length ? `produto(s) ${d.cores_fora.join(' / ')}` : null]
+               .filter(Boolean).join(' e ') + '.';
+  } else {
+    d.faltou = 'montagem';
+    d.motivo = 'Achei as colunas, os produtos, os tamanhos e as quantidades, mas não consegui '
+             + 'ligar as quantidades às colunas — as colunas devem estar em posições '
+             + 'diferentes das do cabeçalho.';
+  }
+  return d;
 }
 
 function interpretarGuia(linhasBrutas) {
@@ -7332,11 +7460,11 @@ const requestHandlerBase = async (req, res) => {
       // das coordenadas). Só cai no leitor de linhas se não for esse.
       const lido = (lido0.itens && interpretarGuiaMatriz(lido0.itens)) || interpretarGuia(linhas);
       if (!lido.pedidos.length) {
-        return jsonErr(res, 422,
-          'Li o PDF mas não reconheci nenhum cliente com itens. '
-          + (lido.blocos ? `Achei ${lido.blocos} bloco(s), mas nenhum item.` : 'Não achei o cabeçalho FORMATO/PRODUTO.'),
+        const diag = diagnosticoDaGuia(lido0.itens, linhas);
+        logW('separacao', 'Guia não reconhecida: ' + diag.motivo, diag);
+        return jsonErr(res, 422, 'Li o PDF mas não reconheci nenhum cliente com itens. ' + diag.motivo,
           { avisos: lido.avisos, blocos: lido.blocos, linhas_lidas: linhas.length,
-            linhas: linhas.slice(0, 200) });
+            diag, linhas: linhas.slice(0, 200) });
       }
 
       const agora = new Date().toISOString();
@@ -7386,7 +7514,11 @@ const requestHandlerBase = async (req, res) => {
       // o esperado, é olhando as linhas cruas que se descobre por quê.
       const previa = (lido0.itens && interpretarGuiaMatriz(lido0.itens))
                   || interpretarGuia(lido0.linhas);
-      return jsonOk(res, { ...previa, linhas: lido0.linhas.slice(0, 400) });
+      // Quando não sobrou nenhum cliente, o diagnóstico vai junto: a tela
+      // não deve mostrar só as linhas cruas e deixar o galpão adivinhando.
+      const diag = previa.pedidos.length ? null : diagnosticoDaGuia(lido0.itens, lido0.linhas);
+      if (diag) logW('separacao', 'Prévia da guia não reconhecida: ' + diag.motivo, diag);
+      return jsonOk(res, { ...previa, diag, linhas: lido0.linhas.slice(0, 400) });
     }
 
     // GET /separacao/bling/pedidos?dias=45 — os pedidos em aberto,

@@ -36,6 +36,8 @@ const TMP_GUIA = path.join(os.tmpdir(), `eko_psg_${C}`);
 const OUT = process.argv[2] || path.join(os.tmpdir(), 'prova-separacao');
 fs.mkdirSync(OUT, { recursive: true });
 
+const { pdfDeItens } = require('./_pdf-falso.js');   // guia em matriz fabricada
+
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 let servidor, falhas = 0, passos = 0;
 const ok = (cond, msg) => {
@@ -147,6 +149,31 @@ async function tirar(page, nome) {
     ok(/FALTAM/.test(plano0), 'apontando o que ainda está em produção');
     await tirar(page, '1d-plano-do-pdf');
     await page.click('text=fechar'); await sleep(800);
+
+    // ── 1e. QUANDO O PDF NÃO É RECONHECIDO, A TELA DIZ POR QUÊ ──
+    // "O layout é diferente do que eu conheço" é um beco sem saída para
+    // quem está no galpão: não dá para agir. A tela precisa dizer QUAL
+    // peça faltou — e mostrar as que achou, para provar que leu.
+    await page.click('#ab-sep'); await sleep(500);
+    await page.setInputFiles('#arq-pdf', {
+      name: 'guia-de-outro-sistema.pdf', mimeType: 'application/pdf',
+      buffer: pdfDeItens([
+        { x:  60, y: 520, t: 'RELATORIO DE CARGA - OUTRO SISTEMA' },
+        { x:  60, y: 500, t: 'SACOLA SEMI-VIRGEM BRANCA (25KG)' },
+        { x:  70, y: 485, t: 'TAMANHO:40X50' },
+        { x: 300, y: 485, t: '40 frd' },
+      ]) });
+    await sleep(4000);
+    const diag = await page.innerText('#sep-corpo');
+    ok(/número do pedido/.test(diag),
+       'a tela nomeia a peça que faltou: o número do pedido no topo da coluna');
+    ok(/Ped\.1063/.test(diag), 'com um exemplo do que ela procurava');
+    ok(/O que eu procurei no arquivo/.test(diag), 'e mostra a lista das quatro peças');
+    ok(/produtos/.test(diag) && /quantidades/.test(diag),
+       'dizendo também o que ACHOU — não é um "não entendi" cego');
+    ok(/tentar outro PDF/.test(diag), 'com uma saída à mão, sem sair da tela');
+    await tirar(page, '1e-diagnostico-do-pdf');
+    await page.click('text=✕'); await sleep(800);
 
     // ── 2. Fotografar a guia ──
     // setInputFiles simula o que a câmera do celular entrega ao campo.
