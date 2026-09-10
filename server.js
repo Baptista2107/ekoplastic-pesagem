@@ -769,6 +769,20 @@ function aplicarSchema() {
 
     INSERT OR IGNORE INTO seqs(tipo, valor) VALUES ('recebimento', 1), ('retorno', 1), ('retirada', 1), ('extrusao', 1);
   `);
+
+  // Duas colunas que a guia traz e o banco jogava fora: o rótulo da
+  // coluna ("CARGA 1 · Entrega #4") e o número do pedido. São a
+  // referência que o gestor usa para decidir a ORDEM DE CARREGAMENTO —
+  // sem elas a tela de ordem mostra só nomes de cliente repetidos e ele
+  // não tem como saber qual carga é qual. Aditivo: banco que já rodou
+  // ganha a coluna vazia, sem perder nada.
+  for (const [tabela, coluna, tipo] of [
+    ['separacao_pedidos', 'carga', 'TEXT'],
+    ['separacao_pedidos', 'pedido_numero', 'TEXT'],
+  ]) {
+    const tem = db.prepare(`PRAGMA table_info(${tabela})`).all().some(c => c.name === coluna);
+    if (!tem) db.exec(`ALTER TABLE ${tabela} ADD COLUMN ${coluna} ${tipo}`);
+  }
 }
 aplicarSchema();
 
@@ -7477,9 +7491,10 @@ const requestHandlerBase = async (req, res) => {
                + `${lido.pedidos.length} carga(s), ${Math.round(lido.total_kg)} kg`);
         sepId = Number(info.lastInsertRowid);
         for (const p of lido.pedidos) {
-          const r = db.prepare(`INSERT INTO separacao_pedidos (separacao_id, ordem, cliente, cidade, uf)
-                                VALUES (?, ?, ?, ?, ?)`)
-            .run(sepId, p.ordem, p.cliente, p.cidade, p.uf);
+          const r = db.prepare(`INSERT INTO separacao_pedidos
+                                  (separacao_id, ordem, cliente, cidade, uf, carga, pedido_numero)
+                                VALUES (?, ?, ?, ?, ?, ?, ?)`)
+            .run(sepId, p.ordem, p.cliente, p.cidade, p.uf, p.carga || null, p.pedido_numero || null);
           for (const it of p.itens)
             db.prepare(`INSERT INTO separacao_itens (pedido_id, cor_key, formato, fardos)
                         VALUES (?, ?, ?, ?)`).run(Number(r.lastInsertRowid), it.cor_key, it.formato, it.fardos);
@@ -7571,9 +7586,11 @@ const requestHandlerBase = async (req, res) => {
                'Pedidos lidos direto do Bling: ' + buscados.map(p => p.numero || p.bling_id).join(', '));
         sepId = Number(info.lastInsertRowid);
         for (const p of buscados) {
-          const r = db.prepare(`INSERT INTO separacao_pedidos (separacao_id, ordem, cliente, cidade, uf)
-                                VALUES (?, ?, ?, ?, ?)`)
-            .run(sepId, p.ordem, p.cliente || null, p.cidade || null, p.uf || null);
+          const r = db.prepare(`INSERT INTO separacao_pedidos
+                                  (separacao_id, ordem, cliente, cidade, uf, carga, pedido_numero)
+                                VALUES (?, ?, ?, ?, ?, ?, ?)`)
+            .run(sepId, p.ordem, p.cliente || null, p.cidade || null, p.uf || null,
+                 p.carga || null, p.pedido_numero || p.bling_numero || null);
           for (const it of p.itens) {
             if (!it.reconhecido || it.fardos <= 0) continue;
             db.prepare(`INSERT INTO separacao_itens (pedido_id, cor_key, formato, fardos)
@@ -7711,9 +7728,11 @@ const requestHandlerBase = async (req, res) => {
         for (const a of antigos) db.prepare('DELETE FROM separacao_itens WHERE pedido_id = ?').run(a.id);
         db.prepare('DELETE FROM separacao_pedidos WHERE separacao_id = ?').run(sepId);
         for (const p of pedidos) {
-          const r = db.prepare(`INSERT INTO separacao_pedidos (separacao_id, ordem, cliente, cidade, uf)
-                                VALUES (?, ?, ?, ?, ?)`)
-                      .run(sepId, parseInt(p.ordem, 10), p.cliente || null, p.cidade || null, p.uf || null);
+          const r = db.prepare(`INSERT INTO separacao_pedidos
+                                  (separacao_id, ordem, cliente, cidade, uf, carga, pedido_numero)
+                                VALUES (?, ?, ?, ?, ?, ?, ?)`)
+                      .run(sepId, parseInt(p.ordem, 10), p.cliente || null, p.cidade || null,
+                           p.uf || null, p.carga || null, p.pedido_numero || null);
           for (const it of (p.itens || []))
             db.prepare(`INSERT INTO separacao_itens (pedido_id, cor_key, formato, fardos)
                         VALUES (?, ?, ?, ?)`)
@@ -7724,6 +7743,55 @@ const requestHandlerBase = async (req, res) => {
       tr();
       logI('separacao', `Separação ${sepId} conferida: ${pedidos.length} pedido(s)`);
       return jsonOk(res, { id: sepId, status: 'conferida', pedidos: pedidos.length, avisos });
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    //  POST /separacao/:id/ordem — muda SÓ a ordem de carregamento.
+    //  { ordens: [id_do_pedido, ...] }  — do primeiro a carregar ao último
+    // --------------------------------------------------------------
+    //  A ordem de carregamento é a única coisa nesta tela que o gestor
+    //  decide de verdade: o resto veio do documento. Ela merece rota
+    //  própria — mandá-la junto da conferência obrigaria a reenviar
+    //  todos os itens só para trocar duas cargas de lugar, e um erro de
+    //  digitação no caminho apagaria a guia inteira.
+    // ══════════════════════════════════════════════════════════════
+    if ((m = pathname.match(/^\/separacao\/(\d+)\/ordem$/)) && req.method === 'POST') {
+      const sepId = Number(m[1]);
+      const s = db.prepare('SELECT * FROM separacoes WHERE id = ?').get(sepId);
+      if (!s) return jsonErr(res, 404, `Separação ${sepId} não existe`);
+      if (s.status === 'cancelada' || s.status === 'concluida')
+        return jsonErr(res, 409, `Separação ${s.status}.`);
+      // Depois que uma gaiola já saiu do endereço, mudar a ordem
+      // embaralharia as pilhas que já estão montadas na doca.
+      const jaColetou = db.prepare(`SELECT COUNT(*) AS n FROM separacao_coletas
+                                    WHERE separacao_id = ? AND status = 'coletada'`).get(sepId).n;
+      if (jaColetou) return jsonErr(res, 409,
+        'A separação já começou — a ordem de carregamento não muda mais.');
+
+      let body; try { body = await lerBodyJson(req); } catch (e) { return jsonErr(res, 400, e.message); }
+      const querida = (Array.isArray(body.ordens) ? body.ordens : []).map(Number);
+      const atuais = db.prepare('SELECT id FROM separacao_pedidos WHERE separacao_id = ? ORDER BY ordem')
+                       .all(sepId).map(r => r.id);
+      if (querida.length !== atuais.length || new Set(querida).size !== querida.length
+          || querida.some(id => !atuais.includes(id)))
+        return jsonErr(res, 400,
+          'A nova ordem precisa trazer cada pedido da carga exatamente uma vez.');
+
+      const tr = makeTransaction(() => {
+        // Duas passadas. O índice único (separacao_id, ordem) impede
+        // numerar por cima: trocar o 1º com o 2º esbarraria no 2º que
+        // ainda existe. Os negativos são o estacionamento temporário.
+        for (let i = 0; i < querida.length; i++)
+          db.prepare('UPDATE separacao_pedidos SET ordem = ? WHERE id = ?').run(-(i + 1), querida[i]);
+        for (let i = 0; i < querida.length; i++)
+          db.prepare('UPDATE separacao_pedidos SET ordem = ? WHERE id = ?').run(i + 1, querida[i]);
+      });
+      tr();
+      const pedidos = db.prepare(`SELECT id, ordem, cliente, cidade, uf, carga, pedido_numero
+                                  FROM separacao_pedidos WHERE separacao_id = ? ORDER BY ordem`).all(sepId);
+      logI('separacao', `Separação ${sepId}: ordem de carregamento definida — `
+        + pedidos.map(p => `${p.ordem}º ${p.cliente || p.id}`).join(', '));
+      return jsonOk(res, { id: sepId, pedidos });
     }
 
     // POST /separacao/:id/planejar — roda o alocador e grava o plano.

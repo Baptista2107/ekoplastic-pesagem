@@ -88,10 +88,15 @@ function resumosImpressos(regex) {
     .filter(t => /A30,24,0,4,1,1,N,"RESUMO/.test(t) && regex.test(t));
 }
 
-const hojeISO = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-};
+// O "hoje" tem de ser o do SERVIDOR, não o desta máquina.
+// O servidor de teste sobe com TZ=America/Sao_Paulo; se a máquina que
+// roda o teste estiver em UTC, das 21h à meia-noite no Brasil os dois
+// discordam do dia e o resumo do dia vem vazio — uma falha que não é
+// do produto e que só aparece à noite, justamente quando se costuma
+// publicar. Perguntar o dia no fuso do servidor acaba com isso.
+const TZ_ESTACAO = 'America/Sao_Paulo';
+const diaISO = (d = new Date()) => d.toLocaleDateString('en-CA', { timeZone: TZ_ESTACAO });
+const hojeISO = () => diaISO();
 
 // ── Helpers de cenário ──
 async function bigBagsRecebidos(qtd, fornecedor = 'Cedro') {
@@ -324,7 +329,7 @@ async function testeViradaDoDia() {
   console.log('\n[6] Virada do dia (fuso local) — pesagem de ontem não entra em hoje');
   const hoje = hojeISO();
   const d = new Date(); d.setDate(d.getDate() - 1);
-  const ontem = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  const ontem = diaISO(d);
 
   const antesHoje  = (await req('GET', `/resumo-dia?tipo=outras&data=${hoje}`)).json;
   const antesOntem = (await req('GET', `/resumo-dia?tipo=outras&data=${ontem}`)).json;

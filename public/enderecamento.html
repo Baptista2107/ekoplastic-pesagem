@@ -154,9 +154,41 @@ header .sp{flex:1}
 .lixo:hover{color:var(--bloqueada)}
 .unid{display:flex;gap:6px;align-items:center;margin-bottom:10px;font-size:12.5px;color:var(--muted)}
 
+/* ─── Os três passos da separação ───
+   A régua existe porque o processo tem uma ordem que não é óbvia:
+   conferir a guia, decidir a ordem de carregamento, só então separar.
+   Sem ela, importar o PDF caía numa tela de coleta e a decisão do meio
+   parecia ter sido tomada pelo sistema — quando é a única que não é. */
+.passos{display:flex;gap:6px;margin-bottom:12px}
+.passo{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 4px;
+  border:1px solid var(--border);border-radius:10px;background:var(--surface);opacity:.5}
+.passo b{width:22px;height:22px;border-radius:50%;background:var(--panel-hi);color:var(--muted);
+  display:flex;align-items:center;justify-content:center;font-size:12px}
+.passo span{font-size:9.5px;font-weight:800;letter-spacing:.4px;color:var(--muted);text-align:center;line-height:1.25}
+.passo.on{opacity:1;border-color:var(--accent);background:rgba(46,230,166,.08)}
+.passo.on b{background:var(--accent);color:#04140d}
+.passo.on span{color:var(--text)}
+.passo.feito{opacity:.85}
+.passo.feito b{background:transparent;border:1px solid var(--accent);color:var(--accent)}
+
+/* ─── Ordem de carregamento (passo 2) ─── */
+.ord{display:flex;gap:11px;align-items:center;background:var(--panel);border:1px solid var(--border);
+  border-radius:12px;padding:12px;margin-bottom:8px}
+.ord-n{flex:0 0 46px;height:46px;border-radius:10px;background:var(--accent);color:#04140d;
+  display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:900}
+.ord-c{flex:1;min-width:0}
+.ord-cli{font-size:14.5px;font-weight:800;line-height:1.25}
+.ord-sub{font-size:12.5px;color:var(--muted);margin-top:2px}
+.ord-tag{display:inline-block;margin-top:5px;padding:3px 8px;border-radius:20px;font-size:11px;
+  font-weight:800;background:rgba(46,230,166,.12);color:var(--accent)}
+.ord-qtd{font-size:12.5px;color:var(--muted);margin-top:5px}
+.ord-set{flex:0 0 auto;display:flex;flex-direction:column;gap:5px}
+.ord-set .btn-ic:disabled{opacity:.25}
+
 /* ─── Plano de coleta ─── */
 .pl-ped{margin-bottom:16px}
 .pl-ped h4{font-size:12px;font-weight:900;letter-spacing:1.2px;color:var(--muted);margin-bottom:8px;text-transform:uppercase}
+.pl-sub{font-size:12px;color:var(--muted);margin:-4px 0 8px}
 .cl{display:flex;gap:11px;align-items:flex-start;background:var(--panel);border:1px solid var(--border);
   border-radius:12px;padding:12px;margin-bottom:8px}
 .cl .end{flex:0 0 auto;font-family:'IBM Plex Mono',monospace;font-size:17px;font-weight:700;color:var(--accent);
@@ -724,6 +756,7 @@ let SEP_UNIDADE = 'kg';    // a guia vem em kg; fardos existe para quem preferir
 let SEP_PLANO = null;
 let SEP_ESTADO = null;
 let SEP_CORRIGINDO = false;    // resposta completa do GET /separacao/:id
+let SEP_ORDENANDO = false;     // na tela de ORDEM DE CARREGAMENTO (passo 2)
 let SEP_LISTA = [];
 
 const sepAviso = (t, c) => { $('sep-msg').innerHTML = t ? `<div class="aviso ${c||'at'}">${t}</div>` : ''; };
@@ -771,7 +804,7 @@ async function sepEnviarFoto(input) {
     if (!d.ok) throw new Error(d.erro || 'falha ao enviar');
     beep(880, .09); vibrar(40);
     SEP = { id: d.id, status: d.status, arquivo: d.arquivo };
-    SEP_PEDIDOS = [];  SEP_ESTADO = null;  SEP_CORRIGINDO = false;
+    SEP_PEDIDOS = [];  SEP_ESTADO = null;  SEP_CORRIGINDO = false;  SEP_ORDENANDO = false;
     SEP_UNIDADE = 'kg';        // guia nova SEMPRE começa em kg — ver comentário
     sepNovoPedido();
     sepAviso('Guia recebida. Agora confira os pedidos com a foto ao lado.', 'ok');
@@ -800,7 +833,8 @@ async function sepCarregarEstado() {
   SEP = d.separacao;
   SEP_ESTADO = d;
   SEP_PEDIDOS = (d.pedidos || []).map(p => ({
-    ordem: p.ordem, cliente: p.cliente || '', cidade: p.cidade || '', uf: p.uf || '',
+    id: p.id, ordem: p.ordem, cliente: p.cliente || '', cidade: p.cidade || '', uf: p.uf || '',
+    carga: p.carga || '', pedido_numero: p.pedido_numero || '',
     itens: (p.itens || []).map(it => ({ cor_key: it.cor_key, formato: it.formato, qtd: it.fardos })),
   }));
   if (SEP_PEDIDOS.length) SEP_UNIDADE = 'fardos';   // o banco já guarda em fardos
@@ -818,7 +852,7 @@ async function sepAbrir(id) {
 }
 
 function sepFechar() { SEP = null; SEP_PEDIDOS = []; SEP_ESTADO = null; SEP_CORRIGINDO = false;
-  pararCamera(); sepAviso(''); sepRender(); }
+  SEP_ORDENANDO = false; pararCamera(); sepAviso(''); sepRender(); }
 
 /* ── Edição da conferência ─────────────────────────────────────── */
 function sepNovoPedido() {
@@ -861,8 +895,12 @@ async function sepConferirEPlanejar() {
         : { cor_key: it.cor_key, formato: it.formato, fardos: Math.round(q) });
     }
     if (!itens.length) continue;
+    // carga e pedido_numero vêm da guia e não aparecem nesta tela; se
+    // não forem devolvidos aqui, corrigir um item apagaria o rótulo
+    // "CARGA 1 · Entrega #4" que a tela de ordem usa como referência.
     pedidos.push({ ordem: p.ordem, cliente: p.cliente || null, cidade: p.cidade || null,
-                   uf: p.uf || null, itens });
+                   uf: p.uf || null, carga: p.carga || null,
+                   pedido_numero: p.pedido_numero || null, itens });
   }
   if (!pedidos.length) { sepAviso('Preencha ao menos um item com quantidade.', 'err'); return; }
 
@@ -874,16 +912,14 @@ async function sepConferirEPlanejar() {
     if (!d.ok) throw new Error(d.erro || 'falha na conferência');
     const avisos = d.avisos || [];
 
-    r = await fetch(URL_BASE + `/separacao/${SEP.id}/planejar`, { method: 'POST' });
-    d = await r.json();
-    if (!d.ok) throw new Error(d.erro || 'falha ao planejar');
     SEP_CORRIGINDO = false;
     await sepCarregarEstado();
     beep(880, .09); vibrar(40);
 
-    // A falta tem bloco próprio na tela do plano, com quem fica faltando.
-    // Repetir aqui em vermelho só assustava — o que falta é, quase sempre,
-    // produção que fica pronta no dia.
+    // Confere → ORDEM → lista. Não pula direto para os endereços: a
+    // sequência de carregamento é o que decide a lista, e ela é do
+    // gestor. Os avisos do arredondamento em kg viajam junto.
+    SEP_ORDENANDO = true;
     sepAviso(avisos.length ? avisos.map(a => esc(a)).join('<br>') : '', 'at');
     sepRender();
   } catch (e) { sepAviso('Não consegui gerar o plano: ' + esc(e.message), 'err'); }
@@ -903,13 +939,27 @@ async function sepReplanejar() {
   } catch (e) { sepAviso('Não consegui refazer: ' + esc(e.message), 'err'); }
 }
 
-/* ── Desenho ───────────────────────────────────────────────────── */
+/* ── Desenho ───────────────────────────────────────────────────────
+   O processo tem TRÊS passos, nesta ordem, e a tela diz em qual você
+   está. Sem isso, importar a guia caía direto numa tela de coleta e
+   ninguém entendia onde entrou a decisão da ordem de carregamento —
+   que é justamente a única decisão que o sistema não pode tomar. */
 function sepRender() {
   if (!SEP) { sepDesenharAbertura(); return; }
+  if (SEP_CORRIGINDO) { sepDesenharConferencia(); return; }
+  if (SEP_ORDENANDO)  { sepDesenharOrdem(); return; }
   const temPlano = SEP_ESTADO && (SEP_ESTADO.coletas || []).some(
     c => c.status === 'planejada' || c.status === 'coletada');
-  if (temPlano && !SEP_CORRIGINDO) sepDesenharPlano();
+  if (temPlano) sepDesenharPlano();
   else sepDesenharConferencia();
+}
+
+// A régua dos três passos, no alto de cada tela.
+function sepPassos(atual) {
+  const nomes = [[1, 'CONFERIR A GUIA'], [2, 'ORDEM DE CARREGAMENTO'], [3, 'SEPARAR']];
+  return `<div class="passos">${nomes.map(([n, t]) => `
+    <div class="passo ${n === atual ? 'on' : (n < atual ? 'feito' : '')}">
+      <b>${n < atual ? '✓' : n}</b><span>${t}</span></div>`).join('')}</div>`;
 }
 
 async function sepDesenharAbertura() {
@@ -1027,6 +1077,7 @@ function sepDesenharPrevia() {
     </div>` : '';
 
   $('sep-corpo').innerHTML = `
+    ${sepPassos(1)}
     <div class="guia-mini">
       <div style="width:56px;height:56px;border-radius:8px;background:var(--surface);display:flex;
         align-items:center;justify-content:center;font-size:22px">📄</div>
@@ -1043,10 +1094,12 @@ function sepDesenharPrevia() {
     ${avisos}
     <div class="acoes" style="margin-bottom:12px">
       <button class="btn" onclick="sepFechar()">← voltar</button>
-      <button class="btn ok" style="flex:1" onclick="sepCriarDaGuia()">✓ CONFERE — MONTAR A CARGA</button>
+      <button class="btn ok" style="flex:1" onclick="sepCriarDaGuia()">
+        ✓ CONFERE — DEFINIR A ORDEM DE CARREGAMENTO</button>
     </div>
-    <div class="dica" style="margin-bottom:12px">A ordem abaixo é a das
-      colunas da guia. Dá para acertar com as setas depois de montar a carga.</div>
+    <div class="dica" style="margin-bottom:12px">A ordem abaixo é a das colunas da guia.
+      <b>O próximo passo é confirmar ou mudar a ordem de carregamento</b> — é ela que
+      define por quais endereços você vai passar, e em que sequência.</div>
     ${blocos}`;
 }
 
@@ -1132,8 +1185,12 @@ async function sepCriarDaGuia() {
     SEP = { id: d.id, status: d.status, arquivo: null };
     SEP_UNIDADE = 'fardos'; SEP_CORRIGINDO = false;
     await sepCarregarEstado();
-    sepAviso('');
-    await sepReplanejar();
+    // Não planeja ainda. A lista de endereços é consequência da ordem
+    // de carregamento, e a ordem é do gestor — montar a lista antes de
+    // perguntar é montar a lista errada e ter de refazer.
+    SEP_ORDENANDO = true;
+    sepAviso('Guia lida. Agora confirme a ordem de carregamento.', 'ok');
+    sepRender();
   } catch (e) { sepAviso('Não consegui montar a carga: ' + esc(e.message), 'err'); }
 }
 
@@ -1239,9 +1296,10 @@ async function sepCriarDoBling() {
         + d.nao_reconhecidos.map(x => `${esc(x.cliente || '')} — ${esc(x.descricao || x.codigo || '?')}`
             + ` <i>(${esc(x.motivo)})</i>`).join('<br>')
         + '<br>Confira se são de produto acabado. Se forem, dá para acrescentar em “corrigir a guia”.', 'at');
-    } else sepAviso('');
+    } else sepAviso('Pedidos lidos. Agora confirme a ordem de carregamento.', 'ok');
 
-    await sepReplanejar();
+    SEP_ORDENANDO = true;      // mesma regra do PDF: a ordem vem antes da lista
+    sepRender();
   } catch (e) { sepAviso('Não consegui montar a carga: ' + esc(e.message), 'err'); }
 }
 
@@ -1299,6 +1357,7 @@ function sepDesenharConferencia() {
   }).join('');
 
   $('sep-corpo').innerHTML = `
+    ${sepPassos(1)}
     ${sepCabecalhoGuia()}
     <div class="unid">A guia está em:
       <button class="chip ${SEP_UNIDADE === 'kg' ? 'on' : ''}" onclick="sepUnidade('kg')">kg</button>
@@ -1308,11 +1367,110 @@ function sepDesenharConferencia() {
     ${cards}
     <div class="acoes">
       <button class="btn" onclick="sepNovoPedido()">+ PEDIDO</button>
-      <button class="btn ok" style="flex:1" onclick="sepConferirEPlanejar()">✓ CONFERIDO — GERAR PLANO</button>
+      <button class="btn ok" style="flex:1" onclick="sepConferirEPlanejar()">
+        ✓ CONFERIDO — DEFINIR A ORDEM</button>
     </div>
-    <div class="dica">O número à esquerda é a <b>ordem de carregamento</b>. Use as
-      setas para mudar. Lembre que o primeiro a carregar é o último a entregar.</div>`;
+    <div class="dica">Aqui você acerta <b>o que</b> vai na carga. A <b>ordem de
+      carregamento</b> vem na tela seguinte, com a lista inteira à vista — as setas daqui
+      são só um atalho.</div>`;
 }
+
+/* ══════════════════════════════════════════════════════════════════
+   PASSO 2 — A ORDEM DE CARREGAMENTO
+   ------------------------------------------------------------------
+   Esta é a única decisão da separação que o sistema NÃO pode tomar
+   sozinho: quem entra primeiro no caminhão depende da rota, do cliente
+   e do que o motorista combinou. Tudo o que vem depois — quais
+   endereços visitar, em que sequência, qual gaiola serve dois pedidos
+   de uma vez — é consequência dela.
+
+   Por isso ela virou uma tela inteira, e não uma seta escondida no
+   canto de outra: o sistema PERGUNTA antes de montar qualquer lista.
+
+   A guia numera as cargas da esquerda para a direita e imprime, em
+   cada uma, o número da entrega. Como o cabeçalho dela diz que a
+   coluna da esquerda é a última a ser carregada, os dois números
+   costumam correr em sentidos opostos — e é exatamente por isso que a
+   tela mostra os dois e deixa você inverter tudo com um toque.
+   ══════════════════════════════════════════════════════════════════ */
+function sepDesenharOrdem() {
+  const totalFardos = p => (p.itens || []).reduce((a, it) => a + (Number(it.qtd) || 0), 0);
+  const linhas = SEP_PEDIDOS.map((p, i) => `
+    <div class="ord">
+      <div class="ord-n">${p.ordem}º</div>
+      <div class="ord-c">
+        <div class="ord-cli">${esc(p.cliente || 'pedido ' + p.ordem)}</div>
+        <div class="ord-sub">${esc(p.cidade || '')}${p.uf ? '/' + esc(p.uf) : ''}${
+          p.pedido_numero ? ' · Ped.' + esc(p.pedido_numero) : ''}</div>
+        ${p.carga ? `<div class="ord-tag">${esc(p.carga)}</div>` : ''}
+        <div class="ord-qtd">${totalFardos(p)} fardo(s) · ${fmtKg(totalFardos(p) * KG_FARDO)}</div>
+      </div>
+      <div class="ord-set">
+        <button class="btn-ic" onclick="sepMover(${i},-1)" ${i === 0 ? 'disabled' : ''}
+                title="Carregar antes">↑</button>
+        <button class="btn-ic" onclick="sepMover(${i},1)" ${i === SEP_PEDIDOS.length - 1 ? 'disabled' : ''}
+                title="Carregar depois">↓</button>
+      </div>
+    </div>`).join('');
+
+  $('sep-corpo').innerHTML = `
+    ${sepPassos(2)}
+    ${sepCabecalhoGuia()}
+    <div class="det" style="margin-bottom:12px">
+      <h3 style="font-family:inherit;font-size:15px">Em que ordem o caminhão vai ser carregado?</h3>
+      <div class="sub">O <b>1º da lista entra primeiro no caminhão</b> — e por isso é o
+        <b>último a ser entregue</b>. É esta sequência que vai definir por quais endereços
+        você passa e em que ordem.</div>
+      <div class="acoes" style="margin-top:10px">
+        <button class="btn" onclick="sepInverterOrdem()">⇅ inverter a ordem toda</button>
+      </div>
+    </div>
+    ${linhas || '<div class="vazio">Nenhum pedido nesta carga.</div>'}
+    <div class="acoes" style="margin-top:12px">
+      <button class="btn ok" style="flex:1" onclick="sepConfirmarOrdem()">
+        ✓ ESTA É A ORDEM — VER OS ENDEREÇOS</button>
+    </div>
+    <div class="acoes">
+      <button class="btn" onclick="sepVoltarConferencia()">← corrigir a guia</button>
+      <button class="btn" onclick="sepFechar()">fechar</button>
+    </div>`;
+}
+
+// Inverter tudo de uma vez. Existe porque a dúvida real quase nunca é
+// "trocar o 2º com o 3º": é se a guia deve ser lida da esquerda para a
+// direita ou ao contrário. Um toque resolve, sem subir carga por carga.
+function sepInverterOrdem() {
+  SEP_PEDIDOS.reverse();
+  SEP_PEDIDOS.forEach((p, k) => p.ordem = k + 1);
+  sepRender();
+}
+
+async function sepConfirmarOrdem() {
+  const ids = SEP_PEDIDOS.map(p => p.id).filter(Boolean);
+  if (ids.length !== SEP_PEDIDOS.length) {
+    sepAviso('Esta carga ainda não foi gravada. Confira a guia primeiro.', 'err');
+    return;
+  }
+  sepAviso('Gravando a ordem e montando a lista de endereços…', 'at');
+  try {
+    let r = await fetch(URL_BASE + `/separacao/${SEP.id}/ordem`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ordens: ids }) });
+    let d = await r.json();
+    if (!d.ok) throw new Error(d.erro || 'falha ao gravar a ordem');
+
+    r = await fetch(URL_BASE + `/separacao/${SEP.id}/planejar`, { method: 'POST' });
+    d = await r.json();
+    if (!d.ok) throw new Error(d.erro || 'falha ao montar a lista');
+    SEP_ORDENANDO = false;
+    await sepCarregarEstado();
+    beep(880, .09); vibrar(40);
+    sepAviso('');
+    sepRender();
+  } catch (e) { sepAviso('Não consegui montar a lista: ' + esc(e.message), 'err'); }
+}
+
+function sepVoltarOrdem() { SEP_ORDENANDO = true; SEP_CORRIGINDO = false; pararCamera(); sepRender(); }
 
 function sepDesenharPlano() {
   const est = SEP_ESTADO || {};
@@ -1329,8 +1487,23 @@ function sepDesenharPlano() {
   // ── O bloco da FALTA. Quase nunca a guia inteira está pronta: parte
   //    está na máquina e fica pronta no dia. Isso não é erro, é o
   //    normal — o erro seria o caminhão sair faltando carga sem
-  //    ninguém saber. Por isso vem em cima de tudo. ──
-  let blocoFalta = '';
+  //    ninguém saber.
+  //
+  //    Ele já ocupou o topo desta tela, e foi um engano: com o mapa
+  //    ainda incompleto a tela abria com um muro laranja de "falta
+  //    tudo" e os endereços — que são o motivo de a tela existir —
+  //    ficavam empurrados para baixo do fim do celular. Agora a falta
+  //    entra como uma tarja de uma linha em cima e o detalhe fica no
+  //    fim, depois da lista. ──
+  let tarjaFalta = '', blocoFalta = '';
+  if (falta.fardos > 0) {
+    tarjaFalta = `<div class="aviso at" style="display:flex;align-items:center;gap:10px">
+      <span style="font-size:16px">⏳</span>
+      <span style="flex:1"><b>${falta.fardos} fardo(s)</b> desta carga ainda não estão
+        endereçados — o normal é estarem em produção.</span>
+      <button class="btn" onclick="document.getElementById('falta-det').scrollIntoView({behavior:'smooth'})"
+        style="flex:0 0 auto">ver</button></div>`;
+  }
   if (falta.fardos > 0) {
     const porProd = falta.por_produto.map(f =>
       `<div class="linha"><span>${esc(f.formato)} ${esc(f.cor_key)}</span>
@@ -1338,7 +1511,7 @@ function sepDesenharPlano() {
     const porPed = falta.por_item.map(f =>
       `<div class="linha"><span>${f.ordem}º · ${esc(f.cliente || 'pedido ' + f.ordem)}</span>
         <span>${f.faltam} × ${esc(f.formato)} ${esc(f.cor_key)}</span></div>`).join('');
-    blocoFalta = `<div class="det" style="border-color:var(--warn)">
+    blocoFalta = `<div class="det" id="falta-det" style="border-color:var(--warn)">
       <h3 style="font-family:inherit;font-size:15px;color:var(--warn)">⏳ FALTAM ${falta.fardos} FARDO(S) NO GALPÃO</h3>
       <div class="sub">Não estão endereçados agora. O normal é estarem em produção —
         assim que ficarem prontos e forem endereçados, toque em <b>refazer o plano</b>
@@ -1350,7 +1523,13 @@ function sepDesenharPlano() {
   }
 
   // ── Coletas, por pedido na ordem de carregamento, caminhando pelo galpão ──
-  const ordens = [...new Set(vivas.flatMap(c => Object.keys(c.reparticao || {}).map(Number)))].sort((a, b) => a - b);
+  // A lista percorre TODOS os pedidos da carga, não só os que têm
+  // endereço. Um pedido inteiro em produção sumindo da lista abriria um
+  // buraco entre a ordem que o gestor confirmou e a lista que o
+  // separador lê — ele contaria "1º, 3º, 4º" e iria procurar o 2º.
+  const ordens = SEP_PEDIDOS.length
+    ? SEP_PEDIDOS.map(p => p.ordem).sort((a, b) => a - b)
+    : [...new Set(vivas.flatMap(c => Object.keys(c.reparticao || {}).map(Number)))].sort((a, b) => a - b);
   const jaBuscada = new Set();
   const blocos = ordens.map(o => {
     const doPedido = vivas.filter(c => c.reparticao && c.reparticao[o]).sort((a, b) => {
@@ -1377,28 +1556,55 @@ function sepDesenharPlano() {
             </div>` : ''}
         </div></div>`;
     }).join('');
-    return `<div class="pl-ped"><h4>${o}º a carregar — ${esc(nomePedido(o))}</h4>${linhas}</div>`;
+    const p = SEP_PEDIDOS.find(x => x.ordem === Number(o)) || {};
+    const sub = [p.cidade ? p.cidade + (p.uf ? '/' + p.uf : '') : '',
+                 p.pedido_numero ? 'Ped.' + p.pedido_numero : '',
+                 p.carga || ''].filter(Boolean).join(' · ');
+    const nEnd = doPedido.length;
+    // Pedido sem nenhum endereço: não some da lista, aparece dizendo por quê.
+    const faltaDele = falta.por_item.filter(f => Number(f.ordem) === Number(o));
+    const vazio = nEnd ? '' : `<div class="cl" style="border-style:dashed;opacity:.8">
+      <div class="end" style="color:var(--warn)">—</div>
+      <div class="cp"><div class="p1">nada endereçado para este pedido ainda</div>
+        <div class="p2">${faltaDele.length
+          ? faltaDele.map(f => `${f.faltam} × ${esc(f.formato)} ${esc(f.cor_key)}`).join(' · ')
+            + ' — em produção'
+          : 'sem itens a coletar'}</div></div></div>`;
+    return `<div class="pl-ped">
+      <h4>${o}º a carregar — ${esc(nomePedido(o))}</h4>
+      <div class="pl-sub">${esc(sub)}${sub ? ' · ' : ''}${nEnd} endereço(s) a visitar</div>
+      ${linhas}${vazio}</div>`;
   }).join('');
 
+  const compart = vivas.filter(c => Object.keys(c.reparticao || {}).length > 1).length;
+
   $('sep-corpo').innerHTML = `
+    ${sepPassos(3)}
     ${sepCabecalhoGuia()}
     <div class="resumo">
       <div class="rz"><b>${feitas.length}/${vivas.length}</b><span>coletadas</span></div>
       <div class="rz"><b>${fardos}</b><span>fardos</span></div>
-      <div class="rz"><b>${vivas.filter(c => Object.keys(c.reparticao || {}).length > 1).length}</b><span>em 2+ pedidos</span></div>
+      <div class="rz"><b>${compart}</b><span>em 2+ pedidos</span></div>
       <div class="rz" ${falta.fardos ? 'style="border-color:var(--warn)"' : ''}>
         <b${falta.fardos ? ' style="color:var(--warn)"' : ''}>${falta.fardos}</b><span>faltando</span></div>
     </div>
-    ${blocoFalta}
+    ${tarjaFalta}
     <div id="reader-sep"></div>
     <div class="acoes" style="margin-top:0">
       <button class="btn ok" id="btn-cam-sep" style="flex:1" onclick="sepBipar()">▶ LIGAR CÂMERA</button>
       <button class="btn" onclick="sepReplanejar()">↻ refazer</button>
     </div>
-    <div class="dica" style="margin-bottom:12px">Bipe a etiqueta da prateleira <b>ou</b> a
-      da gaiola ao pegar. É esse bipe que libera o endereço no mapa.</div>
+    <div class="rua-tit" style="margin:14px 0 6px">LISTA DE SEPARAÇÃO — NA ORDEM DE CARREGAMENTO</div>
+    <div class="dica" style="margin-bottom:12px">Cada bloco é um pedido, na sequência que
+      você definiu, e dentro dele os endereços vêm na ordem de caminhada pelo galpão.
+      Bipe a etiqueta da prateleira <b>ou</b> a da gaiola ao pegar — é esse bipe que
+      libera o endereço no mapa.${compart ? ` <b>${compart} ${compart === 1 ? 'gaiola atende' : 'gaiolas atendem'}</b>
+      mais de um pedido: a etiqueta verde avisa, e ${compart === 1 ? 'ela' : 'elas'} não
+      ${compart === 1 ? 'deve' : 'devem'} ser buscada${compart === 1 ? '' : 's'} duas vezes.` : ''}</div>
     ${blocos || '<div class="vazio">Nada a coletar.</div>'}
+    ${blocoFalta}
     <div class="acoes">
+      <button class="btn" onclick="sepVoltarOrdem()">⇅ mudar a ordem</button>
       <button class="btn" onclick="sepVoltarConferencia()">← corrigir a guia</button>
       <button class="btn" onclick="sepFechar()">fechar</button>
     </div>`;

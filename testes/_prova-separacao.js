@@ -142,12 +142,48 @@ async function tirar(page, nome) {
     ok(/Ped\.1063/.test(previa), 'com o número do pedido de cada carga');
     await tirar(page, '1c-previa-do-pdf');
 
-    await page.click('text=CONFERE — MONTAR A CARGA');
+    // ── 1c2. O PASSO QUE FALTAVA: O SISTEMA PERGUNTA A ORDEM ──
+    // Antes, importar a guia caía direto numa tela de coleta e a
+    // decisão do meio — quem entra primeiro no caminhão — parecia ter
+    // sido tomada pelo sistema. É a única que ele NÃO pode tomar.
+    await page.click('text=CONFERE — DEFINIR A ORDEM DE CARREGAMENTO');
     await sleep(3000);
+    const ordem0 = await page.innerText('#sep-corpo');
+    ok(/Em que ordem o caminhão vai ser carregado/.test(ordem0),
+       'importar a guia leva à ORDEM DE CARREGAMENTO, não direto à coleta');
+    ok(/último a ser entregue/.test(ordem0),
+       'a tela explica que o 1º a carregar é o último a entregar');
+    ok(/CARGA 1/.test(ordem0) && /Ped\.1063/.test(ordem0),
+       'cada carga aparece com o rótulo da guia, para dar para reconhecer qual é qual');
+    ok(/inverter a ordem toda/.test(ordem0),
+       'e dá para inverter tudo de uma vez — a dúvida real é o sentido da leitura');
+    await tirar(page, '1d-ordem-de-carregamento');
+
+    const antesInv = await page.innerText('.ord .ord-cli');
+    await page.click('text=inverter a ordem toda'); await sleep(600);
+    const depoisInv = await page.innerText('.ord .ord-cli');
+    ok(antesInv !== depoisInv, `inverter troca quem carrega primeiro: ${antesInv} → ${depoisInv}`);
+    await page.click('text=inverter a ordem toda'); await sleep(600);   // volta ao original
+    const voltou = await page.innerText('.ord .ord-cli');
+    ok(voltou === antesInv, 'e inverter de novo volta ao que era');
+
+    await page.click('text=ESTA É A ORDEM'); await sleep(3500);
     const plano0 = await page.innerText('#sep-corpo');
-    ok(/A CARREGAR/.test(plano0), 'e vai direto para o plano de coleta');
-    ok(/FALTAM/.test(plano0), 'apontando o que ainda está em produção');
-    await tirar(page, '1d-plano-do-pdf');
+    ok(/LISTA DE SEPARAÇÃO/.test(plano0), 'confirmar a ordem gera a LISTA DE ENDEREÇOS');
+    ok(/A CARREGAR/.test(plano0), 'com os pedidos na sequência escolhida');
+    ok(/ainda não estão endereçados/.test(plano0),
+       'e o que está em produção vira uma tarja curta, não um muro na frente da lista');
+    const posLista = plano0.indexOf('LISTA DE SEPARAÇÃO');
+    const posFalta = plano0.indexOf('FALTAM');
+    ok(posLista > -1 && posFalta > posLista,
+       'a lista de endereços vem ANTES do detalhe do que falta — é ela o assunto da tela');
+    // Nenhum pedido pode sumir da lista: o separador conta 1º, 2º, 3º, 4º.
+    const numerados = (plano0.match(/\dº A CARREGAR/g) || []).length;
+    ok(numerados === 4,
+       `os 4 pedidos aparecem na lista, mesmo os que estão sem estoque: ${numerados}`);
+    ok(/nada endereçado para este pedido ainda/.test(plano0),
+       'e o pedido sem estoque diz isso na cara, em vez de sumir da lista');
+    await tirar(page, '1d2-lista-de-enderecos');
     await page.click('text=fechar'); await sleep(800);
 
     // ── 1e. QUANDO O PDF NÃO É RECONHECIDO, A TELA DIZ POR QUÊ ──
@@ -231,9 +267,15 @@ async function tirar(page, nome) {
     await ped(0).locator('.btn-ic[title="Carregar depois"]').click();
     await sleep(400);
 
-    // ── 5. Gerar o plano ──
-    await page.click('text=CONFERIDO — GERAR PLANO');
-    await sleep(2000);
+    // ── 5. Conferir → ORDEM → lista de endereços ──
+    // O caminho da foto passa pela mesma porta do caminho do PDF: quem
+    // decide a sequência é o gestor, não o sistema.
+    await page.click('text=CONFERIDO — DEFINIR A ORDEM');
+    await sleep(2500);
+    ok(/Em que ordem o caminhão vai ser carregado/.test(await page.innerText('#sep-corpo')),
+       'o caminho da foto também passa pela ordem de carregamento');
+    await page.click('text=ESTA É A ORDEM');
+    await sleep(2500);
     ok(await page.isVisible('.cl'), 'o plano de coleta apareceu');
     const texto = await page.innerText('#sep-corpo');
     ok(texto.includes('01-01-001') && texto.includes('01-01-002'),
@@ -263,8 +305,10 @@ async function tirar(page, nome) {
     await page.click('text=corrigir a guia');
     await sleep(600);
     ok(await page.isVisible('.ped'), 'dá para voltar à conferência e corrigir');
-    await page.click('text=CONFERIDO — GERAR PLANO');
-    await sleep(1800);
+    await page.click('text=CONFERIDO — DEFINIR A ORDEM');
+    await sleep(2000);
+    await page.click('text=ESTA É A ORDEM');
+    await sleep(2000);
     ok(await page.isVisible('.cl'),
        'e gerar o plano de novo — corrigir a guia continua livre enquanto ninguém coletou');
 
@@ -293,11 +337,15 @@ async function tirar(page, nome) {
     // segundo item: um formato que NÃO existe no galpão — é o "em produção"
     await ped(0).locator('.sel-fmt').nth(1).selectOption('80x100');
     await ped(0).locator('.qtd').nth(1).fill('250');             // 10 fardos que não existem
-    await page.click('text=CONFERIDO — GERAR PLANO');
+    await page.click('text=CONFERIDO — DEFINIR A ORDEM');
     await sleep(2200);
+    await page.click('text=ESTA É A ORDEM');
+    await sleep(2500);
 
     const t2 = await page.innerText('#sep-corpo');
-    ok(/FALTAM 10 FARDO/.test(t2), 'a tela avisa em destaque o que ainda está em produção');
+    ok(/ainda não estão endereçados/.test(t2),
+       'a tarja do que está em produção aparece no alto, em uma linha');
+    ok(/FALTAM 10 FARDO/.test(t2), 'e o detalhe, embaixo da lista, diz quanto é');
     ok(/QUEM FICA FALTANDO/.test(t2) && /CLIENTE C/.test(t2), 'e diz de qual pedido é a falta');
     ok(/80x100/.test(t2), 'nomeando o produto que falta');
     ok(await page.isVisible('#btn-cam-sep'), 'o botão de bipar a coleta está na tela');

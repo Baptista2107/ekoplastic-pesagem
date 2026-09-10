@@ -353,6 +353,68 @@ async function endereçar(posicao, corKey, formato, fardos, tipo) {
     const l5 = lst.body.separacoes.find(x => x.id === SEP5);
     ok(l5 && l5.faltando === 0, 'e aparece zerada na lista de separações');
 
+    // ── [12] A ORDEM DE CARREGAMENTO É DECISÃO DO GESTOR ────────────
+    // É a única coisa desta tela que o sistema não pode decidir: quem
+    // entra primeiro no caminhão depende da rota. Tudo o que vem depois
+    // — quais endereços, em que sequência, qual gaiola serve dois
+    // pedidos — é consequência dela. Por isso tem rota própria: trocar
+    // duas cargas de lugar não pode exigir reenviar a guia inteira.
+    console.log('\n[12] A ordem de carregamento muda sozinha, sem reenviar a guia');
+    const SEP6 = (await req('POST', '/separacao/nova', foto2)).body.id;
+    await req('POST', `/separacao/${SEP6}/conferir`, { pedidos: [
+      { ordem: 1, cliente: 'PRIMEIRO LTDA', carga: 'CARGA 1 · Entrega #3', pedido_numero: '9001',
+        itens: [{ cor_key: 'AM', formato: '40x50', fardos: 8 }] },
+      { ordem: 2, cliente: 'SEGUNDO S.A',   carga: 'CARGA 2 · Entrega #2', pedido_numero: '9002',
+        itens: [{ cor_key: 'AM', formato: '40x50', fardos: 8 }] },
+      { ordem: 3, cliente: 'TERCEIRO ME',   carga: 'CARGA 3 · Entrega #1', pedido_numero: '9003',
+        itens: [{ cor_key: 'AM', formato: '40x50', fardos: 8 }] },
+    ]});
+    const e6 = await req('GET', `/separacao/${SEP6}`);
+    ok(e6.body.pedidos[0].carga === 'CARGA 1 · Entrega #3'
+       && e6.body.pedidos[0].pedido_numero === '9001',
+       'o rótulo da coluna da guia e o número do pedido ficam gravados', e6.body.pedidos[0]);
+
+    const ids6 = e6.body.pedidos.map(p => p.id);
+    const inv = await req('POST', `/separacao/${SEP6}/ordem`, { ordens: ids6.slice().reverse() });
+    ok(inv.status === 200, 'a ordem inteira pode ser invertida de uma vez', inv.body);
+    const e6b = await req('GET', `/separacao/${SEP6}`);
+    ok(e6b.body.pedidos.map(p => p.cliente).join(' → ') === 'TERCEIRO ME → SEGUNDO S.A → PRIMEIRO LTDA',
+       `a nova sequência valeu: ${e6b.body.pedidos.map(p => p.cliente).join(' → ')}`);
+    ok(e6b.body.pedidos.map(p => p.ordem).join(',') === '1,2,3',
+       'e a numeração continua 1,2,3 — quem muda é a posição, não o número');
+    ok(e6b.body.pedidos[0].itens[0].fardos === 8,
+       'os itens não foram tocados — trocar a ordem não mexe na guia');
+
+    const torta = await req('POST', `/separacao/${SEP6}/ordem`, { ordens: [ids6[0], ids6[0], ids6[1]] });
+    ok(torta.status === 400, 'uma lista com pedido repetido é recusada — nunca some ninguém da carga');
+    const curta = await req('POST', `/separacao/${SEP6}/ordem`, { ordens: [ids6[0]] });
+    ok(curta.status === 400, 'e uma lista incompleta também');
+    const e6c = await req('GET', `/separacao/${SEP6}`);
+    ok(e6c.body.pedidos.map(p => p.cliente).join(' → ') === 'TERCEIRO ME → SEGUNDO S.A → PRIMEIRO LTDA',
+       'depois da recusa a ordem boa continua de pé');
+
+    // A ordem manda no plano: o alocador consome as gaiolas na sequência
+    // de carregamento, e é isso que faz o corte cair entre pedidos
+    // vizinhos — a gaiola compartilhada fica na doca de um para o outro.
+    await endereçar('02-03-010', 'AM', '40x50', 12, 'PEQUENA');
+    await sleep(5);
+    await endereçar('02-03-011', 'AM', '40x50', 12, 'PEQUENA');
+    const pl6 = await req('POST', `/separacao/${SEP6}/planejar`);
+    const primeiraColeta = pl6.body.coletas[0];
+    ok(Object.keys(primeiraColeta.reparticao).includes('1'),
+       'a lista de endereços começa pelo 1º da ordem de carregamento', primeiraColeta.reparticao);
+    ok(pl6.body.coletas.some(c => Object.keys(c.reparticao).length > 1),
+       'e uma gaiola atende mais de um pedido — é o que evita abrir gaiola nova');
+
+    // Depois que uma gaiola já saiu do endereço, mudar a ordem
+    // embaralharia as pilhas que já estão montadas na doca.
+    const e6d = await req('GET', `/separacao/${SEP6}`);
+    const col6 = e6d.body.coletas.filter(c => c.status === 'planejada')[0];
+    await req('POST', `/separacao/coleta/${col6.id}/confirmar`, { lido: col6.gaiola_id });
+    const ordemTarde = await req('POST', `/separacao/${SEP6}/ordem`, { ordens: ids6 });
+    ok(ordemTarde.status === 409 && /já começou/.test(ordemTarde.body.erro || ''),
+       'depois que o separador começou, a ordem não muda mais', ordemTarde.body);
+
     // ── [11] O CICLO SOBREVIVE AO REINÍCIO DA ATUALIZAÇÃO ───────────
     console.log('\n[11] O ciclo sobrevive a um reinício do servidor');
     const antes = await req('GET', '/sobras?todas=1');
@@ -373,7 +435,7 @@ async function endereçar(posicao, corKey, formato, fardos, tipo) {
     ok(depois.body.sobras.length === antes.body.sobras.length,
        'as sobras continuam lá depois do reinício');
     const listagem = await req('GET', '/separacao');
-    ok(listagem.body.separacoes.length === 5, `as 5 separações continuam lá: ${listagem.body.separacoes.length}`);
+    ok(listagem.body.separacoes.length === 6, `as 6 separações continuam lá: ${listagem.body.separacoes.length}`);
     const guiaViva = await fetch(`${BASE}/separacao/${SEP}/guia`);
     ok(guiaViva.status === 200, 'a foto da guia continua acessível');
 
