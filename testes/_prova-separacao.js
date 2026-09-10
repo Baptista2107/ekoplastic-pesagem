@@ -186,6 +186,54 @@ async function tirar(page, nome) {
     await tirar(page, '1d2-lista-de-enderecos');
     await page.click('text=fechar'); await sleep(800);
 
+    // ── 1d3. O GALPÃO AINDA NÃO FOI MAPEADO — E A TELA NÃO PODE SE PERDER ──
+    // Este é o estado REAL de quem está começando: a guia entra certa,
+    // a ordem é confirmada, e o alocador não acha NADA porque ninguém
+    // bipou as gaiolas ainda. A tela tem de continuar no passo 3,
+    // mostrando a lista vazia e dizendo por quê. Cair de volta numa
+    // tela de edição de pedidos é perder o operador — ele confirma a
+    // ordem, vê um formulário, volta, confirma de novo, e roda em
+    // círculo sem entender o que o sistema quer dele.
+    await page.click('#ab-sep'); await sleep(500);
+    await page.setInputFiles('#arq-pdf', {
+      name: 'guia-sem-estoque.pdf', mimeType: 'application/pdf',
+      buffer: pdfDeItens([
+        { x: 360, y: 520, t: 'CARGA 1 · Entrega #1' },
+        { x: 360, y: 505, t: 'Ped.7777' },
+        { x: 360, y: 492, t: 'CLIENTE SEM ESTOQUE LTDA |' },
+        { x: 360, y: 479, t: 'Teresina/PI' },
+        { x:  60, y: 440, t: 'SACOLA SEMI-VIRGEM AMARELA (25KG)' },
+        { x:  70, y: 425, t: 'TAMANHO:30X45' },      // nada disso está endereçado
+        { x: 365, y: 425, t: '30 frd' },
+      ]) });
+    await sleep(4500);
+    await page.click('text=CONFERE — DEFINIR A ORDEM DE CARREGAMENTO'); await sleep(3000);
+    ok(/Em que ordem o caminhão vai ser carregado/.test(await page.innerText('#sep-corpo')),
+       'guia sem estoque também passa pela ordem de carregamento');
+    await page.click('text=ESTA É A ORDEM'); await sleep(3500);
+    const semEstoque = await page.innerText('#sep-corpo');
+    ok(/LISTA DE SEPARAÇÃO/.test(semEstoque),
+       'com o galpão vazio a tela SEGUE no passo 3 — não cai num formulário de pedidos');
+    ok(!/CONFERIDO — DEFINIR A ORDEM/.test(semEstoque),
+       'e não volta para a tela de edição da guia');
+    ok(/nada endereçado para este pedido ainda/.test(semEstoque),
+       'a lista aparece vazia dizendo por quê, em vez de sumir');
+    ok(/30x45 AM/.test(semEstoque), 'nomeando o produto que ainda não está no mapa');
+    ok(/mapa do galpão/.test(semEstoque) && /REFAZER A LISTA/.test(semEstoque),
+       'e diz o que fazer: bipar as gaiolas e refazer a lista — sem recomeçar a guia');
+    await tirar(page, '1d3-galpao-ainda-vazio');
+
+    // O laço que o Frederico pegou: voltar para a ordem e confirmar de
+    // novo tem de trazer de volta a LISTA, não o formulário de pedidos.
+    await page.click('text=mudar a ordem'); await sleep(1200);
+    ok(/Em que ordem o caminhão vai ser carregado/.test(await page.innerText('#sep-corpo')),
+       '"mudar a ordem" volta para o passo 2');
+    await page.click('text=ESTA É A ORDEM'); await sleep(3000);
+    const voltaLista = await page.innerText('#sep-corpo');
+    ok(/LISTA DE SEPARAÇÃO/.test(voltaLista) && !/1 fardo = /.test(voltaLista),
+       'e confirmar de novo volta para a LISTA — sem cair no editor de pedidos');
+    await page.click('text=fechar'); await sleep(800);
+
     // ── 1e. QUANDO O PDF NÃO É RECONHECIDO, A TELA DIZ POR QUÊ ──
     // "O layout é diferente do que eu conheço" é um beco sem saída para
     // quem está no galpão: não dá para agir. A tela precisa dizer QUAL
@@ -233,9 +281,10 @@ async function tirar(page, nome) {
     ok(await page.isVisible('.ped'), 'a conferência já nasce com um pedido para preencher');
     await tirar(page, '2-conferencia-vazia');
 
-    // Dois arquivos: o PDF importado no passo 1b e esta foto.
+    // Cada guia que virou carga fica guardada como comprovante: os PDFs
+    // importados nos passos anteriores e esta foto.
     const arqs = fs.readdirSync(TMP_GUIA).sort();
-    ok(arqs.length === 2 && arqs.some(a => a.endsWith('.pdf')) && arqs.some(a => a.endsWith('.jpg')),
+    ok(arqs.filter(a => a.endsWith('.pdf')).length === 2 && arqs.some(a => a.endsWith('.jpg')),
        `guias guardadas no servidor: ${arqs.join(', ')}`);
     const bytes = fs.statSync(path.join(TMP_GUIA, arqs.find(a => a.endsWith('.jpg')))).size;
     ok(bytes > 500 && bytes < 900000, `a foto foi reduzida antes de subir: ${Math.round(bytes/1024)} KB`);
@@ -320,7 +369,13 @@ async function tirar(page, nome) {
     ok(recentes.includes('SEPARAÇÕES RECENTES'), 'a separação aberta fica listada para retomar');
     await page.locator('#pg-sep .hist-item').first().click();
     await sleep(1200);
-    ok(await page.isVisible('.ped') || await page.isVisible('.cl'), 'e reabre de onde parou');
+    ok(await page.isVisible('.ped') || await page.isVisible('.cl') || await page.isVisible('.ord'),
+       'e reabre de onde parou');
+    // Reabrir uma carga já lida cai onde ela parou de verdade — nunca
+    // num formulário de itens que ninguém pediu para preencher.
+    const reaberta = await page.innerText('#sep-corpo');
+    ok(/LISTA DE SEPARAÇÃO/.test(reaberta) || /Em que ordem/.test(reaberta),
+       'reabrindo, cai na lista ou na ordem — não no editor de itens');
     await tirar(page, '5-lista');
 
     // ── 9. O CICLO COMPLETO: bipar, sobra, etiqueta nova ──

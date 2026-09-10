@@ -948,10 +948,23 @@ function sepRender() {
   if (!SEP) { sepDesenharAbertura(); return; }
   if (SEP_CORRIGINDO) { sepDesenharConferencia(); return; }
   if (SEP_ORDENANDO)  { sepDesenharOrdem(); return; }
-  const temPlano = SEP_ESTADO && (SEP_ESTADO.coletas || []).some(
+
+  // DEPOIS DE PLANEJADA, A TELA É A LISTA — mesmo que a lista esteja
+  // vazia. Isto já foi decidido por "tem alguma coleta?", e era um
+  // buraco: quando o galpão ainda não foi bipado o alocador não acha
+  // nada, a tela caía no editor de pedidos, o operador voltava para a
+  // ordem, confirmava de novo e caía no editor outra vez. Um círculo,
+  // justamente no estado em que todo mundo começa.
+  const planejada = SEP.status === 'em_separacao' || SEP.status === 'concluida';
+  const temColeta = SEP_ESTADO && (SEP_ESTADO.coletas || []).some(
     c => c.status === 'planejada' || c.status === 'coletada');
-  if (temPlano) sepDesenharPlano();
-  else sepDesenharConferencia();
+  if (planejada || temColeta) { sepDesenharPlano(); return; }
+  // 'conferida' = a guia já foi lida e entendida; o que falta é a
+  // ordem. Reabrir uma carga assim tem de cair no passo 2, não num
+  // formulário de itens que ninguém pediu para preencher. O editor é
+  // do rascunho — a foto, onde de fato não há nada digitado ainda.
+  if (SEP.status === 'conferida' && SEP_PEDIDOS.length) { sepDesenharOrdem(); return; }
+  sepDesenharConferencia();
 }
 
 // A régua dos três passos, no alto de cada tela.
@@ -1588,17 +1601,29 @@ function sepDesenharPlano() {
       <div class="rz" ${falta.fardos ? 'style="border-color:var(--warn)"' : ''}>
         <b${falta.fardos ? ' style="color:var(--warn)"' : ''}>${falta.fardos}</b><span>faltando</span></div>
     </div>
-    ${tarjaFalta}
+    ${vivas.length ? tarjaFalta : `
+      <div class="det" style="border-color:var(--warn);margin-bottom:12px">
+        <h3 style="font-family:inherit;font-size:15px;color:var(--warn)">
+          Nenhum item desta carga está endereçado ainda</h3>
+        <div class="sub">A guia entrou certa e a ordem está gravada — o que falta é o
+          <b>mapa do galpão</b>. Enquanto as gaiolas não forem bipadas na aba
+          <b>ENDEREÇAR</b>, o sistema não tem de onde tirar os endereços.<br><br>
+          Pode ir bipando: a cada tanto, toque em <b>↻ refazer</b> aqui e o que já foi
+          endereçado entra na lista sozinho. Não precisa começar de novo.</div>
+        <div class="acoes" style="margin-top:10px">
+          <button class="btn ok" style="flex:1" onclick="sepReplanejar()">↻ REFAZER A LISTA</button>
+        </div>
+      </div>`}
     <div id="reader-sep"></div>
-    <div class="acoes" style="margin-top:0">
+    ${vivas.length ? `<div class="acoes" style="margin-top:0">
       <button class="btn ok" id="btn-cam-sep" style="flex:1" onclick="sepBipar()">▶ LIGAR CÂMERA</button>
       <button class="btn" onclick="sepReplanejar()">↻ refazer</button>
-    </div>
+    </div>` : ''}
     <div class="rua-tit" style="margin:14px 0 6px">LISTA DE SEPARAÇÃO — NA ORDEM DE CARREGAMENTO</div>
     <div class="dica" style="margin-bottom:12px">Cada bloco é um pedido, na sequência que
-      você definiu, e dentro dele os endereços vêm na ordem de caminhada pelo galpão.
-      Bipe a etiqueta da prateleira <b>ou</b> a da gaiola ao pegar — é esse bipe que
-      libera o endereço no mapa.${compart ? ` <b>${compart} ${compart === 1 ? 'gaiola atende' : 'gaiolas atendem'}</b>
+      você definiu${vivas.length ? `, e dentro dele os endereços vêm na ordem de caminhada
+      pelo galpão. Bipe a etiqueta da prateleira <b>ou</b> a da gaiola ao pegar — é esse
+      bipe que libera o endereço no mapa.` : '. Os endereços entram aqui à medida que as gaiolas forem bipadas no mapa.'}${compart ? ` <b>${compart} ${compart === 1 ? 'gaiola atende' : 'gaiolas atendem'}</b>
       mais de um pedido: a etiqueta verde avisa, e ${compart === 1 ? 'ela' : 'elas'} não
       ${compart === 1 ? 'deve' : 'devem'} ser buscada${compart === 1 ? '' : 's'} duas vezes.` : ''}</div>
     ${blocos || '<div class="vazio">Nada a coletar.</div>'}
