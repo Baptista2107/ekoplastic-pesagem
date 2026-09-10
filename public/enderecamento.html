@@ -109,7 +109,7 @@ header .sp{flex:1}
 .aviso.ok{background:rgba(46,230,166,.12);border:1px solid rgba(46,230,166,.4);color:var(--accent)}
 .aviso.at{background:rgba(255,170,0,.12);border:1px solid rgba(255,170,0,.4);color:var(--warn)}
 .hist{margin-top:16px}
-.hist-item{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:12.5px}
+.hist-item{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:12.5px}
 .hist-item span:last-child{color:var(--muted);white-space:nowrap;font-family:'IBM Plex Mono',monospace}
 .dica{font-size:12px;color:var(--muted);line-height:1.55;margin-top:10px}
 
@@ -981,11 +981,14 @@ async function sepDesenharAbertura() {
     const q = { rascunho: 'aguardando conferência', conferida: 'conferida',
                 em_separacao: 'em separação', concluida: 'concluída', cancelada: 'cancelada' }[s.status] || s.status;
     const dt = String(s.criada_em || '').slice(0, 16).replace('T', ' ');
-    return `<div class="hist-item" style="cursor:pointer" onclick="sepAbrir(${s.id})">
-      <span><b>#${s.id}</b> · ${esc(q)}${s.pedidos ? ' · ' + s.pedidos + ' pedido(s)' : ''}
+    return `<div class="hist-item">
+      <span style="flex:1;cursor:pointer" onclick="sepAbrir(${s.id})">
+        <b>#${s.id}</b> · ${esc(q)}${s.pedidos ? ' · ' + s.pedidos + ' pedido(s)' : ''}
         ${s.pendentes ? ` · <span style="color:var(--warn)">${s.pendentes} a coletar</span>` : ''}
         ${s.faltando ? ` · <span style="color:var(--warn)">faltam ${s.faltando}</span>` : ''}</span>
-      <span>${esc(dt)}</span></div>`;
+      <span style="color:var(--muted)">${esc(dt)}</span>
+      <button class="lixo" title="Apagar esta importação"
+              onclick="event.stopPropagation();sepApagar(${s.id})">✕</button></div>`;
   }).join('');
 
   $('sep-corpo').innerHTML = `
@@ -1329,6 +1332,7 @@ function sepCabecalhoGuia() {
       <div class="gt"><b>Separação #${SEP.id}</b>
         ${ehPdf ? `<a href="${url}" target="_blank" style="color:var(--accent)">abrir o PDF da guia</a>`
                 : 'toque na foto para ampliar'}</div>
+      <button class="lixo" title="Apagar esta importação" onclick="sepApagar(${SEP.id})">🗑</button>
       <button class="btn" onclick="sepFechar()">✕</button>
     </div>`;
 }
@@ -1484,6 +1488,39 @@ async function sepConfirmarOrdem() {
 }
 
 function sepVoltarOrdem() { SEP_ORDENANDO = true; SEP_CORRIGINDO = false; pararCamera(); sepRender(); }
+
+/* ── Apagar uma importação ─────────────────────────────────────────
+   Testar gera lixo: a guia importada duas vezes, a carga montada só
+   para ver como fica. Sem um jeito de apagar, a lista de separações
+   vira um monte de tentativas e ninguém mais acha a de verdade.
+
+   O que some é o papel: a guia, os pedidos e o plano. O que fica é o
+   que virou realidade no galpão — endereço já liberado por um bipe, e
+   sobra que já foi etiquetada e endereçada, porque essa é uma gaiola
+   física ocupando um vão. */
+async function sepApagar(id) {
+  const alvo = SEP_LISTA.find(s => s.id === id) || {};
+  const detalhe = [alvo.pedidos ? `${alvo.pedidos} pedido(s)` : null,
+                   alvo.pendentes ? `${alvo.pendentes} a coletar` : null]
+                  .filter(Boolean).join(' · ');
+  if (!confirm(`Apagar a separação #${id}${detalhe ? ' (' + detalhe + ')' : ''}?\n\n`
+    + 'A guia, os pedidos e o plano somem. O que já foi bipado no galpão '
+    + 'continua como está.')) return;
+  sepAviso('Apagando…', 'at');
+  try {
+    const r = await fetch(URL_BASE + '/separacao/' + id, { method: 'DELETE' });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.erro || 'falha');
+    if (SEP && SEP.id === id) { SEP = null; SEP_PEDIDOS = []; SEP_ESTADO = null;
+                                SEP_CORRIGINDO = false; SEP_ORDENANDO = false; pararCamera(); }
+    vibrar(30);
+    sepAviso(`Separação #${id} apagada.`
+      + (d.sobras_preservadas ? ` ${d.sobras_preservadas} sobra(s) já endereçada(s) `
+         + 'continuam no mapa — são gaiolas de verdade na prateleira.' : ''), 'ok');
+    await sobRender();
+    sepRender();
+  } catch (e) { sepAviso('Não consegui apagar: ' + esc(e.message), 'err'); }
+}
 
 function sepDesenharPlano() {
   const est = SEP_ESTADO || {};

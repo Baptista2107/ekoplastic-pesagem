@@ -234,6 +234,33 @@ async function tirar(page, nome) {
        'e confirmar de novo volta para a LISTA — sem cair no editor de pedidos');
     await page.click('text=fechar'); await sleep(800);
 
+    // ── 1d4. A GUIA BAIXADA PELO CELULAR, DO COMEÇO AO FIM ──
+    // Mesmo documento, coluna mais estreita: o rótulo do produto quebra
+    // e "(25KG)" cai junto do TAMANHO. Era o que fazia o celular dizer
+    // "o que está nela não é do galpão" com a guia certa na mão — e,
+    // como nada era reconhecido, nenhuma opção aparecia na tela.
+    await page.click('#ab-sep'); await sleep(500);
+    await page.setInputFiles('#arq-pdf', {
+      name: 'Guia de Separação.pdf', mimeType: 'application/pdf',
+      buffer: fs.readFileSync(path.join(ROOT, 'testes', 'dados', 'guia-nome-partido.pdf')) });
+    await sleep(4500);
+    const partida = await page.innerText('#sep-corpo');
+    ok(/PRIMEIRO CLIENTE/.test(partida) && /SEGUNDO CLIENTE/.test(partida),
+       'no tamanho do celular, a guia com o nome partido é reconhecida');
+    ok(/Confere com a guia/.test(partida) && /100/.test(partida),
+       'e bate com os totais impressos: 100 fardos');
+    ok(!/não é do galpão/.test(partida), 'sem o falso "isso não é do galpão"');
+    await tirar(page, '1d4-guia-do-celular');
+
+    await page.click('text=CONFERE — DEFINIR A ORDEM DE CARREGAMENTO'); await sleep(3000);
+    ok(/Em que ordem o caminhão vai ser carregado/.test(await page.innerText('#sep-corpo')),
+       'o celular chega na ordem de carregamento igual ao laptop');
+    await page.click('text=ESTA É A ORDEM'); await sleep(3500);
+    const listaCel = await page.innerText('#sep-corpo');
+    ok(/LISTA DE SEPARAÇÃO/.test(listaCel), 'e na lista de endereços — o caminho inteiro no celular');
+    await tirar(page, '1d5-lista-no-celular');
+    await page.click('text=fechar'); await sleep(800);
+
     // ── 1e. QUANDO O PDF NÃO É RECONHECIDO, A TELA DIZ POR QUÊ ──
     // "O layout é diferente do que eu conheço" é um beco sem saída para
     // quem está no galpão: não dá para agir. A tela precisa dizer QUAL
@@ -284,7 +311,7 @@ async function tirar(page, nome) {
     // Cada guia que virou carga fica guardada como comprovante: os PDFs
     // importados nos passos anteriores e esta foto.
     const arqs = fs.readdirSync(TMP_GUIA).sort();
-    ok(arqs.filter(a => a.endsWith('.pdf')).length === 2 && arqs.some(a => a.endsWith('.jpg')),
+    ok(arqs.filter(a => a.endsWith('.pdf')).length >= 2 && arqs.some(a => a.endsWith('.jpg')),
        `guias guardadas no servidor: ${arqs.join(', ')}`);
     const bytes = fs.statSync(path.join(TMP_GUIA, arqs.find(a => a.endsWith('.jpg')))).size;
     ok(bytes > 500 && bytes < 900000, `a foto foi reduzida antes de subir: ${Math.round(bytes/1024)} KB`);
@@ -449,6 +476,27 @@ async function tirar(page, nome) {
        'endereçar a etiqueta nova fecha a pendência sozinho');
     await page.click('#ab-sob'); await sleep(1000);
     ok(/Nada pendente/.test(await page.innerText('#sob-corpo')), 'a fila de sobras esvaziou');
+
+    // ── 11. APAGAR UMA IMPORTAÇÃO PELA TELA ──
+    // Testar deixa rastro: várias guias importadas, cargas montadas só
+    // para ver. Sem apagar, a lista de recentes vira um monte de
+    // tentativas e ninguém acha mais a de verdade.
+    page.on('dialog', d => d.accept());          // o confirm() do apagar
+    await page.click('#ab-sep'); await sleep(500);
+    if (await page.isVisible('.guia-mini .btn')) { await page.click('.guia-mini .btn'); await sleep(600); }
+    const antesApagar = await page.$$eval('#pg-sep .hist-item', els => els.length);
+    ok(antesApagar > 1, `há ${antesApagar} separações na lista para escolher`);
+    const linhaTexto = await page.locator('#pg-sep .hist-item').first().innerText();
+    await page.locator('#pg-sep .hist-item .lixo').first().click();
+    await sleep(2500);
+    const depoisApagar = await page.$$eval('#pg-sep .hist-item', els => els.length);
+    ok(depoisApagar === antesApagar - 1,
+       `apagou a de cima e a lista encolheu: ${antesApagar} → ${depoisApagar}`);
+    const listaAgora = await page.innerText('#sep-corpo');
+    ok(!listaAgora.includes(linhaTexto.split('·')[0].trim()) || depoisApagar === 0,
+       'e a linha apagada não volta na lista');
+    ok(/apagada/.test(await page.innerText('#sep-msg')), 'a tela confirma que apagou');
+    await tirar(page, '11-lista-depois-de-apagar');
 
     ok(erros.length === 0, `nenhum erro de página${erros.length ? ': ' + erros.slice(0, 3).join(' | ') : ''}`);
 

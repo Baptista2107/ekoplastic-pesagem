@@ -415,6 +415,60 @@ async function endereçar(posicao, corKey, formato, fardos, tipo) {
     ok(ordemTarde.status === 409 && /já começou/.test(ordemTarde.body.erro || ''),
        'depois que o separador começou, a ordem não muda mais', ordemTarde.body);
 
+    // ── [13] APAGAR UMA IMPORTAÇÃO ──────────────────────────────────
+    // Testar gera lixo: guia importada duas vezes, carga montada só
+    // para ver como fica. Sem apagar, a lista vira um monte de
+    // tentativas. Mas apagar o papel não pode apagar o galpão: uma
+    // SOBRA já endereçada é uma gaiola física, com etiqueta colada,
+    // ocupando um vão — se ela sumisse junto, o mapa passaria a mentir
+    // sobre o que está na prateleira.
+    console.log('\n[13] Apagar uma importação leva o papel, não o galpão');
+    const SEP7 = (await req('POST', '/separacao/nova', foto2)).body.id;
+    await req('POST', `/separacao/${SEP7}/conferir`, { pedidos: [
+      { ordem: 1, cliente: 'DESCARTAVEL LTDA',
+        itens: [{ cor_key: 'PT', formato: '60x80', fardos: 18 }] },
+    ]});
+    await endereçar('02-03-020', 'PT', '60x80', 24, 'PEQUENA');
+    await req('POST', `/separacao/${SEP7}/planejar`);
+    const e7 = await req('GET', `/separacao/${SEP7}`);
+    const arquivo7 = e7.body.separacao.arquivo;
+    ok(fs.existsSync(path.join(TMP_GUIA, arquivo7)), 'a guia está guardada no disco antes de apagar');
+
+    // Bipa a coleta: sobram 6 fardos, que viram uma pendência de sobra.
+    const c7 = e7.body.coletas.find(c => c.status === 'planejada');
+    await req('POST', `/separacao/coleta/${c7.id}/confirmar`, { lido: c7.gaiola_id });
+    const sob7 = (await req('GET', '/sobras')).body.sobras.filter(s => s.separacao_id === SEP7);
+    ok(sob7.length === 1 && sob7[0].fardos === 6, `a sobra de 6 fardos nasceu: ${sob7.length}`, sob7);
+
+    // Etiqueta nova impressa e endereçada: a partir daqui ela é gaiola
+    // de verdade num vão do galpão.
+    const imp7 = await req('POST', `/sobras/${sob7[0].id}/imprimir`);
+    const novaG = imp7.body.gaiola_nova;
+    await req('POST', '/enderecamento/ocupar',
+              { posicao: '02-03-021', gaiola_id: novaG, tipo_gaiola: 'PEQUENA' });
+    const mapaAntes = (await req('GET', '/enderecamento/mapa')).body.posicoes.filter(p => p.ocupada).length;
+
+    const apg = await req('DELETE', `/separacao/${SEP7}`);
+    ok(apg.status === 200 && apg.body.apagada, 'a separação é apagada', apg.body);
+    ok(apg.body.sobras_preservadas === 1,
+       'e o sistema avisa que 1 sobra endereçada ficou de pé', apg.body);
+    ok((await req('GET', `/separacao/${SEP7}`)).status === 404, 'ela some da consulta');
+    ok(!(await req('GET', '/separacao')).body.separacoes.some(s => s.id === SEP7),
+       'e some da lista de separações');
+    ok(!fs.existsSync(path.join(TMP_GUIA, arquivo7)), 'o arquivo da guia some junto');
+
+    const mapaDepois = (await req('GET', '/enderecamento/mapa')).body.posicoes.filter(p => p.ocupada).length;
+    ok(mapaDepois === mapaAntes,
+       `o mapa não muda: a gaiola da sobra continua no vão (${mapaAntes} → ${mapaDepois})`);
+    const g21 = (await req('GET', '/enderecamento/mapa')).body.posicoes.find(p => p.codigo === '02-03-021');
+    ok(g21 && g21.ocupada && g21.gaiola && g21.gaiola.id === novaG && g21.gaiola.fardos === 6,
+       'a etiqueta nova continua endereçada em 02-03-021, com os 6 fardos', g21);
+    ok((await req('GET', '/sobras?todas=1')).body.sobras.some(s => s.gaiola_nova === novaG),
+       'e a sobra endereçada continua no histórico, só sem dono');
+
+    ok((await req('DELETE', `/separacao/${SEP7}`)).status === 404,
+       'apagar de novo dá 404 em vez de estourar');
+
     // ── [11] O CICLO SOBREVIVE AO REINÍCIO DA ATUALIZAÇÃO ───────────
     console.log('\n[11] O ciclo sobrevive a um reinício do servidor');
     const antes = await req('GET', '/sobras?todas=1');

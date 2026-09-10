@@ -1105,6 +1105,9 @@ const RE_PEDIDO_COL = /^(?:ped\.?|pedido)\s*\.?\s*n?º?\s*\d+/i;
 const RE_QTD_FRD    = /^\d[\d.,]*\s*frd$/i;
 const RE_TAMANHO    = /TAMANHO\s*:?\s*(\d{2,3})\s*[Xx×]\s*(\d{2,3})/;
 const RE_PRODUTO    = /\(25\s*KG\)|^SACOLA\s/i;
+// Só a unidade, sem nome de produto junto: "(25KG)", "25 kg", "(25 KG)".
+// É o pedaço que sobra quando o rótulo quebra de linha.
+const RE_SO_UNIDADE = /^[^A-Za-zÀ-ÿ]*\(?\s*25\s*KG\s*\)?[^A-Za-zÀ-ÿ]*$/i;
 
 // A cor da sacola a partir do cabeçalho de produto da guia. Fica fora
 // do leitor porque o diagnóstico precisa da mesma régua: só assim ele
@@ -1212,10 +1215,23 @@ function interpretarGuiaMatriz(itens) {
   let corAtual = null, rotuloCor = null;
 
   for (const it of ordenados) {
-    // Cabeçalho de produto: "↳ SACOLA RECICLADA COLORIDA (25KG)" ou o
-    // título de família "Sacola Reciclada Colorida".
-    if (RE_PRODUTO.test(it.t)) {
+    // QUEM MANDA É O TAMANHO, NÃO O "(25KG)".
+    //   O rótulo do produto é uma célula de tabela e quebra onde couber.
+    //   Numa folha larga sai "SACOLA RECICLADA COLORIDA (25KG)" numa
+    //   altura e "TAMANHO:30X45" na seguinte; num PDF baixado pelo
+    //   celular, a coluna é mais estreita e o mesmo rótulo vira
+    //   "SACOLA RECICLADA COLORIDA" e "(25KG) TAMANHO:30X45".
+    //   Perguntar primeiro "tem (25KG)?" fazia esse segundo pedaço ser
+    //   lido como um produto novo, sem cor, que apagava a cor corrente —
+    //   e a guia inteira caía fora com "isso não é do galpão". Perguntar
+    //   primeiro "tem TAMANHO?" resolve as duas quebras com uma regra só.
+    const mt = it.t.match(RE_TAMANHO);
+
+    if (!mt && RE_PRODUTO.test(it.t)) {
       const c = corDoTexto(it.t);
+      // "(25KG)" sozinho é o resto do nome que quebrou de linha, não um
+      // produto novo: não diz cor nenhuma e não pode apagar a corrente.
+      if (!c && RE_SO_UNIDADE.test(it.t)) continue;
       // Cor que o galpão não conhece NÃO pode herdar a anterior: os
       // fardos dela entrariam como se fossem da cor de cima.
       corAtual = c; rotuloCor = it.t.trim();
@@ -1223,8 +1239,6 @@ function interpretarGuiaMatriz(itens) {
                             motivo: `produto "${it.t.trim()}" não é de uma cor do galpão` });
       continue;
     }
-
-    const mt = it.t.match(RE_TAMANHO);
     if (!mt) continue;
 
     const formato = PA_FORMATOS.find(f => f === `${Number(mt[1])}x${Number(mt[2])}`) || null;
@@ -1363,8 +1377,12 @@ function diagnosticoDaGuia(itens, linhas) {
     formatos.add(f);
     if (!PA_FORMATOS.includes(f)) formatosFora.add(f);
   }
+  // Mesma régua do leitor: quem traz TAMANHO é item, "(25KG)" sozinho é
+  // continuação do nome. Sem isso o diagnóstico acusaria de "produto sem
+  // cor" justamente os pedaços que o leitor aprendeu a ignorar.
+  const ehCabecalho = t => !RE_TAMANHO.test(t) && RE_PRODUTO.test(t) && !RE_SO_UNIDADE.test(t);
   const coresFora = new Set();
-  for (const i of its) if (RE_PRODUTO.test(i.t) && !corDaGuia(i.t)) coresFora.add(i.t.trim());
+  for (const i of its) if (ehCabecalho(i.t) && !corDaGuia(i.t)) coresFora.add(i.t.trim());
 
   const d = {
     pedacos: its.length,
@@ -1373,7 +1391,7 @@ function diagnosticoDaGuia(itens, linhas) {
     colunas_pedido: conta(RE_PEDIDO_COL),
     quantidades_frd: conta(RE_QTD_FRD),
     linhas_tamanho: conta(RE_TAMANHO),
-    cabecalhos_produto: conta(RE_PRODUTO),
+    cabecalhos_produto: its.filter(i => ehCabecalho(i.t)).length,
     tem_total_geral: conta(/^TOTAL\s+GERAL/i) > 0,
     formatos: [...formatos],
     formatos_fora: [...formatosFora],
@@ -7909,6 +7927,60 @@ const requestHandlerBase = async (req, res) => {
         try { l.faltando = (l.pedidos ? faltasDaSeparacao(l.id).fardos : 0); } catch (e) { l.faltando = 0; }
       }
       return jsonOk(res, { separacoes: linhas });
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    //  DELETE /separacao/:id — apaga uma importação
+    // --------------------------------------------------------------
+    //  Testar gera lixo: guia importada duas vezes, carga montada para
+    //  ver como fica, arquivo trocado no meio. Sem um jeito de apagar,
+    //  a lista de separações vira um monte de tentativas e ninguém mais
+    //  sabe qual é a de verdade.
+    //
+    //  O que NÃO se apaga junto: uma SOBRA já endereçada. Ela deixou de
+    //  ser papel — é uma gaiola física, com etiqueta colada, ocupando um
+    //  vão do galpão. Apagá-la porque a separação que a gerou foi
+    //  descartada faria o mapa mentir sobre o que está na prateleira.
+    //  As sobras ainda pendentes (sem etiqueta nova endereçada) somem,
+    //  porque nunca chegaram a existir fora da tela.
+    //
+    //  Endereço liberado por uma coleta já bipada também NÃO volta: a
+    //  gaiola saiu do vão de verdade, isso é história do galpão e não
+    //  desta importação.
+    // ══════════════════════════════════════════════════════════════
+    if ((m = pathname.match(/^\/separacao\/(\d+)$/)) && req.method === 'DELETE') {
+      const sepId = Number(m[1]);
+      const s = db.prepare('SELECT * FROM separacoes WHERE id = ?').get(sepId);
+      if (!s) return jsonErr(res, 404, `Separação ${sepId} não existe`);
+
+      const presas = db.prepare(`SELECT COUNT(*) AS n FROM sobras
+                                 WHERE separacao_id = ? AND status = 'enderecada'`).get(sepId).n;
+      const coletadas = db.prepare(`SELECT COUNT(*) AS n FROM separacao_coletas
+                                    WHERE separacao_id = ? AND status = 'coletada'`).get(sepId).n;
+
+      const tr = makeTransaction(() => {
+        const pedidos = db.prepare('SELECT id FROM separacao_pedidos WHERE separacao_id = ?').all(sepId);
+        for (const p of pedidos) db.prepare('DELETE FROM separacao_itens WHERE pedido_id = ?').run(p.id);
+        db.prepare('DELETE FROM separacao_pedidos WHERE separacao_id = ?').run(sepId);
+        db.prepare('DELETE FROM separacao_coletas WHERE separacao_id = ?').run(sepId);
+        // A sobra já endereçada perde o vínculo, não a vida.
+        db.prepare(`UPDATE sobras SET separacao_id = NULL
+                    WHERE separacao_id = ? AND status = 'enderecada'`).run(sepId);
+        db.prepare(`DELETE FROM sobras WHERE separacao_id = ? AND status <> 'enderecada'`).run(sepId);
+        db.prepare('DELETE FROM separacoes WHERE id = ?').run(sepId);
+      });
+      tr();
+
+      // O comprovante some junto — mas só depois de o banco confirmar.
+      if (s.arquivo) {
+        try { fs.unlinkSync(path.join(GUIAS_DIR, s.arquivo)); }
+        catch (e) { if (e.code !== 'ENOENT') logW('separacao', 'Não consegui apagar o arquivo da guia: ' + e.message); }
+      }
+      logI('separacao', `Separação ${sepId} apagada`
+        + (coletadas ? ` (tinha ${coletadas} coleta(s) já bipada(s))` : '')
+        + (presas ? `; ${presas} sobra(s) já endereçada(s) ficaram no mapa` : ''));
+      return jsonOk(res, { id: sepId, apagada: true, coletadas_bipadas: coletadas,
+                           sobras_preservadas: presas });
     }
 
     // POST /separacao/coleta/:id/confirmar — O BIPE DA COLETA.

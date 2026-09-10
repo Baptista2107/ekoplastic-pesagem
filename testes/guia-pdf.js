@@ -226,6 +226,34 @@ const GUIA = [
     ok(estR.body.pedidos.length === 4 && estR.body.pedidos[0].ordem === 1,
        'e fica gravada com as 4 cargas na ordem das colunas');
 
+    // ── [8b2] O NOME DO PRODUTO QUEBRA ONDE COUBER ──────────────────
+    // A MESMA guia, baixada pelo celular: a coluna do produto sai mais
+    // estreita e o rótulo quebra em outro lugar. Onde na folha larga há
+    //   "SACOLA RECICLADA COLORIDA (25KG)" / "TAMANHO:30X45"
+    // aparece
+    //   "SACOLA RECICLADA COLORIDA" / "(25KG) TAMANHO:30X45"
+    // e esse segundo pedaço era lido como um produto novo, sem cor, que
+    // apagava a cor corrente. Resultado no galpão: "o que está nela não
+    // é do galpão" e a carga inteira parada, com a guia certa na mão.
+    console.log('\n[8b2] Guia com o nome do produto quebrado em duas linhas');
+    const partida = fs.readFileSync(path.join(__dirname, 'dados', 'guia-nome-partido.pdf'));
+    const pvP = await fetch(`${BASE}/separacao/guia/previa`,
+      { method: 'POST', headers: { 'Content-Type': 'application/pdf' }, body: partida });
+    const jp = await pvP.json();
+    ok(jp.pedidos && jp.pedidos.length === 2,
+       `as 2 cargas são reconhecidas: ${(jp.pedidos || []).length}`, jp.diag || jp.erro);
+    ok(jp.total_fardos === 100, `os 100 fardos entram: ${jp.total_fardos}`, jp.pedidos);
+    ok(jp.conferencia && jp.conferencia.ok === true,
+       'e a leitura bate com o TOTAL GERAL impresso', jp.conferencia);
+    ok((jp.avisos || []).length === 0,
+       'sem avisos: "(25KG)" sozinho não é produto desconhecido, é o resto do nome', jp.avisos);
+    const itensP = jp.pedidos.flatMap(p => p.itens);
+    ok(itensP.every(i => i.cor_key === 'REC' || i.cor_key === 'BC'),
+       'a cor vem do "SACOLA ..." de cima, mesmo separado do tamanho',
+       itensP.map(i => `${i.cor_key} ${i.formato}`));
+    ok(itensP.some(i => i.cor_key === 'BC' && i.formato === '50x60'),
+       'e troca de cor quando o cabeçalho troca — não herda a anterior');
+
     // ── [8c] A COLUNA DE UM NÚMERO É A DE CIMA DELE, NÃO A VIZINHA ──
     // Na guia real os "N frd" ficam a 5–8 pt do centro da sua coluna e
     // as colunas distam 111 pt. Numa guia de UMA carga não há distância
