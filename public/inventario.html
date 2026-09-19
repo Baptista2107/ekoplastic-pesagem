@@ -182,7 +182,15 @@
      depois que TODAS as gaiolas estiverem etiquetadas; até lá, contar é
      olhar a gaiola e digitar. As duas formas convivem na mesma tela e
      caem na mesma lista. */
-  #pa-modo{display:flex; gap:8px; margin-bottom:14px;}
+  #pa-modo, #mp-modo{display:flex; gap:8px; margin-bottom:14px;}
+  /* O peso é um número só, e grande: ele é o assunto da tela. A unidade
+     fica fixa ao lado para ninguém digitar "kg" dentro do campo. */
+  .mp-man-linha{display:flex; align-items:center; justify-content:center; gap:10px;}
+  .mp-man-kg{flex:1 1 auto; max-width:230px; height:66px; text-align:center;
+             font-size:30px; font-weight:900; border-radius:14px; border:1.5px solid var(--verde);
+             background:var(--bg); color:var(--verde); font-family:inherit;}
+  .mp-man-un{font-size:20px; font-weight:800; color:var(--muted);}
+  #mp-man-add:disabled{opacity:0.4;}
   .pa-chip{flex:1; min-height:52px; border-radius:14px; border:1.5px solid var(--border);
            background:var(--panel); color:var(--muted); font-size:14px; font-weight:800;
            font-family:inherit; cursor:pointer; letter-spacing:0.5px;}
@@ -199,6 +207,10 @@
     .manual-linha{gap:6px;}
     .manual-op{min-width:0; flex:1 1 0; font-size:16px;}
     .manual-num{flex:0 0 92px; width:92px;}
+    /* O campo de peso do saco aberto é `flex:1`, mas um item de flex não
+       encolhe abaixo do conteúdo dele sem `min-width:0` — e o botão
+       "+ incluir" ao lado era empurrado 20 px para fora da tela. */
+    .sobras-in{min-width:0;}
   }
 
   /* App shell: ocupa a tela toda do celular, sem "página web" ao redor */
@@ -321,6 +333,31 @@
   <div id="pa-modo" class="oculto">
     <button class="pa-chip on" id="pa-chip-qr"  onclick="paModo('qr')">📷 LER O QR</button>
     <button class="pa-chip"    id="pa-chip-man" onclick="paModo('manual')">⌨️ DIGITAR</button>
+  </div>
+
+  <!-- ── COMO CONTAR (matéria-prima em big bags) ──────────────────
+       A etiqueta do big bag traz o peso pesado na balança, e ler é
+       sempre melhor. Mas etiqueta rasga, molha e some — e um big bag
+       sem etiqueta legível não pode ficar de fora do inventário só por
+       isso. Aqui o peso entra digitado, com casa decimal, porque peso
+       de matéria-prima nunca é redondo. -->
+  <div id="mp-modo" class="oculto">
+    <button class="pa-chip on" id="mp-chip-qr"  onclick="mpModo('qr')">📷 LER A ETIQUETA</button>
+    <button class="pa-chip"    id="mp-chip-man" onclick="mpModo('manual')">⌨️ DIGITAR</button>
+  </div>
+
+  <!-- ── LANÇAR PESO SEM ETIQUETA (matéria-prima) ── -->
+  <div id="bloco-mp-manual" class="oculto">
+    <div class="manual-cx">
+      <div class="manual-lb">PESO TOTAL DESTA SELEÇÃO</div>
+      <div class="mp-man-linha">
+        <input class="mp-man-kg" id="mp-man-kg" type="text" inputmode="decimal"
+               placeholder="0,0" oninput="mpManDigitou()" onchange="mpManDigitou()">
+        <span class="mp-man-un">kg</span>
+      </div>
+      <div class="manual-conta" id="mp-man-conta">nada lançado ainda</div>
+      <button class="btn btn-verde" id="mp-man-add" onclick="mpManIncluir()" disabled>➕ INCLUIR NA CONTAGEM</button>
+    </div>
   </div>
 
   <!-- ── LANÇAR SEM QR CODE (produto acabado) ── -->
@@ -484,6 +521,33 @@ let PA_MAN_QTD = 0;          // fardos digitados no lançamento em curso
 let PA_MAN_SEQ = 0;          // numera os lançamentos: S/QR 1, S/QR 2, …
 const CHAVE_PA_MODO = 'eko_inventario_pa_modo';
 
+/* ─────────── MATÉRIA-PRIMA SEM ETIQUETA LEGÍVEL ───────────
+   A etiqueta do big bag traz o peso que saiu da balança, e ler é
+   sempre melhor do que digitar. Mas etiqueta rasga, molha e some, e um
+   big bag sem etiqueta legível não pode ficar de fora do inventário só
+   por causa disso — ficaria faltando material que existe no chão.
+
+   Aqui entra o PESO, não a quantidade: matéria-prima se mede em kg e o
+   número quase nunca é redondo, então a casa decimal é obrigatória.
+   Aceita "1.234,5" e "1234.5" — cada um digita como está acostumado. */
+let MP_MODO = 'qr';          // 'qr' | 'manual'
+let MP_MAN_SEQ = 0;          // numera os lançamentos: S/ETIQ 1, S/ETIQ 2, …
+const CHAVE_MP_MODO = 'eko_inventario_mp_modo';
+const MP_MAN_PREFIXO = 'S/ETIQ ';
+
+// Lê um peso digitado em português ou em inglês. Com vírgula presente,
+// o ponto é separador de milhar ("1.234,5"); sem vírgula, o ponto é a
+// própria casa decimal ("1234.5"). Sem essa regra, "1.234" viraria
+// 1,234 kg — um big bag de 1.234 kg entraria como pouco mais de um
+// quilo, e o inventário fecharia faltando uma tonelada.
+function kgDigitado(txt){
+  let t = String(txt == null ? '' : txt).trim().replace(/kg/ig, '').replace(/\s/g, '');
+  if (!t) return NaN;
+  if (t.includes(',')) t = t.replace(/\./g, '').replace(',', '.');
+  const v = parseFloat(t);
+  return isFinite(v) ? v : NaN;
+}
+
 // ─────────── contagem em andamento salva no aparelho ───────────
 // Sem isso, atualizar a página no meio da contagem perde tudo. Fica guardado
 // até finalizar o produto (ou limpar) — inclusive se fechar o navegador.
@@ -494,7 +558,8 @@ function salvarAndamento(){
     localStorage.setItem(CHAVE_ANDAMENTO, JSON.stringify({
       tipo:TIPO_INV, modoLivre:MODO_LIVRE, sel, leituras, sacos,
       modoManual:MODO_MANUAL, kgPorSaco:KG_POR_SACO, livre:LIVRE,
-      paModo:PA_MODO, paManSeq:PA_MAN_SEQ, ts:Date.now(),
+      paModo:PA_MODO, paManSeq:PA_MAN_SEQ,
+      mpModo:MP_MODO, mpManSeq:MP_MAN_SEQ, ts:Date.now(),
     }));
   }catch(e){}
 }
@@ -523,7 +588,9 @@ function retomarAndamento(){
   // A numeração dos lançamentos à mão é retomada do maior id já usado, e
   // não do zero: recomeçar em 1 criaria "S/QR 1" repetido e o botão de
   // remover apagaria a linha errada.
-  PA_MAN_SEQ = Math.max(o.paManSeq || 0, maiorSeqManual(o));
+  PA_MAN_SEQ = Math.max(o.paManSeq || 0, maiorSeqManual(o, PA_MAN_PREFIXO));
+  MP_MODO = o.mpModo || 'qr';
+  MP_MAN_SEQ = Math.max(o.mpManSeq || 0, maiorSeqManual(o, MP_MAN_PREFIXO));
   // sobras (sacos abertos) da contagem por produto
   SOBRAS['man'] = (o.leituras && o.leituras[0] && o.leituras[0].abertos) ? [...o.leituras[0].abertos] : [];
   idsLidos=new Set(leituras.map(l=>l.id));
@@ -782,13 +849,14 @@ function confirmarSacos(){
    número, e a lista mostra como foi feito.
    ═══════════════════════════════════════════════════════════════════ */
 const PA_MAN_PREFIXO = 'S/QR ';
-function ehLancamentoManual(id){ return String(id || '').startsWith(PA_MAN_PREFIXO); }
-function maiorSeqManual(o){
+// Retoma a numeração do maior id já usado, e não do zero: recomeçar em
+// 1 criaria um "S/QR 1" repetido e o ✕ apagaria a linha errada.
+function maiorSeqManual(o, prefixo){
   const ids = [];
   for (const l of (o && o.leituras) || []) ids.push(l.id);
   for (const g of Object.values((o && o.livre) || {})) for (const x of (g.gaiolas || [])) ids.push(x.id);
-  return ids.filter(ehLancamentoManual)
-            .reduce((a, id) => Math.max(a, parseInt(String(id).slice(PA_MAN_PREFIXO.length), 10) || 0), 0);
+  return ids.filter(id => String(id || '').startsWith(prefixo))
+            .reduce((a, id) => Math.max(a, parseInt(String(id).slice(prefixo.length), 10) || 0), 0);
 }
 
 function paModo(m){
@@ -889,6 +957,79 @@ function paManIncluir(){
   PA_MAN_QTD = 0;
   document.getElementById('pa-man-fardos').value = 0;
   paManRender();
+  salvarAndamento();
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   LANÇAMENTO DE PESO NA MATÉRIA-PRIMA
+   ───────────────────────────────────────────────────────────────────
+   Mesma ideia do produto acabado, com a unidade do material: lá são
+   fardos de 25 kg, aqui é o peso direto, com decimal. Cada inclusão
+   vira uma linha igual à de uma etiqueta lida, e some na mesma soma.
+
+   Não aparece nos produtos que já vêm por SACOS (pigmento, dessecante):
+   esses têm o contador próprio, com a conta de sacos × 25 kg. Ter duas
+   formas manuais concorrendo na mesma tela só criaria contagem dupla.
+   ═══════════════════════════════════════════════════════════════════ */
+function mpModo(m){
+  MP_MODO = (m === 'manual') ? 'manual' : 'qr';
+  try { localStorage.setItem(CHAVE_MP_MODO, MP_MODO); } catch(e) {}
+  aplicarModoMP();
+  salvarAndamento();
+}
+
+function aplicarModoMP(){
+  const barra = document.getElementById('mp-modo');
+  const man   = document.getElementById('bloco-mp-manual');
+  const cam   = document.getElementById('bloco-camera');
+  if (!barra || !man || !cam) return;
+  // Só na matéria-prima em big bags, com um produto escolhido: no modo
+  // livre não há seleção para dar peso, e nos produtos por saco o
+  // contador de sacos já é o caminho manual.
+  const vale = (TIPO_INV === 'mp') && !MODO_LIVRE && !MODO_MANUAL && !!sel;
+  barra.classList.toggle('oculto', !vale);
+  if (!vale) { man.classList.add('oculto'); return; }
+
+  document.getElementById('mp-chip-qr').classList.toggle('on',  MP_MODO === 'qr');
+  document.getElementById('mp-chip-man').classList.toggle('on', MP_MODO === 'manual');
+  const manual = (MP_MODO === 'manual');
+  man.classList.toggle('oculto', !manual);
+  cam.classList.toggle('oculto', manual);
+  if (manual) pararCamera();
+  mpManRender();
+}
+
+function mpManDigitou(){ mpManRender(); }
+
+function mpManRender(){
+  const campo = document.getElementById('mp-man-kg');
+  if (!campo) return;
+  const v = kgDigitado(campo.value);
+  const el = document.getElementById('mp-man-conta');
+  const somaAtual = leituras.reduce((a, l) => a + (l.peso || 0), 0);
+  if (el) {
+    el.innerHTML = isFinite(v) && v > 0
+      ? 'vai entrar <b>' + fmtKg(v) + '</b>'
+        + (somaAtual > 0 ? ' — total ficará ' + fmtKg(somaAtual + v) : '')
+      : (somaAtual > 0 ? 'lançado até aqui: <b>' + fmtKg(somaAtual) + '</b>' : 'nada lançado ainda');
+  }
+  const bt = document.getElementById('mp-man-add');
+  if (bt) bt.disabled = !(isFinite(v) && v > 0);
+}
+
+function mpManIncluir(){
+  const campo = document.getElementById('mp-man-kg');
+  const v = kgDigitado(campo.value);
+  if (!(isFinite(v) && v > 0)) { toast('aviso', 'Informe o peso em kg', 2500); campo.focus(); return; }
+  const kg = +v.toFixed(3);
+  const id = MP_MAN_PREFIXO + (++MP_MAN_SEQ);
+  leituras.push({ id, peso: kg, manual: true });
+  idsLidos.add(id);
+  campo.value = '';
+  renderLeituras();
+  mpManRender();
+  beep(880, 0.1); vibrar(60);
+  toast('ok', '✓ ' + id + ' · ' + fmtKg(kg), 1800);
   salvarAndamento();
 }
 
@@ -1183,6 +1324,12 @@ function iniciarLeitura(){
   MODO_MANUAL = !!(prod && prod.manual);
   KG_POR_SACO = (prod && prod.kgPorSaco) || 25;
   sacos = MODO_MANUAL ? Math.round(leituras.reduce((a,l)=>a+(l.peso||0),0) / KG_POR_SACO) : 0;
+  // A numeração dos lançamentos por peso continua de onde as leituras
+  // retomadas pararam — senão um "S/ETIQ 1" novo colidiria com o antigo.
+  MP_MAN_SEQ = maiorSeqManual({ leituras }, MP_MAN_PREFIXO);
+  try{ MP_MODO = localStorage.getItem(CHAVE_MP_MODO) || 'qr'; }catch(e){ MP_MODO='qr'; }
+  const campoKg = document.getElementById('mp-man-kg');
+  if (campoKg) campoKg.value = '';
   aplicarModo();
 
   document.getElementById('leit-prod').textContent = rotuloProduto(sel);
@@ -1629,6 +1776,7 @@ function aplicarModo(){
     document.getElementById('bloco-camera').classList.remove('oculto');
     document.getElementById('bloco-manual').classList.add('oculto');
     aplicarModoPA();          // no PA, quem manda na câmera é o modo escolhido
+    aplicarModoMP();
     return;
   }
   const cam = document.getElementById('bloco-camera');
@@ -1652,6 +1800,7 @@ function aplicarModo(){
       'Bipe os big bags deste produto. O peso de cada etiqueta soma sozinho.';
   }
   aplicarModoPA();
+  aplicarModoMP();
 }
 function renderManual(){
   const kgCheios = sacos * KG_POR_SACO;
@@ -1705,8 +1854,17 @@ function renderLeituras(){
   const soma=leituras.reduce((s,l)=>s+(l.peso||0),0);
   document.getElementById('c-qtd').textContent=qtd;
   document.getElementById('c-kg').textContent=(Math.round(soma*1000)/1000).toLocaleString('pt-BR');
+  // "1 BIG BAG LIDO · 12.500 kg" seria mentira quando o peso de vários
+  // bags foi digitado de uma vez: o que a linha conta é lançamento.
+  const lbsMP=document.querySelectorAll('.contador .l');
+  if(lbsMP[0]) lbsMP[0].textContent = leituras.some(l=>l && l.manual) ? 'LANÇAMENTOS' : 'BIG BAGS LIDOS';
+  // O rótulo da direita vira "KG (n FARDOS)" no produto acabado; sem
+  // devolvê-lo aqui, contar PA e depois MP deixaria "FARDOS" na tela da
+  // matéria-prima, que não tem fardo nenhum.
+  if(lbsMP[1]) lbsMP[1].textContent = 'KG SOMADOS';
   const lst=document.getElementById('lista-leituras');
-  if(!qtd){ lst.innerHTML='<div class="vazio">Nenhuma leitura ainda. Ligue a câmera e bipe.</div>'; return; }
+  if(!qtd){ lst.innerHTML='<div class="vazio">Nenhuma leitura ainda.<br>'
+    + 'Ligue a câmera e bipe — ou toque em <b>⌨️ DIGITAR</b> e lance o peso.</div>'; return; }
   lst.innerHTML='';
   // mais recentes no topo
   for(let i=leituras.length-1;i>=0;i--){
