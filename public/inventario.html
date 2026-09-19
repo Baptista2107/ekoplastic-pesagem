@@ -38,6 +38,30 @@
   .prod-sel{background:linear-gradient(135deg,var(--panel-hi),var(--panel)); border:1.5px solid var(--verde); border-radius:16px; padding:16px 18px; margin-bottom:14px;}
   .prod-sel .p1{font-size:22px; font-weight:800; line-height:1.25;}
   .prod-sel .p2{font-size:14px; color:var(--muted); margin-top:5px; line-height:1.4;}
+  /* A linha de explicação só faz sentido enquanto o processo é novo.
+     Depois ela vira ruído entre o nome do produto e a contagem, que é
+     onde o olho precisa cair. Fica no HTML, escondida, porque o código
+     ainda escreve nela conforme o modo — e voltar a mostrar é uma linha. */
+  .prod-sel .p2{display:none;}
+
+  /* ─── Entrada do inventário: dois botões, nada mais ───
+     Ícone e subtítulo explicavam o que já se sabe depois da primeira
+     vez. Sem eles a tela fica com o que importa: escolher um dos dois
+     e seguir. */
+  .tipo-tit{font-size:15px; color:var(--muted); font-weight:700; letter-spacing:0.3px; margin-bottom:14px;}
+  .tipo-grade{display:flex; flex-direction:column; gap:12px;}
+  /* `height`, e não `min-height`: o celular.css zera a altura de todo
+     botão com `min-height:44px !important` para garantir alvo de toque,
+     e um !important ganha de qualquer min-height daqui. Com altura fixa
+     o botão fica do tamanho pensado e continua muito acima dos 44 px. */
+  .tipo-bt{height:104px; border-radius:20px; border:1.5px solid var(--border);
+           background:var(--panel); color:var(--txt); font-family:inherit;
+           font-size:19px; font-weight:800; letter-spacing:0.6px; cursor:pointer;
+           display:flex; align-items:center; justify-content:center; text-align:center;
+           padding:0 18px; transition:transform .08s ease, border-color .15s ease;}
+  .tipo-bt:active{transform:scale(0.985);}
+  .tipo-bt.mp{border-color:var(--verde); color:var(--verde); background:rgba(16,185,129,0.10);}
+  .tipo-bt.pa{border-color:#7dd3fc; color:#7dd3fc; background:rgba(125,211,252,0.09);}
 
   /* O tamanho é controlado por este contêiner: a biblioteca de leitura grava
      a largura em pixels direto no #reader, sobrepondo qualquer CSS nele. */
@@ -164,7 +188,6 @@
            font-family:inherit; cursor:pointer; letter-spacing:0.5px;}
   .pa-chip.on{border-color:var(--verde); color:var(--verde); background:rgba(16,185,129,0.10);}
   .pa-chip:active{transform:scale(0.98);}
-  .pa-man-dica{font-size:12.5px; color:var(--muted); line-height:1.5; margin-top:12px; text-align:left;}
   #pa-man-add:disabled{opacity:0.4;}
 
   /* A fileira −10 −1 [n] +1 +10 soma 426 px de largura fixa. Na tela
@@ -216,13 +239,11 @@
 
 <!-- ETAPA 0: MP ou PA -->
 <div class="wrap" id="tela-tipo">
-  <div style="font-size:17px; color:var(--muted); line-height:1.5; margin-bottom:8px;">O que você vai contar?</div>
-  <button class="btn btn-verde" style="min-height:110px; font-size:21px;" onclick="escolherTipo('mp')">
-    📦 MATÉRIA-PRIMA<span style="display:block; font-size:13px; font-weight:600; color:#053; margin-top:6px;">
-      big bags · leitura da etiqueta</span></button>
-  <button class="btn btn-cinza" style="min-height:110px; font-size:21px; border-color:#7dd3fc; color:#7dd3fc;" onclick="escolherTipo('pa')">
-    🏷️ PRODUTO ACABADO<span style="display:block; font-size:13px; font-weight:600; color:var(--muted); margin-top:6px;">
-      gaiolas · leitura do QR ou contagem digitada</span></button>
+  <div class="tipo-tit">O que você vai contar?</div>
+  <div class="tipo-grade">
+    <button class="tipo-bt mp" onclick="escolherTipo('mp')">MATÉRIA-PRIMA</button>
+    <button class="tipo-bt pa" onclick="escolherTipo('pa')">PRODUTO ACABADO</button>
+  </div>
 </div>
 
 <!-- ETAPA 1: SELEÇÃO -->
@@ -322,9 +343,6 @@
       </div>
       <div class="manual-conta" id="pa-man-conta">0 fardos × 25 kg = <b>0 kg</b></div>
       <button class="btn btn-verde" id="pa-man-add" onclick="paManIncluir()" disabled>➕ INCLUIR NA CONTAGEM</button>
-      <div class="pa-man-dica">Cada inclusão entra como uma gaiola na lista abaixo, e pode ser
-        removida lá. Se preferir contar tudo primeiro no papel, digite o total de fardos e
-        inclua uma vez só.</div>
     </div>
   </div>
 
@@ -1987,17 +2005,13 @@ async function exportarPDF(compartilhar){
     }
     // Sob o cabeçalho da cor, basta o formato — repetir "Produto Acabado" e a
     // cor em cada linha só polui.
-    // Contado à mão fica marcado. Não é detalhe de tela: quem confere o
-    // papel depois precisa saber o que a máquina leu e o que uma pessoa
-    // contou — são confiabilidades diferentes, e a divergência de um
-    // item contado à mão se investiga de outro jeito.
-    const manuais = ((it.leituras||[]).filter(l => l && l.manual)).length;
-    const todasManuais = manuais > 0 && manuais === (it.leituras||[]).length;
-    const nome = (ehItemPA(it)
+    // O PDF não distingue contagem digitada de leitura de QR: para quem
+    // recebe o documento, o número é o mesmo e a origem não muda
+    // decisão nenhuma. A marca `manual` continua gravada em cada
+    // lançamento, se um dia for preciso auditar.
+    const nome = ehItemPA(it)
       ? String(it.fornecedor||'').replace('x',' × ')
-      : rotuloProduto(it))
-      + (manuais ? (todasManuais ? '  (contagem manual)'
-                                 : '  (' + manuais + ' lançamento(s) manual(is))') : '');
+      : rotuloProduto(it);
     const l=it.somaLeitura||0; const b=(it.saldoAtual==null)?null:it.saldoAtual;
     const d=(b==null)?null:+(l-b).toFixed(3);
     totL+=l; if(b!=null) totB+=b;
@@ -2013,12 +2027,6 @@ async function exportarPDF(compartilhar){
   y+=10;
   doc.setFont(undefined,'normal'); doc.setFontSize(10);
   doc.text('Produtos conferidos: '+FINALIZADOS.length+'    |    Com divergência: '+comDiv, x0, y);
-  const itensManuais = FINALIZADOS.filter(it => (it.leituras||[]).some(l => l && l.manual)).length;
-  if(itensManuais){
-    y+=7; doc.setFontSize(9); doc.setTextColor(90);
-    doc.text(itensManuais+' produto(s) com contagem manual (gaiolas ainda sem QR Code) — marcados na tabela.', x0, y);
-    doc.setTextColor(0); doc.setFontSize(10);
-  }
   if(falhas>0){
     y+=7; doc.setTextColor(200,40,40); doc.setFontSize(9);
     doc.text('Atenção: '+falhas+' produto(s) sem saldo do Bling (app sem escopo "Controle de estoque", ou fora do ar).', x0, y);

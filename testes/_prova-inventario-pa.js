@@ -106,15 +106,27 @@ async function textoDoPdf(arquivo) {
     await page.goto(BASE + '/inventario.html', { waitUntil: 'domcontentloaded' });
     await sleep(1800);
 
-    // ── 1. Produto acabado, produto escolhido ──
+    // ── 1. A entrada: dois botões e mais nada ──
+    const tipo = (await page.innerText('#tela-tipo')).replace(/\s+/g, ' ').trim();
+    ok(tipo === 'O que você vai contar? MATÉRIA-PRIMA PRODUTO ACABADO',
+       `a entrada tem só a pergunta e os dois botões: "${tipo}"`);
+    ok((await page.$$('#tela-tipo .tipo-bt')).length === 2, 'dois botões, em formato de app');
+    ok(!/📦|🏷️|big bags|gaiolas/.test(tipo), 'sem ícone e sem a linha de explicação');
+    const alturas = await page.$$eval('#tela-tipo .tipo-bt',
+      els => els.map(e => Math.round(e.getBoundingClientRect().height)));
+    ok(alturas.every(h => h >= 90),
+       `com altura de botão de app, não de linha de lista: ${alturas.join(' e ')} px`);
+    await tirar(page, '0-entrada');
+
     await page.click('text=PRODUTO ACABADO'); await sleep(900);
-    ok(/contagem digitada/.test(await page.innerText('#tela-tipo')) ||
-       await page.isVisible('#bloco-pa'),
-       'a tela de tipo diz que o produto acabado também aceita contagem digitada');
     await page.selectOption('#pa-formato', '50x60');
     await page.selectOption('#pa-cor', { index: 1 });
     const corEscolhida = await page.$eval('#pa-cor', el => el.value);
     await page.click('#pa-btn-iniciar'); await sleep(900);
+    ok(/50 × 60/.test(await page.innerText('.prod-sel .p1')),
+       'a tela da contagem mostra o formato e a cor escolhidos');
+    ok(!(await page.isVisible('.prod-sel .p2')),
+       'e nada mais — a linha de explicação saiu da frente da contagem');
     await tirar(page, '1-contagem-qr');
 
     // ── 2. A chave: trocar para DIGITAR ──
@@ -147,6 +159,8 @@ async function textoDoPdf(arquivo) {
     ok(/44 FARDOS/.test(await page.innerText('.contador')), 'o rótulo mostra os 44 fardos');
     const campo = await page.$eval('#pa-man-fardos', el => el.value);
     ok(campo === '0', 'o campo zera sozinho para a próxima gaiola — não repete o número anterior');
+    ok((await page.$$('#bloco-pa-manual .pa-man-dica')).length === 0,
+       'sem texto explicativo embaixo do botão de incluir');
 
     // A fileira de botões tem largura fixa e estourava a caixa no
     // celular: os "−10" e "+10" das pontas saíam cortados.
@@ -195,8 +209,8 @@ async function textoDoPdf(arquivo) {
     ok(paginas >= 1, `o PDF tem ${paginas} página(s) de verdade`);
     ok(/Invent[áa]rio de Produto Acabado/.test(txt), 'com o título certo');
     ok(/1\.100/.test(txt), 'e os 1.100 kg contados aparecem dentro dele');
-    ok(/contagem manual/i.test(txt),
-       'marcando que este produto foi contado à mão — quem confere depois precisa saber');
+    ok(!/contagem manual/i.test(txt) && !/manual/i.test(txt),
+       'e SEM marcar como foi contado — para quem recebe o PDF o número é o mesmo');
     console.log('\n  texto do PDF:\n    ' + txt.replace(/\s+/g, ' ').trim().slice(0, 400));
 
     // ── 7. O MESMO, NA LEITURA LIVRE ──
