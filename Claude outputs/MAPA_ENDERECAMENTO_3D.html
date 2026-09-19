@@ -1,0 +1,784 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Endereçamento do Galpão — Ekoplastic</title>
+</head>
+<body>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+
+<style>
+  /* ── tokens: tema claro é a base, escuro redefine só as variáveis ────── */
+  :root {
+    --ground:      #eef1f4;
+    --panel:       #ffffff;
+    --panel-2:     #f5f7f9;
+    --line:        #d3dae1;
+    --line-forte:  #b6c0ca;
+    --texto:       #16202b;
+    --texto-2:     #5b6b7a;
+    --texto-3:     #8d9aa7;
+    --acento:      #0e7f96;
+    --acento-forte:#0a6579;
+    --acento-fraco:#d6eef3;
+    --alerta:      #c2410c;
+    --alerta-fraco:#fbe4d6;
+    --piso:        #dfe4e9;
+    --piso-linha:  #c3ccd5;
+    --caixa-a:     #96abbd;
+    --caixa-b:     #74899d;
+    --caixa-c:     #4d6379;
+    --sombra:      0 1px 2px rgba(16,32,48,.06), 0 8px 24px rgba(16,32,48,.08);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:      #0d151d;
+      --panel:       #131f2a;
+      --panel-2:     #18262f;
+      --line:        #263743;
+      --line-forte:  #354a59;
+      --texto:       #e8eef3;
+      --texto-2:     #9db0bf;
+      --texto-3:     #6c8092;
+      --acento:      #3fc3dc;
+      --acento-forte:#7ddcee;
+      --acento-fraco:#0d3540;
+      --alerta:      #ff8a4c;
+      --alerta-fraco:#3a1c0d;
+      --piso:        #16222c;
+      --piso-linha:  #24363f;
+      --caixa-a:     #5b7a8c;
+      --caixa-b:     #405a6b;
+      --caixa-c:     #2a3d4a;
+      --sombra:      0 1px 2px rgba(0,0,0,.4), 0 10px 30px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground:      #0d151d;
+    --panel:       #131f2a;
+    --panel-2:     #18262f;
+    --line:        #263743;
+    --line-forte:  #354a59;
+    --texto:       #e8eef3;
+    --texto-2:     #9db0bf;
+    --texto-3:     #6c8092;
+    --acento:      #3fc3dc;
+    --acento-forte:#7ddcee;
+    --acento-fraco:#0d3540;
+    --alerta:      #ff8a4c;
+    --alerta-fraco:#3a1c0d;
+    --piso:        #16222c;
+    --piso-linha:  #24363f;
+    --caixa-a:     #5b7a8c;
+    --caixa-b:     #405a6b;
+    --caixa-c:     #2a3d4a;
+    --sombra:      0 1px 2px rgba(0,0,0,.4), 0 10px 30px rgba(0,0,0,.35);
+  }
+
+  * { box-sizing: border-box; }
+  /* display de classe vence o [hidden] do navegador; reforça aqui */
+  [hidden] { display: none !important; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--texto);
+    font-family: 'Barlow Semi Condensed', 'Segoe UI', system-ui, sans-serif;
+    font-size: 16px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .capa {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 300px;
+    gap: 14px;
+    padding: 14px;
+    max-width: 1480px;
+    margin: 0 auto;
+    min-height: 100vh;
+    align-content: start;
+  }
+  @media (max-width: 900px) {
+    .capa { grid-template-columns: minmax(0, 1fr); }
+  }
+
+  /* ── cabeçalho ─────────────────────────────────────────────────────── */
+  header { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px; }
+  h1 {
+    margin: 0;
+    font-size: clamp(1.5rem, 3.2vw, 2.1rem);
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+  }
+  .subtit { color: var(--texto-2); font-size: .95rem; }
+  .contagens { margin-left: auto; display: flex; gap: 14px; font-size: .85rem; color: var(--texto-2); }
+  .contagens b { font-family: 'IBM Plex Mono', ui-monospace, monospace; color: var(--texto); font-variant-numeric: tabular-nums; }
+
+  /* ── palco 3D ──────────────────────────────────────────────────────── */
+  .palco {
+    position: relative;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    box-shadow: var(--sombra);
+    overflow: hidden;
+    min-height: 460px;
+  }
+  canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+  canvas:active { cursor: grabbing; }
+
+  .barra {
+    position: absolute; left: 10px; top: 10px; right: 10px;
+    display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+    pointer-events: none;
+  }
+  .barra > * { pointer-events: auto; }
+
+  .grupo { display: flex; gap: 2px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 7px; padding: 2px; }
+
+  button, .botao {
+    font-family: inherit; font-size: .82rem; font-weight: 600;
+    letter-spacing: .04em; text-transform: uppercase;
+    color: var(--texto-2); background: transparent;
+    border: 0; border-radius: 5px; padding: 5px 9px; cursor: pointer;
+    transition: background .12s, color .12s;
+  }
+  button:hover { background: var(--line); color: var(--texto); }
+  button[aria-pressed="true"] { background: var(--acento); color: var(--panel); }
+  button:focus-visible { outline: 2px solid var(--acento); outline-offset: 2px; }
+
+  .busca {
+    margin-left: auto;
+    display: flex; align-items: center; gap: 6px;
+    background: var(--panel-2); border: 1px solid var(--line);
+    border-radius: 7px; padding: 3px 8px;
+  }
+  .busca input {
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    font-size: .85rem; letter-spacing: .04em;
+    background: transparent; border: 0; color: var(--texto);
+    width: 10ch; padding: 3px 0;
+  }
+  .busca input:focus { outline: none; }
+  .busca span { font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; color: var(--texto-3); }
+
+  .dica {
+    position: absolute; left: 12px; bottom: 10px;
+    font-size: .76rem; color: var(--texto-3);
+    letter-spacing: .03em;
+  }
+
+  /* ── painel lateral ────────────────────────────────────────────────── */
+  aside { display: flex; flex-direction: column; gap: 12px; }
+  .cartao {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    box-shadow: var(--sombra);
+    padding: 14px;
+  }
+  .rotulo {
+    font-size: .72rem; text-transform: uppercase; letter-spacing: .12em;
+    color: var(--texto-3); font-weight: 600; margin: 0 0 8px;
+  }
+  .codigo-sel {
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    font-size: 1.85rem; font-weight: 600; letter-spacing: .02em;
+    color: var(--acento-forte); margin: 0 0 2px;
+  }
+  .vazio .codigo-sel { color: var(--texto-3); }
+  .linhas { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin-top: 10px; font-size: .92rem; }
+  .linhas dt { color: var(--texto-3); }
+  .linhas dd { margin: 0; font-weight: 500; }
+  .selo {
+    display: inline-block; margin-top: 10px;
+    font-size: .74rem; font-weight: 700; text-transform: uppercase; letter-spacing: .09em;
+    padding: 3px 8px; border-radius: 4px;
+    background: var(--alerta-fraco); color: var(--alerta);
+  }
+  .selo.ok { background: var(--acento-fraco); color: var(--acento-forte); }
+
+  .legenda { display: grid; gap: 7px; font-size: .88rem; }
+  .legenda div { display: flex; align-items: center; gap: 9px; color: var(--texto-2); }
+  .amostra { width: 15px; height: 15px; border-radius: 3px; flex: none; border: 1px solid rgba(0,0,0,.18); }
+
+  table.niveis { width: 100%; border-collapse: collapse; font-size: .88rem; }
+  table.niveis th, table.niveis td { padding: 4px 2px; text-align: right; border-bottom: 1px solid var(--line); }
+  table.niveis th:first-child, table.niveis td:first-child { text-align: left; }
+  table.niveis th { font-size: .7rem; text-transform: uppercase; letter-spacing: .08em; color: var(--texto-3); font-weight: 600; }
+  table.niveis td { font-variant-numeric: tabular-nums; font-family: 'IBM Plex Mono', ui-monospace, monospace; }
+  table.niveis td:first-child { font-family: inherit; }
+  table.niveis tr:last-child td { border-bottom: 0; font-weight: 700; }
+
+  .nota { font-size: .82rem; color: var(--texto-3); line-height: 1.5; }
+  .nota code { font-family: 'IBM Plex Mono', ui-monospace, monospace; color: var(--texto-2); }
+
+  footer { grid-column: 1 / -1; color: var(--texto-3); font-size: .8rem; padding: 2px 2px 10px; }
+
+  /* botão de tema — existe só na versão avulsa */
+  .tema {
+    margin-left: auto;
+    background: var(--panel); border: 1px solid var(--line);
+    color: var(--texto-2); border-radius: 7px; padding: 5px 12px;
+  }
+  .tema:hover { background: var(--panel-2); color: var(--texto); }
+  .contagens { margin-left: 14px; }
+</style>
+
+<div class="capa">
+  <header>
+    <div>
+      <h1>Endereçamento do Galpão</h1>
+      <div class="subtit">Ruas 01 e 02 · 3 níveis · 136 posições úteis · nível 01 mais alto, para gaiola grande</div>
+    </div>
+    <button type="button" id="btn-tema" class="tema" title="Alternar claro/escuro">Tema</button>
+    <div class="contagens">
+      <span>Rua 01 <b>58</b></span>
+      <span>Rua 02 <b>78</b></span>
+      <span>Bloqueadas <b>2</b></span>
+    </div>
+  </header>
+
+  <main class="palco">
+    <canvas id="tela" aria-label="Mapa tridimensional das ruas de endereçamento"></canvas>
+    <div class="barra">
+      <div class="grupo" role="group" aria-label="Vistas">
+        <button type="button" data-vista="iso" aria-pressed="true">Isométrica</button>
+        <button type="button" data-vista="frente">Frente</button>
+        <button type="button" data-vista="topo">Planta</button>
+      </div>
+      <div class="grupo" role="group" aria-label="Filtro de nível">
+        <button type="button" data-nivel="0" aria-pressed="true">Todos</button>
+        <button type="button" data-nivel="1">Chão</button>
+        <button type="button" data-nivel="2">Meio</button>
+        <button type="button" data-nivel="3">Alto</button>
+      </div>
+      <label class="busca">
+        <span>Ir para</span>
+        <input id="busca" placeholder="01-02-007" autocomplete="off" spellcheck="false" inputmode="numeric">
+      </label>
+    </div>
+    <div class="dica">Arraste para girar · role para aproximar · clique numa posição</div>
+  </main>
+
+  <aside>
+    <section class="cartao vazio" id="cartao-sel">
+      <p class="rotulo">Posição selecionada</p>
+      <p class="codigo-sel" id="sel-codigo">—</p>
+      <dl class="linhas" id="sel-linhas" hidden>
+        <dt>Rua</dt><dd id="sel-rua"></dd>
+        <dt>Nível</dt><dd id="sel-nivel"></dd>
+        <dt>Posição</dt><dd id="sel-posicao"></dd>
+        <dt>Gaiola</dt><dd id="sel-gaiola"></dd>
+      </dl>
+      <span class="selo" id="sel-selo" hidden></span>
+    </section>
+
+    <section class="cartao">
+      <p class="rotulo">Legenda</p>
+      <div class="legenda">
+        <div><span class="amostra" style="background:var(--caixa-a)"></span> Nível 03 — alto · gaiola pequena</div>
+        <div><span class="amostra" style="background:var(--caixa-b)"></span> Nível 02 — meio · gaiola pequena</div>
+        <div><span class="amostra" style="background:var(--caixa-c)"></span> Nível 01 — chão · <b>gaiola grande</b></div>
+        <div><span class="amostra" style="background:var(--alerta)"></span> Bloqueada — hidrante e espaço da informação</div>
+        <div><span class="amostra" style="background:var(--acento)"></span> Selecionada</div>
+      </div>
+    </section>
+
+    <section class="cartao">
+      <p class="rotulo">Posições por nível</p>
+      <table class="niveis">
+        <thead><tr><th>Nível</th><th>Rua 01</th><th>Rua 02</th><th>Total</th></tr></thead>
+        <tbody>
+          <tr><td>03 — pequena</td><td>20</td><td>26</td><td>46</td></tr>
+          <tr><td>02 — pequena</td><td>20</td><td>26</td><td>46</td></tr>
+          <tr><td>01 — grande</td><td>18</td><td>26</td><td>44</td></tr>
+          <tr><td>Úteis</td><td>58</td><td>78</td><td>136</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="cartao">
+      <p class="rotulo">Como ler o código</p>
+      <p class="nota">
+        <code>RR-NN-PPP</code> — <b>RR</b> a rua, <b>NN</b> o nível de altura
+        (01 chão, 02 meio, 03 alto) e <b>PPP</b> a posição ao longo da rua.
+        <code>01-02-007</code> é a sétima posição do nível do meio da Rua 01.
+        O nível 01 tem vão maior e recebe as gaiolas grandes; 02 e 03, só as pequenas.
+      </p>
+    </section>
+  </aside>
+
+  <footer>
+    Desenho proporcional, não levantamento métrico: 1,20 m de vão por posição, 2,20 m de altura
+    no nível 01 (gaiola grande) e 1,45 m nos níveis 02 e 03 (gaiola pequena). Os códigos, as
+    contagens e as duas posições bloqueadas vêm da planilha ENDEREÇAMENTO.xlsx — as alturas ainda
+    não foram medidas em campo.
+  </footer>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  // ── modelo ───────────────────────────────────────────────────────────
+  var RUAS = [ { rua: 1, vaos: 20 }, { rua: 2, vaos: 26 } ];
+  var BLOQ = { '01-01-005': 'HIDRANTE', '01-01-006': 'ESPAÇO DA INFORMAÇÃO' };
+  var NIVEL_NOME = { 1: 'Chão', 2: 'Meio', 3: 'Alto' };
+
+  var VAO = 1.20, FOLGA = 0.06, PROF = 1.10, CORREDOR = 3.60;
+
+  // O nível 01 é mais alto de propósito: é onde entram as GAIOLAS GRANDES.
+  // Os níveis 02 e 03 recebem só gaiolas pequenas. Alturas proporcionais,
+  // ainda não medidas em campo — trocar aqui muda o desenho inteiro.
+  var ALT_NIVEL  = { 1: 2.20, 2: 1.45, 3: 1.45 };
+  var BASE_NIVEL = { 1: 0, 2: 2.20, 3: 3.65 };
+  var GAIOLA     = { 1: 'GRANDE', 2: 'PEQUENA', 3: 'PEQUENA' };
+
+  function pad(n, k) { var s = String(n); while (s.length < k) s = '0' + s; return s; }
+
+  var caixas = [];
+  RUAS.forEach(function (r, ri) {
+    var z0 = ri * (PROF + CORREDOR);
+    for (var nivel = 1; nivel <= 3; nivel++) {
+      for (var p = 1; p <= r.vaos; p++) {
+        var codigo = pad(r.rua, 2) + '-' + pad(nivel, 2) + '-' + pad(p, 3);
+        caixas.push({
+          codigo: codigo, rua: r.rua, nivel: nivel, posicao: p,
+          gaiola: GAIOLA[nivel],
+          bloqueio: BLOQ[codigo] || null,
+          x: (p - 1) * (VAO + FOLGA), y: BASE_NIVEL[nivel], z: z0,
+          w: VAO, h: ALT_NIVEL[nivel] * 0.88, d: PROF
+        });
+      }
+    }
+  });
+
+  var TOPO_ESTANTE = BASE_NIVEL[3] + ALT_NIVEL[3];
+  var LARG_TOTAL = (Math.max(20, 26)) * (VAO + FOLGA);
+  var PROF_TOTAL = (PROF + CORREDOR) + PROF;
+  var CENTRO = { x: LARG_TOTAL / 2, y: TOPO_ESTANTE / 2, z: PROF_TOTAL / 2 };
+
+  // ── câmera ───────────────────────────────────────────────────────────
+  var VISTAS = {
+    iso:    { yaw: -0.82, pitch: 0.52, zoom: 1 },
+    frente: { yaw: 0.0,   pitch: 0.08, zoom: 1 },
+    topo:   { yaw: -0.0001, pitch: 1.55, zoom: 1 }
+  };
+  var cam = Object.assign({}, VISTAS.iso);
+  var vistaAtual = 'iso';
+  var filtroNivel = 0;
+  var selecionado = null;
+  var destaque = null, destaqueAte = 0;
+
+  var tela = document.getElementById('tela');
+  var ctx = tela.getContext('2d');
+  var dpr = 1, W = 0, H = 0;
+
+  function css(nome) {
+    return getComputedStyle(document.documentElement).getPropertyValue(nome).trim();
+  }
+  var cores = {};
+  function lerCores() {
+    cores = {
+      piso: css('--piso'), pisoLinha: css('--piso-linha'),
+      a: css('--caixa-a'), b: css('--caixa-b'), c: css('--caixa-c'),
+      alerta: css('--alerta'), acento: css('--acento'),
+      texto: css('--texto'), texto2: css('--texto-2'), texto3: css('--texto-3'),
+      linha: css('--line-forte'), painel: css('--panel')
+    };
+  }
+
+  function redimensionar() {
+    lerCores();          // o tema pode ter mudado desde o último desenho
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var r = tela.parentElement.getBoundingClientRect();
+    W = Math.max(320, r.width); H = Math.max(360, r.height);
+    tela.width = Math.round(W * dpr); tela.height = Math.round(H * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    desenhar();
+  }
+
+  // ── projeção ─────────────────────────────────────────────────────────
+  //  Duas etapas: gira o ponto no espaço e aplica uma perspectiva suave;
+  //  depois um "enquadramento" calculado a cada giro escala e centraliza a
+  //  cena para preencher o palco. Sem isso, um galpão de 33 m por 5 m fica
+  //  jogado num canto assim que a câmera roda.
+  var DIST = 58;            // afastamento da câmera, só para dar perspectiva
+  var enq = { escala: 20, dx: 0, dy: 0 };
+
+  function girar(p) {
+    var x = p.x - CENTRO.x, y = p.y - CENTRO.y, z = p.z - CENTRO.z;
+    var cy = Math.cos(cam.yaw), sy = Math.sin(cam.yaw);
+    var x1 = x * cy - z * sy, z1 = x * sy + z * cy;
+    var cp = Math.cos(cam.pitch), sp = Math.sin(cam.pitch);
+    var y1 = y * cp - z1 * sp, z2 = y * sp + z1 * cp;
+    var d = DIST + z2;
+    if (d < 6) d = 6;
+    var k = DIST / d;
+    return { x: x1 * k, y: y1 * k, prof: d };
+  }
+
+  function projetar(p) {
+    var g = girar(p);
+    return { x: enq.dx + g.x * enq.escala, y: enq.dy - g.y * enq.escala, prof: g.prof };
+  }
+
+  function calcularEnquadramento() {
+    // Enquadra pelas ESTANTES, não pelo piso: o piso é bem maior e, com a
+    // câmera inclinada, sua borda ao fundo empurrava tudo para baixo.
+    var minX = 1e9, maxX = -1e9, minY = 1e9, maxY = -1e9;
+    var mx = -1.9, Mx = LARG_TOTAL + 0.3;
+    var my = 0, My = TOPO_ESTANTE + 0.9;
+    var mz = -0.3, Mz = PROF_TOTAL + 0.3;
+    [mx, Mx].forEach(function (x) {
+      [my, My].forEach(function (y) {
+        [mz, Mz].forEach(function (z) {
+          var g = girar({ x: x, y: y, z: z });
+          if (g.x < minX) minX = g.x; if (g.x > maxX) maxX = g.x;
+          if (g.y < minY) minY = g.y; if (g.y > maxY) maxY = g.y;
+        });
+      });
+    });
+    var mTopo = 62, mBase = 34, mLado = 34;          // a barra de botões cobre o topo
+    var ex = (W - mLado * 2) / Math.max(0.001, maxX - minX);
+    var ey = (H - mTopo - mBase) / Math.max(0.001, maxY - minY);
+    enq.escala = Math.min(ex, ey) * cam.zoom;
+    enq.dx = W / 2 - ((minX + maxX) / 2) * enq.escala;
+    enq.dy = (mTopo + (H - mBase)) / 2 + ((minY + maxY) / 2) * enq.escala;
+  }
+
+  function faceDaCaixa(b) {
+    var x0 = b.x, x1 = b.x + b.w, y0 = b.y, y1 = b.y + b.h, z0 = b.z, z1 = b.z + b.d;
+    var v = [
+      { x: x0, y: y0, z: z0 }, { x: x1, y: y0, z: z0 }, { x: x1, y: y1, z: z0 }, { x: x0, y: y1, z: z0 },
+      { x: x0, y: y0, z: z1 }, { x: x1, y: y0, z: z1 }, { x: x1, y: y1, z: z1 }, { x: x0, y: y1, z: z1 }
+    ].map(projetar);
+    return [
+      { i: [0, 1, 2, 3], luz: 1.00 },   // frente  (-z)
+      { i: [5, 4, 7, 6], luz: 0.74 },   // fundo   (+z)
+      { i: [3, 2, 6, 7], luz: 1.22 },   // topo
+      { i: [4, 5, 1, 0], luz: 0.62 },   // base
+      { i: [4, 0, 3, 7], luz: 0.84 },   // esquerda
+      { i: [1, 5, 6, 2], luz: 0.84 }    // direita
+    ].map(function (f) {
+      var pts = f.i.map(function (k) { return v[k]; });
+      var area = 0;
+      for (var k = 0; k < 4; k++) {
+        var a = pts[k], c = pts[(k + 1) % 4];
+        area += (a.x * c.y - c.x * a.y);
+      }
+      var prof = (pts[0].prof + pts[1].prof + pts[2].prof + pts[3].prof) / 4;
+      return { pts: pts, luz: f.luz, visivel: area < 0, prof: prof };
+    });
+  }
+
+  function tom(hex, k) {
+    var h = hex.replace('#', '');
+    if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+    var n = parseInt(h, 16);
+    var r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+    function ap(v) { return Math.max(0, Math.min(255, Math.round(v * k))); }
+    return 'rgb(' + ap(r) + ',' + ap(g) + ',' + ap(b) + ')';
+  }
+
+  function corDaCaixa(b) {
+    if (selecionado && b.codigo === selecionado.codigo) return cores.acento;
+    if (destaque === b.codigo && performance.now() < destaqueAte) return cores.acento;
+    if (b.bloqueio) return cores.alerta;
+    return b.nivel === 3 ? cores.a : b.nivel === 2 ? cores.b : cores.c;
+  }
+
+  var poligonos = [];
+
+  function desenharPiso() {
+    var mx = -2.2, Mx = LARG_TOTAL + 1.0, mz = -1.2, Mz = PROF_TOTAL + 1.2;
+    var cantos = [
+      { x: mx, y: -0.02, z: mz }, { x: Mx, y: -0.02, z: mz },
+      { x: Mx, y: -0.02, z: Mz }, { x: mx, y: -0.02, z: Mz }
+    ].map(projetar);
+    ctx.beginPath();
+    ctx.moveTo(cantos[0].x, cantos[0].y);
+    for (var i = 1; i < 4; i++) ctx.lineTo(cantos[i].x, cantos[i].y);
+    ctx.closePath();
+    ctx.fillStyle = cores.piso; ctx.fill();
+
+    ctx.strokeStyle = cores.pisoLinha; ctx.lineWidth = 1;
+    for (var p = 0; p <= 26; p += 2) {
+      var xx = p * (VAO + FOLGA);
+      if (xx > Mx) break;
+      var a = projetar({ x: xx, y: -0.01, z: mz }), c = projetar({ x: xx, y: -0.01, z: Mz });
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(c.x, c.y); ctx.stroke();
+    }
+    // faixa do corredor
+    var cz0 = PROF + 0.35, cz1 = PROF + CORREDOR - 0.35;
+    [cz0, cz1].forEach(function (zz) {
+      var a = projetar({ x: mx, y: -0.005, z: zz }), c = projetar({ x: Mx, y: -0.005, z: zz });
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(c.x, c.y);
+      ctx.setLineDash([10, 8]); ctx.strokeStyle = cores.texto3; ctx.stroke(); ctx.setLineDash([]);
+    });
+  }
+
+  function rotuloRua(rua, z) {
+    // Flutua logo acima do começo da estante. Antes ficava à esquerda do
+    // piso e era cortado pela borda do palco quando a câmera girava.
+    var plano = cam.pitch > 1.2;
+    var p = plano
+      ? projetar({ x: 1.4, y: 0, z: z - 1.15 })
+      : projetar({ x: 1.4, y: TOPO_ESTANTE + 0.45, z: z + PROF / 2 });
+    ctx.save();
+    var tam = Math.max(12, Math.round(W / 58));
+    ctx.font = '700 ' + tam + 'px "Barlow Semi Condensed", sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    var rot = 'RUA ' + pad(rua, 2);
+    var lw = ctx.measureText(rot).width + 18, lh = tam + 10;
+    // pastilha atrás: sobre as caixas o texto sumia (cinza sobre cinza)
+    ctx.fillStyle = cores.painel;
+    ctx.strokeStyle = cores.linha; ctx.lineWidth = 1;
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(p.x - lw / 2, p.y - lh / 2, lw, lh, 5);
+    else ctx.rect(p.x - lw / 2, p.y - lh / 2, lw, lh);
+    ctx.fill(); ctx.stroke();
+    ctx.fillStyle = cores.texto;
+    ctx.fillText(rot, p.x, p.y + 0.5);
+    ctx.restore();
+  }
+
+  function marcarSelecionada() {
+    if (!selecionado) return;
+    if (filtroNivel && selecionado.nivel !== filtroNivel) return;
+    var b = selecionado;
+    var topo = projetar({ x: b.x + b.w / 2, y: b.y + b.h, z: b.z + b.d / 2 });
+    var alvo = { x: topo.x, y: topo.y - 34 };
+    var cor = b.bloqueio ? cores.alerta : cores.acento;
+
+    ctx.save();
+    ctx.strokeStyle = cor; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(topo.x, topo.y); ctx.lineTo(alvo.x, alvo.y + 9); ctx.stroke();
+    ctx.beginPath(); ctx.arc(topo.x, topo.y, 3.4, 0, Math.PI * 2); ctx.fillStyle = cor; ctx.fill();
+
+    ctx.font = '600 13px "IBM Plex Mono", monospace';
+    var texto = b.codigo;
+    var larg = ctx.measureText(texto).width + 16, altu = 22;
+    var bx = Math.max(6, Math.min(W - larg - 6, alvo.x - larg / 2));
+    var by = Math.max(6, alvo.y - altu + 9);
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(bx, by, larg, altu, 5);
+    else ctx.rect(bx, by, larg, altu);
+    ctx.fillStyle = cor; ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(texto, bx + larg / 2, by + altu / 2 + 0.5);
+    ctx.restore();
+  }
+
+  function desenhar() {
+    if (!W) return;
+    calcularEnquadramento();
+    ctx.clearRect(0, 0, W, H);
+    desenharPiso();
+
+    poligonos = [];
+    var lista = [];
+    caixas.forEach(function (b) {
+      if (filtroNivel && b.nivel !== filtroNivel) return;
+      var faces = faceDaCaixa(b);
+      var base = corDaCaixa(b);
+      faces.forEach(function (f) {
+        if (!f.visivel) return;
+        lista.push({ pts: f.pts, cor: tom(base, f.luz), prof: f.prof, caixa: b });
+      });
+    });
+    lista.sort(function (a, b) { return b.prof - a.prof; });
+
+    var escalaTexto = enq.escala;
+    var mostrarCodigo = escalaTexto > 15;
+
+    ctx.lineJoin = 'round';
+    lista.forEach(function (f) {
+      ctx.beginPath();
+      ctx.moveTo(f.pts[0].x, f.pts[0].y);
+      for (var i = 1; i < 4; i++) ctx.lineTo(f.pts[i].x, f.pts[i].y);
+      ctx.closePath();
+      ctx.fillStyle = f.cor; ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,.18)'; ctx.lineWidth = 0.7; ctx.stroke();
+      poligonos.push(f);
+    });
+
+    // rótulos das ruas por cima das caixas, senão a estante da frente os cobre
+    RUAS.forEach(function (r, ri) { rotuloRua(r.rua, ri * (PROF + CORREDOR)); });
+    marcarSelecionada();
+
+    if (mostrarCodigo) {
+      ctx.save();
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.font = '500 ' + Math.min(14, Math.max(7, escalaTexto / 2.6)) + 'px "IBM Plex Mono", monospace';
+      caixas.forEach(function (b) {
+        if (filtroNivel && b.nivel !== filtroNivel) return;
+        var c = projetar({ x: b.x + b.w / 2, y: b.y + b.h / 2, z: b.z });
+        var claro = (selecionado && b.codigo === selecionado.codigo) || b.bloqueio;
+        ctx.fillStyle = claro ? '#ffffff' : 'rgba(255,255,255,.82)';
+        ctx.fillText(b.codigo.slice(-3), c.x, c.y);
+      });
+      ctx.restore();
+    }
+  }
+
+  // ── interação ────────────────────────────────────────────────────────
+  function dentro(pts, x, y) {
+    var d = false;
+    for (var i = 0, j = 3; i < 4; j = i++) {
+      var xi = pts[i].x, yi = pts[i].y, xj = pts[j].x, yj = pts[j].y;
+      if (((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi)) d = !d;
+    }
+    return d;
+  }
+
+  function selecionar(b) {
+    selecionado = b || null;
+    var cartao = document.getElementById('cartao-sel');
+    var linhas = document.getElementById('sel-linhas');
+    var selo = document.getElementById('sel-selo');
+    if (!b) {
+      cartao.classList.add('vazio');
+      document.getElementById('sel-codigo').textContent = '—';
+      linhas.hidden = true; selo.hidden = true;
+    } else {
+      cartao.classList.remove('vazio');
+      document.getElementById('sel-codigo').textContent = b.codigo;
+      document.getElementById('sel-rua').textContent = 'Rua ' + pad(b.rua, 2);
+      document.getElementById('sel-nivel').textContent = pad(b.nivel, 2) + ' — ' + NIVEL_NOME[b.nivel];
+      document.getElementById('sel-posicao').textContent = pad(b.posicao, 3);
+      document.getElementById('sel-gaiola').textContent =
+        b.gaiola === 'GRANDE' ? 'Grande — vão de 2,20 m' : 'Pequena — vão de 1,45 m';
+      linhas.hidden = false;
+      selo.hidden = false;
+      selo.textContent = b.bloqueio ? 'Bloqueada · ' + b.bloqueio : 'Disponível para palete';
+      selo.className = b.bloqueio ? 'selo' : 'selo ok';
+    }
+    desenhar();
+  }
+
+  var arrastando = false, moveu = false, px = 0, py = 0;
+
+  tela.addEventListener('pointerdown', function (e) {
+    arrastando = true; moveu = false; px = e.clientX; py = e.clientY;
+    tela.setPointerCapture(e.pointerId);
+  });
+  tela.addEventListener('pointermove', function (e) {
+    if (!arrastando) return;
+    var dx = e.clientX - px, dy = e.clientY - py;
+    if (Math.abs(dx) + Math.abs(dy) > 3) moveu = true;
+    px = e.clientX; py = e.clientY;
+    cam.yaw -= dx * 0.006;
+    cam.pitch = Math.max(-0.15, Math.min(1.45, cam.pitch + dy * 0.005));
+    desenhar();
+  });
+  tela.addEventListener('pointerup', function (e) {
+    arrastando = false;
+    if (moveu) return;
+    var r = tela.getBoundingClientRect();
+    var x = e.clientX - r.left, y = e.clientY - r.top;
+    for (var i = poligonos.length - 1; i >= 0; i--) {
+      if (dentro(poligonos[i].pts, x, y)) { selecionar(poligonos[i].caixa); return; }
+    }
+    selecionar(null);
+  });
+  tela.addEventListener('wheel', function (e) {
+    e.preventDefault();
+    cam.zoom = Math.max(0.55, Math.min(6, cam.zoom * (e.deltaY > 0 ? 0.9 : 1.111)));
+    desenhar();
+  }, { passive: false });
+
+  document.querySelectorAll('[data-vista]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      vistaAtual = b.dataset.vista;
+      cam = Object.assign({}, VISTAS[vistaAtual]);
+      document.querySelectorAll('[data-vista]').forEach(function (o) {
+        o.setAttribute('aria-pressed', String(o === b));
+      });
+      // De cima, os três níveis caem exatamente um sobre o outro e os
+      // números viram borrão. A planta mostra um nível por vez.
+      if (vistaAtual === 'topo' && filtroNivel === 0) marcarNivel(1);
+      desenhar();
+    });
+  });
+
+  function marcarNivel(n) {
+    filtroNivel = n;
+    document.querySelectorAll('[data-nivel]').forEach(function (o) {
+      o.setAttribute('aria-pressed', String(parseInt(o.dataset.nivel, 10) === n));
+    });
+  }
+
+  document.querySelectorAll('[data-nivel]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      marcarNivel(parseInt(b.dataset.nivel, 10));
+      desenhar();
+    });
+  });
+
+  var campo = document.getElementById('busca');
+  campo.addEventListener('input', function () {
+    var v = campo.value.replace(/[^0-9]/g, '');
+    if (v.length > 7) v = v.slice(0, 7);
+    if (v.length > 4) v = v.slice(0, 2) + '-' + v.slice(2, 4) + '-' + v.slice(4);
+    else if (v.length > 2) v = v.slice(0, 2) + '-' + v.slice(2);
+    campo.value = v;
+    var alvo = caixas.filter(function (b) { return b.codigo === v; })[0];
+    if (alvo) {
+      if (filtroNivel && alvo.nivel !== filtroNivel) marcarNivel(alvo.nivel);
+      destaque = alvo.codigo; destaqueAte = performance.now() + 1600;
+      selecionar(alvo);
+      var fim = performance.now() + 1700;
+      (function pisca() { desenhar(); if (performance.now() < fim) requestAnimationFrame(pisca); })();
+    }
+  });
+
+  var mq = window.matchMedia('(prefers-color-scheme: dark)');
+  (mq.addEventListener ? mq.addEventListener.bind(mq, 'change') : mq.addListener.bind(mq))(function () {
+    lerCores(); desenhar();
+  });
+
+  window.addEventListener('resize', redimensionar);
+  // O palco cresce quando o painel lateral ganha uma linha ou a fonte
+  // carrega. Sem observar isso, o canvas fica com o tamanho antigo e o
+  // desenho aparece cortado embaixo.
+  if (window.ResizeObserver) {
+    new ResizeObserver(function () { redimensionar(); }).observe(tela.parentElement);
+  }
+  lerCores();
+  redimensionar();
+  setTimeout(function () { lerCores(); redimensionar(); }, 400);   // depois das fontes
+})();
+</script>
+
+
+<script>
+(function () {
+  var raiz = document.documentElement;
+  var btn = document.getElementById('btn-tema');
+  function escuroAgora() {
+    var t = raiz.getAttribute('data-theme');
+    if (t) return t === 'dark';
+    return window.matchMedia('(prefers-color-scheme: dark)').matches;
+  }
+  btn.addEventListener('click', function () {
+    raiz.setAttribute('data-theme', escuroAgora() ? 'light' : 'dark');
+    try { localStorage.setItem('eko-tema', raiz.getAttribute('data-theme')); } catch (e) {}
+    window.dispatchEvent(new Event('resize'));   // o canvas relê as cores
+  });
+  try {
+    var salvo = localStorage.getItem('eko-tema');
+    if (salvo) raiz.setAttribute('data-theme', salvo);
+  } catch (e) {}
+})();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,30 @@
+# ============================================================
+# Ekoplastic Pesagem — normalizacao de fim de linha
+# ============================================================
+# CRITICO: .bat e .ps1 SO funcionam no Windows com CRLF.
+# Sem estas linhas o git pode converter para LF e quebrar
+# INICIAR.bat e enviar_raw.ps1 — ou seja, quebrar a impressao
+# de etiquetas e a inicializacao do sistema.
+
+* text=auto
+
+# --- Precisam OBRIGATORIAMENTE de CRLF (Windows) ---
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+*.ps1  text eol=crlf
+
+# --- Codigo e texto: LF no repositorio, normal ---
+*.js   text eol=lf
+*.json text eol=lf
+*.md   text eol=lf
+*.html text eol=lf
+*.txt  text eol=lf
+
+# --- Binarios: nunca converter ---
+*.pdf  binary
+*.png  binary
+*.jpg  binary
+*.ico  binary
+*.node binary
+*.exe  binary
+*.dll  binary

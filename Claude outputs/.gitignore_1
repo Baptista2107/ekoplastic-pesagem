@@ -1,0 +1,75 @@
+# ============================================================
+# Ekoplastic Pesagem - arquivos que NUNCA entram no repositorio
+# ============================================================
+# Regra: se o arquivo e' criado/alterado pelo sistema em producao,
+# ele NAO e' versionado. Um "git pull" jamais pode sobrescrever
+# dado real do chao de fabrica.
+#
+# ATENCAO: node_modules E' VERSIONADO DE PROPOSITO - decisao 4.1.3
+# do HANDOFF. Nao adicione "node_modules/" aqui. O modulo serialport
+# e' nativo e uma falha de build no chao de fabrica deixaria a
+# balanca fora do ar com a fabrica rodando.
+
+# --- Banco de dados de producao - dado real, insubstituivel ---
+etiquetas.db
+etiquetas.db-wal
+etiquetas.db-shm
+*.db
+*.db-wal
+*.db-shm
+
+# --- Import legado do print-server v2 - dado, nao codigo ---
+etiquetas-db.json
+
+# --- Credenciais e tokens Bling ---
+credenciais-bling.json
+bling_tokens.json
+.env
+
+# --- Certificado HTTPS - gerado na 1a execucao, por maquina ---
+cert/
+
+# --- Logs, backups e saidas geradas em runtime ---
+logs/
+backups/
+/dashboard/
+*.log
+npm-debug.log*
+
+# --- Flag de encerramento criada pela tela - server.js /sistema/encerrar ---
+eko-encerrar.flag
+
+# --- Relatorios dos scripts de manutencao - padrao OUTPUT_<NOME>.TXT ---
+SETUP-GIT-LOG.txt
+OUTPUT_*.TXT
+OUTPUT_*.txt
+
+# --- Pacotes de transporte na raiz - zips de entrega, nunca versionados ---
+# Escopo de raiz "/" de proposito: um *.zip global poderia ignorar
+# arquivos legitimos dentro de node_modules.
+/*.zip
+/*.7z
+/*.rar
+
+# --- Backups de node_modules feitos pelo INGERIR-NODE-MODULES.bat ---
+/node_modules.antigo*/
+/node_modules.antigo*
+
+# --- Lixo de sistema operacional / editor ---
+Thumbs.db
+desktop.ini
+.DS_Store
+*.tmp
+*.bak
+
+# ============================================================
+# TRAVA FINAL - NADA dentro de node_modules pode ser ignorado
+# ============================================================
+# Sem esta linha, regras genericas acima - *.db, cert/, logs/,
+# .env, *.tmp, *.bak, .DS_Store - tambem valem DENTRO do
+# node_modules e engolem arquivos de pacotes npm. Testado: um
+# pacote com uma pasta "logs" ou "cert" some INTEIRO do commit,
+# e a balanca nao sobe no Mini PC.
+# Esta linha tem que ser a ULTIMA: no .gitignore vence a ultima
+# regra que casa com o caminho.
+!node_modules/**

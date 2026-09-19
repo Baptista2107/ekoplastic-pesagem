@@ -1,0 +1,32 @@
+# ============================================================
+# Ekoplastic Pesagem — arquivos que NUNCA entram no repositorio
+# ============================================================
+# Regra: se o arquivo e' criado/alterado pelo sistema em producao,
+# ele NAO e' versionado. Um "git pull" jamais pode sobrescrever
+# dado real do chao de fabrica.
+
+# --- Banco de dados de producao (dado real, insubstituivel) ---
+etiquetas.db
+etiquetas.db-wal
+etiquetas.db-shm
+*.db
+*.db-wal
+*.db-shm
+
+# --- Credenciais (token Bling, app proprio da pesagem) ---
+credenciais-bling.json
+.env
+
+# --- Certificado HTTPS (gerado na 1a execucao, por maquina) ---
+cert/
+
+# --- Logs e backups (gerados em runtime) ---
+logs/
+backups/
+
+# --- Lixo de sistema operacional / editor ---
+Thumbs.db
+desktop.ini
+.DS_Store
+*.tmp
+*.bak

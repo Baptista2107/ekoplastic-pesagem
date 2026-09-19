@@ -154,6 +154,30 @@
   .manual-conta{margin-top:16px; font-size:18px; color:var(--muted);}
   .manual-conta b{color:var(--verde); font-size:22px;}
 
+  /* Como contar o produto acabado: pelo QR ou digitando. O QR só serve
+     depois que TODAS as gaiolas estiverem etiquetadas; até lá, contar é
+     olhar a gaiola e digitar. As duas formas convivem na mesma tela e
+     caem na mesma lista. */
+  #pa-modo{display:flex; gap:8px; margin-bottom:14px;}
+  .pa-chip{flex:1; min-height:52px; border-radius:14px; border:1.5px solid var(--border);
+           background:var(--panel); color:var(--muted); font-size:14px; font-weight:800;
+           font-family:inherit; cursor:pointer; letter-spacing:0.5px;}
+  .pa-chip.on{border-color:var(--verde); color:var(--verde); background:rgba(16,185,129,0.10);}
+  .pa-chip:active{transform:scale(0.98);}
+  .pa-man-dica{font-size:12.5px; color:var(--muted); line-height:1.5; margin-top:12px; text-align:left;}
+  #pa-man-add:disabled{opacity:0.4;}
+
+  /* A fileira −10 −1 [n] +1 +10 soma 426 px de largura fixa. Na tela
+     larga do Mini PC sobra espaço; num celular de 390 px ela estoura a
+     caixa e os botões das pontas ficam cortados. Aqui os cinco passam a
+     dividir a largura que existe — e só no celular, para a tela da
+     estação continuar exatamente como está hoje. */
+  @media (max-width: 430px){
+    .manual-linha{gap:6px;}
+    .manual-op{min-width:0; flex:1 1 0; font-size:16px;}
+    .manual-num{flex:0 0 92px; width:92px;}
+  }
+
   /* App shell: ocupa a tela toda do celular, sem "página web" ao redor */
   html{height:100%;}
   body{min-height:100dvh;}
@@ -198,7 +222,7 @@
       big bags · leitura da etiqueta</span></button>
   <button class="btn btn-cinza" style="min-height:110px; font-size:21px; border-color:#7dd3fc; color:#7dd3fc;" onclick="escolherTipo('pa')">
     🏷️ PRODUTO ACABADO<span style="display:block; font-size:13px; font-weight:600; color:var(--muted); margin-top:6px;">
-      gaiolas · leitura do QR Code</span></button>
+      gaiolas · leitura do QR ou contagem digitada</span></button>
 </div>
 
 <!-- ETAPA 1: SELEÇÃO -->
@@ -265,6 +289,42 @@
         <div id="man-sobras-lista"></div>
       </div>
       <div class="manual-conta" id="manual-conta">0 sacos × 25 kg = <b>0 kg</b></div>
+    </div>
+  </div>
+
+  <!-- ── COMO CONTAR (só produto acabado) ──────────────────────────
+       O QR é o caminho rápido, mas ele só existe depois que todas as
+       gaiolas foram etiquetadas. Enquanto não estão, contar é olhar a
+       gaiola e digitar quantos fardos tem — e o inventário precisa
+       aceitar isso, senão não há inventário nenhum. -->
+  <div id="pa-modo" class="oculto">
+    <button class="pa-chip on" id="pa-chip-qr"  onclick="paModo('qr')">📷 LER O QR</button>
+    <button class="pa-chip"    id="pa-chip-man" onclick="paModo('manual')">⌨️ DIGITAR</button>
+  </div>
+
+  <!-- ── LANÇAR SEM QR CODE (produto acabado) ── -->
+  <div id="bloco-pa-manual" class="oculto">
+    <div class="manual-cx">
+      <div id="pa-man-produto" class="oculto">
+        <div class="rotulo" style="margin-top:0">FORMATO</div>
+        <select id="pa-man-formato" onchange="paManRender()"><option value="">Selecione…</option></select>
+        <div class="rotulo">COR</div>
+        <select id="pa-man-cor" onchange="paManRender()"><option value="">Selecione…</option></select>
+      </div>
+      <div class="manual-lb">QUANTOS FARDOS NESTA GAIOLA?</div>
+      <div class="manual-linha">
+        <button class="manual-op" onclick="paManAjustar(-10)">−10</button>
+        <button class="manual-op" onclick="paManAjustar(-1)">−1</button>
+        <input class="manual-num" id="pa-man-fardos" type="number" inputmode="numeric" min="0" value="0"
+               onchange="paManDigitou()" oninput="paManDigitou()">
+        <button class="manual-op" onclick="paManAjustar(1)">+1</button>
+        <button class="manual-op" onclick="paManAjustar(10)">+10</button>
+      </div>
+      <div class="manual-conta" id="pa-man-conta">0 fardos × 25 kg = <b>0 kg</b></div>
+      <button class="btn btn-verde" id="pa-man-add" onclick="paManIncluir()" disabled>➕ INCLUIR NA CONTAGEM</button>
+      <div class="pa-man-dica">Cada inclusão entra como uma gaiola na lista abaixo, e pode ser
+        removida lá. Se preferir contar tudo primeiro no papel, digite o total de fardos e
+        inclua uma vez só.</div>
     </div>
   </div>
 
@@ -387,6 +447,25 @@ let sacos = 0;
 let MODO_LIVRE = false;      // PA: lê qualquer gaiola, agrupa por produto
 let LIVRE = {};              // { "formato|corKey": {formato, corKey, cor, gaiolas:[], fardos, kg} }
 
+/* ─────────── PRODUTO ACABADO SEM QR CODE ───────────
+   O QR da gaiola é o caminho rápido, mas ele só existe depois que
+   TODAS as gaiolas foram etiquetadas — e o galpão começa sem nenhuma.
+   Se o inventário exigir QR, simplesmente não há inventário no começo,
+   que é justamente quando ele mais vale: é a contagem que dá a primeira
+   fotografia do estoque.
+
+   Contar sem QR é olhar a gaiola e digitar quantos fardos tem. Cada
+   lançamento vira uma linha igual à de uma gaiola bipada, com id
+   "S/QR n" — some na lista, some no PDF, some na comparação com o
+   Bling. O resto do fluxo não sabe a diferença, e o PDF diz quantas
+   linhas vieram contadas à mão, porque isso é informação de auditoria:
+   quem confere o papel depois precisa saber o que foi lido e o que foi
+   contado por uma pessoa. */
+let PA_MODO = 'qr';          // 'qr' | 'manual'
+let PA_MAN_QTD = 0;          // fardos digitados no lançamento em curso
+let PA_MAN_SEQ = 0;          // numera os lançamentos: S/QR 1, S/QR 2, …
+const CHAVE_PA_MODO = 'eko_inventario_pa_modo';
+
 // ─────────── contagem em andamento salva no aparelho ───────────
 // Sem isso, atualizar a página no meio da contagem perde tudo. Fica guardado
 // até finalizar o produto (ou limpar) — inclusive se fechar o navegador.
@@ -396,7 +475,8 @@ function salvarAndamento(){
     if(!TIPO_INV || (!sel && !MODO_LIVRE)) return;
     localStorage.setItem(CHAVE_ANDAMENTO, JSON.stringify({
       tipo:TIPO_INV, modoLivre:MODO_LIVRE, sel, leituras, sacos,
-      modoManual:MODO_MANUAL, kgPorSaco:KG_POR_SACO, livre:LIVRE, ts:Date.now(),
+      modoManual:MODO_MANUAL, kgPorSaco:KG_POR_SACO, livre:LIVRE,
+      paModo:PA_MODO, paManSeq:PA_MAN_SEQ, ts:Date.now(),
     }));
   }catch(e){}
 }
@@ -421,6 +501,11 @@ function retomarAndamento(){
   }
   TIPO_INV=o.tipo; MODO_LIVRE=!!o.modoLivre; sel=o.sel; leituras=o.leituras||[];
   sacos=o.sacos||0; MODO_MANUAL=!!o.modoManual; KG_POR_SACO=o.kgPorSaco||25; LIVRE=o.livre||{};
+  PA_MODO = o.paModo || 'qr';
+  // A numeração dos lançamentos à mão é retomada do maior id já usado, e
+  // não do zero: recomeçar em 1 criaria "S/QR 1" repetido e o botão de
+  // remover apagaria a linha errada.
+  PA_MAN_SEQ = Math.max(o.paManSeq || 0, maiorSeqManual(o));
   // sobras (sacos abertos) da contagem por produto
   SOBRAS['man'] = (o.leituras && o.leituras[0] && o.leituras[0].abertos) ? [...o.leituras[0].abertos] : [];
   idsLidos=new Set(leituras.map(l=>l.id));
@@ -438,6 +523,7 @@ function retomarAndamento(){
     // o lançamento por sacos só existe na matéria-prima
     document.getElementById('btn-add-sacos').classList.toggle('oculto', ehPA);
     document.getElementById('painel-sacos').classList.add('oculto');
+    if (ehPA) paManCarregarSelects();
     aplicarModo();
     renderLivre();
   }else{
@@ -517,6 +603,7 @@ async function carregarProdutosPA(){
     fmts.map(f=>`<option value="${f}">${f.replace('x',' × ')}</option>`).join('');
   document.getElementById('pa-cor').innerHTML='<option value="">Selecione…</option>'+
     cores.map(c=>`<option value="${c}">${c}</option>`).join('');
+  paManCarregarSelects();
   paAtualizar();
 }
 function paAtualizar(){
@@ -532,9 +619,11 @@ function paIniciar(){
   PA_SEL=prod;
   sel={ material:'PA', materialNome:'Produto Acabado', cor:prod.cor, fornecedor:null, corKey:prod.corKey, formato:prod.formato, sku:prod.sku };
   leituras=[]; idsLidos=new Set(); saldoBlingAtual=null; MODO_MANUAL=false;
+  PA_MAN_QTD=0; PA_MAN_SEQ=0;
+  try{ PA_MODO = localStorage.getItem(CHAVE_PA_MODO) || 'qr'; }catch(e){ PA_MODO='qr'; }
   aplicarModo();
   document.getElementById('leit-prod').textContent = prod.rotulo;
-  document.querySelector('#tela-leitura .p2').textContent='Leia o QR das gaiolas deste produto. Os fardos somam sozinhos.';
+  document.querySelector('#tela-leitura .p2').textContent='Leia o QR das gaiolas deste produto — ou digite os fardos, se elas ainda não têm etiqueta.';
   document.getElementById('tela-selecao').classList.add('oculto');
   document.getElementById('tela-comparativo').classList.add('oculto');
   document.getElementById('tela-leitura').classList.remove('oculto');
@@ -666,6 +755,137 @@ function confirmarSacos(){
   renderLivre(); salvarAndamento();
 }
 
+/* ═══════════════════════════════════════════════════════════════════
+   CONTAGEM DE PRODUTO ACABADO SEM QR CODE
+   ───────────────────────────────────────────────────────────────────
+   Um lançamento = uma gaiola. O contador está de pé na frente dela,
+   conta os fardos e digita. Quem preferir contar tudo no papel antes
+   digita o total e inclui uma vez só: as duas coisas dão o mesmo
+   número, e a lista mostra como foi feito.
+   ═══════════════════════════════════════════════════════════════════ */
+const PA_MAN_PREFIXO = 'S/QR ';
+function ehLancamentoManual(id){ return String(id || '').startsWith(PA_MAN_PREFIXO); }
+function maiorSeqManual(o){
+  const ids = [];
+  for (const l of (o && o.leituras) || []) ids.push(l.id);
+  for (const g of Object.values((o && o.livre) || {})) for (const x of (g.gaiolas || [])) ids.push(x.id);
+  return ids.filter(ehLancamentoManual)
+            .reduce((a, id) => Math.max(a, parseInt(String(id).slice(PA_MAN_PREFIXO.length), 10) || 0), 0);
+}
+
+function paModo(m){
+  PA_MODO = (m === 'manual') ? 'manual' : 'qr';
+  try { localStorage.setItem(CHAVE_PA_MODO, PA_MODO); } catch(e) {}
+  aplicarModoPA();
+  salvarAndamento();
+}
+
+// Mostra a forma de contar escolhida. Só existe para produto acabado:
+// a matéria-prima tem o caminho manual dela (sacos), com outra conta.
+function aplicarModoPA(){
+  const barra = document.getElementById('pa-modo');
+  const man   = document.getElementById('bloco-pa-manual');
+  const cam   = document.getElementById('bloco-camera');
+  if (!barra || !man || !cam) return;
+  const ehPA = (TIPO_INV === 'pa');
+  barra.classList.toggle('oculto', !ehPA);
+  if (!ehPA) { man.classList.add('oculto'); return; }
+
+  document.getElementById('pa-chip-qr').classList.toggle('on',  PA_MODO === 'qr');
+  document.getElementById('pa-chip-man').classList.toggle('on', PA_MODO === 'manual');
+  const manual = (PA_MODO === 'manual');
+  // No modo livre não existe produto escolhido antes: cada lançamento
+  // precisa dizer de qual produto é, senão os fardos entram no grupo
+  // errado e o inventário sai trocado.
+  document.getElementById('pa-man-produto').classList.toggle('oculto', !MODO_LIVRE);
+  man.classList.toggle('oculto', !manual);
+  cam.classList.toggle('oculto', manual);
+  if (manual) pararCamera();
+  paManRender();
+}
+
+function paManAjustar(d){
+  PA_MAN_QTD = Math.max(0, PA_MAN_QTD + d);
+  document.getElementById('pa-man-fardos').value = PA_MAN_QTD;
+  paManRender();
+  if (d > 0) beep(880, 0.06);
+}
+function paManDigitou(){
+  const v = parseInt(document.getElementById('pa-man-fardos').value, 10);
+  PA_MAN_QTD = (isNaN(v) || v < 0) ? 0 : v;
+  paManRender();
+}
+function paManProdutoEscolhido(){
+  // Fora do modo livre o produto é o que foi escolhido na tela anterior.
+  // PA_SEL some num F5; `sel` é o que fica guardado no andamento — por
+  // isso ele é a fonte, e PA_SEL só o atalho.
+  if (!MODO_LIVRE) {
+    if (sel && sel.corKey && sel.formato)
+      return { formato: sel.formato, corKey: sel.corKey, cor: sel.cor };
+    return PA_SEL;
+  }
+  const f = document.getElementById('pa-man-formato').value;
+  const c = document.getElementById('pa-man-cor').value;
+  return (f && c) ? (PA_PRODUTOS || []).find(p => p.formato === f && p.cor === c) || null : null;
+}
+function paManRender(){
+  const kg = PA_MAN_QTD * 25;
+  const prod = paManProdutoEscolhido();
+  const el = document.getElementById('pa-man-conta');
+  if (el) el.innerHTML = PA_MAN_QTD + ' fardo(s) × 25 kg = <b>' + fmtKg(kg) + '</b>';
+  const bt = document.getElementById('pa-man-add');
+  if (bt) {
+    bt.disabled = !(PA_MAN_QTD > 0 && prod);
+    bt.textContent = (MODO_LIVRE && !prod) ? '➕ ESCOLHA O PRODUTO ACIMA' : '➕ INCLUIR NA CONTAGEM';
+  }
+}
+
+function paManIncluir(){
+  const prod = paManProdutoEscolhido();
+  if (!prod || !(PA_MAN_QTD > 0)) return;
+  const fardos = PA_MAN_QTD, kg = fardos * 25;
+  const id = PA_MAN_PREFIXO + (++PA_MAN_SEQ);
+
+  if (MODO_LIVRE) {
+    const chave = prod.formato + '|' + prod.corKey;
+    if (!LIVRE[chave]) LIVRE[chave] = {
+      tipo:'pa', chave, formato:prod.formato, corKey:prod.corKey, cor:prod.cor,
+      rotulo: prod.formato.replace('x', ' × ') + ' · ' + prod.cor,
+      gaiolas: [], fardos: 0, kg: 0,
+    };
+    const g = LIVRE[chave];
+    g.gaiolas.push({ id, peso: kg, fardos, manual: true });
+    g.fardos += fardos; g.kg += kg;
+    idsLidos.add(id);
+    renderLivre();
+  } else {
+    leituras.push({ id, peso: kg, fardos, manual: true });
+    idsLidos.add(id);
+    renderLeituras();
+  }
+  beep(880, 0.1); vibrar(60);
+  toast('ok', '✓ ' + id + ' · ' + prod.formato.replace('x', ' × ') + ' ' + prod.cor
+             + ' · ' + fardos + ' fardos (' + fmtKg(kg) + ')', 1800);
+  // Zera para o próximo: a gaiola seguinte quase nunca tem a mesma
+  // quantidade, e deixar o número anterior no campo convida ao engano.
+  PA_MAN_QTD = 0;
+  document.getElementById('pa-man-fardos').value = 0;
+  paManRender();
+  salvarAndamento();
+}
+
+// Popula os dois selects do lançamento manual em modo livre.
+function paManCarregarSelects(){
+  const fmts  = [...new Set((PA_PRODUTOS || []).map(p => p.formato))];
+  const cores = [...new Set((PA_PRODUTOS || []).map(p => p.cor))];
+  const sf = document.getElementById('pa-man-formato');
+  const sc = document.getElementById('pa-man-cor');
+  if (sf) sf.innerHTML = '<option value="">Selecione…</option>'
+    + fmts.map(f => `<option value="${f}">${f.replace('x', ' × ')}</option>`).join('');
+  if (sc) sc.innerHTML = '<option value="">Selecione…</option>'
+    + cores.map(c => `<option value="${c}">${c}</option>`).join('');
+}
+
 // ─────────── LEITURA LIVRE (produto acabado) ───────────
 // Lê qualquer gaiola, na ordem que aparecer, e agrupa por produto.
 // No fim, mostra o comparativo de TODOS os produtos lidos contra o Bling.
@@ -674,11 +894,14 @@ function paIniciarLivre(){
   document.getElementById('btn-add-sacos').classList.add('oculto');
   document.getElementById('painel-sacos').classList.add('oculto');
   LIVRE={}; leituras=[]; idsLidos=new Set(); sel=null;
+  PA_MAN_QTD=0; PA_MAN_SEQ=0;
+  try{ PA_MODO = localStorage.getItem(CHAVE_PA_MODO) || 'qr'; }catch(e){ PA_MODO='qr'; }
+  paManCarregarSelects();
   document.getElementById('tela-selecao').classList.add('oculto');
   document.getElementById('tela-comparativo').classList.add('oculto');
   document.getElementById('tela-leitura').classList.remove('oculto');
   document.getElementById('leit-prod').textContent='Leitura livre';
-  document.querySelector('#tela-leitura .p2').textContent='Leia o QR de qualquer gaiola. O sistema agrupa por produto.';
+  document.querySelector('#tela-leitura .p2').textContent='Leia o QR de qualquer gaiola — ou escolha o produto e digite os fardos. O sistema agrupa igual.';
   document.getElementById('titulo').textContent='Contagem livre';
   aplicarModo();
   renderLivre();
@@ -1387,6 +1610,7 @@ function aplicarModo(){
   if(MODO_LIVRE){
     document.getElementById('bloco-camera').classList.remove('oculto');
     document.getElementById('bloco-manual').classList.add('oculto');
+    aplicarModoPA();          // no PA, quem manda na câmera é o modo escolhido
     return;
   }
   const cam = document.getElementById('bloco-camera');
@@ -1409,6 +1633,7 @@ function aplicarModo(){
     document.querySelector('#tela-leitura .p2').textContent =
       'Bipe os big bags deste produto. O peso de cada etiqueta soma sozinho.';
   }
+  aplicarModoPA();
 }
 function renderManual(){
   const kgCheios = sacos * KG_POR_SACO;
@@ -1446,7 +1671,8 @@ function renderLeituras(){
     if(lbs[0]) lbs[0].textContent='GAIOLAS LIDAS';
     if(lbs[1]) lbs[1].textContent='KG ('+fardos+' FARDOS)';
     const lst=document.getElementById('lista-leituras');
-    if(!qtd){ lst.innerHTML='<div class="vazio">Nenhuma gaiola lida ainda. Ligue a câmera e leia o QR.</div>'; return; }
+    if(!qtd){ lst.innerHTML='<div class="vazio">Nenhuma gaiola contada ainda.<br>'
+      + 'Ligue a câmera e leia o QR — ou toque em <b>⌨️ DIGITAR</b> e lance os fardos.</div>'; return; }
     lst.innerHTML='';
     for(let i=leituras.length-1;i>=0;i--){
       const l=leituras[i];
@@ -1761,9 +1987,17 @@ async function exportarPDF(compartilhar){
     }
     // Sob o cabeçalho da cor, basta o formato — repetir "Produto Acabado" e a
     // cor em cada linha só polui.
-    const nome = ehItemPA(it)
+    // Contado à mão fica marcado. Não é detalhe de tela: quem confere o
+    // papel depois precisa saber o que a máquina leu e o que uma pessoa
+    // contou — são confiabilidades diferentes, e a divergência de um
+    // item contado à mão se investiga de outro jeito.
+    const manuais = ((it.leituras||[]).filter(l => l && l.manual)).length;
+    const todasManuais = manuais > 0 && manuais === (it.leituras||[]).length;
+    const nome = (ehItemPA(it)
       ? String(it.fornecedor||'').replace('x',' × ')
-      : rotuloProduto(it);
+      : rotuloProduto(it))
+      + (manuais ? (todasManuais ? '  (contagem manual)'
+                                 : '  (' + manuais + ' lançamento(s) manual(is))') : '');
     const l=it.somaLeitura||0; const b=(it.saldoAtual==null)?null:it.saldoAtual;
     const d=(b==null)?null:+(l-b).toFixed(3);
     totL+=l; if(b!=null) totB+=b;
@@ -1779,6 +2013,12 @@ async function exportarPDF(compartilhar){
   y+=10;
   doc.setFont(undefined,'normal'); doc.setFontSize(10);
   doc.text('Produtos conferidos: '+FINALIZADOS.length+'    |    Com divergência: '+comDiv, x0, y);
+  const itensManuais = FINALIZADOS.filter(it => (it.leituras||[]).some(l => l && l.manual)).length;
+  if(itensManuais){
+    y+=7; doc.setFontSize(9); doc.setTextColor(90);
+    doc.text(itensManuais+' produto(s) com contagem manual (gaiolas ainda sem QR Code) — marcados na tabela.', x0, y);
+    doc.setTextColor(0); doc.setFontSize(10);
+  }
   if(falhas>0){
     y+=7; doc.setTextColor(200,40,40); doc.setFontSize(9);
     doc.text('Atenção: '+falhas+' produto(s) sem saldo do Bling (app sem escopo "Controle de estoque", ou fora do ar).', x0, y);
