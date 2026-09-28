@@ -100,10 +100,12 @@ public class MainActivity extends Activity {
     final Runnable fechaBufSemEnter = () -> tentarEntregarBuffer("teclado (sem Enter)");
 
     // diagnóstico
-    String ultimoCodigo = "—", ultimaOrigem = "—";
+    String ultimoCodigo = "—", ultimaOrigem = "—", ultimasTeclas = "";
+    int teclasVistas = 0, avisosVistos = 0;
 
     BroadcastReceiver receptor = new BroadcastReceiver() {
         @Override public void onReceive(Context c, Intent it) {
+            avisosVistos++;
             String cod = extrairCodigo(it);
             if (cod != null) entregar(cod, "aviso " + it.getAction());
             else { ultimaOrigem = "aviso " + it.getAction() + " (sem código reconhecido: " + chavesDe(it) + ")"; }
@@ -174,15 +176,37 @@ public class MainActivity extends Activity {
         if (web.canGoBack()) web.goBack(); else super.onBackPressed();
     }
 
-    /** Toque longo de 2 s no título da página abre a configuração do app. */
+    /**
+     * Injetado em toda página do Mini PC (a página não precisa saber do app):
+     *
+     *  - toque longo de 2 s no título abre a configuração do app;
+     *  - CAMPO INVISÍVEL DE LEITURA. v1.1 (28/09/2026): no primeiro teste no
+     *    CMX o laser acendia e nada chegava. Leitores em modo "preencher
+     *    campo" escrevem o código DIRETO no campo de texto em foco (sem gerar
+     *    teclas), e a tela de bobinas não tem campo em foco. Este campo fica
+     *    em foco sempre que nenhum outro estiver (o dos fardos continua
+     *    recebendo o foco normalmente), com inputmode=none para o teclado da
+     *    tela não abrir. O que cair nele vai para EkoApp.lido().
+     */
     void injetarAtalhos() {
         web.evaluateJavascript(
             "(function(){if(window.__ekoApp)return;window.__ekoApp=1;" +
-            "var h=document.querySelector('header h1')||document.querySelector('h1');if(!h)return;var t=null;" +
+            "var h=document.querySelector('header h1')||document.querySelector('h1');if(h){var t=null;" +
             "function ini(){t=setTimeout(function(){t=null;EkoApp.configurar();},2000);}" +
             "function fim(){if(t){clearTimeout(t);t=null;}}" +
             "h.addEventListener('touchstart',ini,{passive:true});h.addEventListener('touchend',fim);" +
-            "h.addEventListener('touchmove',fim);h.addEventListener('mousedown',ini);h.addEventListener('mouseup',fim);})()",
+            "h.addEventListener('touchmove',fim);h.addEventListener('mousedown',ini);h.addEventListener('mouseup',fim);}" +
+            // campo invisível de leitura
+            "var c=document.createElement('input');c.id='__ekoScan';c.setAttribute('inputmode','none');" +
+            "c.setAttribute('autocomplete','off');c.setAttribute('aria-hidden','true');" +
+            "c.style.cssText='position:fixed;left:-200px;top:0;width:10px;height:10px;opacity:0;';" +
+            "document.body.appendChild(c);var d=null;" +
+            "function entrega(){if(d){clearTimeout(d);d=null;}var v=c.value;c.value='';if(v&&v.trim())EkoApp.lido(v);}" +
+            "c.addEventListener('keydown',function(e){if(e.key==='Enter'||e.keyCode===13||e.key==='Tab'){e.preventDefault();entrega();}});" +
+            "c.addEventListener('input',function(){if(d)clearTimeout(d);d=setTimeout(entrega,250);});" +
+            "function foco(){var a=document.activeElement;if(!a||a===document.body||a===document.documentElement)c.focus({preventScroll:true});}" +
+            "setInterval(foco,700);document.addEventListener('touchend',function(){setTimeout(foco,300);});foco();" +
+            "window.__ekoLimpa=function(){c.value='';};})()",
             null);
     }
 
@@ -297,6 +321,10 @@ public class MainActivity extends Activity {
         if (e.getAction() == KeyEvent.ACTION_DOWN) {
             long agora = SystemClock.uptimeMillis();
             int kc = e.getKeyCode();
+            // diagnóstico: o que o aparelho está mandando como tecla
+            teclasVistas++;
+            ultimasTeclas = (ultimasTeclas + " " + KeyEvent.keyCodeToString(kc).replace("KEYCODE_", ""));
+            if (ultimasTeclas.length() > 120) ultimasTeclas = ultimasTeclas.substring(ultimasTeclas.length() - 120);
             if (kc == KeyEvent.KEYCODE_ENTER || kc == KeyEvent.KEYCODE_NUMPAD_ENTER || kc == KeyEvent.KEYCODE_TAB) {
                 if (tentarEntregarBuffer("teclado")) return true;
             } else {
@@ -346,8 +374,10 @@ public class MainActivity extends Activity {
     /** Entrega o código à tela, pela mesma função que a câmera usa. */
     void entregar(String bruto, String origem) {
         final String cod = normalizar(bruto);
-        ultimoCodigo = cod; ultimaOrigem = origem;
+        ultimoCodigo = cod + "  (bruto: " + String.valueOf(bruto).trim() + ")"; ultimaOrigem = origem;
         if (!ETIQUETA.matcher(cod).matches()) { toast("Código não reconhecido: " + cod); return; }
+        // Se o código também caiu no campo invisível, limpa para não entregar 2×.
+        ui.post(() -> web.evaluateJavascript("window.__ekoLimpa&&__ekoLimpa()", null));
         ui.post(() -> web.evaluateJavascript(
             "(function(c){try{if(typeof onLeu==='function'){onLeu(c);return 'ok';}return 'sem-tela';}catch(e){return 'erro';}})('" + cod + "')",
             r -> { if (r != null && r.contains("sem-tela")) toast("Abra a tela Bobina na Sacoleira para ler " + cod); }));
@@ -374,6 +404,8 @@ public class MainActivity extends Activity {
         info.setTextIsSelectable(true);
         info.setText("Versão do app: " + versao()
                 + "\n\nÚltimo código lido: " + ultimoCodigo + "\nChegou por: " + ultimaOrigem
+                + "\n\nTeclas recebidas: " + teclasVistas + (ultimasTeclas.isEmpty() ? "" : "\nÚltimas:" + ultimasTeclas)
+                + "\nAvisos (broadcast) recebidos: " + avisosVistos
                 + "\n\nCertificado confiado:\n" + prefs.getString(chave, "(nenhum ainda)"));
         info.setPadding(0, p / 2, 0, 0);
         l.addView(info);
@@ -429,5 +461,7 @@ public class MainActivity extends Activity {
         @JavascriptInterface public void configurar() { ui.post(MainActivity.this::configurar); }
         @JavascriptInterface public void tentarDeNovo() { ui.post(MainActivity.this::abrir); }
         @JavascriptInterface public String versao() { return MainActivity.this.versao(); }
+        /** Texto que o leitor escreveu no campo invisível da página. */
+        @JavascriptInterface public void lido(String texto) { entregar(texto, "campo (leitor em modo preencher)"); }
     }
 }

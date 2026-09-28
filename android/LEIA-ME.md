@@ -1,6 +1,6 @@
 # Ekoplastic Coletor (app Android)
 
-App para o coletor de dados (CMX Supply) abrir o sistema de pesagem do Mini PC
+App para o coletor de dados (CMX Supply TC60, Android 14) abrir o sistema de pesagem do Mini PC
 numa janela só, sem barra de navegador. Criado na VPS em 28/09/2026.
 
 **O app fala só com o Mini PC** (`https://192.168.3.43:3443`, rede da fábrica).
@@ -21,7 +21,11 @@ guarda dado nem fala com a internet.
 
 ## Leitor embutido do coletor
 
-O app aceita os dois jeitos que um leitor embutido entrega o código:
+O app aceita os três jeitos que um leitor embutido entrega o código:
+
+- **Preencher campo** (v1.1): o leitor escreve direto no campo de texto em
+  foco. O app mantém um campo invisível em foco, sem abrir o teclado da
+  tela. Foi o que faltou na v1.0: no TC60 o laser acendia e nada chegava.
 
 - **Teclado** (o mais comum de fábrica): o leitor "digita" o código e dá
   Enter. Não precisa configurar nada.
@@ -40,8 +44,8 @@ Aceita o prefixo de simbologia (`]C1`) e só o número (`1669` → `E0001669`).
 
 - endereço do Mini PC e página inicial;
 - aviso avulso do leitor (ação e nome do dado);
-- **diagnóstico**: último código lido e por onde chegou (teclado ou qual
-  aviso). É a primeira coisa a olhar se a bipada não fizer nada;
+- **diagnóstico**: último código lido e por onde chegou (campo, teclado ou
+  qual aviso), quantas teclas e avisos o app recebeu. É a primeira coisa a olhar se a bipada não fizer nada;
 - certificado confiado, com o botão *Esquecer certificado*.
 
 ## Gerar uma versão nova (na VPS)
