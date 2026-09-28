@@ -794,6 +794,12 @@ function aplicarSchema() {
     ['etiquetas', 'fardos', 'INTEGER'],
     ['etiquetas', 'encerrada_em', 'TEXT'],
     ['etiquetas', 'encerrada_motivo', 'TEXT'],   // troca | finalizada
+    // Carimbo de TODA mudança de bobina na sacoleira (entrada, troca,
+    // finalizar, desfazer). É por ele que o exportador acha o que mudou
+    // mesmo em bobina impressa há mais de 7 dias — a janela normal do
+    // exportador é por data de IMPRESSÃO. Não dá para usar baixa_em: o
+    // desfazer apaga esse campo, e a bobina desfeita nunca seria reenviada.
+    ['etiquetas', 'alterado_em', 'TEXT'],
   ]) {
     const tem = db.prepare(`PRAGMA table_info(${tabela})`).all().some(c => c.name === coluna);
     if (!tem) db.exec(`ALTER TABLE ${tabela} ADD COLUMN ${coluna} ${tipo}`);
@@ -852,8 +858,8 @@ function lerFardos(v) {
 }
 
 function encerrarBobina(id, fardos, motivo, quando) {
-  db.prepare(`UPDATE etiquetas SET fardos = ?, encerrada_em = ?, encerrada_motivo = ?
-               WHERE id = ? AND encerrada_em IS NULL`).run(fardos, quando, motivo, id);
+  db.prepare(`UPDATE etiquetas SET fardos = ?, encerrada_em = ?, encerrada_motivo = ?, alterado_em = ?
+               WHERE id = ? AND encerrada_em IS NULL`).run(fardos, quando, motivo, quando, id);
 }
 
 // ── INVENTÁRIO DE BOBINAS (28/09/2026, VPS) ─────────────────────────────
@@ -8311,7 +8317,7 @@ const requestHandlerBase = async (req, res) => {
                   e.peso, e.qtd_sacos, e.codigo, e.sku, e.status, e.ref_id, e.hora_impressao, e.hora_bipagem,
                   e.sessao_id, e.operador, e.maquina, e.largura, e.tipo_bobina, e.turno_codigo, e.bling_pedido_id,
                   e.destino, e.baixa_em, e.baixa_turno, e.baixa_operador,
-                  e.fardos, e.encerrada_em, e.encerrada_motivo,
+                  e.fardos, e.encerrada_em, e.encerrada_motivo, e.alterado_em,
                   s.bling_status, s.bling_id, s.bling_erro
              FROM etiquetas e LEFT JOIN sessoes s ON s.id = e.sessao_id
             WHERE date(e.hora_impressao) >= ?
@@ -8548,8 +8554,13 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
     if (pathname === '/dashboard/movimentos' && req.method === 'GET') {
       const q = parsed.query;
       const cond = [], par = [];
-      const de  = String(q.de  || '').slice(0, 10);
-      const ate = String(q.ate || '').slice(0, 10);
+      // alterados_desde (28/09/2026, VPS): etiquetas cuja bobina mudou na
+      // sacoleira desde o instante dado, SEJA QUAL FOR a data de impressão.
+      // Com ele, de/ate são ignorados. Ver etiquetas.alterado_em.
+      const alteradosDesde = String(q.alterados_desde || '').trim();
+      const de  = alteradosDesde ? '' : String(q.de  || '').slice(0, 10);
+      const ate = alteradosDesde ? '' : String(q.ate || '').slice(0, 10);
+      if (alteradosDesde) { cond.push(`e.alterado_em >= ?`); par.push(alteradosDesde); }
       if (de)  { cond.push(`date(e.hora_impressao) >= ?`); par.push(de); }
       if (ate) { cond.push(`date(e.hora_impressao) <= ?`); par.push(ate); }
       for (const [campo, chave] of [['tipo','tipo'],['turno_codigo','turno'],['maquina','maquina'],
@@ -8572,13 +8583,26 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
                   e.peso, e.qtd_sacos, e.codigo, e.sku, e.status, e.ref_id, e.hora_impressao, e.hora_bipagem,
                   e.sessao_id, e.operador, e.maquina, e.largura, e.tipo_bobina, e.turno_codigo, e.bling_pedido_id,
                   e.destino, e.baixa_em, e.baixa_turno, e.baixa_operador,
-                  e.fardos, e.encerrada_em, e.encerrada_motivo,
+                  e.fardos, e.encerrada_em, e.encerrada_motivo, e.alterado_em,
                   s.bling_status, s.bling_id, s.bling_erro
              FROM etiquetas e LEFT JOIN sessoes s ON s.id = e.sessao_id
              ${onde} ORDER BY e.hora_impressao DESC LIMIT ? OFFSET ?`
         ).all(...par, limite, desloc);
-        return jsonOk(res, { total, linhas, limite, offset: desloc });
+        return jsonOk(res, { total, linhas, limite, offset: desloc,
+                             ...(alteradosDesde ? { filtro: 'alterados_desde' } : {}) });
       } catch(e) { return jsonErr(res, 500, 'Erro na consulta: ' + e.message); }
+    }
+
+    // Inventários de bobinas para o exportador (28/09/2026, VPS): os abertos
+    // e os que começaram ou terminaram desde ?desde=. Cada um com os itens.
+    if (pathname === '/dashboard/inventario-bobinas' && req.method === 'GET') {
+      const desde = String(parsed.query.desde || '1970-01-01').trim();
+      const invs = db.prepare(
+        `SELECT * FROM inventario_bobinas WHERE fim IS NULL OR inicio >= ? OR fim >= ? ORDER BY id`).all(desde, desde);
+      const itens = db.prepare(
+        `SELECT etiqueta_id, lido_em, situacao, operador FROM inventario_bobinas_itens
+          WHERE inventario_id = ? ORDER BY lido_em`);
+      return jsonOk(res, { filtro: 'inventario', inventarios: invs.map(i => ({ ...i, itens: itens.all(i.id) })) });
     }
 
     // Sessões do período (com status de envio ao Bling e erros).
@@ -8862,10 +8886,10 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
       const trocar = makeTransaction(() => {
         const upd = db.prepare(
           `UPDATE etiquetas SET status='consumida', hora_bipagem=?, bling_pedido_id=?,
-                  destino=?, baixa_em=?, baixa_turno=?, baixa_operador=?
+                  destino=?, baixa_em=?, baixa_turno=?, baixa_operador=?, alterado_em=?
             WHERE id=? AND status NOT IN ('consumida','cancelada')`)
           .run(agora, blingId && !String(blingId).startsWith('SIM-') ? Number(blingId) : null,
-               destino, agora, turnoCod || null, operador, bid);
+               destino, agora, turnoCod || null, operador, agora, bid);
         if (!upd.changes) return false;
         if (pedeFardos) encerrarBobina(aberta.id, fardosAnterior, 'troca', agora);
         return true;
@@ -9004,8 +9028,9 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
       if (!ultima || ultima.id !== bid)
         return jsonErr(res, 409, `Só dá para desfazer a última bobina da Sacoleira ${e.destino} (${ultima ? ultima.id : '—'})`);
       db.prepare(`UPDATE etiquetas SET status='bipada', destino=NULL, baixa_em=NULL, baixa_turno=NULL,
-                         baixa_operador=NULL, fardos=NULL, encerrada_em=NULL, encerrada_motivo=NULL
-                   WHERE id = ? AND status = 'consumida'`).run(bid);
+                         baixa_operador=NULL, fardos=NULL, encerrada_em=NULL, encerrada_motivo=NULL,
+                         alterado_em=?
+                   WHERE id = ? AND status = 'consumida'`).run(new Date().toISOString(), bid);
       const operador = (body.operador ? String(body.operador).trim().slice(0, 80) : null) || null;
       logW('bobinas', `DESFEITA a entrada de ${bid} na Sacoleira ${e.destino} (era de ${e.baixa_em}, `
         + `fardos ${e.fardos == null ? '—' : e.fardos})${operador ? ' por ' + operador : ''}`);
