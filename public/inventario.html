@@ -6,6 +6,7 @@
 <title>Inventário de Matéria-Prima</title>
 <script src="/vendor/html5-qrcode.min.js"></script>
 <script src="/vendor/jspdf.umd.min.js"></script>
+<script src="/eko-dialogo.js"></script>
 <style>
   :root{
     --bg:#0a1119; --panel:#131f30; --panel-hi:#1d2c42; --border:#2a3a52;
@@ -569,12 +570,32 @@ const DISPOSITIVO = (function(){
     return d;
   }catch(e){ return 'disp-sem-armazenamento'; }
 })();
-let _rascunhoTimer=null;
+// 28/09/2026 (VPS), 2ª versão: UMA contagem guardada por TIPO (mp | pa),
+// não uma só por aparelho. Com uma só, uma leitura livre de MP em andamento
+// "tomava" o botão de PA: a pergunta dizia só "leitura livre", o operador
+// confirmava e abria a de MP. Agora cada tipo tem o seu lugar, no aparelho
+// (eko_inventario_andamento:mp / :pa) e no Mini PC (rascunho "<aparelho>:mp").
+const TIPOS_INV = ['mp','pa'];
+const NOME_TIPO = { mp:'Matéria-Prima', pa:'Produto Acabado' };
+function chaveAndamento(tipo){ return CHAVE_ANDAMENTO+':'+tipo; }
+function idRascunho(tipo){ return DISPOSITIVO+':'+tipo; }
+// A chave antiga (uma só) é movida para o lugar do tipo dela, sem perder nada.
+(function migrarChaveAntiga(){
+  try{
+    const b=localStorage.getItem(CHAVE_ANDAMENTO); if(!b) return;
+    const o=JSON.parse(b);
+    if(o && TIPOS_INV.includes(o.tipo) && !localStorage.getItem(chaveAndamento(o.tipo)))
+      localStorage.setItem(chaveAndamento(o.tipo), b);
+    localStorage.removeItem(CHAVE_ANDAMENTO);
+  }catch(e){}
+})();
+const _rascunhoTimer={};
 function enviarRascunho(dados){
-  clearTimeout(_rascunhoTimer);
-  _rascunhoTimer=setTimeout(()=>{
+  const t=dados.tipo;
+  clearTimeout(_rascunhoTimer[t]);
+  _rascunhoTimer[t]=setTimeout(()=>{
     fetch(URL_BASE+'/inventario/rascunho',{ method:'POST', headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({ dispositivo:DISPOSITIVO, dados, operador:(window.EKO_RESPONSAVEL||null) }) }).catch(()=>{});
+      body:JSON.stringify({ dispositivo:idRascunho(t), dados, operador:(window.EKO_RESPONSAVEL||null) }) }).catch(()=>{});
   }, 800);
 }
 function salvarAndamento(){
@@ -586,61 +607,71 @@ function salvarAndamento(){
       paModo:PA_MODO, paManSeq:PA_MAN_SEQ,
       mpModo:MP_MODO, mpManSeq:MP_MAN_SEQ, ts:Date.now(), dispositivo:DISPOSITIVO,
     };
-    localStorage.setItem(CHAVE_ANDAMENTO, JSON.stringify(dados));
+    localStorage.setItem(chaveAndamento(TIPO_INV), JSON.stringify(dados));
     enviarRascunho(dados);
   }catch(e){}
 }
-function limparAndamento(){
-  try{ localStorage.removeItem(CHAVE_ANDAMENTO); }catch(e){}
-  clearTimeout(_rascunhoTimer);
+function limparAndamento(tipo){
+  tipo = tipo || TIPO_INV; if(!tipo) return;
+  try{ localStorage.removeItem(chaveAndamento(tipo)); }catch(e){}
+  clearTimeout(_rascunhoTimer[tipo]);
   fetch(URL_BASE+'/inventario/rascunho',{ method:'POST', headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({ dispositivo:DISPOSITIVO, apagar:true }) }).catch(()=>{});
+    body:JSON.stringify({ dispositivo:idRascunho(tipo), apagar:true }) }).catch(()=>{});
 }
-function lerAndamento(){
+function lerAndamento(tipo){
+  tipo = tipo || TIPO_INV; if(!tipo) return null;
   try{
-    const b=localStorage.getItem(CHAVE_ANDAMENTO); if(!b) return null;
+    const b=localStorage.getItem(chaveAndamento(tipo)); if(!b) return null;
     const o=JSON.parse(b);
-    return (o && o.ts) ? o : null;
+    return (o && o.ts && o.tipo===tipo) ? o : null;
   }catch(e){ return null; }
 }
 function quantasLeituras(o){
   return o.modoLivre ? Object.values(o.livre||{}).reduce((a,g)=>a+(g.gaiolas||[]).length,0) : (o.leituras||[]).length;
 }
-// Na abertura: se o aparelho não tem andamento e o Mini PC tem rascunho (deste
-// aparelho, ou o mais recente de outro), traz para o aparelho antes de retomar.
+// Na abertura: para cada tipo sem andamento no aparelho, traz do Mini PC o
+// rascunho deste aparelho (ou o mais recente de outro coletor, do mesmo tipo).
 async function trazerRascunhoDoServidor(){
   try{
-    if(lerAndamento()) return;
     const d=await (await fetch(URL_BASE+'/inventario/rascunho')).json();
     const lista=(d&&d.rascunhos)||[];
-    const r=lista.find(x=>x.dispositivo===DISPOSITIVO) || lista[0];
-    if(r && r.dados && quantasLeituras(r.dados)>0){
-      r.dados.origem = (r.dispositivo===DISPOSITIVO) ? null : r.dispositivo;
-      localStorage.setItem(CHAVE_ANDAMENTO, JSON.stringify(r.dados));
+    for(const t of TIPOS_INV){
+      if(lerAndamento(t)) continue;
+      const doTipo=lista.filter(x=>x.dados && x.dados.tipo===t && quantasLeituras(x.dados)>0);
+      const r=doTipo.find(x=>x.dispositivo===idRascunho(t)) || doTipo[0];
+      if(!r) continue;
+      const meu = (r.dispositivo===idRascunho(t) || r.dispositivo===DISPOSITIVO);
+      r.dados.origem = meu ? null : String(r.dispositivo).split(':')[0];
+      localStorage.setItem(chaveAndamento(t), JSON.stringify(r.dados));
     }
   }catch(e){}
 }
-// Antes de começar uma contagem nova: se há outra em andamento, oferece
-// continuar ela em vez de sobrescrever. true = pode começar a nova.
-function podeComecarNova(){
-  const o=lerAndamento();
+// Antes de começar uma contagem nova DO MESMO TIPO: se há outra em
+// andamento, oferece continuar ela em vez de sobrescrever. true = pode começar.
+async function podeComecarNova(){
+  const o=lerAndamento(TIPO_INV);
   if(!o || !quantasLeituras(o)) return true;
-  return !retomarAndamento(true);
+  return !(await retomarAndamento(true, TIPO_INV));
 }
-function retomarAndamento(perguntar){
-  const o=lerAndamento(); if(!o) return false;
+async function retomarAndamento(perguntar, tipo){
+  const o=lerAndamento(tipo); if(!o) return false;
   const quantos = quantasLeituras(o);
-  const oQue = o.modoLivre ? 'leitura livre' : (o.sel ? rotuloProduto(o.sel) : '');
+  const oQue = (o.modoLivre ? 'leitura livre' : (o.sel ? rotuloProduto(o.sel) : 'contagem'))
+             + ' de ' + (NOME_TIPO[o.tipo] || o.tipo);
   const idadeH = (Date.now()-o.ts)/3600000;
   // Voltou para a tela no mesmo aparelho, há pouco: continua sem perguntar.
   const automatico = !perguntar && !o.origem && idadeH < 12 && quantos > 0;
   if(!automatico){
     const quando = new Date(o.ts).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
     const deOnde = o.origem ? `\nVeio de OUTRO coletor (${o.origem}).` : '';
-    if(!confirm(`Há uma contagem em andamento (${oQue}) com ${quantos} leitura(s), de ${quando}.${deOnde}\n\nOK = continuar de onde parou\nCancelar = descartar`)){
-      if(confirm(`Descartar MESMO as ${quantos} leitura(s)? Não dá para desfazer.\n\nOK = descartar   |   Cancelar = continuar a contagem`)){
-        limparAndamento(); return false;
-      }
+    const continuar = await ekoConfirmar({ titulo:'Contagem em andamento',
+      texto:`${oQue} · ${quantos} leitura(s) · ${quando}${deOnde}`,
+      ok:'Continuar de onde parou', cancelar:'Descartar' });
+    if(!continuar){
+      const descartar = await ekoConfirmar({ titulo:'Descartar a contagem?', perigo:true,
+        texto:`As ${quantos} leitura(s) serão perdidas. Não dá para desfazer.`,
+        ok:'Descartar', cancelar:'Continuar a contagem' });
+      if(descartar){ limparAndamento(o.tipo); return false; }
     }
   }
   if(o.origem){ delete o.origem; o.dispositivo=DISPOSITIVO; }
@@ -721,6 +752,9 @@ function escolherTipo(t){
   bv.onclick = voltarTipo;
   if (ehPA) carregarProdutosPA();
   renderFinalizados();
+  // Tem contagem deste tipo em andamento? Continua (sozinha, se é deste
+  // coletor e recente; senão pergunta).
+  if (lerAndamento(t)) retomarAndamento(false, t);
 }
 
 function voltarTipo(){
@@ -760,8 +794,8 @@ function paAtualizar(){
   const c=document.getElementById('pa-cor').value;
   document.getElementById('pa-btn-iniciar').disabled = !(f && c);
 }
-function paIniciar(){
-  if(!podeComecarNova()) return;
+async function paIniciar(){
+  if(!(await podeComecarNova())) return;
   const f=document.getElementById('pa-formato').value;
   const c=document.getElementById('pa-cor').value;
   const prod=PA_PRODUTOS.find(p=>p.formato===f && p.cor===c);
@@ -785,8 +819,8 @@ function paIniciar(){
 // Lê qualquer etiqueta de big bag e agrupa por material + cor + fornecedor.
 // Observação: pigmento e dessecante não aparecem aqui — eles vêm em sacos e
 // são contados manualmente, escolhendo o produto.
-function mpIniciarLivre(){
-  if(!podeComecarNova()) return;
+async function mpIniciarLivre(){
+  if(!(await podeComecarNova())) return;
   MODO_LIVRE=true; MODO_MANUAL=false;
   document.getElementById('btn-add-sacos').classList.remove('oculto');
   document.getElementById('painel-sacos').classList.add('oculto');
@@ -1114,8 +1148,8 @@ function paManCarregarSelects(){
 // ─────────── LEITURA LIVRE (produto acabado) ───────────
 // Lê qualquer gaiola, na ordem que aparecer, e agrupa por produto.
 // No fim, mostra o comparativo de TODOS os produtos lidos contra o Bling.
-function paIniciarLivre(){
-  if(!podeComecarNova()) return;
+async function paIniciarLivre(){
+  if(!(await podeComecarNova())) return;
   MODO_LIVRE=true; MODO_MANUAL=false;
   document.getElementById('btn-add-sacos').classList.add('oculto');
   document.getElementById('painel-sacos').classList.add('oculto');
@@ -1178,10 +1212,12 @@ function renderLivre(){
 }
 
 // Remove um produto inteiro da contagem livre.
-function excluirGrupoLivre(chave){
+async function excluirGrupoLivre(chave){
   const g=LIVRE[chave]; if(!g) return;
   const unid = g.tipo==='pa' ? 'gaiola' : 'etiqueta';
-  if(!confirm(`Excluir ${g.rotulo} da contagem?\n\n${g.gaiolas.length} ${unid}(s) · ${fmtKg(g.kg)}\n\nAs ${unid}s voltam a poder ser lidas.`)) return;
+  if(!(await ekoConfirmar({ titulo:`Excluir ${g.rotulo} da contagem?`, perigo:true,
+      texto:`${g.gaiolas.length} ${unid}(s) · ${fmtKg(g.kg)}\nAs ${unid}s voltam a poder ser lidas.`,
+      ok:'Excluir', cancelar:'Manter' }))) return;
   g.gaiolas.forEach(x=>idsLidos.delete(x.id));
   delete LIVRE[chave];
   renderLivre(); salvarAndamento();
@@ -1366,8 +1402,8 @@ function atualizarBotaoIniciar(){
 }
 
 // ─────────── iniciar leitura ───────────
-function iniciarLeitura(){
-  if(!podeComecarNova()) return;
+async function iniciarLeitura(){
+  if(!(await podeComecarNova())) return;
   const mat=document.getElementById('sel-material').value;
   const scDisabled=document.getElementById('sel-cor').disabled;
   const cor= scDisabled ? '' : document.getElementById('sel-cor').value;
@@ -1379,7 +1415,8 @@ function iniciarLeitura(){
   // se esse produto já foi inventariado, retoma as leituras salvas
   const jaFeito = FINALIZADOS.find(i=>i.material===sel.material && (i.cor||'')===(sel.cor||'') && (i.fornecedor||'')===sel.fornecedor);
   if(jaFeito && Array.isArray(jaFeito.leituras) && jaFeito.leituras.length){
-    if(confirm('Este produto já foi inventariado. Deseja refazer do zero?\n\nOK = recomeçar   |   Cancelar = manter o que já estava')){
+    if(await ekoConfirmar({ titulo:'Produto já inventariado', texto:'Refazer do zero ou manter o que já estava?',
+        ok:'Recomeçar do zero', cancelar:'Manter o que já estava' })){
       // recomeça vazio
     }else{
       leituras = jaFeito.leituras.map(x=>({id:x.id, peso:x.peso}));
@@ -1488,7 +1525,8 @@ async function escolherCameraId(){
 // Alternativa à câmera: digitar o código da etiqueta. Passa exatamente pelas
 // mesmas validações da leitura (duplicata, produto incompatível, soma do peso).
 async function digitarCodigo(){
-  const cod = prompt('Código da etiqueta (ex.: R0000123):');
+  const cod = await ekoPerguntar({ titulo:'Digitar código', texto:'Código da etiqueta (ex.: R0000123)',
+    placeholder:'R0000123', ok:'Ler' });
   if(!cod) return;
   const id = cod.trim().toUpperCase();
   if(!id) return;
@@ -2002,9 +2040,9 @@ function finalizarQualquer(){ return MODO_LIVRE ? finalizarLivre() : finalizarLe
 
 async function finalizarLeitura(){
   if(MODO_MANUAL && sacos === 0){
-    if(!confirm('Nenhum saco contado. Registrar 0 kg para este produto?')) return;
+    if(!(await ekoConfirmar({ titulo:'Nenhum saco contado', texto:'Registrar 0 kg para este produto?', ok:'Registrar 0 kg', cancelar:'Voltar' }))) return;
   } else if(!MODO_MANUAL && !leituras.length){
-    if(!confirm('Nenhuma etiqueta foi lida. Registrar 0 kg para este produto?')) return;
+    if(!(await ekoConfirmar({ titulo:'Nenhuma etiqueta lida', texto:'Registrar 0 kg para este produto?', ok:'Registrar 0 kg', cancelar:'Voltar' }))) return;
   }
   await pararCamera();
   document.getElementById('tela-leitura').classList.add('oculto');
@@ -2294,7 +2332,8 @@ async function exportarPDF(compartilhar){
 // ─────────── finalizar inventário ───────────
 async function finalizarInventario(){
   if(!FINALIZADOS.length){ toast('aviso','O inventário está vazio',2000); return; }
-  if(!confirm('Finalizar e ZERAR o inventário atual?\n\nRecomendo exportar o PDF antes.\nOK = zerar   |   Cancelar = manter')) return;
+  if(!(await ekoConfirmar({ titulo:'Finalizar e ZERAR o inventário?', perigo:true,
+      texto:'Recomendo exportar o PDF antes.', ok:'Finalizar e zerar', cancelar:'Manter' }))) return;
   try{
     await fetch(URL_BASE+'/inventario/limpar',{method:'POST'});
     FINALIZADOS=[]; CICLO={};
@@ -2306,7 +2345,9 @@ async function finalizarInventario(){
 // init
 // Só oferece retomar depois que os catálogos estiverem carregados — os nomes
 // dos produtos vêm deles.
-Promise.all([carregarTudo(), carregarProdutosPA(), trazerRascunhoDoServidor()]).then(() => { retomarAndamento(); });
+// A retomada acontece ao escolher MP ou PA (escolherTipo), não aqui: com
+// duas contagens possíveis, abrir a tela direto numa delas escondia a outra.
+Promise.all([carregarTudo(), carregarProdutosPA(), trazerRascunhoDoServidor()]);
 </script>
 </body>
 </html>

@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <script src="/acesso-colaborador.js"></script>
+<script src="/eko-dialogo.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Bobina na Sacoleira</title>
 <style>
@@ -204,7 +205,8 @@ function haQuanto(iso){
 // Etiqueta rasurada: digitar o número. Passa pelas mesmas validações do
 // leitor do coletor (onLeu).
 async function digitarCodigo(){
-  const cod = prompt('Número da etiqueta da bobina (ex.: 1669 ou E0001669):');
+  const cod = await ekoPerguntar({ titulo:'Digitar código', texto:'Número da etiqueta da bobina (ex.: 1669 ou E0001669)',
+    placeholder:'1669', ok:'Ler' });
   if(!cod) return;
   let id = cod.trim().toUpperCase().replace(/\s+/g,'');
   if(!id) return;
@@ -411,7 +413,9 @@ async function carregarHistorico(){
 // Leitura errada: a bobina registrada não é a que foi para a máquina. Volta
 // para o estoque; depois é só bipar a certa. Só a última de cada sacoleira.
 async function desfazer(id, sac){
-  if(!confirm('Desfazer a entrada de '+id+' na '+sac+'?\n\nUse quando a leitura saiu errada: a bobina volta para o estoque. Depois bipe a bobina certa.')) return;
+  if(!(await ekoConfirmar({ titulo:'Desfazer a entrada de '+id+' na '+sac+'?', perigo:true,
+      texto:'Use quando a leitura saiu errada: a bobina volta para o estoque. Depois bipe a bobina certa.',
+      ok:'Desfazer', cancelar:'Manter' }))) return;
   try{
     const r=await fetch(URL_BASE+'/bobinas/desfazer',{
       method:'POST', headers:{'Content-Type':'application/json'},
@@ -482,7 +486,7 @@ async function lerInventario(id){
   }catch(e){ toast('erro','Erro: '+esc(e.message),5000); }
 }
 async function removerInventario(id){
-  if(!confirm('Tirar '+id+' do inventário?')) return;
+  if(!(await ekoConfirmar({ titulo:'Tirar '+id+' do inventário?', ok:'Tirar', cancelar:'Manter' }))) return;
   try{
     await fetch(URL_BASE+'/bobinas/inventario/remover',{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ id }) });
     const g=await (await fetch(URL_BASE+'/bobinas/inventario')).json();
@@ -491,7 +495,8 @@ async function removerInventario(id){
 }
 async function concluirInventario(){
   const n=document.getElementById('inv-qtd').textContent;
-  if(!confirm('Concluir o inventário com '+n+' bobina(s)?\n\nDepois de concluído, não entra mais nenhuma leitura nele.')) return;
+  if(!(await ekoConfirmar({ titulo:'Concluir o inventário com '+n+' bobina(s)?',
+      texto:'Depois de concluído, não entra mais nenhuma leitura nele.', ok:'Concluir', cancelar:'Continuar bipando' }))) return;
   try{
     const r=await fetch(URL_BASE+'/bobinas/inventario/concluir',{ method:'POST', headers:{'Content-Type':'application/json'}, body:'{}' });
     const d=await r.json();

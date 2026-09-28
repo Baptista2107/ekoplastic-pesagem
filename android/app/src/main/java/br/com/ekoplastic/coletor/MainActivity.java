@@ -515,7 +515,19 @@ public class MainActivity extends Activity {
             r -> { if (r != null && r.contains("sem-tela")) toast("Esta tela não recebe leitura: " + ultimoCodigo); }));
     }
 
-    void toast(String m) { ui.post(() -> Toast.makeText(this, m, Toast.LENGTH_LONG).show()); }
+    /**
+     * Aviso ao operador. v1.8 (28/09/2026, Frederico: "nenhuma mensagem do
+     * tipo sistema"): usa o aviso da PRÓPRIA página — as duas telas têm
+     * toast(tipo, msg, ms) no visual da aplicação. O Toast do Android fica só
+     * para quando a página não tem (página de erro, carregando).
+     */
+    void toast(String m) {
+        final String js = "(function(m){if(typeof toast==='function'){toast('aviso',m,4500);return 'ok';}return 'nao';})("
+                + org.json.JSONObject.quote(m) + ")";
+        ui.post(() -> web.evaluateJavascript(js, r -> {
+            if (r == null || !r.contains("ok")) Toast.makeText(this, m, Toast.LENGTH_LONG).show();
+        }));
+    }
 
     // ─────────────────────────── configuração ───────────────────────────
 
