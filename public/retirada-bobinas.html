@@ -67,6 +67,22 @@
   .toast.erro{background:#3b1414; color:var(--vermelho); border:1.5px solid var(--vermelho);}
   .toast.aviso{background:#3b2f0d; color:var(--ambar); border:1.5px solid var(--ambar);}
   .carregando{color:var(--muted); font-size:16px; text-align:center; padding:26px;}
+
+  /* Sacoleiras: o que está montado agora (28/09/2026, VPS) */
+  .maq-grid{display:flex; gap:12px; margin:16px 0 4px;}
+  .maq{flex:1; background:var(--panel); border:1.5px solid var(--border); border-radius:16px; padding:14px; min-width:0;}
+  .maq .mq-tit{font-size:12px; color:var(--muted); font-weight:800; letter-spacing:1px;}
+  .maq .mq-bob{font-size:16px; font-weight:800; margin-top:6px; line-height:1.25; overflow-wrap:anywhere;}
+  .maq .mq-sub{font-size:12px; color:var(--muted); margin-top:4px; font-family:ui-monospace,monospace; overflow-wrap:anywhere;}
+  .maq.vazia .mq-bob{color:var(--muted); font-weight:700;}
+  .maq.outro-turno{border-color:var(--ambar);}
+  .modal-fundo{position:fixed; inset:0; background:rgba(0,0,0,0.72); z-index:90; display:flex; align-items:center; justify-content:center; padding:16px;}
+  .modal{background:var(--panel); border:2px solid var(--ambar); border-radius:18px; padding:20px; width:100%; max-width:440px; max-height:92dvh; overflow:auto;}
+  .modal h2{margin:0 0 6px; font-size:20px;}
+  .modal .md-sub{color:var(--muted); font-size:14px; line-height:1.45;}
+  .modal label{display:block; font-size:13px; color:var(--muted); font-weight:800; letter-spacing:0.6px; margin-top:16px;}
+  .modal input{width:100%; margin-top:6px; padding:14px; font-size:28px; font-weight:900; text-align:center; border-radius:12px; border:2px solid var(--border); background:var(--bg); color:var(--txt); font-family:inherit;}
+  .modal input:focus{outline:none; border-color:var(--ambar);}
   .turno-grid{display:flex; flex-direction:column; gap:14px; margin-top:20px;}
   .turno-btn{background:var(--panel); border:2px solid var(--border); color:var(--txt); border-radius:18px; padding:26px 20px; font-size:24px; font-weight:900; cursor:pointer; font-family:inherit; text-align:left;}
   .turno-btn:active{transform:scale(0.98);}
@@ -88,7 +104,7 @@
 
 <!-- ETAPA 1: escolher o turno (é o cliente da venda no Bling) -->
 <div class="wrap" id="tela-turno">
-  <div style="font-size:17px; color:var(--muted); line-height:1.5;">Selecione o turno que está retirando. A baixa das bobinas sai como venda para esse turno no Bling.</div>
+  <div style="font-size:17px; color:var(--muted); line-height:1.5;" id="turno-texto">Selecione o turno que está retirando.</div>
   <div class="turno-grid" id="grid-turnos"><div class="carregando">Carregando turnos…</div></div>
 </div>
 
@@ -122,6 +138,11 @@
   <!-- bobina lida, aguardando confirmação -->
   <div id="area-bobina"></div>
 
+  <!-- o que está montado em cada sacoleira agora -->
+  <div class="hist-tit"><span>Na sacoleira agora</span></div>
+  <div class="maq-grid" id="maq-grid"><div class="carregando">Carregando…</div></div>
+  <button class="btn btn-cinza" onclick="abrirEncerrarTurno()">🏁 Encerrar turno</button>
+
   <div class="totais">
     <div class="cx"><div class="n" id="t-qtd">0</div><div class="l">BOBINAS HOJE</div></div>
     <div class="cx"><div class="n" id="t-kg">0</div><div class="l">KG RETIRADOS</div></div>
@@ -137,7 +158,9 @@ let scanner=null, camLigada=false, ULTIMO_ERRO_CAM=null;
 let ZOOM_CAPS=null, CAMERAS=[], CAMERA_ID=null, RESOLUCAO_CAM=null;
 const ultimoBipe={};
 let bobinaAtual=null;      // bobina lida aguardando confirmação
-let TURNO=null;            // {codigo,label} — é o cliente da venda no Bling
+let TURNO=null;            // {codigo,label} — com o Bling ligado, é o cliente da venda
+let BLING=false;           // a baixa cria pedido no Bling? (config baixa_bobina_bling)
+let ABERTAS=[];            // [{sacoleira, bobina|null}] — o que está montado agora
 let enviando=false;
 
 function toast(tipo,msg,ms){
@@ -454,7 +477,7 @@ async function onLeu(codigo){
       return;
     }
     if(b.status==='cancelada'){ beep(320,0.2); vibrar(150); mostrarErro(id,'Bobina cancelada'); return; }
-    if(!b.produto_id){ beep(320,0.2); vibrar(150); mostrarErro(id,'Sem produto no Bling para '+b.chave); return; }
+    if(d.bling && !b.produto_id){ beep(320,0.2); vibrar(150); mostrarErro(id,'Sem produto no Bling para '+b.chave); return; }
 
     beep(880,0.1); vibrar(60);
     bobinaAtual=b;
@@ -490,21 +513,42 @@ function restaurarBotoesDestino(){
 }
 function cancelarLeitura(){ bobinaAtual=null; document.getElementById('area-bobina').innerHTML=''; }
 
-// Baixa de verdade — um pedido de venda por bobina.
+// Baixa: a bobina entra na sacoleira. Se a sacoleira já tinha uma bobina
+// montada NESTE turno, pergunta antes quantos fardos ela deu (a primeira
+// bobina do turno não pergunta). Com o Bling ligado, sai um pedido de venda.
 async function confirmarBaixa(destino){
   if(!bobinaAtual || enviando) return;
   if(!TURNO){ toast('erro','Selecione o turno primeiro',3000); trocarTurno(); return; }
   if(!destino){ toast('erro','Escolha a sacoleira de destino',3000); return; }
+  const sac=(destino.match(/P[12]/)||[])[0];
+  let fardosAnterior=null;
+  const montada=(ABERTAS.find(a=>a.sacoleira===sac)||{}).bobina;
+  if(montada && montada.deste_turno && montada.id!==bobinaAtual.id){
+    fardosAnterior=await perguntarFardos(montada, sac);
+    if(fardosAnterior===null) return;           // cancelou: nada é gravado
+  }
   enviando=true;
   // desabilita os dois botões de destino e marca qual foi escolhido
   const botoes=document.querySelectorAll('.btn-destino');
-  botoes.forEach(b=>{ b.disabled=true; if(b.dataset.destino===destino) b.textContent='Enviando ao Bling…'; else b.style.opacity='0.35'; });
+  botoes.forEach(b=>{ b.disabled=true; if(b.dataset.destino===destino) b.textContent=BLING?'Enviando ao Bling…':'Registrando…'; else b.style.opacity='0.35'; });
   try{
-    const r=await fetch(URL_BASE+'/bobinas/baixa',{
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({ id:bobinaAtual.id, turno:TURNO&&TURNO.codigo, destino, operador:(window.EKO_RESPONSAVEL||null) })
-    });
-    const d=await r.json();
+    let d, r;
+    for(let tentativa=0; tentativa<2; tentativa++){
+      r=await fetch(URL_BASE+'/bobinas/baixa',{
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({ id:bobinaAtual.id, turno:TURNO&&TURNO.codigo, destino,
+                              fardos_anterior:fardosAnterior, operador:(window.EKO_RESPONSAVEL||null) })
+      });
+      d=await r.json();
+      // Outro celular montou bobina nesta sacoleira no meio do caminho: o
+      // servidor pede os fardos dela. Pergunta e tenta de novo, uma vez.
+      if(r.status===409 && d && d.precisa_fardos && tentativa===0){
+        fardosAnterior=await perguntarFardos(d.anterior, sac);
+        if(fardosAnterior===null){ restaurarBotoesDestino(); enviando=false; return; }
+        continue;
+      }
+      break;
+    }
     if(!r.ok || !d.ok){
       beep(320,0.25); vibrar(200);
       toast('erro',(d&&d.erro)||'Falha ao dar baixa',6000);
@@ -512,9 +556,10 @@ async function confirmarBaixa(destino){
       enviando=false; return;
     }
     beep(1050,0.14); vibrar([60,50,60]);
-    toast('ok','✓ Baixa feita → '+destino+'<br>pedido '+d.pedido+(d.modo==='simulacao'?' (simulação)':''),3500);
+    const ped = d.modo==='sem_bling' ? '' : ('<br>pedido '+d.pedido+(d.modo==='simulacao'?' (simulação)':''));
+    toast('ok','✓ Bobina na '+destino+ped,3500);
     cancelarLeitura();
-    await carregarHistorico();
+    await Promise.all([carregarHistorico(), carregarAbertas()]);
   }catch(e){
     toast('erro','Erro: '+e.message,5000);
     restaurarBotoesDestino();
@@ -530,14 +575,18 @@ async function carregarTurnos(){
     const r=await fetch(URL_BASE+'/bobinas/turnos');
     const d=await r.json();
     turnos=(d&&d.turnos)||[];
+    BLING=!!(d&&d.bling);
   }catch(e){}
+  document.getElementById('turno-texto').textContent = BLING
+    ? 'Selecione o turno que está retirando. A baixa das bobinas sai como venda para esse turno no Bling.'
+    : 'Selecione o turno que está retirando.';
   const g=document.getElementById('grid-turnos');
   if(!turnos.length){ g.innerHTML='<div class="vazio">Nenhum turno cadastrado. Avise a manutenção.</div>'; return; }
   g.innerHTML='';
   for(const t of turnos){
     const b=document.createElement('button');
     b.className='turno-btn';
-    b.innerHTML=t.label+'<span class="tb-sub">baixa sai como venda para este turno</span>';
+    b.innerHTML=t.label+(BLING?'<span class="tb-sub">baixa sai como venda para este turno</span>':'');
     b.onclick=()=>escolherTurno(t.codigo,t.label);
     g.appendChild(b);
   }
@@ -554,6 +603,100 @@ function escolherTurno(codigo,label){
   document.getElementById('tela-turno').classList.add('oculto');
   document.getElementById('tela-leitura').classList.remove('oculto');
   carregarHistorico();
+  carregarAbertas();
+}
+
+// ── SACOLEIRAS: o que está montado agora ─────────────────────────────
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function descBob(b){ return esc(b.cor)+' · '+esc(b.tipo_bobina)+' · '+esc(b.largura); }
+function horaCurta(iso){ try{ return new Date(iso).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}); }catch(e){ return ''; } }
+
+async function carregarAbertas(){
+  const g=document.getElementById('maq-grid');
+  try{
+    const r=await fetch(URL_BASE+'/bobinas/abertas?turno='+encodeURIComponent((TURNO&&TURNO.codigo)||''));
+    const d=await r.json();
+    ABERTAS=(d&&d.sacoleiras)||[];
+  }catch(e){ ABERTAS=[]; g.innerHTML='<div class="vazio">Não consegui ler as sacoleiras.</div>'; return; }
+  g.innerHTML=ABERTAS.map(a=>{
+    const b=a.bobina;
+    if(!b) return '<div class="maq vazia"><div class="mq-tit">SACOLEIRA '+a.sacoleira+'</div><div class="mq-bob">sem bobina</div></div>';
+    // Bobina de outro turno ainda aberta = o turno anterior não foi encerrado.
+    const outro = b.deste_turno===false;
+    return '<div class="maq'+(outro?' outro-turno':'')+'"><div class="mq-tit">SACOLEIRA '+a.sacoleira+'</div>'+
+      '<div class="mq-bob">'+descBob(b)+'</div>'+
+      '<div class="mq-sub">'+esc(b.id)+' · '+fmtKg(b.peso)+'<br>desde '+horaCurta(b.baixa_em)+
+      (outro?'<br>⚠ turno anterior não encerrado':'')+'</div></div>';
+  }).join('');
+}
+
+// Pergunta quantos fardos a bobina deu. Resolve com o número, ou null se cancelar.
+function perguntarFardos(bob, sac){
+  return new Promise(resolve=>{
+    const fundo=document.createElement('div');
+    fundo.className='modal-fundo';
+    fundo.innerHTML='<div class="modal">'+
+      '<h2>Quantos fardos esta bobina deu?</h2>'+
+      '<div class="md-sub">Sacoleira '+esc(sac)+' · sai <b>'+esc(bob.id)+'</b><br>'+descBob(bob)+' · '+fmtKg(bob.peso)+'</div>'+
+      '<label>FARDOS</label><input id="md-fardos" type="number" inputmode="numeric" min="0" max="999" step="1" autocomplete="off">'+
+      '<button class="btn btn-verde" id="md-ok">Confirmar e trocar</button>'+
+      '<button class="btn btn-cinza" id="md-cancelar">Cancelar</button></div>';
+    document.body.appendChild(fundo);
+    const inp=fundo.querySelector('#md-fardos');
+    setTimeout(()=>inp.focus(),50);
+    const fim=v=>{ fundo.remove(); resolve(v); };
+    fundo.querySelector('#md-cancelar').onclick=()=>fim(null);
+    fundo.querySelector('#md-ok').onclick=()=>{
+      const n=Number(inp.value);
+      if(inp.value==='' || !Number.isInteger(n) || n<0 || n>999){ toast('erro','Digite o número de fardos (0 a 999)',3000); inp.focus(); return; }
+      fim(n);
+    };
+    inp.addEventListener('keydown',e=>{ if(e.key==='Enter') fundo.querySelector('#md-ok').click(); });
+  });
+}
+
+// Encerrar turno: fardos da bobina aberta em cada sacoleira; tudo ou nada.
+async function abrirEncerrarTurno(){
+  if(!TURNO){ toast('erro','Selecione o turno primeiro',3000); return; }
+  await carregarAbertas();
+  const abertas=ABERTAS.filter(a=>a.bobina);
+  const fundo=document.createElement('div');
+  fundo.className='modal-fundo';
+  fundo.innerHTML='<div class="modal">'+
+    '<h2>Encerrar '+esc(TURNO.label)+'</h2>'+
+    (abertas.length
+      ? '<div class="md-sub">Quantos fardos cada bobina deu neste turno?</div>'+
+        abertas.map(a=>'<label>SACOLEIRA '+a.sacoleira+' · '+esc(a.bobina.id)+'</label>'+
+          '<div class="md-sub">'+descBob(a.bobina)+' · '+fmtKg(a.bobina.peso)+'</div>'+
+          '<input type="number" inputmode="numeric" min="0" max="999" step="1" data-sac="'+a.sacoleira+'" autocomplete="off">').join('')
+      : '<div class="md-sub">Nenhuma bobina aberta nas sacoleiras.</div>')+
+    '<button class="btn btn-verde" id="md-ok">🏁 Encerrar turno</button>'+
+    '<button class="btn btn-cinza" id="md-cancelar">Cancelar</button></div>';
+  document.body.appendChild(fundo);
+  const inps=[...fundo.querySelectorAll('input[data-sac]')];
+  if(inps[0]) setTimeout(()=>inps[0].focus(),50);
+  fundo.querySelector('#md-cancelar').onclick=()=>fundo.remove();
+  fundo.querySelector('#md-ok').onclick=async()=>{
+    const fardos={};
+    for(const i of inps){
+      const n=Number(i.value);
+      if(i.value==='' || !Number.isInteger(n) || n<0 || n>999){ toast('erro','Informe os fardos da Sacoleira '+i.dataset.sac,3000); i.focus(); return; }
+      fardos[i.dataset.sac]=n;
+    }
+    const bt=fundo.querySelector('#md-ok'); bt.disabled=true; bt.textContent='Encerrando…';
+    try{
+      const r=await fetch(URL_BASE+'/bobinas/encerrar-turno',{
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({ turno:TURNO.codigo, fardos, operador:(window.EKO_RESPONSAVEL||null) })
+      });
+      const d=await r.json();
+      if(!r.ok || !d.ok){ toast('erro',(d&&d.erro)||'Falha ao encerrar',5000); bt.disabled=false; bt.textContent='🏁 Encerrar turno'; return; }
+      fundo.remove();
+      beep(1050,0.14); vibrar([60,50,60]);
+      toast('ok','✓ '+esc(TURNO.label)+' encerrado',3500);
+      await carregarAbertas();
+    }catch(e){ toast('erro','Erro: '+e.message,5000); bt.disabled=false; bt.textContent='🏁 Encerrar turno'; }
+  };
 }
 function trocarTurno(){
   pararCamera();
