@@ -393,7 +393,8 @@ async function carregarHistorico(){
     const vistas={};
     el.innerHTML=lista.map(x=>{
       const sac=String(x.destino||'').replace(/^Sacoleira\s*/i,'')||'—';
-      const ultima=!vistas[sac] && !x.pedido; vistas[sac]=1;
+      // Não oferece desfazer para bobina que já deu fardos (foi usada).
+      const ultima=!vistas[sac] && !x.pedido && !(x.fardos>0); vistas[sac]=1;
       let dir;
       if(!x.encerrada_em) dir='<span class="na-maq">na máquina</span>';
       else if(x.fardos==null) dir='<span>—</span><small>sem fardos</small>';

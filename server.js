@@ -8993,6 +8993,11 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
         return jsonErr(res, 400, `${bid} não está registrada numa sacoleira`);
       if (e.bling_pedido_id)
         return jsonErr(res, 409, `${bid} já gerou o pedido ${e.bling_pedido_id} no Bling — cancele lá primeiro`);
+      // Deu fardo → foi usada de verdade. 28/09/2026: depois de desfazer a
+      // E0001674 (entrada errada), a E0001747 virou a "última" da P1 e também
+      // foi desfeita — perdendo os 30 fardos de uma bobina que saiu da máquina.
+      if (e.fardos != null && Number(e.fardos) > 0)
+        return jsonErr(res, 409, `${bid} já tem ${e.fardos} fardo(s) informados — foi usada, não dá para desfazer`);
       const ultima = db.prepare(
         `SELECT id FROM etiquetas WHERE tipo='extrusao' AND destino = ? AND baixa_em IS NOT NULL
           ORDER BY baixa_em DESC LIMIT 1`).get(e.destino);
