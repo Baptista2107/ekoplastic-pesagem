@@ -93,8 +93,10 @@ public class MainActivity extends Activity {
     static final String[] CHAVES = {"ScanCode", "ScanCodeBytes", "barcode_string", "scannerdata", "value", "SCAN_BARCODE1", "data",
         "barcodeData", "barcode", "decode_data", "scan_data", "com.symbol.datawedge.data_string", "barocode"};
 
-    /** Etiqueta do sistema: uma letra e 7 dígitos (E0001669). */
-    static final Pattern ETIQUETA = Pattern.compile("^[A-Z]\\d{5,9}$");
+    /** Etiqueta do sistema: uma letra e EXATAMENTE 7 dígitos (E0001669,
+     *  R0000914, P0000760…). Conferido no banco em 28/09/2026: todas têm 8
+     *  caracteres. Nada mais curto ou mais longo é etiqueta. */
+    static final Pattern ETIQUETA = Pattern.compile("^[A-Z]\\d{7}$");
 
     WebView web;
     SharedPreferences prefs;
@@ -420,18 +422,21 @@ public class MainActivity extends Activity {
 
     /**
      * Texto do leitor → código da etiqueta. Tira o prefixo de simbologia AIM
-     * que alguns leitores põem na frente (]C1 = Code 128) e, se sobrar texto
-     * a mais, fica com a etiqueta de dentro dele. Só números vira E + 7 dígitos.
+     * que alguns leitores põem na frente (]C1 = Code 128). O resto tem de ser
+     * exatamente a etiqueta.
+     *
+     * v1.5 (28/09/2026): NÃO completa mais "só números" com E. O leitor leu
+     * uma etiqueta R… pela metade, sobraram os dígitos, a v1.4 fez E + dígitos
+     * e apontou OUTRA bobina que existia (E0001674 foi para a P1 por engano).
+     * Leitura do leitor só vale completa: letra + 7 dígitos. O "só número"
+     * continua existindo no botão Digitar da página, onde é gente digitando.
      */
     static String normalizar(String s) {
         String t = s == null ? "" : s.trim().toUpperCase();
         t = t.replaceFirst("^\\][A-Z0-9][0-9]", "");
-        String c = t.replaceAll("[^A-Z0-9]", "");
-        if (c.matches("^\\d{1,7}$")) return "E" + String.format("%7s", c).replace(' ', '0');
-        java.util.regex.Matcher m = Pattern.compile("[A-Z]\\d{7}").matcher(c);
-        String ultima = null;
-        while (m.find()) ultima = m.group();
-        return (ultima != null && !ETIQUETA.matcher(c).matches()) ? ultima : c;
+        // Sem "achar a etiqueta dentro do texto": E00016690 (um dígito a mais,
+        // leitura ruim) virava E0001669, outra bobina. Tem que ser exato.
+        return t.replaceAll("[^A-Z0-9]", "");
     }
 
     /** Entrega o código à tela, pela mesma função que a câmera usa. */
@@ -444,7 +449,13 @@ public class MainActivity extends Activity {
         if (cod.equals(entregueCodigo) && agora - entregueEm < 1500) return;
         entregueCodigo = cod; entregueEm = agora;
         ultimoCodigo = cod + "  (bruto: " + String.valueOf(bruto).trim() + ")"; ultimaOrigem = origem;
-        if (!ETIQUETA.matcher(cod).matches()) { toast("Código não reconhecido: " + cod); return; }
+        if (!ETIQUETA.matcher(cod).matches()) {
+            // Leitura incompleta ou de outro código: não adivinha. Bipe de novo.
+            toast("⚠ Leitura incompleta: \"" + cod + "\" — bipe de novo, com o laser pegando a etiqueta inteira");
+            try { new android.media.ToneGenerator(android.media.AudioManager.STREAM_NOTIFICATION, 90)
+                      .startTone(android.media.ToneGenerator.TONE_PROP_NACK, 400); } catch (Exception ignore) {}
+            return;
+        }
         // Se o código também caiu no campo invisível, limpa para não entregar 2×.
         ui.post(() -> web.evaluateJavascript("window.__ekoLimpa&&__ekoLimpa()", null));
         ui.post(() -> web.evaluateJavascript(

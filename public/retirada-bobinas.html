@@ -79,6 +79,7 @@
   .h-item .h-dir{text-align:right; flex:0 0 auto; font-size:13px; font-weight:800; line-height:1.3;}
   .h-item .h-dir small{display:block; font-size:11px; font-weight:700; color:var(--muted);}
   .h-item .na-maq{color:var(--verde);}
+  .h-desf{display:block; margin:6px 0 0 auto; background:none; border:1px solid var(--border); color:var(--muted); border-radius:8px; font-family:inherit; font-size:12px; font-weight:700; padding:6px 10px; min-height:32px; cursor:pointer;}
   .vazio{color:var(--muted); font-size:14px; text-align:center; padding:18px; background:var(--panel); border-radius:12px;}
   .carregando{color:var(--muted); font-size:14px; text-align:center; padding:18px;}
 
@@ -354,8 +355,12 @@ async function carregarHistorico(){
     document.getElementById('hoje-resumo').textContent = lista.length
       ? (lista.length+' bobina'+(lista.length===1?'':'s')+' · '+((d.total_kg||0).toLocaleString('pt-BR'))+' kg') : '';
     if(!lista.length){ el.innerHTML='<div class="vazio">Nenhuma bobina entrou nas sacoleiras hoje.</div>'; return; }
+    // A lista vem da mais nova para a mais antiga: a 1ª de cada sacoleira é a
+    // última entrada dela, a única que o servidor deixa desfazer.
+    const vistas={};
     el.innerHTML=lista.map(x=>{
       const sac=String(x.destino||'').replace(/^Sacoleira\s*/i,'')||'—';
+      const ultima=!vistas[sac] && !x.pedido; vistas[sac]=1;
       let dir;
       if(!x.encerrada_em) dir='<span class="na-maq">na máquina</span>';
       else if(x.fardos==null) dir='<span>—</span><small>sem fardos</small>';
@@ -364,9 +369,26 @@ async function carregarHistorico(){
         '<span class="h-hora">'+hora(x.hora)+'</span>'+
         '<span class="h-sac">'+esc(sac)+'</span>'+
         '<div class="h-mat">'+descCurta(x)+'<small>'+esc(x.id)+' · '+fmtKg(x.peso)+(x.pedido?(' · pedido '+esc(x.pedido)):'')+'</small></div>'+
-        '<div class="h-dir">'+dir+'</div></div>';
+        '<div class="h-dir">'+dir+(ultima?('<button class="h-desf" onclick="desfazer(\''+esc(x.id)+'\',\''+esc(sac)+'\')">desfazer</button>'):'')+'</div></div>';
     }).join('');
   }catch(e){ el.innerHTML='<div class="vazio">Não consegui ler o histórico.</div>'; }
+}
+
+// Leitura errada: a bobina registrada não é a que foi para a máquina. Volta
+// para o estoque; depois é só bipar a certa. Só a última de cada sacoleira.
+async function desfazer(id, sac){
+  if(!confirm('Desfazer a entrada de '+id+' na '+sac+'?\n\nUse quando a leitura saiu errada: a bobina volta para o estoque. Depois bipe a bobina certa.')) return;
+  try{
+    const r=await fetch(URL_BASE+'/bobinas/desfazer',{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ id, operador:(window.EKO_RESPONSAVEL||null) })
+    });
+    const d=await r.json();
+    if(!r.ok || !d.ok){ toast('erro',esc((d&&d.erro)||'Falha ao desfazer'),6000); return; }
+    beep(700,0.12); vibrar(80);
+    toast('ok','↩ '+esc(id)+' voltou para o estoque',3000);
+    await atualizarTudo();
+  }catch(e){ toast('erro','Erro: '+esc(e.message),5000); }
 }
 
 async function atualizarTudo(){ await Promise.all([carregarSacoleiras(), carregarHistorico()]); }

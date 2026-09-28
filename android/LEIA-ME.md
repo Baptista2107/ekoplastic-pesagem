@@ -51,7 +51,11 @@ ler usa o laser"*.
 leitor, não do app: confira *Code Type Settings → Code 128 ligado* (a
 etiqueta da bobina é Code 128) e teste um EAN de caixa num bloco de notas.
 
-Aceita o prefixo de simbologia (`]C1`) e só o número (`1669` → `E0001669`).
+Aceita o prefixo de simbologia (`]C1`). **Leitura do leitor só vale completa**
+(letra + 7 dígitos, v1.5): leitura pela metade dá "⚠ Leitura incompleta —
+bipe de novo". Nunca completa sozinha (a v1.4 completava e uma etiqueta R…
+lida pela metade virou a bobina E0001674). O "só número → E…" existe só no
+botão Digitar da tela, onde é gente digitando.
 
 ## A tela não tem saída (v1.4)
 

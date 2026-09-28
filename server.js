@@ -8853,6 +8853,37 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
     // Finalizar: a bobina saiu da sacoleira SEM outra no lugar (máquina
     // parou, acabou o pedido). Fecha a aberta com os fardos que ela deu.
     // Body { sacoleira: 'P1'|'P2', fardos, operador }.
+    // Desfazer: a leitura saiu errada e a bobina registrada NÃO é a que foi
+    // para a máquina (28/09/2026: o leitor leu R… pela metade, o app de então
+    // completou com "E" e apontou E0001674). A bobina volta para o estoque.
+    // Só a entrada MAIS RECENTE de cada sacoleira pode ser desfeita: uma
+    // anterior já foi encerrada pela troca seguinte, e desfazer no meio
+    // deixaria a sequência da máquina sem sentido. A bobina que esta troca
+    // encerrou NÃO é reaberta: ela saiu da máquina de verdade, e os fardos
+    // informados dela valem. Corrige-se bipando a bobina certa depois.
+    if (pathname === '/bobinas/desfazer' && req.method === 'POST') {
+      let body; try { body = await lerBodyJson(req); } catch(e) { return jsonErr(res, 400, e.message); }
+      const bid = String(body.id || '').trim().toUpperCase();
+      const e = bid && dbStmts.getEtiqueta.get(bid);
+      if (!e) return jsonErr(res, 404, `Etiqueta ${bid} não encontrada`);
+      if (e.tipo !== 'extrusao' || e.status !== 'consumida' || !e.destino)
+        return jsonErr(res, 400, `${bid} não está registrada numa sacoleira`);
+      if (e.bling_pedido_id)
+        return jsonErr(res, 409, `${bid} já gerou o pedido ${e.bling_pedido_id} no Bling — cancele lá primeiro`);
+      const ultima = db.prepare(
+        `SELECT id FROM etiquetas WHERE tipo='extrusao' AND destino = ? AND baixa_em IS NOT NULL
+          ORDER BY baixa_em DESC LIMIT 1`).get(e.destino);
+      if (!ultima || ultima.id !== bid)
+        return jsonErr(res, 409, `Só dá para desfazer a última bobina da Sacoleira ${e.destino} (${ultima ? ultima.id : '—'})`);
+      db.prepare(`UPDATE etiquetas SET status='bipada', destino=NULL, baixa_em=NULL, baixa_turno=NULL,
+                         baixa_operador=NULL, fardos=NULL, encerrada_em=NULL, encerrada_motivo=NULL
+                   WHERE id = ? AND status = 'consumida'`).run(bid);
+      const operador = (body.operador ? String(body.operador).trim().slice(0, 80) : null) || null;
+      logW('bobinas', `DESFEITA a entrada de ${bid} na Sacoleira ${e.destino} (era de ${e.baixa_em}, `
+        + `fardos ${e.fardos == null ? '—' : e.fardos})${operador ? ' por ' + operador : ''}`);
+      return jsonOk(res, { desfeita: true, id: bid, sacoleira: e.destino });
+    }
+
     if (pathname === '/bobinas/finalizar' && req.method === 'POST') {
       let body; try { body = await lerBodyJson(req); } catch(e) { return jsonErr(res, 400, e.message); }
       const sac = normalizarDestinoBobina(body.sacoleira);
