@@ -42,7 +42,7 @@ O app aceita os três jeitos que um leitor embutido entrega o código:
   o leitor para enviar a ação `br.com.ekoplastic.coletor.SCAN` com o dado
   `data`.
 
-**Botão "Ler etiqueta" (v1.3)** acende o laser do coletor pelo aviso
+**Botão "Ler etiqueta" (v1.3; saiu da tela em 28/09 — só o gatilho lê)** acende o laser do coletor pelo aviso
 `com.service.scanner.start.scanning` do TC60 (apaga sozinho em 6 s se nada
 for lido). Para voltar a usar a câmera: *Configuração → desmarcar "Botão de
 ler usa o laser"*.
@@ -52,6 +52,16 @@ leitor, não do app: confira *Code Type Settings → Code 128 ligado* (a
 etiqueta da bobina é Code 128) e teste um EAN de caixa num bloco de notas.
 
 Aceita o prefixo de simbologia (`]C1`) e só o número (`1669` → `E0001669`).
+
+## A tela não tem saída (v1.4)
+
+No app, o operador não sai da tela definida: o ✕ do topo e o "voltar ao
+menu" do PIN ficam escondidos, e qualquer navegação para outra página é
+bloqueada. O Voltar do Android só fecha o que estiver aberto por cima. No
+PC e no celular pelo navegador, nada muda.
+
+Para travar também o botão Home, use a **fixação de tela** do Android
+(Configurações → Segurança → Fixar app) com o app aberto.
 
 ## Configuração (escondida)
 

@@ -149,7 +149,24 @@ public class MainActivity extends Activity {
             }
             @Override
             public void onPageFinished(WebView v, String url) {
-                if (url.startsWith("https://")) injetarAtalhos();
+                if (url.startsWith("https://")) { esconderSaidas(); injetarAtalhos(); }
+            }
+            @Override
+            public void onPageCommitVisible(WebView v, String url) {
+                if (url.startsWith("https://")) esconderSaidas();
+            }
+            /**
+             * v1.4 — o coletor NÃO sai da tela definida (Frederico,
+             * 28/09/2026). Só navega para a página configurada no Mini PC;
+             * clique no ✕, no "voltar ao menu" do PIN ou em qualquer link para
+             * outra página é ignorado. No PC/celular pelo navegador nada muda.
+             */
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) {
+                Uri u = r.getUrl(), nosso = Uri.parse(base());
+                boolean mesmaPagina = u.getHost() != null && u.getHost().equals(nosso.getHost())
+                        && u.getPort() == nosso.getPort() && pagina().equals(u.getPath());
+                return !mesmaPagina;   // true = bloqueia
             }
         });
         web.setWebChromeClient(new WebChromeClient() {
@@ -181,7 +198,19 @@ public class MainActivity extends Activity {
 
     @Override
     public void onBackPressed() {
-        if (web.canGoBack()) web.goBack(); else super.onBackPressed();
+        // v1.4: o Voltar do Android não sai da tela nem fecha o app. Fecha só
+        // o que estiver aberto por cima (cartão da bobina, janela dos fardos).
+        web.evaluateJavascript("(function(){var m=document.querySelector('.modal-fundo');"
+            + "if(m){var c=m.querySelector('#md-cancelar');if(c)c.click();else m.remove();return;}"
+            + "if(typeof cancelarLeitura==='function')cancelarLeitura();})()", null);
+    }
+
+    /** Esconde as saídas da página (o ✕ do topo e o "voltar ao menu" do PIN). */
+    void esconderSaidas() {
+        web.evaluateJavascript("(function(){if(document.getElementById('__ekoSemSaida'))return;"
+            + "var s=document.createElement('style');s.id='__ekoSemSaida';"
+            + "s.textContent='.btn-sair,.rodape a[href=\"/\"]{display:none!important}';"
+            + "(document.head||document.documentElement).appendChild(s);})()", null);
     }
 
     /**

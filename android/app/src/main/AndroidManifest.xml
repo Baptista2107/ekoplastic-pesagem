@@ -3,8 +3,8 @@
      Fala SÓ com o Mini PC (rede da fábrica). Nada de internet. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="br.com.ekoplastic.coletor"
-    android:versionCode="4"
-    android:versionName="1.3">
+    android:versionCode="5"
+    android:versionName="1.4">
 
     <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="34" />
 
