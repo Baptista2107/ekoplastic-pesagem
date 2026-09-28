@@ -78,9 +78,10 @@ na VPS, **fora do Git**. É ela que permite instalar uma versão nova por cima
 da antiga. Se ela se perder, a próxima versão só instala depois de
 desinstalar a anterior.
 
-## O que NÃO foi testado (28/09/2026)
+## Validação
 
-O APK foi gerado e verificado (assinatura, manifesto, permissões) e a regra
-que transforma o texto do leitor em código de etiqueta foi testada fora do
-Android. Mas **não houve teste num aparelho**: nem a câmera dentro do app, nem
-o certificado, nem o leitor do CMX. A primeira instalação no coletor é o teste.
+**28/09/2026, v1.3, CMX TC60 (Android 14): funcionou no aparelho**, segundo o
+Frederico: gatilho, botão "Ler etiqueta" acendendo o laser, cartão da
+bobina com P1/P2 e diagnóstico. Antes disso, o leitor não decodificava nem
+no próprio Scan Assist, e foi acertado no aparelho (causa exata não
+registrada).
