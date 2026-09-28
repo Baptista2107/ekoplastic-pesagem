@@ -30,6 +30,10 @@ REM
 REM  v2 28/09/2026: dentro de "for /f" o cmd troca "=" por espaco. A v1
 REM  usava --untracked-files=no e --diff-filter=U ali e contava ZERO
 REM  alteracoes (e zero conflitos). Agora: -uno e git ls-files -u.
+REM  v3 28/09/2026: mensagem passada ao :L NAO pode ter  menor, maior,
+REM  barra vertical nem e-comercial - o "echo" da rotina :L os executa
+REM  como redirecionamento. A v2 escrevia "-> git branch" e criou um
+REM  arquivo chamado "git" na pasta (que foi parar no commit 017e85a).
 REM ===================================================================
 
 set "LOG=%~dp0OUTPUT_SINCRONIZAR.TXT"
@@ -202,7 +206,7 @@ call :L ""
 call :L "*** SINCRONIZADO ***"
 call :L "Agora rode o ENVIAR-ATUALIZACAO.bat."
 call :L "Copias de seguranca (pode apagar depois que tudo estiver no GitHub):"
-call :L "   branch seguranca/%TAG%     ->  git branch -D seguranca/%TAG%"
+call :L "   branch seguranca/%TAG%     - apagar com: git branch -D seguranca/%TAG%"
 if "%GUARDOU%"=="1" call :L "   backups\sincronizar\%TAG%.patch"
 goto :fim_ok
 
@@ -252,8 +256,8 @@ call :L "continuam guardadas - NADA foi perdido:"
 call :L "   stash '%TAG%'   (git stash list)"
 call :L "   backups\sincronizar\%TAG%.patch"
 call :L "   branch seguranca/%TAG%   (seus commits, se havia)"
-call :L "Os arquivos em conflito tem marcas  <<<<<<<  =======  >>>>>>>"
-call :L "mostrando os dois lados. NAO rode o ENVIAR-ATUALIZACAO.bat agora."
+call :L "Os arquivos em conflito tem marcas de 7 sinais de menor, 7 de igual"
+call :L "e 7 de maior, mostrando os dois lados. NAO rode o ENVIAR-ATUALIZACAO.bat agora."
 call :L "Envie este arquivo (OUTPUT_SINCRONIZAR.TXT) para o suporte."
 goto :parar
 
