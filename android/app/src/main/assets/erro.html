@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  body{margin:0; background:#0a1119; color:#eef4fb; font-family:sans-serif; display:flex; min-height:100vh; align-items:center; justify-content:center; padding:20px; box-sizing:border-box;}
+  .c{max-width:420px; width:100%; text-align:center;}
+  h1{font-size:22px; margin:0 0 10px;}
+  p{color:#94a8c4; font-size:15px; line-height:1.5; margin:0 0 6px;}
+  code{color:#ffc250; word-break:break-all;}
+  button{width:100%; min-height:56px; margin-top:14px; border-radius:14px; border:none; font-size:17px; font-weight:800;}
+  .v{background:#00ff9d; color:#052916;}
+  .c2{background:#1d2c42; color:#eef4fb; border:1.5px solid #2a3a52;}
+</style>
+</head>
+<body>
+<div class="c">
+  <h1>⚠ Sem conexão com o Mini PC</h1>
+  <p>O coletor não conseguiu abrir o sistema de pesagem.</p>
+  <p>Endereço: <code id="url"></code></p>
+  <p id="det"></p>
+  <p>Confira se o coletor está no Wi-Fi da fábrica e se o Mini PC está ligado.</p>
+  <button class="v" onclick="EkoApp.tentarDeNovo()">Tentar de novo</button>
+  <button class="c2" onclick="EkoApp.configurar()">Configurar endereço</button>
+</div>
+<script>
+  const q = new URLSearchParams(location.search);
+  document.getElementById('url').textContent = q.get('url') || '';
+  document.getElementById('det').textContent = q.get('erro') || '';
+</script>
+</body>
+</html>

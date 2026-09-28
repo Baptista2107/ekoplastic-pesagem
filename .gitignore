@@ -105,3 +105,8 @@ desktop.ini
 # Esta linha tem que ser a ULTIMA: no .gitignore vence a ultima
 # regra que casa com o caminho.
 !node_modules/**
+
+# --- App Android (android/): saida do build.sh; a chave de assinatura fica FORA do repo ---
+android/build/
+*.jks
+*.keystore
