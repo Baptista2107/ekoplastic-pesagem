@@ -21,6 +21,12 @@ guarda dado nem fala com a internet.
 
 ## Leitor embutido do coletor
 
+**No TC60 o código chega por broadcast** (v1.2): app *Scan Assist* →
+Output Settings → Broadcast Output **ligado**, Broadcast Action
+`com.service.scanner.data`, Code Data Label `ScanCode`. É o padrão de
+fábrica, não precisa mexer. Se alguém mudar esses nomes, o gatilho para
+de funcionar no app.
+
 O app aceita os três jeitos que um leitor embutido entrega o código:
 
 - **Preencher campo** (v1.1): o leitor escreve direto no campo de texto em

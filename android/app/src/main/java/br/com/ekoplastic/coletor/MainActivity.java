@@ -72,6 +72,12 @@ public class MainActivity extends Activity {
 
     /** Avisos (broadcast) dos leitores mais comuns. Ação → nome do dado. */
     static final String[][] AVISOS = {
+        // CMX Supply TC60 (Android 14) — lido nos prints do app "Scan Assist"
+        // do próprio coletor em 28/09/2026: Output Settings → Broadcast Action
+        // = com.service.scanner.data, Code Data Label = ScanCode, Byte Data
+        // Label = ScanCodeBytes. As v1.0 e v1.1 não tinham este nome e o
+        // gatilho "não fazia nada".
+        {"com.service.scanner.data", "ScanCode"},
         {"android.intent.ACTION_DECODE_DATA", "barcode_string"},          // Urovo
         {"com.android.server.scannerservice.broadcast", "scannerdata"},   // Seuic / genéricos
         {"android.intent.action.SCANRESULT", "value"},                    // iData
@@ -83,7 +89,7 @@ public class MainActivity extends Activity {
         {ACAO_PROPRIA, "data"},                                           // configurado à mão
     };
     /** Nomes de dado tentados em qualquer aviso, depois do nome esperado. */
-    static final String[] CHAVES = {"barcode_string", "scannerdata", "value", "SCAN_BARCODE1", "data",
+    static final String[] CHAVES = {"ScanCode", "ScanCodeBytes", "barcode_string", "scannerdata", "value", "SCAN_BARCODE1", "data",
         "barcodeData", "barcode", "decode_data", "scan_data", "com.symbol.datawedge.data_string", "barocode"};
 
     /** Etiqueta do sistema: uma letra e 7 dígitos (E0001669). */
@@ -102,6 +108,7 @@ public class MainActivity extends Activity {
     // diagnóstico
     String ultimoCodigo = "—", ultimaOrigem = "—", ultimasTeclas = "";
     int teclasVistas = 0, avisosVistos = 0;
+    String entregueCodigo = ""; long entregueEm = 0;
 
     BroadcastReceiver receptor = new BroadcastReceiver() {
         @Override public void onReceive(Context c, Intent it) {
@@ -374,6 +381,12 @@ public class MainActivity extends Activity {
     /** Entrega o código à tela, pela mesma função que a câmera usa. */
     void entregar(String bruto, String origem) {
         final String cod = normalizar(bruto);
+        // O TC60 vem com teclado simulado E broadcast ligados: a mesma bipada
+        // pode chegar pelos dois caminhos. O mesmo código em menos de 1,5 s é
+        // uma bipada só.
+        long agora = SystemClock.uptimeMillis();
+        if (cod.equals(entregueCodigo) && agora - entregueEm < 1500) return;
+        entregueCodigo = cod; entregueEm = agora;
         ultimoCodigo = cod + "  (bruto: " + String.valueOf(bruto).trim() + ")"; ultimaOrigem = origem;
         if (!ETIQUETA.matcher(cod).matches()) { toast("Código não reconhecido: " + cod); return; }
         // Se o código também caiu no campo invisível, limpa para não entregar 2×.
