@@ -30,6 +30,7 @@ import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -213,8 +214,34 @@ public class MainActivity extends Activity {
             "c.addEventListener('input',function(){if(d)clearTimeout(d);d=setTimeout(entrega,250);});" +
             "function foco(){var a=document.activeElement;if(!a||a===document.body||a===document.documentElement)c.focus({preventScroll:true});}" +
             "setInterval(foco,700);document.addEventListener('touchend',function(){setTimeout(foco,300);});foco();" +
-            "window.__ekoLimpa=function(){c.value='';};})()",
+            "window.__ekoLimpa=function(){c.value='';};" +
+            // v1.3: o botão de ler da página acende o LASER do coletor em vez
+            // de abrir a câmera (config "Botão de ler usa o laser").
+            "if(EkoApp.usaLaser()){var b=document.getElementById('btn-camera');" +
+            "if(b){b.onclick=function(e){e.preventDefault();EkoApp.laser();};b.textContent='🔦 Ler etiqueta';}}" +
+            "})()",
             null);
+    }
+
+    // ─────────────────────────── laser por software ───────────────────────────
+
+    // TC60 (Scan Assist → Code Scan Settings): "Broadcast for Starting Scan"
+    // e "Stopping Scan". Lidos nos prints de 28/09/2026.
+    static final String LASER_LIGA = "com.service.scanner.start.scanning";
+    static final String LASER_DESLIGA = "com.service.scanner.stop.scanning";
+    long laserEm = 0;
+
+    boolean usaLaser() { return prefs.getBoolean("laser", true); }
+
+    /** Acende o laser. Se nada for lido em 6 s, apaga (o gatilho físico
+     *  apaga sozinho ao soltar; o comando por software não tem "soltar"). */
+    void laser() {
+        final long meu = SystemClock.uptimeMillis();
+        laserEm = meu;
+        sendBroadcast(new Intent(LASER_LIGA));
+        ui.postDelayed(() -> {
+            if (laserEm == meu && entregueEm < meu) sendBroadcast(new Intent(LASER_DESLIGA));
+        }, 6000);
     }
 
     // ─────────────────────────── certificado ───────────────────────────
@@ -410,6 +437,10 @@ public class MainActivity extends Activity {
         EditText ePag = campo(l, "Página inicial", pagina(), InputType.TYPE_TEXT_VARIATION_URI);
         EditText eAcao = campo(l, "Aviso avulso do leitor (ação) — opcional", prefs.getString("acao_avulsa", ""), InputType.TYPE_CLASS_TEXT);
         EditText eChave = campo(l, "Nome do dado no aviso avulso — opcional", prefs.getString("chave_avulsa", ""), InputType.TYPE_CLASS_TEXT);
+        CheckBox cLaser = new CheckBox(this);
+        cLaser.setText("Botão de ler usa o laser do coletor (desmarcado: câmera)");
+        cLaser.setChecked(usaLaser());
+        l.addView(cLaser);
 
         Uri nosso = Uri.parse(base());
         String chave = "cert_" + nosso.getHost() + "_" + nosso.getPort();
@@ -430,7 +461,8 @@ public class MainActivity extends Activity {
                 String pg = ePag.getText().toString().trim();
                 prefs.edit().putString("base", b).putString("pagina", pg.startsWith("/") ? pg : "/" + pg)
                      .putString("acao_avulsa", eAcao.getText().toString().trim())
-                     .putString("chave_avulsa", eChave.getText().toString().trim()).apply();
+                     .putString("chave_avulsa", eChave.getText().toString().trim())
+                     .putBoolean("laser", cLaser.isChecked()).apply();
                 try { unregisterReceiver(receptor); } catch (Exception ignore) {}
                 registrarAvisos();
                 abrir();
@@ -476,5 +508,7 @@ public class MainActivity extends Activity {
         @JavascriptInterface public String versao() { return MainActivity.this.versao(); }
         /** Texto que o leitor escreveu no campo invisível da página. */
         @JavascriptInterface public void lido(String texto) { entregar(texto, "campo (leitor em modo preencher)"); }
+        @JavascriptInterface public boolean usaLaser() { return MainActivity.this.usaLaser(); }
+        @JavascriptInterface public void laser() { ui.post(MainActivity.this::laser); }
     }
 }

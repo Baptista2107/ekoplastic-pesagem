@@ -42,6 +42,15 @@ O app aceita os três jeitos que um leitor embutido entrega o código:
   o leitor para enviar a ação `br.com.ekoplastic.coletor.SCAN` com o dado
   `data`.
 
+**Botão "Ler etiqueta" (v1.3)** acende o laser do coletor pelo aviso
+`com.service.scanner.start.scanning` do TC60 (apaga sozinho em 6 s se nada
+for lido). Para voltar a usar a câmera: *Configuração → desmarcar "Botão de
+ler usa o laser"*.
+
+⚠ Se o laser acende e NÃO lê nem no próprio Scan Assist, o problema é do
+leitor, não do app: confira *Code Type Settings → Code 128 ligado* (a
+etiqueta da bobina é Code 128) e teste um EAN de caixa num bloco de notas.
+
 Aceita o prefixo de simbologia (`]C1`) e só o número (`1669` → `E0001669`).
 
 ## Configuração (escondida)
