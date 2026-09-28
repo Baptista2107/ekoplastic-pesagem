@@ -70,6 +70,12 @@ ler usa o laser"*.
 leitor, não do app: confira *Code Type Settings → Code 128 ligado* (a
 etiqueta da bobina é Code 128) e teste um EAN de caixa num bloco de notas.
 
+**Leitura em dobro do TC60 (v1.9):** ele manda cada leitura pelo aviso
+(completo) e pelo teclado simulado (às vezes picotado). Depois que o aviso
+entrega um código, o app ignora o teclado — era dele a mensagem "leitura
+incompleta" em bipada normal, que saiu. Leitura inválida é descartada em
+silêncio e aparece só no diagnóstico ("Leituras ignoradas").
+
 Aceita o prefixo de simbologia (`]C1`). **Leitura do leitor só vale completa**
 (letra + 7 dígitos, v1.5): leitura pela metade dá "⚠ Leitura incompleta —
 bipe de novo". Nunca completa sozinha (a v1.4 completava e uma etiqueta R…

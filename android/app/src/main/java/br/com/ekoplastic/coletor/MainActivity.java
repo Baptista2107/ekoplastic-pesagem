@@ -132,14 +132,24 @@ public class MainActivity extends Activity {
 
     // diagnóstico
     String ultimoCodigo = "—", ultimaOrigem = "—", ultimasTeclas = "";
-    int teclasVistas = 0, avisosVistos = 0;
+    int teclasVistas = 0, avisosVistos = 0, ignoradas = 0;
+    /**
+     * v1.9 (28/09/2026): o TC60 entrega cada leitura pelo AVISO (broadcast,
+     * completo) e pelo TECLADO SIMULADO ao mesmo tempo. O teclado chega
+     * picotado às vezes (intervalo entre teclas acima do limite), e o pedaço
+     * gerava "leitura incompleta" com a leitura boa já entregue pelo aviso.
+     * Depois que um aviso entrega um código nesta sessão, os caminhos de
+     * teclado e de campo são cópia: ficam ignorados. Coletor que só tem
+     * teclado nunca liga isto e continua como antes.
+     */
+    boolean avisoFunciona = false;
     String entregueCodigo = ""; long entregueEm = 0;
 
     BroadcastReceiver receptor = new BroadcastReceiver() {
         @Override public void onReceive(Context c, Intent it) {
             avisosVistos++;
             String cod = extrairCodigo(it);
-            if (cod != null) entregar(cod, "aviso " + it.getAction());
+            if (cod != null) { avisoFunciona = true; entregar(cod, "aviso " + it.getAction()); }
             else { ultimaOrigem = "aviso " + it.getAction() + " (sem código reconhecido: " + chavesDe(it) + ")"; }
         }
     };
@@ -276,7 +286,7 @@ public class MainActivity extends Activity {
             "document.body.appendChild(c);var d=null;" +
             "function entrega(){if(d){clearTimeout(d);d=null;}var v=c.value;c.value='';if(v&&v.trim())EkoApp.lido(v);}" +
             "c.addEventListener('keydown',function(e){if(e.key==='Enter'||e.keyCode===13||e.key==='Tab'){e.preventDefault();entrega();}});" +
-            "c.addEventListener('input',function(){if(d)clearTimeout(d);d=setTimeout(entrega,250);});" +
+            "c.addEventListener('input',function(){if(d)clearTimeout(d);d=setTimeout(entrega,700);});" +
             "function foco(){var a=document.activeElement;if(!a||a===document.body||a===document.documentElement)c.focus({preventScroll:true});}" +
             "setInterval(foco,700);document.addEventListener('touchend',function(){setTimeout(foco,300);});foco();" +
             "window.__ekoLimpa=function(){c.value='';};" +
@@ -470,7 +480,14 @@ public class MainActivity extends Activity {
     }
 
     /** Entrega o código à tela, pela mesma função que a câmera usa. */
+    /** Descarta em silêncio (só conta no diagnóstico). */
+    void ignorar(String bruto, String motivo) {
+        ignoradas++;
+        ultimaOrigem = "IGNORADA (" + motivo + "): \"" + String.valueOf(bruto).trim() + "\" · " + ignoradas + " no total";
+    }
+
     void entregar(String bruto, String origem) {
+        if (avisoFunciona && !origem.startsWith("aviso")) { ignorar(bruto, "cópia do teclado"); return; }
         if (!LEITURA_ESTRITA) { entregarLivre(bruto, origem); return; }
         final String cod = normalizar(bruto);
         // O TC60 vem com teclado simulado E broadcast ligados: a mesma bipada
@@ -481,10 +498,10 @@ public class MainActivity extends Activity {
         entregueCodigo = cod; entregueEm = agora;
         ultimoCodigo = cod + "  (bruto: " + String.valueOf(bruto).trim() + ")"; ultimaOrigem = origem;
         if (!ETIQUETA.matcher(cod).matches()) {
-            // Leitura incompleta ou de outro código: não adivinha. Bipe de novo.
-            toast("⚠ Leitura incompleta: \"" + cod + "\" — bipe de novo, com o laser pegando a etiqueta inteira");
-            try { new android.media.ToneGenerator(android.media.AudioManager.STREAM_NOTIFICATION, 90)
-                      .startTone(android.media.ToneGenerator.TONE_PROP_NACK, 400); } catch (Exception ignore) {}
+            // Não adivinha e não avisa (v1.9, Frederico: a mensagem aparecia
+            // em bipada normal — era o pedaço do teclado, com a leitura boa
+            // já entregue). Descarta em silêncio; fica no diagnóstico.
+            ignorar(bruto, "não é etiqueta completa");
             return;
         }
         // Se o código também caiu no campo invisível, limpa para não entregar 2×.
@@ -501,6 +518,7 @@ public class MainActivity extends Activity {
      * Mesma trava de 1,5 s contra a leitura dupla (teclado + aviso).
      */
     void entregarLivre(String bruto, String origem) {
+        if (avisoFunciona && !origem.startsWith("aviso")) { ignorar(bruto, "cópia do teclado"); return; }
         String t = String.valueOf(bruto).replaceAll("[\\p{Cntrl}]", "").trim();
         t = t.replaceFirst("^\\][A-Za-z0-9][0-9]", "");
         if (t.isEmpty()) return;
@@ -550,6 +568,8 @@ public class MainActivity extends Activity {
                 + "\n\nÚltimo código lido: " + ultimoCodigo + "\nChegou por: " + ultimaOrigem
                 + "\n\nTeclas recebidas: " + teclasVistas + (ultimasTeclas.isEmpty() ? "" : "\nÚltimas:" + ultimasTeclas)
                 + "\nAvisos (broadcast) recebidos: " + avisosVistos
+                + (avisoFunciona ? "  → teclado ignorado (é cópia)" : "")
+                + "\nLeituras ignoradas: " + ignoradas
                 + "\n\nCertificado confiado:\n" + prefs.getString(chave, "(nenhum ainda)"));
         info.setPadding(0, p / 2, 0, 0);
         l.addView(info);
