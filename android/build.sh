@@ -47,7 +47,9 @@ case "$VARIANTE" in
   bobinas)    PACOTE=br.com.ekoplastic.coletor;    NOME="Ekoplastic Coletor";    ICONE=icone
               PAGINA=/retirada-bobinas.html;       ESTRITA=true;  TRAVAR=true;  ARQ=ekoplastic-coletor ;;
   inventario) PACOTE=br.com.ekoplastic.inventario; NOME="Ekoplastic Inventário"; ICONE=icone_inventario
-              PAGINA=/inventario.html;             ESTRITA=false; TRAVAR=false; ARQ=ekoplastic-inventario ;;
+              PAGINA=/inventario.html;             ESTRITA=false; TRAVAR=true;  ARQ=ekoplastic-inventario ;;
+  # v1.7: o inventário também fica preso na tela (sem acesso ao menu
+  # principal); a navegação interna dele é toda JS, na mesma página.
   *) echo "VARIANTE desconhecida: $VARIANTE (bobinas | inventario)"; exit 1 ;;
 esac
 echo "=== $NOME ($PACOTE) · $PAGINA · v$VERSAO"

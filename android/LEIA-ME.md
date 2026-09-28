@@ -6,14 +6,15 @@
 |---|---|---|
 | Tela | `/retirada-bobinas.html` (bobina na sacoleira) | `/inventario.html` (MP e produto acabado) |
 | Leitura | só etiqueta exata (letra + 7 dígitos) | texto como vier; a tela valida (gaiola `EKOPA\|…`, big bag) |
-| Navegação | presa na tela | livre dentro do Mini PC (sair, conferir, voltar) |
-| Voltar do Android | só fecha janelas abertas | volta à tela anterior |
+| Navegação | presa na tela | presa na tela de inventário; por dentro dela, tudo (v1.7) |
+| Voltar do Android | fecha janelas abertas | fecha janelas; senão, o "← Voltar" da própria tela |
 | Ícone | bobina | caixinha |
 | Pacote | `br.com.ekoplastic.coletor` | `br.com.ekoplastic.inventario` |
 
 No inventário, a contagem em andamento fica no aparelho **e** no Mini PC
-(rascunho por aparelho): sair da tela, fechar o app ou trocar de coletor não
-perde a contagem. Voltando ao inventário no mesmo coletor, ela é retomada
+(rascunho por aparelho): voltar para a escolha de produto, fechar o app ou
+trocar de coletor não perde a contagem. Nenhum dos dois apps dá acesso ao
+menu principal (✕ e "voltar ao menu" do PIN escondidos, links bloqueados). Voltando ao inventário no mesmo coletor, ela é retomada
 sozinha. De outro coletor ou com mais de 12 h, a tela pergunta, e descartar
 pede confirmação dupla.
 

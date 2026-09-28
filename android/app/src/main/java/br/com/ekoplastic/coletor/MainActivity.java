@@ -227,13 +227,17 @@ public class MainActivity extends Activity {
 
     @Override
     public void onBackPressed() {
-        // Inventário: o Voltar volta à tela anterior do sistema, mas nunca
-        // fecha o app (na primeira tela, não faz nada).
+        // Sem trava (não usado hoje): volta à tela anterior, nunca fecha o app.
         if (!TRAVAR_PAGINA) { if (web.canGoBack()) web.goBack(); return; }
-        // v1.4: o Voltar do Android não sai da tela nem fecha o app. Fecha só
-        // o que estiver aberto por cima (cartão da bobina, janela dos fardos).
+        // Travado (os dois apps, v1.7): o Voltar do Android não sai da tela nem
+        // fecha o app. Em ordem: fecha a janela aberta por cima (fardos da
+        // bobina); senão aciona o "← Voltar" DA PRÓPRIA TELA, se estiver à
+        // vista (navegação interna do inventário); senão fecha o cartão da
+        // bobina lida.
         web.evaluateJavascript("(function(){var m=document.querySelector('.modal-fundo');"
             + "if(m){var c=m.querySelector('#md-cancelar');if(c)c.click();else m.remove();return;}"
+            + "var v=document.getElementById('btn-voltar');"
+            + "if(v&&v.offsetParent!==null&&getComputedStyle(v).display!=='none'){v.click();return;}"
             + "if(typeof cancelarLeitura==='function')cancelarLeitura();})()", null);
     }
 
