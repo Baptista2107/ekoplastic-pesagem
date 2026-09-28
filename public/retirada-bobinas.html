@@ -4,117 +4,137 @@
 <meta charset="UTF-8">
 <script src="/acesso-colaborador.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>Retirada de Bobinas</title>
+<title>Bobina na Sacoleira</title>
 <script src="/vendor/html5-qrcode.min.js"></script>
 <style>
+  /* Tela revista em 28/09/2026 (VPS, pedido do Frederico): sem turno, um
+     botão de digitar só, as sacoleiras no topo e o histórico enxuto. */
   :root{
     --bg:#0a1119; --panel:#131f30; --panel-hi:#1d2c42; --border:#2a3a52;
     --txt:#eef4fb; --muted:#94a8c4; --verde:#00ff9d; --ambar:#ffc250; --vermelho:#ff6b6b; --azul:#5aa9ff;
   }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
   html,body{margin:0;} html{height:100%;}
-  body{background:var(--bg); color:var(--txt); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; padding-bottom:20px; font-size:17px; line-height:1.4; min-height:100dvh;}
-  header{padding:calc(16px + env(safe-area-inset-top)) 20px 16px; border-bottom:1px solid var(--border); position:sticky; top:0; background:linear-gradient(180deg,var(--panel),var(--bg)); z-index:20; display:flex; align-items:center; gap:12px;}
-  header h1{margin:0; font-size:22px; font-weight:800; flex:1;}
-  .btn-sair{background:var(--panel-hi); border:1px solid var(--border); color:var(--muted); border-radius:12px; padding:11px 15px; font-size:17px; font-weight:800; text-decoration:none; line-height:1;}
-  .wrap{padding:18px 20px;}
+  body{background:var(--bg); color:var(--txt); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; padding-bottom:24px; font-size:16px; line-height:1.4; min-height:100dvh;}
+  header{padding:calc(12px + env(safe-area-inset-top)) 16px 12px; border-bottom:1px solid var(--border); position:sticky; top:0; background:var(--bg); z-index:20; display:flex; align-items:center; gap:12px;}
+  header h1{margin:0; font-size:19px; font-weight:800; flex:1; line-height:1.2;}
+  header h1 small{display:block; font-size:12px; color:var(--muted); font-weight:600; margin-top:2px;}
+  .btn-sair{background:var(--panel-hi); border:1px solid var(--border); color:var(--muted); border-radius:12px; min-width:44px; height:44px; display:flex; align-items:center; justify-content:center; font-size:17px; font-weight:800; text-decoration:none;}
+  .wrap{padding:14px 16px; max-width:560px; margin:0 auto;}
   .oculto{display:none !important;}
-  .btn{width:100%; padding:18px; border-radius:16px; font-size:18px; border:none; font-weight:800; cursor:pointer; margin-top:14px; min-height:62px; font-family:inherit; transition:transform 0.05s;}
+
+  .btn{border:none; border-radius:14px; font-family:inherit; font-weight:800; cursor:pointer; min-height:52px; font-size:17px; padding:12px 16px; transition:transform .05s;}
   .btn:active{transform:scale(0.98);}
-  .btn-verde{background:var(--verde); color:#052916; box-shadow:0 4px 16px rgba(0,255,157,0.22);}
+  .btn:disabled{opacity:.5;}
+  .btn-verde{background:var(--verde); color:#052916;}
   .btn-cinza{background:var(--panel-hi); color:var(--txt); border:1.5px solid var(--border);}
-  .btn-vermelho{background:var(--vermelho); color:#2b0a0a;}
-  #reader{width:100%; border-radius:18px; overflow:hidden; background:#000; display:none; border:1.5px solid var(--border);}
+  .btn-link{background:none; border:none; color:var(--muted); font-family:inherit; font-size:15px; font-weight:700; padding:12px; min-height:44px; cursor:pointer; width:100%;}
+
+  .sec-tit{display:flex; justify-content:space-between; align-items:baseline; font-size:12px; font-weight:800; letter-spacing:1px; color:var(--muted); text-transform:uppercase; margin:22px 0 10px;}
+  .sec-tit:first-child{margin-top:4px;}
+  .sec-tit .sub{letter-spacing:0; text-transform:none; font-weight:700;}
+
+  /* Sacoleiras */
+  .sacs{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
+  .sac{background:var(--panel); border:1.5px solid var(--border); border-radius:14px; padding:12px; min-width:0; display:flex; flex-direction:column;}
+  .sac .s-top{display:flex; align-items:center; gap:6px; font-size:12px; font-weight:800; letter-spacing:.8px; color:var(--muted);}
+  .sac .dot{width:8px; height:8px; border-radius:50%; background:var(--border); flex:0 0 auto;}
+  .sac.ativa{border-color:rgba(0,255,157,.45);}
+  .sac.ativa .dot{background:var(--verde);}
+  .sac .s-mat{font-size:16px; font-weight:800; margin-top:8px; line-height:1.25; overflow-wrap:anywhere;}
+  .sac .s-info{font-size:12px; color:var(--muted); margin-top:4px; font-family:ui-monospace,monospace; overflow-wrap:anywhere;}
+  .sac .s-vazia{font-size:15px; color:var(--muted); margin-top:8px; font-weight:700; flex:1;}
+  .sac .s-fim{margin-top:10px; min-height:40px; font-size:14px; padding:8px; border-radius:10px; width:100%;}
+
+  /* Ações */
+  .acoes{display:flex; gap:10px; margin-top:16px;}
+  .acoes .principal{flex:1;}
+  .acoes .quad{flex:0 0 56px; padding:0; font-size:22px;}
+  #reader{width:100%; border-radius:14px; overflow:hidden; background:#000; display:none; border:1.5px solid var(--border); margin-top:12px;}
   #reader.on{display:block; min-height:240px;}
   #reader video{width:100%!important; height:auto!important; display:block;}
-  .cam-controles{display:flex; gap:10px;}
-  #btn-torch,#btn-diag{width:auto; flex:0 0 auto; padding:0 22px; font-size:22px;}
-
-  #zoom-barra, #lente-barra{background:var(--panel); border:1.5px solid var(--border); border-radius:14px; padding:14px 16px; margin-top:12px;}
-  .zoom-lb{display:flex; justify-content:space-between; font-size:12px; color:var(--muted); font-weight:800; letter-spacing:1px; margin-bottom:10px;}
+  #zoom-barra, #lente-barra{background:var(--panel); border:1.5px solid var(--border); border-radius:12px; padding:12px 14px; margin-top:10px;}
+  .zoom-lb{display:flex; justify-content:space-between; font-size:12px; color:var(--muted); font-weight:800; letter-spacing:1px; margin-bottom:8px;}
   .zoom-lb span:last-child{color:var(--verde); font-size:15px;}
   .zoom-linha{display:flex; align-items:center; gap:12px;}
-  .zoom-op{background:var(--panel-hi); border:1.5px solid var(--border); color:var(--txt); border-radius:12px;
-           min-width:54px; height:54px; font-size:24px; font-weight:800; font-family:inherit; cursor:pointer;}
-  .zoom-op:active{transform:scale(0.95);}
+  .zoom-op{background:var(--panel-hi); border:1.5px solid var(--border); color:var(--txt); border-radius:12px; min-width:48px; height:48px; font-size:22px; font-weight:800; font-family:inherit; cursor:pointer;}
   #zoom-range{flex:1; height:40px; accent-color:var(--verde);}
   .lente-botoes{display:flex; gap:8px; flex-wrap:wrap;}
-  .lente-btn{flex:1; min-width:90px; background:var(--panel-hi); border:1.5px solid var(--border); color:var(--txt);
-             border-radius:12px; padding:14px 10px; font-size:14px; font-weight:700; font-family:inherit; cursor:pointer;}
+  .lente-btn{flex:1; min-width:80px; background:var(--panel-hi); border:1.5px solid var(--border); color:var(--txt); border-radius:12px; padding:12px 8px; font-size:14px; font-weight:700; font-family:inherit; cursor:pointer;}
   .lente-btn.sel{border-color:var(--verde); color:var(--verde);}
-  .card-bob{background:linear-gradient(135deg,var(--panel-hi),var(--panel)); border:2px solid var(--verde); border-radius:18px; padding:20px; margin:16px 0;}
-  .card-bob .cb-id{font-family:ui-monospace,monospace; font-size:15px; color:var(--muted); font-weight:700;}
-  .card-bob .cb-nome{font-size:26px; font-weight:900; margin:6px 0; line-height:1.2;}
-  .card-bob .cb-peso{font-size:32px; font-weight:900; color:var(--verde);}
-  .card-bob .cb-extra{font-size:14px; color:var(--muted); margin-top:8px;}
-  .destino-lb{font-size:13px; color:var(--muted); font-weight:800; letter-spacing:0.8px; text-transform:uppercase; margin-top:18px;}
-  .card-bob.erro{border-color:var(--vermelho);}
-  .card-bob.erro .cb-nome{color:var(--vermelho);}
+  #painel-diag{background:var(--panel); border:1.5px solid var(--ambar); border-radius:14px; padding:14px; margin-top:12px; font-size:14px; line-height:1.6;}
 
-  .hist-tit{font-size:13px; font-weight:800; letter-spacing:1.2px; color:var(--muted); text-transform:uppercase; margin:26px 0 12px; display:flex; justify-content:space-between;}
-  .hist-item{display:flex; align-items:center; gap:12px; padding:14px 16px; background:var(--panel); border:1px solid var(--border); border-left:5px solid var(--verde); border-radius:12px; margin-bottom:9px;}
-  .hist-item .hi-nome{flex:1; font-size:15px; font-weight:700; line-height:1.3;}
-  .hist-item .hi-sub{font-size:12px; color:var(--muted); margin-top:3px; font-family:ui-monospace,monospace;}
-  .hist-item .hi-kg{font-weight:800; white-space:nowrap; color:var(--verde);}
-  .vazio{color:var(--muted); font-size:15px; text-align:center; padding:24px; line-height:1.5;}
-  .totais{display:flex; gap:12px; margin:16px 0;}
-  .totais .cx{flex:1; background:var(--panel); border:1.5px solid var(--border); border-radius:16px; padding:16px 10px; text-align:center;}
-  .totais .n{font-size:32px; font-weight:900; color:var(--verde); line-height:1;}
-  .totais .l{font-size:12px; color:var(--muted); margin-top:6px; font-weight:800;}
+  /* Bobina lida */
+  .lida{background:var(--panel-hi); border:2px solid var(--verde); border-radius:16px; padding:16px; margin-top:14px;}
+  .lida.erro{border-color:var(--vermelho);}
+  .lida .l-id{font-family:ui-monospace,monospace; font-size:14px; color:var(--muted); font-weight:700;}
+  .lida .l-mat{font-size:22px; font-weight:900; margin:4px 0 2px; line-height:1.2;}
+  .lida.erro .l-mat{color:var(--vermelho); font-size:18px;}
+  .lida .l-kg{font-size:26px; font-weight:900; color:var(--verde);}
+  .lida .l-orig{font-size:13px; color:var(--muted); margin-top:4px;}
+  .lida .l-per{font-size:12px; font-weight:800; letter-spacing:1px; color:var(--muted); margin-top:16px;}
+  .destinos{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:8px;}
+  .destinos .btn{display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:72px; line-height:1.15;}
+  .destinos .btn b{font-size:22px;}
+  .destinos .btn span{font-size:12px; font-weight:700; opacity:.8; margin-top:3px;}
 
-  .toast{position:fixed; left:50%; transform:translateX(-50%); top:84px; padding:16px 22px; border-radius:14px; font-size:16px; font-weight:800; z-index:100; box-shadow:0 8px 28px rgba(0,0,0,0.6); max-width:92vw; text-align:center; display:none;}
+  /* Turno — só aparece com o Bling ligado */
+  .turnos{display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:6px;}
+  .turnos .lb{font-size:12px; font-weight:800; letter-spacing:1px; color:var(--muted); margin-right:4px;}
+  .chip{background:var(--panel); border:1.5px solid var(--border); color:var(--txt); border-radius:999px; padding:10px 14px; font-weight:800; font-family:inherit; font-size:14px; min-height:44px; cursor:pointer;}
+  .chip.sel{border-color:var(--verde); color:var(--verde);}
+
+  /* Hoje */
+  .hist{display:flex; flex-direction:column; gap:6px;}
+  .h-item{display:flex; align-items:center; gap:10px; padding:10px 12px; background:var(--panel); border:1px solid var(--border); border-radius:12px;}
+  .h-item .h-hora{font-family:ui-monospace,monospace; font-size:13px; color:var(--muted); flex:0 0 auto;}
+  .h-item .h-sac{font-size:12px; font-weight:900; background:var(--panel-hi); border-radius:8px; padding:3px 7px; flex:0 0 auto;}
+  .h-item .h-mat{flex:1; min-width:0; font-size:14px; font-weight:700; line-height:1.25;}
+  .h-item .h-mat small{display:block; font-family:ui-monospace,monospace; font-size:11px; color:var(--muted); font-weight:600;}
+  .h-item .h-dir{text-align:right; flex:0 0 auto; font-size:13px; font-weight:800; line-height:1.3;}
+  .h-item .h-dir small{display:block; font-size:11px; font-weight:700; color:var(--muted);}
+  .h-item .na-maq{color:var(--verde);}
+  .vazio{color:var(--muted); font-size:14px; text-align:center; padding:18px; background:var(--panel); border-radius:12px;}
+  .carregando{color:var(--muted); font-size:14px; text-align:center; padding:18px;}
+
+  /* Modal de fardos */
+  .modal-fundo{position:fixed; inset:0; background:rgba(0,0,0,0.72); z-index:90; display:flex; align-items:center; justify-content:center; padding:16px;}
+  .modal{background:var(--panel); border:2px solid var(--ambar); border-radius:18px; padding:18px; width:100%; max-width:420px; max-height:92dvh; overflow:auto;}
+  .modal h2{margin:0 0 6px; font-size:19px;}
+  .modal .m-sub{color:var(--muted); font-size:14px; line-height:1.45;}
+  .modal .m-sub b{color:var(--txt);}
+  .modal label{display:block; font-size:12px; color:var(--muted); font-weight:800; letter-spacing:1px; margin-top:16px;}
+  .modal input{width:100%; margin-top:6px; padding:12px; font-size:30px; font-weight:900; text-align:center; border-radius:12px; border:2px solid var(--border); background:var(--bg); color:var(--txt); font-family:inherit;}
+  .modal input:focus{outline:none; border-color:var(--ambar);}
+  .modal .btn{width:100%; margin-top:12px;}
+
+  .toast{position:fixed; left:50%; transform:translateX(-50%); top:76px; padding:14px 20px; border-radius:14px; font-size:16px; font-weight:800; z-index:100; box-shadow:0 8px 28px rgba(0,0,0,0.6); max-width:92vw; text-align:center; display:none;}
   .toast.ok{background:#0d3b2a; color:var(--verde); border:1.5px solid var(--verde);}
   .toast.erro{background:#3b1414; color:var(--vermelho); border:1.5px solid var(--vermelho);}
   .toast.aviso{background:#3b2f0d; color:var(--ambar); border:1.5px solid var(--ambar);}
-  .carregando{color:var(--muted); font-size:16px; text-align:center; padding:26px;}
-
-  /* Sacoleiras: o que está montado agora (28/09/2026, VPS) */
-  .maq-grid{display:flex; gap:12px; margin:16px 0 4px;}
-  .maq{flex:1; background:var(--panel); border:1.5px solid var(--border); border-radius:16px; padding:14px; min-width:0;}
-  .maq .mq-tit{font-size:12px; color:var(--muted); font-weight:800; letter-spacing:1px;}
-  .maq .mq-bob{font-size:16px; font-weight:800; margin-top:6px; line-height:1.25; overflow-wrap:anywhere;}
-  .maq .mq-sub{font-size:12px; color:var(--muted); margin-top:4px; font-family:ui-monospace,monospace; overflow-wrap:anywhere;}
-  .maq.vazia .mq-bob{color:var(--muted); font-weight:700;}
-  .maq.outro-turno{border-color:var(--ambar);}
-  .modal-fundo{position:fixed; inset:0; background:rgba(0,0,0,0.72); z-index:90; display:flex; align-items:center; justify-content:center; padding:16px;}
-  .modal{background:var(--panel); border:2px solid var(--ambar); border-radius:18px; padding:20px; width:100%; max-width:440px; max-height:92dvh; overflow:auto;}
-  .modal h2{margin:0 0 6px; font-size:20px;}
-  .modal .md-sub{color:var(--muted); font-size:14px; line-height:1.45;}
-  .modal label{display:block; font-size:13px; color:var(--muted); font-weight:800; letter-spacing:0.6px; margin-top:16px;}
-  .modal input{width:100%; margin-top:6px; padding:14px; font-size:28px; font-weight:900; text-align:center; border-radius:12px; border:2px solid var(--border); background:var(--bg); color:var(--txt); font-family:inherit;}
-  .modal input:focus{outline:none; border-color:var(--ambar);}
-  .turno-grid{display:flex; flex-direction:column; gap:14px; margin-top:20px;}
-  .turno-btn{background:var(--panel); border:2px solid var(--border); color:var(--txt); border-radius:18px; padding:26px 20px; font-size:24px; font-weight:900; cursor:pointer; font-family:inherit; text-align:left;}
-  .turno-btn:active{transform:scale(0.98);}
-  .turno-btn .tb-sub{display:block; font-size:13px; color:var(--muted); font-weight:600; margin-top:6px;}
-  .barra-turno{display:flex; align-items:center; gap:12px; background:var(--panel-hi); border:1.5px solid var(--verde); border-radius:14px; padding:14px 16px; margin-bottom:16px;}
-  .barra-turno .bt-lb{font-size:12px; color:var(--muted); font-weight:800; letter-spacing:0.6px;}
-  .barra-turno .bt-nome{font-size:19px; font-weight:900; color:var(--verde);}
-  .barra-turno button{margin-left:auto; background:transparent; border:1.5px solid var(--border); color:var(--txt); border-radius:10px; padding:10px 14px; font-size:14px; font-weight:700; font-family:inherit;}
 </style>
-<!-- Ajuste automatico para celular: so vale abaixo de 900px de largura -->
 <link rel="stylesheet" href="/celular.css">
 </head>
 <body>
 <header>
-  <h1>🧵 Retirada de Bobinas</h1>
+  <h1>🧵 Bobina na Sacoleira<small id="quem"></small></h1>
   <a class="btn-sair" href="/" title="Voltar ao sistema">✕</a>
 </header>
 <div class="toast" id="toast"></div>
 
-<!-- ETAPA 1: escolher o turno (é o cliente da venda no Bling) -->
-<div class="wrap" id="tela-turno">
-  <div style="font-size:17px; color:var(--muted); line-height:1.5;" id="turno-texto">Selecione o turno que está retirando.</div>
-  <div class="turno-grid" id="grid-turnos"><div class="carregando">Carregando turnos…</div></div>
-</div>
+<div class="wrap">
+  <!-- Turno: só com o Bling ligado (é o cliente da venda). -->
+  <div class="turnos oculto" id="turnos"></div>
 
-<!-- ETAPA 2: leitura -->
-<div class="wrap oculto" id="tela-leitura">
-  <div class="barra-turno">
-    <div><div class="bt-lb">TURNO</div><div class="bt-nome" id="turno-nome">—</div></div>
-    <button onclick="trocarTurno()">Trocar</button>
+  <div class="sec-tit"><span>Sacoleiras agora</span></div>
+  <div class="sacs" id="sacs"><div class="carregando">Carregando…</div></div>
+
+  <div class="acoes">
+    <button class="btn btn-verde principal" id="btn-camera" onclick="toggleCamera()">📷 Ler etiqueta</button>
+    <button class="btn btn-cinza quad" onclick="digitarCodigo()" title="Digitar o número da etiqueta">⌨️</button>
+    <button class="btn btn-cinza quad oculto" id="btn-torch" onclick="toggleTorch()" title="Lanterna">🔦</button>
   </div>
-  <div class="cam-box"><div id="reader"></div></div>
+  <div id="reader"></div>
   <div id="zoom-barra" class="oculto">
     <div class="zoom-lb"><span>ZOOM</span><span id="zoom-valor">1.0×</span></div>
     <div class="zoom-linha">
@@ -127,29 +147,13 @@
     <div class="zoom-lb"><span>LENTE DA CÂMERA</span></div>
     <div id="lente-botoes" class="lente-botoes"></div>
   </div>
-  <div class="cam-controles">
-    <button class="btn btn-cinza" id="btn-camera" onclick="toggleCamera()">▶️ Ligar câmera</button>
-    <button class="btn btn-cinza" id="btn-digitar" onclick="digitarCodigo()" title="Digitar o código">⌨️ Digitar</button>
-    <button class="btn btn-cinza oculto" id="btn-torch" onclick="toggleTorch()" title="Lanterna">🔦</button>
-  </div>
-  <div id="painel-diag" class="oculto" style="background:var(--panel); border:1.5px solid var(--ambar); border-radius:14px; padding:16px; margin-top:12px; font-size:14px; line-height:1.6;"></div>
-  <button class="btn btn-cinza" onclick="digitarCodigo()">⌨️ Digitar código da bobina</button>
+  <div id="painel-diag" class="oculto"></div>
 
-  <!-- bobina lida, aguardando confirmação -->
+  <!-- bobina lida, aguardando a sacoleira -->
   <div id="area-bobina"></div>
 
-  <!-- o que está montado em cada sacoleira agora -->
-  <div class="hist-tit"><span>Na sacoleira agora</span></div>
-  <div class="maq-grid" id="maq-grid"><div class="carregando">Carregando…</div></div>
-  <button class="btn btn-cinza" onclick="abrirEncerrarTurno()">🏁 Encerrar turno</button>
-
-  <div class="totais">
-    <div class="cx"><div class="n" id="t-qtd">0</div><div class="l">BOBINAS HOJE</div></div>
-    <div class="cx"><div class="n" id="t-kg">0</div><div class="l">KG RETIRADOS</div></div>
-  </div>
-
-  <div class="hist-tit"><span>Retiradas de hoje</span></div>
-  <div id="lista-hist"><div class="vazio">Nenhuma bobina retirada hoje.</div></div>
+  <div class="sec-tit"><span>Hoje</span><span class="sub" id="hoje-resumo"></span></div>
+  <div class="hist" id="lista-hist"><div class="carregando">Carregando…</div></div>
 </div>
 
 <script>
@@ -157,9 +161,9 @@ const URL_BASE='';
 let scanner=null, camLigada=false, ULTIMO_ERRO_CAM=null;
 let ZOOM_CAPS=null, CAMERAS=[], CAMERA_ID=null, RESOLUCAO_CAM=null;
 const ultimoBipe={};
-let bobinaAtual=null;      // bobina lida aguardando confirmação
-let TURNO=null;            // {codigo,label} — com o Bling ligado, é o cliente da venda
+let bobinaAtual=null;      // bobina lida, aguardando a sacoleira
 let BLING=false;           // a baixa cria pedido no Bling? (config baixa_bobina_bling)
+let TURNOS=[], TURNO=null; // só usados com o Bling ligado
 let ABERTAS=[];            // [{sacoleira, bobina|null}] — o que está montado agora
 let enviando=false;
 
@@ -180,6 +184,22 @@ function beep(freq,dur){
 }
 function vibrar(p){ try{ if(navigator.vibrate) navigator.vibrate(p); }catch(e){} }
 function fmtKg(n){ return (Math.round(n*10)/10).toLocaleString('pt-BR')+' kg'; }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function descBob(b){ return esc(b.cor)+' · '+esc(b.largura)+(b.tipo_bobina?(' · '+esc(b.tipo_bobina)):''); }
+// Curta (cor · largura) para os cartões das sacoleiras e o histórico: com o
+// tipo junto o texto quebra em duas linhas no celular.
+function descCurta(b){ return esc(b.cor)+' · '+esc(b.largura); }
+function hora(iso){ try{ return new Date(iso).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}); }catch(e){ return ''; } }
+function diaHora(iso){ try{ return new Date(iso).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}); }catch(e){ return ''; } }
+// "há 2h 15min" desde a montagem — é o que o operador olha para saber se a
+// bobina está perto do fim.
+function haQuanto(iso){
+  const min=Math.max(0, Math.round((Date.now()-new Date(iso).getTime())/60000));
+  if(min<60) return 'há '+min+' min';
+  const h=Math.floor(min/60), m=min%60;
+  if(h<48) return 'há '+h+'h'+(m?(' '+String(m).padStart(2,'0')+'min'):'');
+  return 'desde '+diaHora(iso);
+}
 
 function formatosSuportados(){
   if(typeof Html5QrcodeSupportedFormats === 'undefined') return undefined;
@@ -254,13 +274,15 @@ async function escolherCameraId(){
   }catch(e){ return null; }
 }
 
-// Alternativa à câmera: digitar o código da etiqueta. Passa exatamente pelas
-// mesmas validações da leitura (duplicata, produto incompatível, soma do peso).
+// Alternativa à câmera: digitar o número da etiqueta. Passa pelas mesmas
+// validações da leitura.
 async function digitarCodigo(){
-  const cod = prompt('Código da etiqueta (ex.: R0000123):');
+  const cod = prompt('Número da etiqueta da bobina (ex.: 1669 ou E0001669):');
   if(!cod) return;
-  const id = cod.trim().toUpperCase();
+  let id = cod.trim().toUpperCase().replace(/\s+/g,'');
   if(!id) return;
+  // Só os números: completa como a etiqueta impressa (E + 7 dígitos).
+  if(/^\d{1,7}$/.test(id)) id = 'E' + id.padStart(7,'0');
   delete ultimoBipe[id];   // digitação manual não sofre o anti-repetição da câmera
   await onLeu(id);
 }
@@ -271,7 +293,7 @@ async function toggleCamera(){
   if(problema){ toast('erro', problema, 9000); return; }
 
   document.getElementById('reader').classList.add('on');
-  document.getElementById('btn-camera').textContent='⏹️ Desligar câmera';
+  document.getElementById('btn-camera').textContent='⏹ Parar câmera';
   camLigada=true;
   ULTIMO_ERRO_CAM=null;
 
@@ -313,7 +335,7 @@ async function toggleCamera(){
   if(!ok){
     camLigada=false;
     document.getElementById('reader').classList.remove('on');
-    document.getElementById('btn-camera').textContent='▶️ Ligar câmera';
+    document.getElementById('btn-camera').textContent='📷 Ler etiqueta';
     toast('erro','Câmera não abriu. Toque em ⚙️ e me mande o "Último erro".', 7000);
     return;
   }
@@ -334,7 +356,7 @@ async function toggleCamera(){
 
 async function pararCamera(){
   camLigada=false; torchOn=false;
-  document.getElementById('btn-camera').textContent='▶️ Ligar câmera';
+  document.getElementById('btn-camera').textContent='📷 Ler etiqueta';
   const bt=document.getElementById('btn-torch'); if(bt){ bt.classList.add('oculto'); bt.style.background=''; bt.style.color=''; }
   ['zoom-barra','lente-barra'].forEach(id=>{ const e=document.getElementById(id); if(e) e.classList.add('oculto'); });
   try{ if(scanner){ await scanner.stop(); scanner.clear(); } }catch(e){}
@@ -453,194 +475,116 @@ async function toggleTorch(){
 }
 
 
-// Leitura: consulta a bobina e mostra na tela para o operador CONFERIR.
-// A baixa só acontece quando ele aperta o botão de confirmar.
+// ── LEITURA: consulta a bobina e mostra para o operador escolher a sacoleira.
 async function onLeu(codigo){
   const id=(codigo||'').trim().toUpperCase();
   const agora=Date.now();
   if(ultimoBipe[id] && agora-ultimoBipe[id]<2500) return;
   ultimoBipe[id]=agora;
   if(enviando) return;
-
   try{
     const r=await fetch(URL_BASE+'/bobinas/'+encodeURIComponent(id));
     const d=await r.json();
-    if(!r.ok || !d.ok){
-      beep(320,0.2); vibrar(150);
-      mostrarErro(id, (d&&d.erro)||'Bobina não encontrada');
-      return;
-    }
+    if(!r.ok || !d.ok){ beep(320,0.2); vibrar(150); mostrarErro(id,(d&&d.erro)||'Etiqueta não encontrada'); return; }
     const b=d.bobina;
     if(b.status==='consumida'){
       beep(320,0.2); vibrar([80,60,80]);
-      mostrarErro(id,'Esta bobina JÁ teve baixa'+(b.bling_pedido_id?(' (pedido '+b.bling_pedido_id+')'):''));
+      mostrarErro(id,'Já foi para a sacoleira'+(b.destino?(' '+esc(b.destino)):'')+(b.baixa_em?(' em '+diaHora(b.baixa_em)):''));
       return;
     }
-    if(b.status==='cancelada'){ beep(320,0.2); vibrar(150); mostrarErro(id,'Bobina cancelada'); return; }
-    if(d.bling && !b.produto_id){ beep(320,0.2); vibrar(150); mostrarErro(id,'Sem produto no Bling para '+b.chave); return; }
+    if(b.status==='cancelada'){ beep(320,0.2); vibrar(150); mostrarErro(id,'Etiqueta cancelada'); return; }
+    if(d.bling && !b.produto_id){ beep(320,0.2); vibrar(150); mostrarErro(id,'Sem produto no Bling para '+esc(b.chave)); return; }
 
     beep(880,0.1); vibrar(60);
+    if(camLigada) pararCamera();
     bobinaAtual=b;
+    await carregarSacoleiras();
+    const botao=p=>{
+      const m=(ABERTAS.find(a=>a.sacoleira===p)||{}).bobina;
+      const sub=m?('troca '+esc(m.id)):'livre';
+      return '<button class="btn btn-verde btn-destino" data-destino="'+p+'" onclick="confirmarBaixa(\''+p+'\')"><b>'+p+'</b><span>'+sub+'</span></button>';
+    };
+    const orig=['Extrusora '+esc(b.maquina||'—'), esc(b.operador||''), b.hora_impressao?diaHora(b.hora_impressao):''].filter(Boolean).join(' · ');
     document.getElementById('area-bobina').innerHTML=
-      '<div class="card-bob">'+
-        '<div class="cb-id">'+b.id+'</div>'+
-        '<div class="cb-nome">'+b.cor+' · '+b.tipo_bobina+' · '+b.largura+'</div>'+
-        '<div class="cb-peso">'+fmtKg(b.peso)+'</div>'+
-        '<div class="cb-extra">Produzida por '+(b.operador||'—')+' · Máq '+(b.maquina||'—')+
-          (b.hora_impressao?(' · '+new Date(b.hora_impressao).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})):'')+'</div>'+
-        '<div class="destino-lb">Para onde vai esta bobina?</div>'+
-        '<button class="btn btn-verde btn-destino" data-destino="Sacoleira P1" onclick="confirmarBaixa(\'Sacoleira P1\')">✓ Sacoleira P1</button>'+
-        '<button class="btn btn-verde btn-destino" data-destino="Sacoleira P2" onclick="confirmarBaixa(\'Sacoleira P2\')">✓ Sacoleira P2</button>'+
-        '<button class="btn btn-cinza" onclick="cancelarLeitura()">Cancelar</button>'+
+      '<div class="lida">'+
+        '<div class="l-id">'+esc(b.id)+'</div>'+
+        '<div class="l-mat">'+descBob(b)+'</div>'+
+        '<div class="l-kg">'+fmtKg(b.peso)+'</div>'+
+        '<div class="l-orig">'+orig+'</div>'+
+        '<div class="l-per">MONTAR NA SACOLEIRA</div>'+
+        '<div class="destinos">'+botao('P1')+botao('P2')+'</div>'+
+        '<button class="btn-link" onclick="cancelarLeitura()">Cancelar</button>'+
       '</div>';
     document.getElementById('area-bobina').scrollIntoView({behavior:'smooth', block:'center'});
-  }catch(e){ toast('erro','Erro ao consultar: '+e.message,3000); }
+  }catch(e){ toast('erro','Erro ao consultar: '+esc(e.message),3000); }
 }
 
 function mostrarErro(id,msg){
   bobinaAtual=null;
   document.getElementById('area-bobina').innerHTML=
-    '<div class="card-bob erro">'+
-      '<div class="cb-id">'+id+'</div>'+
-      '<div class="cb-nome">⛔ '+msg+'</div>'+
-      '<button class="btn btn-cinza" onclick="cancelarLeitura()">Fechar</button>'+
-    '</div>';
-}
-function restaurarBotoesDestino(){
-  document.querySelectorAll('.btn-destino').forEach(b=>{
-    b.disabled=false; b.style.opacity=''; b.textContent='✓ '+b.dataset.destino;
-  });
+    '<div class="lida erro"><div class="l-id">'+esc(id)+'</div><div class="l-mat">⛔ '+msg+'</div>'+
+    '<button class="btn-link" onclick="cancelarLeitura()">Fechar</button></div>';
 }
 function cancelarLeitura(){ bobinaAtual=null; document.getElementById('area-bobina').innerHTML=''; }
+function travarDestinos(p){
+  document.querySelectorAll('.btn-destino').forEach(b=>{ b.disabled=true; if(b.dataset.destino===p) b.querySelector('span').textContent=BLING?'enviando ao Bling…':'registrando…'; });
+}
+function soltarDestinos(){ document.querySelectorAll('.btn-destino').forEach(b=>{ b.disabled=false; }); }
 
-// Baixa: a bobina entra na sacoleira. Se a sacoleira já tinha uma bobina
-// montada NESTE turno, pergunta antes quantos fardos ela deu (a primeira
-// bobina do turno não pergunta). Com o Bling ligado, sai um pedido de venda.
-async function confirmarBaixa(destino){
+// ── BAIXA: a bobina entra na sacoleira. Se já havia uma, ela sai agora e a
+// tela pergunta quantos fardos ela deu.
+async function confirmarBaixa(sac){
   if(!bobinaAtual || enviando) return;
-  if(!TURNO){ toast('erro','Selecione o turno primeiro',3000); trocarTurno(); return; }
-  if(!destino){ toast('erro','Escolha a sacoleira de destino',3000); return; }
-  const sac=(destino.match(/P[12]/)||[])[0];
+  if(BLING && !TURNO){ toast('erro','Escolha o turno primeiro',3000); return; }
   let fardosAnterior=null;
   const montada=(ABERTAS.find(a=>a.sacoleira===sac)||{}).bobina;
-  if(montada && montada.deste_turno && montada.id!==bobinaAtual.id){
-    fardosAnterior=await perguntarFardos(montada, sac);
+  if(montada && montada.id!==bobinaAtual.id){
+    fardosAnterior=await perguntarFardos(montada, sac, 'troca');
     if(fardosAnterior===null) return;           // cancelou: nada é gravado
   }
-  enviando=true;
-  // desabilita os dois botões de destino e marca qual foi escolhido
-  const botoes=document.querySelectorAll('.btn-destino');
-  botoes.forEach(b=>{ b.disabled=true; if(b.dataset.destino===destino) b.textContent=BLING?'Enviando ao Bling…':'Registrando…'; else b.style.opacity='0.35'; });
+  enviando=true; travarDestinos(sac);
   try{
     let d, r;
     for(let tentativa=0; tentativa<2; tentativa++){
       r=await fetch(URL_BASE+'/bobinas/baixa',{
         method:'POST', headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({ id:bobinaAtual.id, turno:TURNO&&TURNO.codigo, destino,
+        body:JSON.stringify({ id:bobinaAtual.id, destino:sac, turno:(BLING&&TURNO)?TURNO.codigo:null,
                               fardos_anterior:fardosAnterior, operador:(window.EKO_RESPONSAVEL||null) })
       });
       d=await r.json();
       // Outro celular montou bobina nesta sacoleira no meio do caminho: o
       // servidor pede os fardos dela. Pergunta e tenta de novo, uma vez.
       if(r.status===409 && d && d.precisa_fardos && tentativa===0){
-        fardosAnterior=await perguntarFardos(d.anterior, sac);
-        if(fardosAnterior===null){ restaurarBotoesDestino(); enviando=false; return; }
+        fardosAnterior=await perguntarFardos(d.anterior, sac, 'troca');
+        if(fardosAnterior===null){ soltarDestinos(); enviando=false; return; }
         continue;
       }
       break;
     }
-    if(!r.ok || !d.ok){
-      beep(320,0.25); vibrar(200);
-      toast('erro',(d&&d.erro)||'Falha ao dar baixa',6000);
-      restaurarBotoesDestino();
-      enviando=false; return;
-    }
+    if(!r.ok || !d.ok){ beep(320,0.25); vibrar(200); toast('erro',esc((d&&d.erro)||'Falha ao registrar'),6000); soltarDestinos(); enviando=false; return; }
     beep(1050,0.14); vibrar([60,50,60]);
-    const ped = d.modo==='sem_bling' ? '' : ('<br>pedido '+d.pedido+(d.modo==='simulacao'?' (simulação)':''));
-    toast('ok','✓ Bobina na '+destino+ped,3500);
+    const ped = d.modo==='sem_bling' ? '' : ('<br>pedido '+esc(d.pedido)+(d.modo==='simulacao'?' (simulação)':''));
+    toast('ok','✓ '+esc(bobinaAtual.id)+' na '+sac+ped,3000);
     cancelarLeitura();
-    await Promise.all([carregarHistorico(), carregarAbertas()]);
-  }catch(e){
-    toast('erro','Erro: '+e.message,5000);
-    restaurarBotoesDestino();
-  }
+    await atualizarTudo();
+  }catch(e){ toast('erro','Erro: '+esc(e.message),5000); soltarDestinos(); }
   enviando=false;
 }
 
-// ── TURNO: é o cliente da venda. Fica guardado no aparelho para o operador
-// não precisar escolher a cada bobina; o botão "Trocar" volta para a seleção.
-async function carregarTurnos(){
-  let turnos=[];
-  try{
-    const r=await fetch(URL_BASE+'/bobinas/turnos');
-    const d=await r.json();
-    turnos=(d&&d.turnos)||[];
-    BLING=!!(d&&d.bling);
-  }catch(e){}
-  document.getElementById('turno-texto').textContent = BLING
-    ? 'Selecione o turno que está retirando. A baixa das bobinas sai como venda para esse turno no Bling.'
-    : 'Selecione o turno que está retirando.';
-  const g=document.getElementById('grid-turnos');
-  if(!turnos.length){ g.innerHTML='<div class="vazio">Nenhum turno cadastrado. Avise a manutenção.</div>'; return; }
-  g.innerHTML='';
-  for(const t of turnos){
-    const b=document.createElement('button');
-    b.className='turno-btn';
-    b.innerHTML=t.label+(BLING?'<span class="tb-sub">baixa sai como venda para este turno</span>':'');
-    b.onclick=()=>escolherTurno(t.codigo,t.label);
-    g.appendChild(b);
-  }
-  // retoma o turno usado por último neste aparelho
-  try{
-    const salvo=localStorage.getItem('bobinas_turno');
-    if(salvo){ const t=JSON.parse(salvo); if(turnos.find(x=>x.codigo===t.codigo)) escolherTurno(t.codigo,t.label); }
-  }catch(e){}
-}
-function escolherTurno(codigo,label){
-  TURNO={codigo,label};
-  try{ localStorage.setItem('bobinas_turno', JSON.stringify(TURNO)); }catch(e){}
-  document.getElementById('turno-nome').textContent=label;
-  document.getElementById('tela-turno').classList.add('oculto');
-  document.getElementById('tela-leitura').classList.remove('oculto');
-  carregarHistorico();
-  carregarAbertas();
-}
-
-// ── SACOLEIRAS: o que está montado agora ─────────────────────────────
-function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-function descBob(b){ return esc(b.cor)+' · '+esc(b.tipo_bobina)+' · '+esc(b.largura); }
-function horaCurta(iso){ try{ return new Date(iso).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}); }catch(e){ return ''; } }
-
-async function carregarAbertas(){
-  const g=document.getElementById('maq-grid');
-  try{
-    const r=await fetch(URL_BASE+'/bobinas/abertas?turno='+encodeURIComponent((TURNO&&TURNO.codigo)||''));
-    const d=await r.json();
-    ABERTAS=(d&&d.sacoleiras)||[];
-  }catch(e){ ABERTAS=[]; g.innerHTML='<div class="vazio">Não consegui ler as sacoleiras.</div>'; return; }
-  g.innerHTML=ABERTAS.map(a=>{
-    const b=a.bobina;
-    if(!b) return '<div class="maq vazia"><div class="mq-tit">SACOLEIRA '+a.sacoleira+'</div><div class="mq-bob">sem bobina</div></div>';
-    // Bobina de outro turno ainda aberta = o turno anterior não foi encerrado.
-    const outro = b.deste_turno===false;
-    return '<div class="maq'+(outro?' outro-turno':'')+'"><div class="mq-tit">SACOLEIRA '+a.sacoleira+'</div>'+
-      '<div class="mq-bob">'+descBob(b)+'</div>'+
-      '<div class="mq-sub">'+esc(b.id)+' · '+fmtKg(b.peso)+'<br>desde '+horaCurta(b.baixa_em)+
-      (outro?'<br>⚠ turno anterior não encerrado':'')+'</div></div>';
-  }).join('');
-}
-
-// Pergunta quantos fardos a bobina deu. Resolve com o número, ou null se cancelar.
-function perguntarFardos(bob, sac){
+// Pergunta quantos fardos a bobina deu. Resolve com o número, ou null.
+function perguntarFardos(bob, sac, modo){
   return new Promise(resolve=>{
     const fundo=document.createElement('div');
     fundo.className='modal-fundo';
+    const tit = modo==='troca' ? ('Troca na Sacoleira '+sac) : ('Finalizar Sacoleira '+sac);
+    const acao = modo==='troca' ? 'Confirmar troca' : 'Finalizar bobina';
     fundo.innerHTML='<div class="modal">'+
-      '<h2>Quantos fardos esta bobina deu?</h2>'+
-      '<div class="md-sub">Sacoleira '+esc(sac)+' · sai <b>'+esc(bob.id)+'</b><br>'+descBob(bob)+' · '+fmtKg(bob.peso)+'</div>'+
-      '<label>FARDOS</label><input id="md-fardos" type="number" inputmode="numeric" min="0" max="999" step="1" autocomplete="off">'+
-      '<button class="btn btn-verde" id="md-ok">Confirmar e trocar</button>'+
-      '<button class="btn btn-cinza" id="md-cancelar">Cancelar</button></div>';
+      '<h2>'+tit+'</h2>'+
+      '<div class="m-sub">Sai a <b>'+esc(bob.id)+'</b> · '+descBob(bob)+' · '+fmtKg(bob.peso)+
+        (bob.baixa_em?('<br>montada '+haQuanto(bob.baixa_em)):'')+'</div>'+
+      '<label>QUANTOS FARDOS ELA DEU?</label><input id="md-fardos" type="number" inputmode="numeric" min="0" max="999" step="1" autocomplete="off">'+
+      '<button class="btn btn-verde" id="md-ok">'+acao+'</button>'+
+      '<button class="btn-link" id="md-cancelar">Cancelar</button></div>';
     document.body.appendChild(fundo);
     const inp=fundo.querySelector('#md-fardos');
     setTimeout(()=>inp.focus(),50);
@@ -655,73 +599,90 @@ function perguntarFardos(bob, sac){
   });
 }
 
-// Encerrar turno: fardos da bobina aberta em cada sacoleira; tudo ou nada.
-async function abrirEncerrarTurno(){
-  if(!TURNO){ toast('erro','Selecione o turno primeiro',3000); return; }
-  await carregarAbertas();
-  const abertas=ABERTAS.filter(a=>a.bobina);
-  const fundo=document.createElement('div');
-  fundo.className='modal-fundo';
-  fundo.innerHTML='<div class="modal">'+
-    '<h2>Encerrar '+esc(TURNO.label)+'</h2>'+
-    (abertas.length
-      ? '<div class="md-sub">Quantos fardos cada bobina deu neste turno?</div>'+
-        abertas.map(a=>'<label>SACOLEIRA '+a.sacoleira+' · '+esc(a.bobina.id)+'</label>'+
-          '<div class="md-sub">'+descBob(a.bobina)+' · '+fmtKg(a.bobina.peso)+'</div>'+
-          '<input type="number" inputmode="numeric" min="0" max="999" step="1" data-sac="'+a.sacoleira+'" autocomplete="off">').join('')
-      : '<div class="md-sub">Nenhuma bobina aberta nas sacoleiras.</div>')+
-    '<button class="btn btn-verde" id="md-ok">🏁 Encerrar turno</button>'+
-    '<button class="btn btn-cinza" id="md-cancelar">Cancelar</button></div>';
-  document.body.appendChild(fundo);
-  const inps=[...fundo.querySelectorAll('input[data-sac]')];
-  if(inps[0]) setTimeout(()=>inps[0].focus(),50);
-  fundo.querySelector('#md-cancelar').onclick=()=>fundo.remove();
-  fundo.querySelector('#md-ok').onclick=async()=>{
-    const fardos={};
-    for(const i of inps){
-      const n=Number(i.value);
-      if(i.value==='' || !Number.isInteger(n) || n<0 || n>999){ toast('erro','Informe os fardos da Sacoleira '+i.dataset.sac,3000); i.focus(); return; }
-      fardos[i.dataset.sac]=n;
-    }
-    const bt=fundo.querySelector('#md-ok'); bt.disabled=true; bt.textContent='Encerrando…';
-    try{
-      const r=await fetch(URL_BASE+'/bobinas/encerrar-turno',{
-        method:'POST', headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({ turno:TURNO.codigo, fardos, operador:(window.EKO_RESPONSAVEL||null) })
-      });
-      const d=await r.json();
-      if(!r.ok || !d.ok){ toast('erro',(d&&d.erro)||'Falha ao encerrar',5000); bt.disabled=false; bt.textContent='🏁 Encerrar turno'; return; }
-      fundo.remove();
-      beep(1050,0.14); vibrar([60,50,60]);
-      toast('ok','✓ '+esc(TURNO.label)+' encerrado',3500);
-      await carregarAbertas();
-    }catch(e){ toast('erro','Erro: '+e.message,5000); bt.disabled=false; bt.textContent='🏁 Encerrar turno'; }
-  };
-}
-function trocarTurno(){
-  pararCamera();
-  cancelarLeitura();
-  document.getElementById('tela-leitura').classList.add('oculto');
-  document.getElementById('tela-turno').classList.remove('oculto');
+// Finalizar: a bobina saiu SEM outra no lugar (máquina parou, acabou o pedido).
+async function finalizar(sac){
+  const bob=(ABERTAS.find(a=>a.sacoleira===sac)||{}).bobina;
+  if(!bob) return;
+  const n=await perguntarFardos(bob, sac, 'finalizar');
+  if(n===null) return;
+  try{
+    const r=await fetch(URL_BASE+'/bobinas/finalizar',{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ sacoleira:sac, fardos:n, operador:(window.EKO_RESPONSAVEL||null) })
+    });
+    const d=await r.json();
+    if(!r.ok || !d.ok){ toast('erro',esc((d&&d.erro)||'Falha ao finalizar'),5000); return; }
+    beep(1050,0.14); vibrar([60,50,60]);
+    toast('ok','✓ '+esc(bob.id)+' finalizada · '+n+' fardo'+(n===1?'':'s'),3000);
+    await atualizarTudo();
+  }catch(e){ toast('erro','Erro: '+esc(e.message),5000); }
 }
 
+// ── SACOLEIRAS AGORA
+async function carregarSacoleiras(){
+  const g=document.getElementById('sacs');
+  try{
+    const r=await fetch(URL_BASE+'/bobinas/abertas');
+    const d=await r.json();
+    ABERTAS=(d&&d.sacoleiras)||[];
+  }catch(e){ g.innerHTML='<div class="vazio" style="grid-column:1/-1">Não consegui ler as sacoleiras.</div>'; return; }
+  g.innerHTML=ABERTAS.map(a=>{
+    const b=a.bobina;
+    if(!b) return '<div class="sac"><div class="s-top"><span class="dot"></span>SACOLEIRA '+a.sacoleira+'</div>'+
+                  '<div class="s-vazia">Sem bobina</div></div>';
+    return '<div class="sac ativa"><div class="s-top"><span class="dot"></span>SACOLEIRA '+a.sacoleira+'</div>'+
+      '<div class="s-mat">'+descCurta(b)+'</div>'+
+      '<div class="s-info">'+esc(b.id)+' · '+fmtKg(b.peso)+'<br>'+haQuanto(b.baixa_em)+'</div>'+
+      '<button class="btn btn-cinza s-fim" onclick="finalizar(\''+a.sacoleira+'\')">Finalizar</button></div>';
+  }).join('');
+}
+
+// ── HOJE: o que entrou nas sacoleiras hoje, com os fardos de quem já saiu.
 async function carregarHistorico(){
+  const el=document.getElementById('lista-hist');
   try{
     const r=await fetch(URL_BASE+'/bobinas/baixas-hoje');
     const d=await r.json();
     const lista=(d&&d.baixas)||[];
-    document.getElementById('t-qtd').textContent=(d&&d.qtd)||0;
-    document.getElementById('t-kg').textContent=((d&&d.total_kg)||0).toLocaleString('pt-BR');
-    const el=document.getElementById('lista-hist');
-    if(!lista.length){ el.innerHTML='<div class="vazio">Nenhuma bobina retirada hoje.</div>'; return; }
+    document.getElementById('hoje-resumo').textContent = lista.length
+      ? (lista.length+' bobina'+(lista.length===1?'':'s')+' · '+((d.total_kg||0).toLocaleString('pt-BR'))+' kg') : '';
+    if(!lista.length){ el.innerHTML='<div class="vazio">Nenhuma bobina entrou nas sacoleiras hoje.</div>'; return; }
     el.innerHTML=lista.map(x=>{
-      const h=x.hora? new Date(x.hora).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) : '';
-      return '<div class="hist-item">'+
-        '<div style="flex:1"><div class="hi-nome">'+x.cor+' · '+x.tipo_bobina+' · '+x.largura+'</div>'+
-        '<div class="hi-sub">'+x.id+' · '+h+(x.turno_label?(' · '+x.turno_label):'')+(x.destino?(' → '+x.destino):'')+(x.pedido?(' · pedido '+x.pedido):'')+'</div></div>'+
-        '<div class="hi-kg">'+fmtKg(x.peso)+'</div></div>';
+      const sac=String(x.destino||'').replace(/^Sacoleira\s*/i,'')||'—';
+      let dir;
+      if(!x.encerrada_em) dir='<span class="na-maq">na máquina</span>';
+      else if(x.fardos==null) dir='<span>—</span><small>sem fardos</small>';
+      else dir='<span>'+x.fardos+' fardo'+(x.fardos===1?'':'s')+'</span>';
+      return '<div class="h-item">'+
+        '<span class="h-hora">'+hora(x.hora)+'</span>'+
+        '<span class="h-sac">'+esc(sac)+'</span>'+
+        '<div class="h-mat">'+descCurta(x)+'<small>'+esc(x.id)+' · '+fmtKg(x.peso)+(x.pedido?(' · pedido '+esc(x.pedido)):'')+'</small></div>'+
+        '<div class="h-dir">'+dir+'</div></div>';
     }).join('');
+  }catch(e){ el.innerHTML='<div class="vazio">Não consegui ler o histórico.</div>'; }
+}
+
+async function atualizarTudo(){ await Promise.all([carregarSacoleiras(), carregarHistorico()]); }
+
+// ── TURNO (só com o Bling ligado: é o cliente da venda)
+async function carregarModo(){
+  try{
+    const r=await fetch(URL_BASE+'/bobinas/turnos');
+    const d=await r.json();
+    BLING=!!(d&&d.bling);
+    TURNOS=(d&&d.turnos)||[];
   }catch(e){}
+  const el=document.getElementById('turnos');
+  if(!BLING){ el.classList.add('oculto'); return; }
+  try{ const s=JSON.parse(localStorage.getItem('bobinas_turno')||'null'); if(s && TURNOS.find(t=>t.codigo===s.codigo)) TURNO=s; }catch(e){}
+  el.innerHTML='<span class="lb">TURNO</span>'+TURNOS.map(t=>
+    '<button class="chip'+(TURNO&&TURNO.codigo===t.codigo?' sel':'')+'" onclick="escolherTurno(\''+esc(t.codigo)+'\',\''+esc(t.label)+'\')">'+esc(t.label)+'</button>').join('');
+  el.classList.remove('oculto');
+}
+function escolherTurno(codigo,label){
+  TURNO={codigo,label};
+  try{ localStorage.setItem('bobinas_turno', JSON.stringify(TURNO)); }catch(e){}
+  carregarModo();
 }
 
 // Só inicia depois que o colaborador entrar com a senha dele.
@@ -734,9 +695,12 @@ function comAcesso(tela, aoEntrar) {
   try { aoEntrar(); } catch (e) { console.error(e); }
 }
 comAcesso('bobinas', nome => {
-  const h = document.querySelector('header h1');
-  if (h && nome) h.innerHTML = '\u{1F9F5} Retirada de Bobinas <span style="display:block;font-size:12px;color:#94a8c4;font-weight:700">\u{1F464} ' + nome + '</span>';
-  carregarTurnos();
+  if (nome) document.getElementById('quem').textContent = '👤 ' + nome;
+  carregarModo();
+  atualizarTudo();
+  // Outro celular pode trocar bobina: atualiza as sacoleiras a cada minuto
+  // enquanto a tela estiver visível e sem leitura em andamento.
+  setInterval(()=>{ if(!document.hidden && !bobinaAtual && !enviando) atualizarTudo(); }, 60000);
 });
 </script>
 </body>

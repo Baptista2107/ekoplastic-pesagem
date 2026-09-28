@@ -793,7 +793,7 @@ function aplicarSchema() {
     // (ex.: turno anterior não foi encerrado) — nunca vira zero.
     ['etiquetas', 'fardos', 'INTEGER'],
     ['etiquetas', 'encerrada_em', 'TEXT'],
-    ['etiquetas', 'encerrada_motivo', 'TEXT'],   // troca | fim_turno | sem_encerramento
+    ['etiquetas', 'encerrada_motivo', 'TEXT'],   // troca | finalizada
   ]) {
     const tem = db.prepare(`PRAGMA table_info(${tabela})`).all().some(c => c.name === coluna);
     if (!tem) db.exec(`ALTER TABLE ${tabela} ADD COLUMN ${coluna} ${tipo}`);
@@ -805,10 +805,16 @@ aplicarSchema();
 //  RETIRADA DE BOBINA PARA A SACOLEIRA  (28/09/2026, VPS)
 // ══════════════════════════════════════════════════════════════════
 // A bobina entra na sacoleira pela tela Retirada de Bobinas. Cada sacoleira
-// tem no máximo UMA bobina aberta: bipar a próxima encerra a anterior e,
-// se as duas são do MESMO turno, exige quantos fardos a anterior deu. A
-// primeira bobina do turno não pergunta — a do turno anterior foi fechada
-// no "Encerrar turno". É isso que liga bobina → fardo sem bipar o fardo.
+// tem no máximo UMA bobina aberta: bipar a próxima encerra a anterior e
+// exige quantos fardos ela deu. Sem bobina nova no lugar (máquina parou,
+// acabou o pedido), o "Finalizar" da sacoleira fecha a aberta com os fardos.
+// É isso que liga bobina → fardo sem bipar o fardo.
+//
+// NÃO depende de turno (Frederico, 28/09/2026): a bobina atravessa a troca
+// de turno, então "fardos por turno" não existe para ela. A 1ª versão desta
+// tela pedia os fardos só dentro do mesmo turno e tinha "Encerrar turno" —
+// saiu. O turno só é pedido se o Bling for religado, porque lá ele é o
+// cliente da venda.
 
 // Liga/desliga o pedido de venda no Bling a cada baixa. Padrão DESLIGADO.
 function baixaBobinaNoBling() {
@@ -836,13 +842,6 @@ function bobinaAbertaNa(destino) {
   return db.prepare(
     `SELECT * FROM etiquetas WHERE tipo = 'extrusao' AND status = 'consumida'
         AND destino = ? AND encerrada_em IS NULL ORDER BY baixa_em DESC LIMIT 1`).get(destino) || null;
-}
-
-// A bobina aberta foi montada NESTE turno? Mesmo código de turno e há menos
-// de 13 h (o turno tem 12 h): o turno A de ontem não é o turno A de hoje.
-function abertaNoMesmoTurno(aberta, turnoCod) {
-  if (!aberta || !aberta.baixa_em || aberta.baixa_turno !== turnoCod) return false;
-  return (Date.now() - new Date(aberta.baixa_em).getTime()) < 13 * 3600 * 1000;
 }
 
 // Fardos informados pelo operador: inteiro de 0 a 999, senão null.
@@ -8691,10 +8690,15 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
       // venda é criado e o mapa de produtos/contatos do Bling não é exigido.
       const bling = baixaBobinaNoBling();
 
+      // Turno: só existe para o Bling (é o cliente da venda). Sem Bling a tela
+      // não pergunta, e a baixa vale igual sem ele.
       const turnoCod = String(body.turno || '').trim().toUpperCase();
-      if (!turnoCod) return jsonErr(res, 400, 'Selecione o turno antes de dar baixa');
-      const turno = turnosBaixaBobina(bling).find(t => t.codigo === turnoCod);
-      if (!turno) return jsonErr(res, 400, `Turno "${turnoCod}" não cadastrado (mapa_turno_bobina)`);
+      let turno = { codigo: null, label: '' };
+      if (bling || turnoCod) {
+        if (!turnoCod) return jsonErr(res, 400, 'Selecione o turno antes de dar baixa');
+        turno = turnosBaixaBobina(bling).find(t => t.codigo === turnoCod);
+        if (!turno) return jsonErr(res, 400, `Turno "${turnoCod}" não cadastrado (mapa_turno_bobina)`);
+      }
 
       let prod = {}, idEko = null;
       if (bling) {
@@ -8707,11 +8711,11 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
         idEko = turno.contatoId;
       }
 
-      // Troca de bobina: a anterior desta sacoleira, se foi montada NESTE
-      // turno, precisa dos fardos que deu. Conferido ANTES do Bling, para
-      // não criar pedido de uma baixa que vai ser recusada aqui.
+      // Troca de bobina: se a sacoleira já tem bobina aberta, ela sai agora e
+      // precisa dos fardos que deu. Conferido ANTES do Bling, para não criar
+      // pedido de uma baixa que vai ser recusada aqui.
       const aberta = bobinaAbertaNa(destino);
-      const pedeFardos = abertaNoMesmoTurno(aberta, turnoCod);
+      const pedeFardos = !!aberta && aberta.id !== bid;
       const fardosAnterior = lerFardos(body.fardos_anterior);
       if (pedeFardos && fardosAnterior === null) {
         return jsonErr(res, 409, `Informe quantos fardos a bobina ${aberta.id} deu antes de trocar`, {
@@ -8756,13 +8760,13 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
       const desc = `Bobina ${bid} · ${e.cor} ${e.tipo_bobina} ${e.largura} · ${Number(e.peso).toFixed(1)} kg`
                  + (e.operador ? ` · Op ${e.operador}` : '')
                  + (e.maquina ? ` · Maq ${e.maquina}` : '')
-                 + ` · ${turno.label || turnoCod}`
+                 + (turnoCod ? ` · ${turno.label || turnoCod}` : '')
                  + ` · Destino Sacoleira ${destino}`;
       const simular = configGet('bling_simular', '1') === '1';
       let blingId = null;
 
       if (!bling) {
-        logI('bobinas', `Baixa de bobina ${bid} → Sacoleira ${destino} (${turno.label || turnoCod}) — sem Bling`);
+        logI('bobinas', `Baixa de bobina ${bid} → Sacoleira ${destino} — sem Bling`);
       } else if (simular) {
         blingId = 'SIM-BOB-' + Date.now();
         logI('bling', `Baixa de bobina ${bid} SIMULADA (${blingId}) — ${turno.label || turnoCod}`);
@@ -8809,19 +8813,13 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
                   destino=?, baixa_em=?, baixa_turno=?, baixa_operador=?
             WHERE id=? AND status NOT IN ('consumida','cancelada')`)
           .run(agora, blingId && !String(blingId).startsWith('SIM-') ? Number(blingId) : null,
-               destino, agora, turnoCod, operador, bid);
+               destino, agora, turnoCod || null, operador, bid);
         if (!upd.changes) return false;
-        if (aberta && aberta.id !== bid) {
-          // Do mesmo turno: fardos informados. De outro turno: o turno
-          // anterior não foi encerrado — fecha sem fardos (NULL, não zero).
-          encerrarBobina(aberta.id, pedeFardos ? fardosAnterior : null,
-                         pedeFardos ? 'troca' : 'sem_encerramento', agora);
-        }
+        if (pedeFardos) encerrarBobina(aberta.id, fardosAnterior, 'troca', agora);
         return true;
       });
       if (!trocar()) return jsonErr(res, 409, `Bobina ${bid} JÁ teve baixa`, { ja_baixada: true });
-      if (aberta) logI('bobinas', `Sacoleira ${destino}: ${aberta.id} encerrada `
-        + (pedeFardos ? `com ${fardosAnterior} fardo(s)` : 'SEM fardos (turno anterior não encerrado)'));
+      if (pedeFardos) logI('bobinas', `Sacoleira ${destino}: ${aberta.id} saiu com ${fardosAnterior} fardo(s)`);
 
       // Guarda no histórico do dia (para a tela mostrar o que já saiu).
       try {
@@ -8840,50 +8838,45 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
                            bobina: { cor: e.cor, tipo_bobina: e.tipo_bobina, largura: e.largura, peso: e.peso } });
     }
 
-    // Histórico das baixas de hoje (a tela mostra o que já foi retirado).
-    // O que está montado em cada sacoleira agora (a tela mostra e o
-    // "Encerrar turno" pede os fardos só de quem tem bobina aberta).
+    // O que está montado em cada sacoleira agora.
     if (pathname === '/bobinas/abertas' && req.method === 'GET') {
-      const turnoCod = String(parsed.query.turno || '').trim().toUpperCase();
       const sacoleiras = ['P1', 'P2'].map(p => {
         const a = bobinaAbertaNa(p);
         return { sacoleira: p, bobina: a ? {
           id: a.id, cor: a.cor, tipo_bobina: a.tipo_bobina, largura: a.largura, peso: a.peso,
-          baixa_em: a.baixa_em, baixa_turno: a.baixa_turno,
-          deste_turno: turnoCod ? abertaNoMesmoTurno(a, turnoCod) : null,
+          baixa_em: a.baixa_em, baixa_operador: a.baixa_operador,
         } : null };
       });
       return jsonOk(res, { sacoleiras });
     }
 
-    // Encerrar turno: fecha a bobina aberta de cada sacoleira com os fardos
-    // que ela deu NESTE turno. Body { turno, fardos: { P1: n, P2: n }, operador }.
-    // Tudo ou nada: faltando o número de uma sacoleira aberta, nada é gravado.
-    if (pathname === '/bobinas/encerrar-turno' && req.method === 'POST') {
+    // Finalizar: a bobina saiu da sacoleira SEM outra no lugar (máquina
+    // parou, acabou o pedido). Fecha a aberta com os fardos que ela deu.
+    // Body { sacoleira: 'P1'|'P2', fardos, operador }.
+    if (pathname === '/bobinas/finalizar' && req.method === 'POST') {
       let body; try { body = await lerBodyJson(req); } catch(e) { return jsonErr(res, 400, e.message); }
-      const turnoCod = String(body.turno || '').trim().toUpperCase();
-      if (!turnoCod) return jsonErr(res, 400, 'Selecione o turno antes de encerrar');
-      const fardos = body.fardos || {};
-      const fechar = [];
-      for (const p of ['P1', 'P2']) {
-        const a = bobinaAbertaNa(p);
-        if (!a) continue;
-        const n = lerFardos(fardos[p]);
-        if (n === null) return jsonErr(res, 400, `Informe quantos fardos a bobina ${a.id} deu na Sacoleira ${p}`,
-                                       { falta: p, bobina: a.id });
-        fechar.push({ p, id: a.id, n });
-      }
-      const agora = new Date().toISOString();
-      makeTransaction(() => { for (const f of fechar) encerrarBobina(f.id, f.n, 'fim_turno', agora); })();
+      const sac = normalizarDestinoBobina(body.sacoleira);
+      if (!sac) return jsonErr(res, 400, 'Sacoleira inválida (P1 ou P2)');
+      const a = bobinaAbertaNa(sac);
+      if (!a) return jsonErr(res, 409, `A Sacoleira ${sac} não tem bobina aberta`);
+      const n = lerFardos(body.fardos);
+      if (n === null) return jsonErr(res, 400, `Informe quantos fardos a bobina ${a.id} deu`);
+      encerrarBobina(a.id, n, 'finalizada', new Date().toISOString());
       const operador = (body.operador ? String(body.operador).trim().slice(0, 80) : null) || null;
-      logI('bobinas', `Turno ${turnoCod} encerrado${operador ? ' por ' + operador : ''}: `
-        + (fechar.length ? fechar.map(f => `${f.p} ${f.id} = ${f.n} fardo(s)`).join('; ') : 'nenhuma bobina aberta'));
-      return jsonOk(res, { encerrado: true, turno: turnoCod, bobinas: fechar });
+      logI('bobinas', `Sacoleira ${sac}: ${a.id} finalizada com ${n} fardo(s)${operador ? ' por ' + operador : ''}`);
+      return jsonOk(res, { finalizada: true, sacoleira: sac, id: a.id, fardos: n });
     }
 
+    // Histórico das baixas de hoje (a tela mostra o que já foi retirado).
+    // Lido da ETIQUETA, não da lista `baixas_bobinas_<dia>` do config: os
+    // fardos chegam depois da baixa (na troca ou no Finalizar), e a lista é
+    // um retrato do momento da baixa. baixa_em é UTC; o dia é o local (-03:00).
     if (pathname === '/bobinas/baixas-hoje' && req.method === 'GET') {
-      let lista = [];
-      try { lista = JSON.parse(configGet('baixas_bobinas_' + dataLocalISO(), '[]')); } catch(e) {}
+      const desde = new Date(dataLocalISO() + 'T00:00:00-03:00').toISOString();
+      const lista = db.prepare(
+        `SELECT id, cor, tipo_bobina, largura, peso, destino, baixa_em AS hora, baixa_operador AS operador,
+                baixa_turno AS turno, bling_pedido_id AS pedido, fardos, encerrada_em, encerrada_motivo
+           FROM etiquetas WHERE tipo = 'extrusao' AND baixa_em >= ? ORDER BY baixa_em DESC`).all(desde);
       const total = lista.reduce((a, b) => a + (Number(b.peso) || 0), 0);
       return jsonOk(res, { baixas: lista, qtd: lista.length, total_kg: +total.toFixed(3) });
     }
