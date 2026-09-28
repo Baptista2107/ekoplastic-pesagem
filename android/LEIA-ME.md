@@ -1,4 +1,22 @@
-# Ekoplastic Coletor (app Android)
+# Apps Android dos coletores (Ekoplastic Coletor e Ekoplastic Inventário)
+
+**Dois apps, um código só** (v1.6, 28/09/2026). O `build.sh` gera os dois:
+
+| | Ekoplastic Coletor | Ekoplastic Inventário |
+|---|---|---|
+| Tela | `/retirada-bobinas.html` (bobina na sacoleira) | `/inventario.html` (MP e produto acabado) |
+| Leitura | só etiqueta exata (letra + 7 dígitos) | texto como vier; a tela valida (gaiola `EKOPA\|…`, big bag) |
+| Navegação | presa na tela | livre dentro do Mini PC (sair, conferir, voltar) |
+| Voltar do Android | só fecha janelas abertas | volta à tela anterior |
+| Ícone | bobina | caixinha |
+| Pacote | `br.com.ekoplastic.coletor` | `br.com.ekoplastic.inventario` |
+
+No inventário, a contagem em andamento fica no aparelho **e** no Mini PC
+(rascunho por aparelho): sair da tela, fechar o app ou trocar de coletor não
+perde a contagem. Voltando ao inventário no mesmo coletor, ela é retomada
+sozinha. De outro coletor ou com mais de 12 h, a tela pergunta, e descartar
+pede confirmação dupla.
+
 
 App para o coletor de dados (CMX Supply TC60, Android 14) abrir o sistema de pesagem do Mini PC
 numa janela só, sem barra de navegador. Criado na VPS em 28/09/2026.

@@ -30,7 +30,6 @@ import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
-import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -68,7 +67,30 @@ import java.util.regex.Pattern;
 public class MainActivity extends Activity {
 
     static final String URL_PADRAO = "https://192.168.3.43:3443";
-    static final String PAGINA_PADRAO = "/retirada-bobinas.html";
+
+    // ── Variante do app (v1.6, 28/09/2026) ──
+    // O MESMO código gera dois apps (build.sh VARIANTE=bobinas|inventario).
+    // O que muda vem do <meta-data> do manifesto:
+    //   pagina          página inicial no Mini PC;
+    //   leitura_estrita true = só etiqueta exata (letra + 7 dígitos) — bobinas;
+    //                   false = entrega o texto lido e a PÁGINA valida (a do
+    //                   inventário lê QR de gaiola "EKOPA|id|formato|…");
+    //   travar_pagina   true = não sai da página (bobinas); false = navega
+    //                   dentro do Mini PC e o Voltar volta (inventário).
+    String PAGINA_PADRAO = "/retirada-bobinas.html";
+    boolean LEITURA_ESTRITA = true, TRAVAR_PAGINA = true;
+
+    void lerVariante() {
+        try {
+            Bundle m = getPackageManager().getApplicationInfo(getPackageName(),
+                    PackageManager.GET_META_DATA).metaData;
+            if (m != null) {
+                PAGINA_PADRAO = m.getString("pagina", PAGINA_PADRAO);
+                LEITURA_ESTRITA = m.getBoolean("leitura_estrita", true);
+                TRAVAR_PAGINA = m.getBoolean("travar_pagina", true);
+            }
+        } catch (Exception ignore) {}
+    }
     static final String ACAO_PROPRIA = "br.com.ekoplastic.coletor.SCAN";
 
     /** Avisos (broadcast) dos leitores mais comuns. Ação → nome do dado. */
@@ -126,6 +148,7 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle b) {
         super.onCreate(b);
         prefs = getSharedPreferences("coletor", MODE_PRIVATE);
+        lerVariante();
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         getWindow().setStatusBarColor(Color.parseColor("#0A1119"));
 
@@ -151,11 +174,11 @@ public class MainActivity extends Activity {
             }
             @Override
             public void onPageFinished(WebView v, String url) {
-                if (url.startsWith("https://")) { esconderSaidas(); injetarAtalhos(); }
+                if (url.startsWith("https://")) { if (TRAVAR_PAGINA) esconderSaidas(); injetarAtalhos(); }
             }
             @Override
             public void onPageCommitVisible(WebView v, String url) {
-                if (url.startsWith("https://")) esconderSaidas();
+                if (url.startsWith("https://") && TRAVAR_PAGINA) esconderSaidas();
             }
             /**
              * v1.4 — o coletor NÃO sai da tela definida (Frederico,
@@ -166,9 +189,13 @@ public class MainActivity extends Activity {
             @Override
             public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) {
                 Uri u = r.getUrl(), nosso = Uri.parse(base());
-                boolean mesmaPagina = u.getHost() != null && u.getHost().equals(nosso.getHost())
-                        && u.getPort() == nosso.getPort() && pagina().equals(u.getPath());
-                return !mesmaPagina;   // true = bloqueia
+                boolean mesmoMiniPc = u.getHost() != null && u.getHost().equals(nosso.getHost())
+                        && u.getPort() == nosso.getPort();
+                // Inventário (v1.6): navega à vontade DENTRO do Mini PC — sair
+                // para conferir outra tela e voltar; a contagem fica guardada
+                // no aparelho e no Mini PC (rascunho). Nunca sai do Mini PC.
+                if (!TRAVAR_PAGINA) return !mesmoMiniPc;
+                return !(mesmoMiniPc && pagina().equals(u.getPath()));   // true = bloqueia
             }
         });
         web.setWebChromeClient(new WebChromeClient() {
@@ -200,6 +227,9 @@ public class MainActivity extends Activity {
 
     @Override
     public void onBackPressed() {
+        // Inventário: o Voltar volta à tela anterior do sistema, mas nunca
+        // fecha o app (na primeira tela, não faz nada).
+        if (!TRAVAR_PAGINA) { if (web.canGoBack()) web.goBack(); return; }
         // v1.4: o Voltar do Android não sai da tela nem fecha o app. Fecha só
         // o que estiver aberto por cima (cartão da bobina, janela dos fardos).
         web.evaluateJavascript("(function(){var m=document.querySelector('.modal-fundo');"
@@ -246,10 +276,8 @@ public class MainActivity extends Activity {
             "function foco(){var a=document.activeElement;if(!a||a===document.body||a===document.documentElement)c.focus({preventScroll:true});}" +
             "setInterval(foco,700);document.addEventListener('touchend',function(){setTimeout(foco,300);});foco();" +
             "window.__ekoLimpa=function(){c.value='';};" +
-            // v1.3: o botão de ler da página acende o LASER do coletor em vez
-            // de abrir a câmera (config "Botão de ler usa o laser").
-            "if(EkoApp.usaLaser()){var b=document.getElementById('btn-camera');" +
-            "if(b){b.onclick=function(e){e.preventDefault();EkoApp.laser();};b.textContent='🔦 Ler etiqueta';}}" +
+            // (v1.6: saiu o "botão de ler aciona o laser" — as duas telas não
+            // têm mais botão de câmera; lê o gatilho. EkoApp.laser() ficou.)
             "})()",
             null);
     }
@@ -261,8 +289,6 @@ public class MainActivity extends Activity {
     static final String LASER_LIGA = "com.service.scanner.start.scanning";
     static final String LASER_DESLIGA = "com.service.scanner.stop.scanning";
     long laserEm = 0;
-
-    boolean usaLaser() { return prefs.getBoolean("laser", true); }
 
     /** Acende o laser. Se nada for lido em 6 s, apaga (o gatilho físico
      *  apaga sozinho ao soltar; o comando por software não tem "soltar"). */
@@ -441,6 +467,7 @@ public class MainActivity extends Activity {
 
     /** Entrega o código à tela, pela mesma função que a câmera usa. */
     void entregar(String bruto, String origem) {
+        if (!LEITURA_ESTRITA) { entregarLivre(bruto, origem); return; }
         final String cod = normalizar(bruto);
         // O TC60 vem com teclado simulado E broadcast ligados: a mesma bipada
         // pode chegar pelos dois caminhos. O mesmo código em menos de 1,5 s é
@@ -463,6 +490,27 @@ public class MainActivity extends Activity {
             r -> { if (r != null && r.contains("sem-tela")) toast("Abra a tela Bobina na Sacoleira para ler " + cod); }));
     }
 
+    /**
+     * Inventário: entrega o texto como o leitor mandou (sem o prefixo AIM e
+     * sem espaços/controle nas pontas). Quem valida é a página: gaiola é
+     * "EKOPA|id|formato|cor|fardos|kg", big bag é consultado no sistema.
+     * Mesma trava de 1,5 s contra a leitura dupla (teclado + aviso).
+     */
+    void entregarLivre(String bruto, String origem) {
+        String t = String.valueOf(bruto).replaceAll("[\\p{Cntrl}]", "").trim();
+        t = t.replaceFirst("^\\][A-Za-z0-9][0-9]", "");
+        if (t.isEmpty()) return;
+        long agora = SystemClock.uptimeMillis();
+        if (t.equals(entregueCodigo) && agora - entregueEm < 1500) return;
+        entregueCodigo = t; entregueEm = agora;
+        ultimoCodigo = t; ultimaOrigem = origem;
+        final String js = org.json.JSONObject.quote(t);
+        ui.post(() -> web.evaluateJavascript("window.__ekoLimpa&&__ekoLimpa()", null));
+        ui.post(() -> web.evaluateJavascript(
+            "(function(c){try{if(typeof onLeu==='function'){onLeu(c);return 'ok';}return 'sem-tela';}catch(e){return 'erro';}})(" + js + ")",
+            r -> { if (r != null && r.contains("sem-tela")) toast("Esta tela não recebe leitura: " + ultimoCodigo); }));
+    }
+
     void toast(String m) { ui.post(() -> Toast.makeText(this, m, Toast.LENGTH_LONG).show()); }
 
     // ─────────────────────────── configuração ───────────────────────────
@@ -477,10 +525,6 @@ public class MainActivity extends Activity {
         EditText ePag = campo(l, "Página inicial", pagina(), InputType.TYPE_TEXT_VARIATION_URI);
         EditText eAcao = campo(l, "Aviso avulso do leitor (ação) — opcional", prefs.getString("acao_avulsa", ""), InputType.TYPE_CLASS_TEXT);
         EditText eChave = campo(l, "Nome do dado no aviso avulso — opcional", prefs.getString("chave_avulsa", ""), InputType.TYPE_CLASS_TEXT);
-        CheckBox cLaser = new CheckBox(this);
-        cLaser.setText("Botão de ler usa o laser do coletor (desmarcado: câmera)");
-        cLaser.setChecked(usaLaser());
-        l.addView(cLaser);
 
         Uri nosso = Uri.parse(base());
         String chave = "cert_" + nosso.getHost() + "_" + nosso.getPort();
@@ -501,8 +545,7 @@ public class MainActivity extends Activity {
                 String pg = ePag.getText().toString().trim();
                 prefs.edit().putString("base", b).putString("pagina", pg.startsWith("/") ? pg : "/" + pg)
                      .putString("acao_avulsa", eAcao.getText().toString().trim())
-                     .putString("chave_avulsa", eChave.getText().toString().trim())
-                     .putBoolean("laser", cLaser.isChecked()).apply();
+                     .putString("chave_avulsa", eChave.getText().toString().trim()).apply();
                 try { unregisterReceiver(receptor); } catch (Exception ignore) {}
                 registrarAvisos();
                 abrir();
@@ -548,7 +591,6 @@ public class MainActivity extends Activity {
         @JavascriptInterface public String versao() { return MainActivity.this.versao(); }
         /** Texto que o leitor escreveu no campo invisível da página. */
         @JavascriptInterface public void lido(String texto) { entregar(texto, "campo (leitor em modo preencher)"); }
-        @JavascriptInterface public boolean usaLaser() { return MainActivity.this.usaLaser(); }
         @JavascriptInterface public void laser() { ui.post(MainActivity.this::laser); }
     }
 }

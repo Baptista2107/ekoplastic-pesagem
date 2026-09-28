@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Ícone do app de inventário: uma caixinha de papelão aberta, na cor do sistema. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp" android:height="48dp"
+    android:viewportWidth="48" android:viewportHeight="48">
+    <!-- fundo -->
+    <path android:fillColor="#0A1119" android:pathData="M8,0h32a8,8 0 0 1 8,8v32a8,8 0 0 1 -8,8h-32a8,8 0 0 1 -8,-8v-32a8,8 0 0 1 8,-8z" />
+    <!-- abas abertas -->
+    <path android:fillColor="#FFC250" android:pathData="M10,18 L6,12 L22,12 L24,18 Z" />
+    <path android:fillColor="#FFC250" android:pathData="M38,18 L42,12 L26,12 L24,18 Z" />
+    <!-- corpo da caixa -->
+    <path android:fillColor="#D9962B" android:pathData="M10,18 H38 V38 A2,2 0 0 1 36,40 H12 A2,2 0 0 1 10,38 Z" />
+    <!-- fita -->
+    <path android:fillColor="#FFC250" android:pathData="M21,18 H27 V26 H21 Z" />
+    <!-- visto verde (conferido) -->
+    <path android:fillColor="#00FF9D" android:pathData="M16,31 L19,28 L22,31 L30,23 L33,26 L22,37 Z" />
+</vector>

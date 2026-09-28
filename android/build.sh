@@ -4,7 +4,14 @@
 # dependência externa — é uma WebView — então o Gradle seria só peso.
 #
 # Uso:
-#   ./build.sh                  # gera build/ekoplastic-coletor-<versao>.apk
+#   ./build.sh                       # os dois apps
+#   VARIANTE=bobinas ./build.sh      # só "Ekoplastic Coletor" (bobina na sacoleira)
+#   VARIANTE=inventario ./build.sh   # só "Ekoplastic Inventário" (MP e PA)
+#
+# O MESMO código gera os dois (v1.6, 28/09/2026): o manifesto é um modelo com
+# @MARCADORES@ que este script preenche — pacote, nome, ícone, página inicial,
+# leitura estrita e trava de página. O pacote do de bobinas continua
+# br.com.ekoplastic.coletor, para a versão nova instalar por cima da antiga.
 #
 # Variáveis (com o padrão da VPS da Ekoplastic):
 #   JAVA_HOME        JDK 17
@@ -31,13 +38,30 @@ done
 [ -f "$KEYSTORE" ] && [ -f "$KEYSTORE_SENHA" ] || { echo "FALTA a chave de assinatura: $KEYSTORE (+ senha)"; exit 1; }
 
 SRC="$AQUI/app/src/main"
-OUT="$AQUI/build"
 VERSAO=$(sed -n 's/.*android:versionName="\([^"]*\)".*/\1/p' "$SRC/AndroidManifest.xml")
+
+if [ -z "${VARIANTE:-}" ]; then
+  VARIANTE=bobinas "$0" && VARIANTE=inventario "$0"; exit $?
+fi
+case "$VARIANTE" in
+  bobinas)    PACOTE=br.com.ekoplastic.coletor;    NOME="Ekoplastic Coletor";    ICONE=icone
+              PAGINA=/retirada-bobinas.html;       ESTRITA=true;  TRAVAR=true;  ARQ=ekoplastic-coletor ;;
+  inventario) PACOTE=br.com.ekoplastic.inventario; NOME="Ekoplastic Inventário"; ICONE=icone_inventario
+              PAGINA=/inventario.html;             ESTRITA=false; TRAVAR=false; ARQ=ekoplastic-inventario ;;
+  *) echo "VARIANTE desconhecida: $VARIANTE (bobinas | inventario)"; exit 1 ;;
+esac
+echo "=== $NOME ($PACOTE) · $PAGINA · v$VERSAO"
+
+OUT="$AQUI/build/$VARIANTE"
 rm -rf "$OUT"; mkdir -p "$OUT/res" "$OUT/classes" "$OUT/dex"
+sed -e "s|@PACOTE@|$PACOTE|g" -e "s|@NOME@|$NOME|g" -e "s|@ICONE@|$ICONE|g" \
+    -e "s|@PAGINA@|$PAGINA|g" -e "s|@ESTRITA@|$ESTRITA|g" -e "s|@TRAVAR@|$TRAVAR|g" \
+    "$SRC/AndroidManifest.xml" > "$OUT/AndroidManifest.xml"
+if grep -qE '@(PACOTE|NOME|ICONE|PAGINA|ESTRITA|TRAVAR)@' "$OUT/AndroidManifest.xml"; then echo "marcador sem valor no manifesto"; exit 1; fi
 
 echo "1/5 recursos"
 "$BT/aapt2" compile --dir "$SRC/res" -o "$OUT/res/res.zip"
-"$BT/aapt2" link -o "$OUT/base.apk" -I "$PLAT" --manifest "$SRC/AndroidManifest.xml" \
+"$BT/aapt2" link -o "$OUT/base.apk" -I "$PLAT" --manifest "$OUT/AndroidManifest.xml" \
   -A "$SRC/assets" --java "$OUT/gen" "$OUT/res/res.zip"
 
 echo "2/5 java"
@@ -54,7 +78,7 @@ echo "4/5 alinhar"
 "$BT/zipalign" -f -p 4 "$OUT/base.apk" "$OUT/alinhado.apk"
 
 echo "5/5 assinar"
-APK="$OUT/ekoplastic-coletor-$VERSAO.apk"
+APK="$AQUI/build/$ARQ-$VERSAO.apk"
 "$BT/apksigner" sign --ks "$KEYSTORE" --ks-pass "file:$KEYSTORE_SENHA" --out "$APK" "$OUT/alinhado.apk"
 "$BT/apksigner" verify "$APK"
 rm -f "$OUT/base.apk" "$OUT/alinhado.apk" "$APK.idsig"

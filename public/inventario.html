@@ -236,6 +236,12 @@
   .lente-btn.sel{border-color:var(--verde); color:var(--verde);}
   /* Em telas bem baixas (celular deitado), reduz o vídeo para caber os botões */
   @media (max-height:520px){ .cam-box{max-width:250px;} }
+  /* 28/09/2026 (VPS): a leitura é do gatilho do coletor (app Ekoplastic
+     Inventário). A câmera sai da tela, como na "Bobina na Sacoleira"; o
+     Digitar fica para etiqueta rasurada. Os elementos continuam no HTML
+     (escondidos) porque pararCamera() é chamada em vários pontos. */
+  #btn-camera, #btn-torch, #reader, #zoom-barra, #lente-barra, #painel-diag{display:none !important;}
+  #btn-digitar{flex:1 1 auto !important; width:100% !important;}
 </style>
 <!-- Ajuste automatico para celular: so vale abaixo de 900px de largura -->
 <link rel="stylesheet" href="/celular.css">
@@ -552,36 +558,92 @@ function kgDigitado(txt){
 // Sem isso, atualizar a página no meio da contagem perde tudo. Fica guardado
 // até finalizar o produto (ou limpar) — inclusive se fechar o navegador.
 const CHAVE_ANDAMENTO = 'eko_inventario_andamento';
+// 28/09/2026 (VPS): o andamento vai TAMBÉM para o Mini PC, num rascunho por
+// aparelho (/inventario/rascunho). Assim a contagem sobrevive a trocar de
+// coletor, limpar os dados do app ou sair da tela para conferir outra coisa.
+// E saiu o descarte automático de 24 h: quem descarta é o operador.
+const DISPOSITIVO = (function(){
+  try{
+    let d=localStorage.getItem('eko_dispositivo');
+    if(!d){ d='disp-'+Math.random().toString(36).slice(2,10); localStorage.setItem('eko_dispositivo', d); }
+    return d;
+  }catch(e){ return 'disp-sem-armazenamento'; }
+})();
+let _rascunhoTimer=null;
+function enviarRascunho(dados){
+  clearTimeout(_rascunhoTimer);
+  _rascunhoTimer=setTimeout(()=>{
+    fetch(URL_BASE+'/inventario/rascunho',{ method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ dispositivo:DISPOSITIVO, dados, operador:(window.EKO_RESPONSAVEL||null) }) }).catch(()=>{});
+  }, 800);
+}
 function salvarAndamento(){
   try{
     if(!TIPO_INV || (!sel && !MODO_LIVRE)) return;
-    localStorage.setItem(CHAVE_ANDAMENTO, JSON.stringify({
+    const dados={
       tipo:TIPO_INV, modoLivre:MODO_LIVRE, sel, leituras, sacos,
       modoManual:MODO_MANUAL, kgPorSaco:KG_POR_SACO, livre:LIVRE,
       paModo:PA_MODO, paManSeq:PA_MAN_SEQ,
-      mpModo:MP_MODO, mpManSeq:MP_MAN_SEQ, ts:Date.now(),
-    }));
+      mpModo:MP_MODO, mpManSeq:MP_MAN_SEQ, ts:Date.now(), dispositivo:DISPOSITIVO,
+    };
+    localStorage.setItem(CHAVE_ANDAMENTO, JSON.stringify(dados));
+    enviarRascunho(dados);
   }catch(e){}
 }
-function limparAndamento(){ try{ localStorage.removeItem(CHAVE_ANDAMENTO); }catch(e){} }
+function limparAndamento(){
+  try{ localStorage.removeItem(CHAVE_ANDAMENTO); }catch(e){}
+  clearTimeout(_rascunhoTimer);
+  fetch(URL_BASE+'/inventario/rascunho',{ method:'POST', headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({ dispositivo:DISPOSITIVO, apagar:true }) }).catch(()=>{});
+}
 function lerAndamento(){
   try{
     const b=localStorage.getItem(CHAVE_ANDAMENTO); if(!b) return null;
     const o=JSON.parse(b);
-    // descarta se for de mais de 24h (contagem esquecida)
-    if(!o || !o.ts || (Date.now()-o.ts) > 24*3600*1000){ limparAndamento(); return null; }
-    return o;
+    return (o && o.ts) ? o : null;
   }catch(e){ return null; }
 }
-function retomarAndamento(){
+function quantasLeituras(o){
+  return o.modoLivre ? Object.values(o.livre||{}).reduce((a,g)=>a+(g.gaiolas||[]).length,0) : (o.leituras||[]).length;
+}
+// Na abertura: se o aparelho não tem andamento e o Mini PC tem rascunho (deste
+// aparelho, ou o mais recente de outro), traz para o aparelho antes de retomar.
+async function trazerRascunhoDoServidor(){
+  try{
+    if(lerAndamento()) return;
+    const d=await (await fetch(URL_BASE+'/inventario/rascunho')).json();
+    const lista=(d&&d.rascunhos)||[];
+    const r=lista.find(x=>x.dispositivo===DISPOSITIVO) || lista[0];
+    if(r && r.dados && quantasLeituras(r.dados)>0){
+      r.dados.origem = (r.dispositivo===DISPOSITIVO) ? null : r.dispositivo;
+      localStorage.setItem(CHAVE_ANDAMENTO, JSON.stringify(r.dados));
+    }
+  }catch(e){}
+}
+// Antes de começar uma contagem nova: se há outra em andamento, oferece
+// continuar ela em vez de sobrescrever. true = pode começar a nova.
+function podeComecarNova(){
+  const o=lerAndamento();
+  if(!o || !quantasLeituras(o)) return true;
+  return !retomarAndamento(true);
+}
+function retomarAndamento(perguntar){
   const o=lerAndamento(); if(!o) return false;
-  const quantos = o.modoLivre
-    ? Object.values(o.livre||{}).reduce((a,g)=>a+(g.gaiolas||[]).length,0)
-    : (o.leituras||[]).length;
+  const quantos = quantasLeituras(o);
   const oQue = o.modoLivre ? 'leitura livre' : (o.sel ? rotuloProduto(o.sel) : '');
-  if(!confirm(`Havia uma contagem em andamento (${oQue}) com ${quantos} leitura(s).\n\nOK = continuar de onde parou\nCancelar = descartar e começar do zero`)){
-    limparAndamento(); return false;
+  const idadeH = (Date.now()-o.ts)/3600000;
+  // Voltou para a tela no mesmo aparelho, há pouco: continua sem perguntar.
+  const automatico = !perguntar && !o.origem && idadeH < 12 && quantos > 0;
+  if(!automatico){
+    const quando = new Date(o.ts).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+    const deOnde = o.origem ? `\nVeio de OUTRO coletor (${o.origem}).` : '';
+    if(!confirm(`Há uma contagem em andamento (${oQue}) com ${quantos} leitura(s), de ${quando}.${deOnde}\n\nOK = continuar de onde parou\nCancelar = descartar`)){
+      if(confirm(`Descartar MESMO as ${quantos} leitura(s)? Não dá para desfazer.\n\nOK = descartar   |   Cancelar = continuar a contagem`)){
+        limparAndamento(); return false;
+      }
+    }
   }
+  if(o.origem){ delete o.origem; o.dispositivo=DISPOSITIVO; }
   TIPO_INV=o.tipo; MODO_LIVRE=!!o.modoLivre; sel=o.sel; leituras=o.leituras||[];
   sacos=o.sacos||0; MODO_MANUAL=!!o.modoManual; KG_POR_SACO=o.kgPorSaco||25; LIVRE=o.livre||{};
   PA_MODO = o.paModo || 'qr';
@@ -616,6 +678,8 @@ function retomarAndamento(){
     aplicarModo(); renderSobras('man'); renderLeituras();
   }
   document.getElementById('titulo').textContent='Contagem';
+  salvarAndamento();   // regrava como deste aparelho (e no Mini PC)
+  if(automatico) toast('ok','Contagem retomada · '+quantos+' leitura(s)',2500);
   return true;
 }
 
@@ -697,6 +761,7 @@ function paAtualizar(){
   document.getElementById('pa-btn-iniciar').disabled = !(f && c);
 }
 function paIniciar(){
+  if(!podeComecarNova()) return;
   const f=document.getElementById('pa-formato').value;
   const c=document.getElementById('pa-cor').value;
   const prod=PA_PRODUTOS.find(p=>p.formato===f && p.cor===c);
@@ -721,6 +786,7 @@ function paIniciar(){
 // Observação: pigmento e dessecante não aparecem aqui — eles vêm em sacos e
 // são contados manualmente, escolhendo o produto.
 function mpIniciarLivre(){
+  if(!podeComecarNova()) return;
   MODO_LIVRE=true; MODO_MANUAL=false;
   document.getElementById('btn-add-sacos').classList.remove('oculto');
   document.getElementById('painel-sacos').classList.add('oculto');
@@ -1049,6 +1115,7 @@ function paManCarregarSelects(){
 // Lê qualquer gaiola, na ordem que aparecer, e agrupa por produto.
 // No fim, mostra o comparativo de TODOS os produtos lidos contra o Bling.
 function paIniciarLivre(){
+  if(!podeComecarNova()) return;
   MODO_LIVRE=true; MODO_MANUAL=false;
   document.getElementById('btn-add-sacos').classList.add('oculto');
   document.getElementById('painel-sacos').classList.add('oculto');
@@ -1300,6 +1367,7 @@ function atualizarBotaoIniciar(){
 
 // ─────────── iniciar leitura ───────────
 function iniciarLeitura(){
+  if(!podeComecarNova()) return;
   const mat=document.getElementById('sel-material').value;
   const scDisabled=document.getElementById('sel-cor').disabled;
   const cor= scDisabled ? '' : document.getElementById('sel-cor').value;
@@ -2238,7 +2306,7 @@ async function finalizarInventario(){
 // init
 // Só oferece retomar depois que os catálogos estiverem carregados — os nomes
 // dos produtos vêm deles.
-Promise.all([carregarTudo(), carregarProdutosPA()]).then(() => { retomarAndamento(); });
+Promise.all([carregarTudo(), carregarProdutosPA(), trazerRascunhoDoServidor()]).then(() => { retomarAndamento(); });
 </script>
 </body>
 </html>

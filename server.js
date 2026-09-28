@@ -9115,6 +9115,33 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
     }
 
     // Salva um item finalizado (substitui se o mesmo produto for refeito).
+    // ── Rascunho da contagem em andamento (28/09/2026, VPS) ──
+    // A tela de inventário guardava a contagem em andamento SÓ no aparelho
+    // (localStorage). Trocar de coletor, limpar os dados do app ou começar
+    // outra contagem sem salvar perdia tudo. Agora cada leitura grava também
+    // aqui, um rascunho por aparelho (config `inventario_rascunhos`), e a
+    // tela retoma dele. Os produtos SALVOS continuam em /inventario/salvar.
+    if (pathname === '/inventario/rascunho' && req.method === 'GET') {
+      let m = {}; try { m = JSON.parse(configGet('inventario_rascunhos', '{}')); } catch(e) {}
+      const lista = Object.entries(m).map(([dispositivo, r]) => ({ dispositivo, ...r }))
+        .sort((a, b) => (b.ts || 0) - (a.ts || 0));
+      return jsonOk(res, { rascunhos: lista });
+    }
+    if (pathname === '/inventario/rascunho' && req.method === 'POST') {
+      let body; try { body = await lerBodyJson(req); } catch(e) { return jsonErr(res, 400, e.message); }
+      const disp = String(body.dispositivo || '').trim().slice(0, 60);
+      if (!disp) return jsonErr(res, 400, 'dispositivo obrigatório');
+      let m = {}; try { m = JSON.parse(configGet('inventario_rascunhos', '{}')); } catch(e) {}
+      if (body.apagar) delete m[disp];
+      else {
+        if (!body.dados || typeof body.dados !== 'object') return jsonErr(res, 400, 'dados obrigatórios');
+        m[disp] = { dados: body.dados, ts: Date.now(),
+                    operador: (body.operador ? String(body.operador).slice(0, 80) : null) };
+      }
+      configSet('inventario_rascunhos', JSON.stringify(m));
+      return jsonOk(res, { gravado: !body.apagar, apagado: !!body.apagar });
+    }
+
     if (pathname === '/inventario/salvar' && req.method === 'POST') {
       let body; try { body = await lerBodyJson(req); } catch(e) { return jsonErr(res, 400, e.message); }
       let inv = { inicio: new Date().toISOString(), itens: [] };
