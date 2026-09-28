@@ -291,6 +291,26 @@ del "%SAIDA10%" >nul 2>&1
 if not "%RCT%"=="0" goto :testes_falharam
 
 :sem_guiapdf
+REM  --- Teste 11: material novo em banco que ja existe ---
+REM  Os catalogos de MP so eram gravados quando a chave nao existia.
+REM  Numa estacao que ja rodou elas existem, entao material novo no
+REM  codigo nunca chegava la: instalava a atualizacao e o material
+REM  continuava sem aparecer na tela. Este teste envelhece um banco de
+REM  proposito e confere que o material chega - e que o que o usuario
+REM  cadastrou pela tela continua no lugar.
+if not exist "testes\material-novo.js" goto :sem_material
+echo.
+echo  Rodando o teste de material novo. Leva uns 15 segundos...
+echo.
+set "SAIDA11=%TEMP%\eko_testes11.tmp"
+node testes\material-novo.js > "%SAIDA11%" 2>&1
+set "RCT=%ERRORLEVEL%"
+type "%SAIDA11%"
+type "%SAIDA11%" >>"%LOG%"
+del "%SAIDA11%" >nul 2>&1
+if not "%RCT%"=="0" goto :testes_falharam
+
+:sem_material
 if not exist "testes\janela-atualizacao.js" goto :testes_ok
 echo.
 echo  Rodando o teste da janela de atualizacao. Leva uns 30 segundos...

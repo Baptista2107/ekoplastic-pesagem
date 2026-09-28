@@ -1646,7 +1646,8 @@ body.modo-retorno .menu-item.active { border-color: var(--devol); background: rg
 })();
 
 const KG_SACO = 25;
-const COMPOSTOS = ['CARBO', 'PIG', 'DESSEC'];
+// Materiais que entram por NÚMERO DE SACOS de 25 kg, não por peso de big bag.
+const COMPOSTOS = ['CARBO', 'PIG', 'DESSEC', 'AUXFLUX'];
 
 const MATERIAIS = {
   GBD:    { popular: 'Grão Baixa', nomeEtiqueta: 'BAIXA DENSIDADE',
@@ -1665,6 +1666,8 @@ const MATERIAIS = {
             forn: ['Cristal Master','FG','Karina'] },
   DESSEC: { popular: 'Dessecante', nomeEtiqueta: 'DESSECANTE', cores: [], corLabel: {},
             forn: ['Cristal Master','FG','Karina','SecMil'] },
+  AUXFLUX:{ popular: 'Auxiliar de Fluxo', nomeEtiqueta: 'AUXILIAR DE FLUXO', cores: [], corLabel: {},
+            forn: ['Cristal Master'] },
 };
 
 // ─── BANCO DE CÓDIGOS GRAVIMÉTRICOS ───
@@ -1684,6 +1687,8 @@ let CODIGOS_GRAVIMETRICOS = [
   { matKey: 'CARBO',  cor: null,       forn: 'W R',           codigo: 'C4' },
   // Dessecante: por fornecedor (sem cor)
   { matKey: 'DESSEC', cor: null,       forn: 'Cristal Master', codigo: 'D1' },
+  // Auxiliar de fluxo: por fornecedor (sem cor)
+  { matKey: 'AUXFLUX',cor: null,       forn: 'Cristal Master', codigo: 'A1' },
   // Grão Baixa: por cor + fornecedor
   { matKey: 'GBD', cor: 'Canela',   forn: 'Cedro',          codigo: 'CAN1' },
   { matKey: 'GBD', cor: 'Canela',   forn: 'Tupaciguara',    codigo: 'CAN2' },
@@ -3901,19 +3906,26 @@ async function carregarCatalogoMP() {
     const r = await fetch('/catalogo-mp');
     if (!r.ok) return;
     const cat = await r.json();
-    if (cat && cat.fornecedores && typeof cat.fornecedores === 'object') {
-      for (const k of Object.keys(MATERIAIS)) {
-        if (Array.isArray(cat.fornecedores[k])) MATERIAIS[k].forn = cat.fornecedores[k];
-      }
-    }
+    // ORDEM IMPORTA: os materiais vêm primeiro, porque é esse bloco que
+    // cria um material que só existe no banco. Aplicar os fornecedores
+    // antes deixaria o material novo sem fornecedor nenhum — e sem
+    // fornecedor ele não dá para escolher na tela.
     // CORES: até 01/09/2026 esta tela ignorava cat.materiais e usava só a
     // lista fixa acima — por isso uma cor nova cadastrada no Bling (e até no
     // catálogo) nunca chegava ao operador. Agora o banco manda; a lista fixa
     // fica como reserva para quando o /catalogo-mp não responder.
     if (cat && cat.materiais && typeof cat.materiais === 'object') {
-      for (const k of Object.keys(MATERIAIS)) {
+      // Material que existe SÓ no banco entra aqui. Antes este laço andava
+      // pelas chaves do MATERIAIS embutido, então um material novo cadastrado
+      // no servidor nunca aparecia na tela — era preciso mexer neste HTML a
+      // cada material. Agora o embutido é reserva; o banco é que manda.
+      for (const k of Object.keys(cat.materiais)) {
         const m = cat.materiais[k];
         if (!m) continue;
+        if (!MATERIAIS[k]) {
+          MATERIAIS[k] = { popular: m.popular || k, nomeEtiqueta: String(m.popular || k).toUpperCase(),
+                           cores: [], corLabel: {}, forn: [] };
+        }
         if (Array.isArray(m.cores)) MATERIAIS[k].cores = m.cores.slice();
         // A abreviação da SKU vem junto. O que o banco traz tem prioridade;
         // o que não vier continua valendo do embutido, e cor sem abreviação
@@ -3921,6 +3933,11 @@ async function carregarCatalogoMP() {
         if (m.corLabel && typeof m.corLabel === 'object') {
           MATERIAIS[k].corLabel = Object.assign({}, MATERIAIS[k].corLabel, m.corLabel);
         }
+      }
+    }
+    if (cat && cat.fornecedores && typeof cat.fornecedores === 'object') {
+      for (const k of Object.keys(cat.fornecedores)) {
+        if (MATERIAIS[k] && Array.isArray(cat.fornecedores[k])) MATERIAIS[k].forn = cat.fornecedores[k];
       }
     }
     if (cat && Array.isArray(cat.codigos) && cat.codigos.length) {

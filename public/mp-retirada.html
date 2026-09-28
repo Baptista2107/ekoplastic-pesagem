@@ -658,7 +658,7 @@ header {
         🏷 BIPAGEM &nbsp;<span style="font-size:10px;opacity:0.7">GBD / POLI / CARBO</span>
       </button>
       <button class="subtab" data-tipo="sacos" onclick="setFluxo('sacos')">
-        📦 SACOS 25 KG &nbsp;<span style="font-size:10px;opacity:0.7">PIG / DESSEC</span>
+        📦 SACOS 25 KG &nbsp;<span style="font-size:10px;opacity:0.7">ADITIVOS</span>
       </button>
     </div>
 
@@ -865,6 +865,13 @@ const ADITIVOS = {
     label:       'Dessecante',
     cores:       null,                              // não tem cor
     fornecedores:['Cristal Master', 'FG', 'Karina', 'Secmil'],
+  },
+  // Auxiliar de fluxo (28/09/2026). Entra por sacos no recebimento e sai
+  // por sacos aqui — por isso fica com os aditivos, e não na bipagem.
+  AUXFLUX: {
+    label:       'Auxiliar de Fluxo',
+    cores:       null,                              // não tem cor
+    fornecedores:['Cristal Master'],
   },
 };
 

@@ -2388,7 +2388,7 @@ const PA_MAQUINAS = ['P1','P2'];
 // de formato em máquina que não o produz.
 // Materiais contados MANUALMENTE no inventário (sacos, não big bags com
 // etiqueta): a contagem é nº de sacos × peso do saco.
-const MP_CONTAGEM_MANUAL = { PIG: 25, DESSEC: 25, CARBO: 25 };   // kg por saco
+const MP_CONTAGEM_MANUAL = { PIG: 25, DESSEC: 25, CARBO: 25, AUXFLUX: 25 };   // kg por saco
 
 const PA_FORMATOS_POR_MAQUINA = {
   P1: ['40x50', '50x60', '60x80', '80x100'],
@@ -2489,6 +2489,9 @@ const MP_MATERIAIS_PADRAO = {
   PIG:    { popular: 'Pigmento',             cores: ['Amarelo','Branco','Preto','Verde'],
             corLabel: { 'Amarelo':'AMA', 'Branco':'BRA', 'Preto':'PRE', 'Verde':'VER' } },
   DESSEC: { popular: 'Dessecante',           cores: [], corLabel: {} },
+  // Auxiliar de fluxo (28/09/2026). Sem cor, em sacos de 25 kg, como os
+  // demais aditivos: entra por número de sacos e sai por número de sacos.
+  AUXFLUX:{ popular: 'Auxiliar de Fluxo',    cores: [], corLabel: {} },
 };
 
 // Nomes de cor que o sistema sabe RECONHECER num produto do Bling, mesmo
@@ -2612,6 +2615,8 @@ function seedConfigsBling() {
     "DESSEC::FG":                 "16620488765",
     "DESSEC::Karina":             "16620488768",
     "DESSEC::Secmil":             "16620601030",
+    // AUXFLUX (cor null) — cadastrado no Bling em 28/09/2026
+    "AUXFLUX::Cristal Master":    "16711697477",
     // PIG
     "PIG:Amarelo:Cristal Master": "16571351818",
     "PIG:Amarelo:FG":             "16620454453",
@@ -2642,6 +2647,11 @@ function seedConfigsBling() {
     "DESSEC::COLLOR-X":        "DESSEC.COLLOR-X",
     "DESSEC::Cromex":          "DESSEC.CROMEX",
     "DESSEC::INNOVACOLOR":     "DESSEC.INNOVACOLOR",
+    // O auxiliar de fluxo é variação de fornecedor no Bling. A SKU vai
+    // junto do id porque a regra automática de SKU corta o fornecedor em
+    // 6 letras ("CRISTA") e o cadastro lá é AUXFLUX.CRISTAL — mandar a
+    // SKU faz o envio resolver a variação certa, com o id como reserva.
+    "AUXFLUX::Cristal Master": "AUXFLUX.CRISTAL",
   };
   let inseridas = 0;
   if (!dbStmts.configGet.get('mapa_fornecedor_bling')) {
@@ -2700,21 +2710,60 @@ function seedConfigsBling() {
   // ── CATÁLOGO MP (Etapa 1): fornecedores por material + códigos gravimétricos ──
   // Fonte única no banco. A tela de recebimento lê via GET /catalogo-mp
   // (com fallback embutido no cliente). O cadastro pela tela vem nas etapas seguintes.
-  const mpFornecedoresPadrao = {"GBD": ["Cedro", "Ecorafia", "Ecolog", "Forcoplast", "Gold Green", "Piquiri", "Redeplast", "Tupaciguara", "WT dos Santos"], "POLI": ["Ecolog", "Tallpack", "Valgroup", "Ycaro"], "CARBO": ["Cristal Master", "FG", "Karina", "SecMil", "W R"], "PIG": ["Cristal Master", "FG", "Karina"], "DESSEC": ["COLLOR-X", "Cromex", "INNOVACOLOR", "Cristal Master", "FG", "Karina", "SecMil"]};
-  const mpCodigosGravPadrao = [{"matKey": "PIG", "cor": "Amarelo", "forn": null, "codigo": "P1"}, {"matKey": "PIG", "cor": "Verde", "forn": null, "codigo": "P2"}, {"matKey": "PIG", "cor": "Preto", "forn": null, "codigo": "P3"}, {"matKey": "PIG", "cor": "Branco", "forn": null, "codigo": "P4"}, {"matKey": "CARBO", "cor": null, "forn": "Cristal Master", "codigo": "C1"}, {"matKey": "CARBO", "cor": null, "forn": "FG", "codigo": "C2"}, {"matKey": "CARBO", "cor": null, "forn": "Karina", "codigo": "C3"}, {"matKey": "CARBO", "cor": null, "forn": "W R", "codigo": "C4"}, {"matKey": "DESSEC", "cor": null, "forn": "Cristal Master", "codigo": "D1"}, {"matKey": "DESSEC", "cor": null, "forn": "COLLOR-X", "codigo": "D3"}, {"matKey": "DESSEC", "cor": null, "forn": "Cromex", "codigo": "D4"}, {"matKey": "DESSEC", "cor": null, "forn": "INNOVACOLOR", "codigo": "D5"}, {"matKey": "GBD", "cor": "Canela", "forn": "Cedro", "codigo": "CAN1"}, {"matKey": "GBD", "cor": "Canela", "forn": "Tupaciguara", "codigo": "CAN2"}, {"matKey": "GBD", "cor": "Canela", "forn": "WT dos Santos", "codigo": "CAN3"}, {"matKey": "GBD", "cor": "Canela", "forn": "Piquiri", "codigo": "CAN4"}, {"matKey": "GBD", "cor": "Colorido", "forn": "Cedro", "codigo": "COL1"}, {"matKey": "GBD", "cor": "Colorido", "forn": "Forcoplast", "codigo": "COL2"}, {"matKey": "GBD", "cor": "Colorido", "forn": "Piquiri", "codigo": "COL3"}, {"matKey": "GBD", "cor": "Colorido", "forn": "Tupaciguara", "codigo": "COL4"}, {"matKey": "GBD", "cor": "Colorido", "forn": "WT dos Santos", "codigo": "COL5"}, {"matKey": "GBD", "cor": "Preto", "forn": "Cedro", "codigo": "PT1"}, {"matKey": "GBD", "cor": "Preto", "forn": "Forcoplast", "codigo": "PT2"}, {"matKey": "GBD", "cor": "Preto", "forn": "Tupaciguara", "codigo": "PT3"}, {"matKey": "GBD", "cor": "Preto", "forn": "Piquiri", "codigo": "PT4"}, {"matKey": "GBD", "cor": "Colorido", "forn": "Ecorafia", "codigo": "COL6"}, {"matKey": "GBD", "cor": "Canela", "forn": "Ecorafia", "codigo": "CAN4"}, {"matKey": "GBD", "cor": "Leitoso", "forn": "Ecorafia", "codigo": "LEI1"}, {"matKey": "GBD", "cor": "Colorido", "forn": "Gold Green", "codigo": "COL7"}, {"matKey": "GBD", "cor": "Preto", "forn": "Gold Green", "codigo": "PT5"}, {"matKey": "GBD", "cor": "Leitoso", "forn": "Gold Green", "codigo": "LEI2"}, {"matKey": "GBD", "cor": "Canela", "forn": "Gold Green", "codigo": "CAN5"}, {"matKey": "POLI", "cor": "Canela", "forn": "Ycaro", "codigo": "NCAN1"}, {"matKey": "POLI", "cor": "Canela", "forn": "Ecolog", "codigo": "NCAN2"}, {"matKey": "POLI", "cor": "Colorido", "forn": "Ecolog", "codigo": "NCOL1"}, {"matKey": "POLI", "cor": "Colorido", "forn": "Ycaro", "codigo": "NCOL2"}, {"matKey": "POLI", "cor": "Colorido", "forn": "Tallpack", "codigo": "NCOL3"}, {"matKey": "POLI", "cor": "Cristal", "forn": "Ycaro", "codigo": "NCRIS1"}, {"matKey": "POLI", "cor": "Leitoso", "forn": "Ecolog", "codigo": "NLEI1"}, {"matKey": "POLI", "cor": "Leitoso", "forn": "Tallpack", "codigo": "NLEI2"}, {"matKey": "POLI", "cor": "Leitoso", "forn": "Valgroup", "codigo": "NLEI3"}, {"matKey": "POLI", "cor": "Leitoso", "forn": "Ycaro", "codigo": "NLEI4"}];
-  if (!dbStmts.configGet.get('mp_fornecedores')) {
-    dbStmts.configSet.run('mp_fornecedores', JSON.stringify(mpFornecedoresPadrao));
-    inseridas++;
-  }
-  if (!dbStmts.configGet.get('mp_codigos_gravimetricos')) {
-    dbStmts.configSet.run('mp_codigos_gravimetricos', JSON.stringify(mpCodigosGravPadrao));
-    inseridas++;
-  }
+  const mpFornecedoresPadrao = {"GBD": ["Cedro", "Ecorafia", "Ecolog", "Forcoplast", "Gold Green", "Piquiri", "Redeplast", "Tupaciguara", "WT dos Santos"], "POLI": ["Ecolog", "Tallpack", "Valgroup", "Ycaro"], "CARBO": ["Cristal Master", "FG", "Karina", "SecMil", "W R"], "PIG": ["Cristal Master", "FG", "Karina"], "DESSEC": ["COLLOR-X", "Cromex", "INNOVACOLOR", "Cristal Master", "FG", "Karina", "SecMil"], "AUXFLUX": ["Cristal Master"]};
+  const mpCodigosGravPadrao = [{"matKey": "PIG", "cor": "Amarelo", "forn": null, "codigo": "P1"}, {"matKey": "PIG", "cor": "Verde", "forn": null, "codigo": "P2"}, {"matKey": "PIG", "cor": "Preto", "forn": null, "codigo": "P3"}, {"matKey": "PIG", "cor": "Branco", "forn": null, "codigo": "P4"}, {"matKey": "CARBO", "cor": null, "forn": "Cristal Master", "codigo": "C1"}, {"matKey": "CARBO", "cor": null, "forn": "FG", "codigo": "C2"}, {"matKey": "CARBO", "cor": null, "forn": "Karina", "codigo": "C3"}, {"matKey": "CARBO", "cor": null, "forn": "W R", "codigo": "C4"}, {"matKey": "DESSEC", "cor": null, "forn": "Cristal Master", "codigo": "D1"}, {"matKey": "DESSEC", "cor": null, "forn": "COLLOR-X", "codigo": "D3"}, {"matKey": "DESSEC", "cor": null, "forn": "Cromex", "codigo": "D4"}, {"matKey": "DESSEC", "cor": null, "forn": "INNOVACOLOR", "codigo": "D5"}, {"matKey": "GBD", "cor": "Canela", "forn": "Cedro", "codigo": "CAN1"}, {"matKey": "GBD", "cor": "Canela", "forn": "Tupaciguara", "codigo": "CAN2"}, {"matKey": "GBD", "cor": "Canela", "forn": "WT dos Santos", "codigo": "CAN3"}, {"matKey": "GBD", "cor": "Canela", "forn": "Piquiri", "codigo": "CAN4"}, {"matKey": "GBD", "cor": "Colorido", "forn": "Cedro", "codigo": "COL1"}, {"matKey": "GBD", "cor": "Colorido", "forn": "Forcoplast", "codigo": "COL2"}, {"matKey": "GBD", "cor": "Colorido", "forn": "Piquiri", "codigo": "COL3"}, {"matKey": "GBD", "cor": "Colorido", "forn": "Tupaciguara", "codigo": "COL4"}, {"matKey": "GBD", "cor": "Colorido", "forn": "WT dos Santos", "codigo": "COL5"}, {"matKey": "GBD", "cor": "Preto", "forn": "Cedro", "codigo": "PT1"}, {"matKey": "GBD", "cor": "Preto", "forn": "Forcoplast", "codigo": "PT2"}, {"matKey": "GBD", "cor": "Preto", "forn": "Tupaciguara", "codigo": "PT3"}, {"matKey": "GBD", "cor": "Preto", "forn": "Piquiri", "codigo": "PT4"}, {"matKey": "GBD", "cor": "Colorido", "forn": "Ecorafia", "codigo": "COL6"}, {"matKey": "GBD", "cor": "Canela", "forn": "Ecorafia", "codigo": "CAN4"}, {"matKey": "GBD", "cor": "Leitoso", "forn": "Ecorafia", "codigo": "LEI1"}, {"matKey": "GBD", "cor": "Colorido", "forn": "Gold Green", "codigo": "COL7"}, {"matKey": "GBD", "cor": "Preto", "forn": "Gold Green", "codigo": "PT5"}, {"matKey": "GBD", "cor": "Leitoso", "forn": "Gold Green", "codigo": "LEI2"}, {"matKey": "GBD", "cor": "Canela", "forn": "Gold Green", "codigo": "CAN5"}, {"matKey": "POLI", "cor": "Canela", "forn": "Ycaro", "codigo": "NCAN1"}, {"matKey": "POLI", "cor": "Canela", "forn": "Ecolog", "codigo": "NCAN2"}, {"matKey": "POLI", "cor": "Colorido", "forn": "Ecolog", "codigo": "NCOL1"}, {"matKey": "POLI", "cor": "Colorido", "forn": "Ycaro", "codigo": "NCOL2"}, {"matKey": "POLI", "cor": "Colorido", "forn": "Tallpack", "codigo": "NCOL3"}, {"matKey": "POLI", "cor": "Cristal", "forn": "Ycaro", "codigo": "NCRIS1"}, {"matKey": "POLI", "cor": "Leitoso", "forn": "Ecolog", "codigo": "NLEI1"}, {"matKey": "POLI", "cor": "Leitoso", "forn": "Tallpack", "codigo": "NLEI2"}, {"matKey": "POLI", "cor": "Leitoso", "forn": "Valgroup", "codigo": "NLEI3"}, {"matKey": "POLI", "cor": "Leitoso", "forn": "Ycaro", "codigo": "NLEI4"}, {"matKey": "AUXFLUX", "cor": null, "forn": "Cristal Master", "codigo": "A1"}];
+  // ── POR QUE ESTES TRÊS PRECISAM MESCLAR ──────────────────────────
+  //  Até 28/09/2026 os três catálogos de MP só eram gravados quando a
+  //  chave NÃO existia. Faz sentido para não apagar o que o usuário
+  //  cadastrou pela tela — mas tinha um efeito que ninguém via: numa
+  //  estação que já rodou, as três chaves existem, então um material
+  //  NOVO no código nunca chegava lá. Instalava a atualização, o
+  //  material estava no server.js, e continuava sem aparecer na tela.
+  //
+  //  Agora é o mesmo tratamento que o mapa de produtos Bling já tinha:
+  //  acrescenta o que é novo, NÃO toca no que já está gravado. Material
+  //  removido do código também fica onde está — tirar do catálogo é
+  //  decisão de quem cadastrou, não efeito colateral de uma atualização.
+  // ─────────────────────────────────────────────────────────────────
+  const mesclarObjeto = (chave, padrao, oQue) => {
+    const atual = dbStmts.configGet.get(chave);
+    if (!atual) { dbStmts.configSet.run(chave, JSON.stringify(padrao)); inseridas++; return; }
+    try {
+      const tem = JSON.parse(atual.valor || '{}');
+      let novos = 0;
+      for (const k in padrao) if (!(k in tem)) { tem[k] = padrao[k]; novos++; }
+      if (novos > 0) {
+        dbStmts.configSet.run(chave, JSON.stringify(tem));
+        logI('db', `${oQue}: ${novos} novo(s) mesclado(s) ao banco existente`);
+      }
+    } catch (e) { logW('db', `Falha ao mesclar ${chave}`, { erro: e && e.message }); }
+  };
+  mesclarObjeto('mp_fornecedores', mpFornecedoresPadrao, 'Fornecedores por material');
   // Estrutura dos materiais (nome popular + cores válidas). Usada pela tela de
   // Manutenção para montar as opções de cadastro do código gravimétrico.
-  if (!dbStmts.configGet.get('mp_materiais')) {
-    dbStmts.configSet.run('mp_materiais', JSON.stringify(MP_MATERIAIS_PADRAO));
-    inseridas++;
+  mesclarObjeto('mp_materiais', MP_MATERIAIS_PADRAO, 'Materiais de MP');
+
+  // Os códigos gravimétricos são uma LISTA, não um objeto: a identidade de
+  // uma linha é material+cor+fornecedor. Comparar por essa identidade evita
+  // duplicar um código que o usuário já cadastrou com outra grafia de caixa.
+  {
+    const atual = dbStmts.configGet.get('mp_codigos_gravimetricos');
+    if (!atual) {
+      dbStmts.configSet.run('mp_codigos_gravimetricos', JSON.stringify(mpCodigosGravPadrao));
+      inseridas++;
+    } else {
+      try {
+        const tem = JSON.parse(atual.valor || '[]');
+        const id = c => `${String(c.matKey||'').toUpperCase()}|${String(c.cor||'').toUpperCase()}|${String(c.forn||'').toUpperCase()}`;
+        const jaTem = new Set(tem.map(id));
+        let novos = 0;
+        for (const c of mpCodigosGravPadrao) if (!jaTem.has(id(c))) { tem.push(c); novos++; }
+        if (novos > 0) {
+          dbStmts.configSet.run('mp_codigos_gravimetricos', JSON.stringify(tem));
+          logI('db', `Códigos gravimétricos: ${novos} novo(s) mesclado(s) ao banco existente`);
+        }
+      } catch (e) { logW('db', 'Falha ao mesclar códigos gravimétricos', { erro: e && e.message }); }
+    }
   }
 
   // ── EXTRUSÃO: mapa de bobinas (cor|tipo|largura → ID Bling + SKU) ──
@@ -6149,17 +6198,28 @@ const requestHandlerBase = async (req, res) => {
         return jsonErr(res, 400, 'Informe a quantidade de sacos ou um peso avulso');
       }
       const peso = Number((qtdSacos * KG_SACO + pesoAvulso).toFixed(3));
+      // QUEM PODE SAIR POR SACOS é quem ENTRA por sacos: a lista vem do
+      // MP_CONTAGEM_MANUAL, não de dois nomes escritos aqui dentro. Com os
+      // nomes fixos, um material novo contado em sacos passava no
+      // recebimento e era recusado na retirada — meio caminho, que é pior
+      // que caminho nenhum: entra estoque que não tem como sair.
       const matKey = String(body.materialKey).toUpperCase();
-      if (!['PIG','DESSEC'].includes(matKey)) return jsonErr(res, 400, `materialKey inválido para aditivo contado: ${matKey} (use PIG ou DESSEC)`);
-      const cor = (matKey === 'PIG') ? (body.cor || null) : null;
-      if (matKey === 'PIG' && !cor) return jsonErr(res, 400, 'cor obrigatória para PIG');
+      const porSacos = Object.keys(MP_CONTAGEM_MANUAL);
+      if (!porSacos.includes(matKey)) return jsonErr(res, 400,
+        `materialKey inválido para aditivo contado: ${matKey} (use ${porSacos.join(', ')})`);
+      // Cor só é exigida de quem TEM cor no catálogo — hoje só o pigmento.
+      const materiaisCat = (() => { try { return lerCatalogoMP().materiais || {}; } catch(e) { return {}; } })();
+      const catMat = materiaisCat[matKey] || MP_MATERIAIS_PADRAO[matKey] || {};
+      const temCor = Array.isArray(catMat.cores) && catMat.cores.length > 0;
+      const cor = temCor ? (body.cor || null) : null;
+      if (temCor && !cor) return jsonErr(res, 400, `cor obrigatória para ${matKey}`);
 
       const seqRet = getProximoSeq('retirada');
       const idVirt = 'S' + String(seqRet).padStart(7, '0');
       const seqSessaoRet = proximoSeqSessao(sessaoIdRet);
       const corLabel = cor || '';
       const skuForn = '.' + String(body.fornecedor).replace(/[^A-Za-z0-9]/g,'').substring(0,6).toUpperCase();
-      const matLabel = matKey === 'PIG' ? 'Pigmento' : 'Dessecante';
+      const matLabel = catMat.popular || matKey;
       const marca = pesoAvulso > 0
         ? (qtdSacos > 0 ? `${qtdSacos}SC+${pesoAvulso}KG` : 'AVULSO')
         : 'SACOS';
@@ -6997,7 +7057,8 @@ const requestHandlerBase = async (req, res) => {
         const interpretar = (nome, codigo) => {
           let N = norm(nome) + ' ' + norm(codigo);
           const apelidos = { GBD: ['GBD', 'GRAO BAIXA', 'BAIXA DENSIDADE'], POLI: ['POLI', 'POLINYLON', 'NYLON'],
-                             CARBO: ['CARBO', 'CARBONATO'], PIG: ['PIG', 'PIGMENTO'], DESSEC: ['DESSEC', 'DESSECANTE'] };
+                             CARBO: ['CARBO', 'CARBONATO'], PIG: ['PIG', 'PIGMENTO'], DESSEC: ['DESSEC', 'DESSECANTE'],
+                             AUXFLUX: ['AUXFLUX', 'AUXILIAR DE FLUXO', 'AUXILIAR FLUXO'] };
           let material = null;
           for (const m of materiais) {
             const alvos = apelidos[m] || [m];
