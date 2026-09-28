@@ -83,6 +83,19 @@
   .vazio{color:var(--muted); font-size:14px; text-align:center; padding:18px; background:var(--panel); border-radius:12px;}
   .carregando{color:var(--muted); font-size:14px; text-align:center; padding:18px;}
 
+  /* Inventário */
+  .inv-tot{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
+  .inv-tot div{background:var(--panel); border:1.5px solid var(--border); border-radius:14px; padding:14px; text-align:center;}
+  .inv-tot b{display:block; font-size:30px; font-weight:900; color:var(--verde); line-height:1.1;}
+  .inv-tot span{font-size:12px; font-weight:800; letter-spacing:1px; color:var(--muted); text-transform:uppercase;}
+  .inv-dica{color:var(--muted); font-size:14px; text-align:center; margin:12px 0 4px;}
+  .inv-ult{border-radius:14px; padding:12px 14px; margin-top:10px; border:2px solid var(--verde); background:var(--panel-hi);}
+  .inv-ult.alerta{border-color:var(--ambar);} .inv-ult.erro{border-color:var(--vermelho);}
+  .inv-ult b{font-family:ui-monospace,monospace;}
+  .tag{font-size:11px; font-weight:800; border-radius:6px; padding:2px 6px; white-space:nowrap;}
+  .tag.ok{background:rgba(0,255,157,.12); color:var(--verde);} .tag.al{background:rgba(255,194,80,.14); color:var(--ambar);} .tag.er{background:rgba(255,107,107,.14); color:var(--vermelho);}
+  .inv-final textarea{width:100%; min-height:160px; margin-top:8px; background:var(--bg); color:var(--txt); border:1.5px solid var(--border); border-radius:10px; font-family:ui-monospace,monospace; font-size:11px; padding:8px;}
+
   /* Modal de fardos */
   .modal-fundo{position:fixed; inset:0; background:rgba(0,0,0,0.72); z-index:90; display:flex; align-items:center; justify-content:center; padding:16px;}
   .modal{background:var(--panel); border:2px solid var(--ambar); border-radius:18px; padding:18px; width:100%; max-width:420px; max-height:92dvh; overflow:auto;}
@@ -108,7 +121,7 @@
 </header>
 <div class="toast" id="toast"></div>
 
-<div class="wrap">
+<div class="wrap" id="tela-sac">
   <!-- Turno: só com o Bling ligado (é o cliente da venda). -->
   <div class="turnos oculto" id="turnos"></div>
 
@@ -125,6 +138,23 @@
 
   <div class="sec-tit"><span>Hoje</span><span class="sub" id="hoje-resumo"></span></div>
   <div class="hist" id="lista-hist"><div class="carregando">Carregando…</div></div>
+
+  <button class="btn btn-cinza digitar" onclick="abrirInventario()">📋 Inventário de bobinas</button>
+</div>
+
+<!-- INVENTÁRIO: bipa toda bobina que está no estoque. Só registra; não muda
+     o status de nenhuma etiqueta. -->
+<div class="wrap oculto" id="tela-inv">
+  <div class="sec-tit"><span>Inventário de bobinas</span><span class="sub" id="inv-desde"></span></div>
+  <div class="inv-tot"><div><b id="inv-qtd">0</b><span>bobinas</span></div><div><b id="inv-kg">0</b><span>kg</span></div></div>
+  <div class="inv-dica">Bipe cada bobina do estoque com o gatilho.</div>
+  <div id="inv-ultima"></div>
+  <button class="btn btn-cinza digitar" onclick="digitarCodigo()">⌨️ Digitar código da etiqueta</button>
+  <div class="sec-tit"><span>Lidas</span><span class="sub" id="inv-alertas"></span></div>
+  <div class="hist" id="inv-lista"></div>
+  <div id="inv-final"></div>
+  <button class="btn btn-verde digitar" id="inv-concluir" onclick="concluirInventario()">✓ Concluir inventário</button>
+  <button class="btn-link" onclick="voltarSacoleiras()">← Voltar às sacoleiras (o inventário continua aberto)</button>
 </div>
 
 <script>
@@ -134,6 +164,7 @@ let bobinaAtual=null;      // bobina lida, aguardando a sacoleira
 let BLING=false;           // a baixa cria pedido no Bling? (config baixa_bobina_bling)
 let TURNOS=[], TURNO=null; // só usados com o Bling ligado
 let ABERTAS=[];            // [{sacoleira, bobina|null}] — o que está montado agora
+let MODO='sac';            // 'sac' (entrada na sacoleira) | 'inv' (inventário)
 let enviando=false;
 
 function toast(tipo,msg,ms){
@@ -191,6 +222,8 @@ async function onLeu(codigo){
   if(ultimoBipe[id] && agora-ultimoBipe[id]<2500) return;
   ultimoBipe[id]=agora;
   if(enviando) return;
+  if(MODO==='inv'){ await lerInventario(id); return; }
+  if(MODO==='inv-fim'){ beep(320,0.2); toast('aviso','Inventário concluído. Toque em "Voltar às sacoleiras" para bipar entradas.',4000); return; }
   try{
     const r=await fetch(URL_BASE+'/bobinas/'+encodeURIComponent(id));
     const d=await r.json();
@@ -391,6 +424,98 @@ async function desfazer(id, sac){
   }catch(e){ toast('erro','Erro: '+esc(e.message),5000); }
 }
 
+// ── INVENTÁRIO ───────────────────────────────────────────────────────────
+const SIT={ estoque:['ok','em estoque'], na_sacoleira:['al','sistema: na sacoleira'],
+            usada:['al','sistema: já usada'], cancelada:['er','etiqueta cancelada'] };
+function tagSit(s,dest){ const t=SIT[s]||['al',s]; return '<span class="tag '+t[0]+'">'+t[1]+(s==='na_sacoleira'&&dest?(' '+esc(dest)):'')+'</span>'; }
+function mostrarTela(m){
+  MODO=m;
+  document.getElementById('tela-sac').classList.toggle('oculto', m!=='sac');
+  document.getElementById('tela-inv').classList.toggle('oculto', m!=='inv');
+  window.scrollTo(0,0);
+}
+function pintarInventario(d){
+  const itens=d.itens||[];
+  document.getElementById('inv-qtd').textContent=itens.length;
+  document.getElementById('inv-kg').textContent=(d.kg||0).toLocaleString('pt-BR');
+  document.getElementById('inv-desde').textContent=d.inventario?('aberto '+diaHora(d.inventario.inicio)):'';
+  const al=itens.filter(x=>x.situacao!=='estoque').length;
+  document.getElementById('inv-alertas').textContent=al?('⚠ '+al+' com divergência'):'';
+  document.getElementById('inv-lista').innerHTML = itens.length ? itens.map(x=>
+    '<div class="h-item"><span class="h-hora">'+hora(x.lido_em)+'</span>'+
+    '<div class="h-mat">'+descCurta(x)+'<small>'+esc(x.id)+' · '+fmtKg(x.peso||0)+'</small></div>'+
+    '<div class="h-dir">'+tagSit(x.situacao,x.destino)+
+    (d.aberto!==false?('<button class="h-desf" onclick="removerInventario(\''+esc(x.id)+'\')">remover</button>'):'')+'</div></div>').join('')
+    : '<div class="vazio">Nenhuma bobina lida ainda.</div>';
+}
+async function retomarInventario(){
+  try{
+    const r=await fetch(URL_BASE+'/bobinas/inventario'); const d=await r.json();
+    if(d && d.aberto){ mostrarTela('inv'); pintarInventario(d); toast('aviso','Inventário em andamento — continue bipando',3000); }
+  }catch(e){}
+}
+async function abrirInventario(){
+  try{
+    const r=await fetch(URL_BASE+'/bobinas/inventario/abrir',{ method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ operador:(window.EKO_RESPONSAVEL||null) }) });
+    const d=await r.json();
+    if(!r.ok||!d.ok){ toast('erro',esc((d&&d.erro)||'Falha ao abrir'),5000); return; }
+    cancelarLeitura(); document.getElementById('inv-final').innerHTML=''; document.getElementById('inv-ultima').innerHTML='';
+    document.getElementById('inv-concluir').classList.remove('oculto');
+    mostrarTela('inv'); pintarInventario(d);
+  }catch(e){ toast('erro','Erro: '+esc(e.message),5000); }
+}
+async function lerInventario(id){
+  const u=document.getElementById('inv-ultima');
+  try{
+    const r=await fetch(URL_BASE+'/bobinas/inventario/ler',{ method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ id, operador:(window.EKO_RESPONSAVEL||null) }) });
+    const d=await r.json();
+    if(!r.ok||!d.ok){ beep(320,0.25); vibrar(200); u.innerHTML='<div class="inv-ult erro"><b>'+esc(id)+'</b> — '+esc((d&&d.erro)||'não registrada')+'</div>'; return; }
+    if(d.repetida){ beep(500,0.15); vibrar([60,60,60]); u.innerHTML='<div class="inv-ult alerta"><b>'+esc(id)+'</b> já tinha sido lida neste inventário</div>'; return; }
+    const alerta=d.situacao!=='estoque';
+    if(alerta){ beep(600,0.2); vibrar([80,60,80]); } else { beep(1050,0.1); vibrar(50); }
+    u.innerHTML='<div class="inv-ult'+(alerta?' alerta':'')+'"><b>'+esc(id)+'</b> · '+descCurta(d.bobina)+' · '+fmtKg(d.bobina.peso||0)+'<br>'+tagSit(d.situacao,d.bobina.destino)+'</div>';
+    const g=await (await fetch(URL_BASE+'/bobinas/inventario')).json();
+    if(g && g.aberto) pintarInventario(g);
+  }catch(e){ toast('erro','Erro: '+esc(e.message),5000); }
+}
+async function removerInventario(id){
+  if(!confirm('Tirar '+id+' do inventário?')) return;
+  try{
+    await fetch(URL_BASE+'/bobinas/inventario/remover',{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ id }) });
+    const g=await (await fetch(URL_BASE+'/bobinas/inventario')).json();
+    if(g && g.aberto) pintarInventario(g);
+  }catch(e){ toast('erro','Erro: '+esc(e.message),5000); }
+}
+async function concluirInventario(){
+  const n=document.getElementById('inv-qtd').textContent;
+  if(!confirm('Concluir o inventário com '+n+' bobina(s)?\n\nDepois de concluído, não entra mais nenhuma leitura nele.')) return;
+  try{
+    const r=await fetch(URL_BASE+'/bobinas/inventario/concluir',{ method:'POST', headers:{'Content-Type':'application/json'}, body:'{}' });
+    const d=await r.json();
+    if(!r.ok||!d.ok){ toast('erro',esc((d&&d.erro)||'Falha ao concluir'),5000); return; }
+    d.aberto=false; pintarInventario(d);
+    const txt=await (await fetch(URL_BASE+'/bobinas/inventario/lista?id='+d.inventario.id)).text();
+    const ps=d.por_situacao||{};
+    document.getElementById('inv-final').innerHTML='<div class="inv-final"><div class="sec-tit"><span>Inventário #'+d.inventario.id+' concluído</span></div>'+
+      '<div class="m-sub" style="color:var(--muted);font-size:14px">'+d.qtd+' bobinas · '+(d.kg||0).toLocaleString('pt-BR')+' kg'+
+      (ps.na_sacoleira?(' · '+ps.na_sacoleira+' que o sistema dava na sacoleira'):'')+(ps.usada?(' · '+ps.usada+' que o sistema dava como usadas'):'')+'</div>'+
+      '<textarea id="inv-texto" readonly>'+esc(txt)+'</textarea>'+
+      '<button class="btn btn-verde digitar" onclick="copiarInventario()">📋 Copiar lista</button></div>';
+    document.getElementById('inv-concluir').classList.add('oculto');
+    document.getElementById('inv-ultima').innerHTML='';
+    MODO='inv-fim';   // leitura não entra mais em inventário nenhum
+    toast('ok','✓ Inventário concluído',3000);
+  }catch(e){ toast('erro','Erro: '+esc(e.message),5000); }
+}
+async function copiarInventario(){
+  const t=document.getElementById('inv-texto');
+  try{ await navigator.clipboard.writeText(t.value); toast('ok','Lista copiada',2000); }
+  catch(e){ t.select(); try{ document.execCommand('copy'); toast('ok','Lista copiada',2000); }catch(e2){ toast('aviso','Selecione o texto e copie',3000); } }
+}
+function voltarSacoleiras(){ mostrarTela('sac'); atualizarTudo(); }
+
 async function atualizarTudo(){ await Promise.all([carregarSacoleiras(), carregarHistorico()]); }
 
 // ── TURNO (só com o Bling ligado: é o cliente da venda)
@@ -427,9 +552,10 @@ comAcesso('bobinas', nome => {
   if (nome) document.getElementById('quem').textContent = '👤 ' + nome;
   carregarModo();
   atualizarTudo();
+  retomarInventario();
   // Outro celular pode trocar bobina: atualiza as sacoleiras a cada minuto
   // enquanto a tela estiver visível e sem leitura em andamento.
-  setInterval(()=>{ if(!document.hidden && !bobinaAtual && !enviando) atualizarTudo(); }, 60000);
+  setInterval(()=>{ if(MODO==='sac' && !document.hidden && !bobinaAtual && !enviando) atualizarTudo(); }, 60000);
 });
 </script>
 </body>

@@ -856,6 +856,58 @@ function encerrarBobina(id, fardos, motivo, quando) {
                WHERE id = ? AND encerrada_em IS NULL`).run(fardos, quando, motivo, id);
 }
 
+// ── INVENTÁRIO DE BOBINAS (28/09/2026, VPS) ─────────────────────────────
+// O operador bipa toda bobina que está fisicamente no estoque. SÓ REGISTRA:
+// não muda status de etiqueta nenhuma. Até hoje a baixa de bobina não era
+// usada, então 1.547 etiquetas de extrusão constam "bipada" (em estoque) só
+// porque nunca foram baixadas. A lista contada é que diz o estoque real; o
+// que fazer com as que não aparecerem é decisão à parte, com a lista na mão.
+// A `situacao` guarda o que o SISTEMA achava da bobina na hora da leitura.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS inventario_bobinas (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    inicio    TEXT NOT NULL,
+    fim       TEXT,
+    operador  TEXT
+  );
+  CREATE TABLE IF NOT EXISTS inventario_bobinas_itens (
+    inventario_id INTEGER NOT NULL,
+    etiqueta_id   TEXT NOT NULL,
+    lido_em       TEXT NOT NULL,
+    situacao      TEXT,          -- estoque | na_sacoleira | usada | cancelada
+    operador      TEXT,
+    PRIMARY KEY (inventario_id, etiqueta_id)
+  );
+`);
+
+function inventarioAberto() {
+  return db.prepare(`SELECT * FROM inventario_bobinas WHERE fim IS NULL ORDER BY id DESC LIMIT 1`).get() || null;
+}
+
+// Situação que o sistema dá para a bobina: é o que o inventário confronta.
+function situacaoBobina(e) {
+  if (e.status === 'cancelada') return 'cancelada';
+  if (e.status === 'consumida' && e.destino && !e.encerrada_em) return 'na_sacoleira';
+  if (e.status === 'consumida') return 'usada';
+  return 'estoque';
+}
+
+function itensInventario(invId) {
+  return db.prepare(
+    `SELECT i.etiqueta_id AS id, i.lido_em, i.situacao, i.operador,
+            e.cor, e.tipo_bobina, e.largura, e.peso, e.maquina, e.hora_impressao, e.destino
+       FROM inventario_bobinas_itens i LEFT JOIN etiquetas e ON e.id = i.etiqueta_id
+      WHERE i.inventario_id = ? ORDER BY i.lido_em DESC`).all(invId);
+}
+
+function resumoInventario(inv) {
+  const itens = itensInventario(inv.id);
+  const kg = itens.reduce((a, x) => a + (Number(x.peso) || 0), 0);
+  const porSit = {};
+  for (const x of itens) porSit[x.situacao] = (porSit[x.situacao] || 0) + 1;
+  return { inventario: inv, itens, qtd: itens.length, kg: +kg.toFixed(1), por_situacao: porSit };
+}
+
 // ══════════════════════════════════════════════════════════════════
 //  LAYOUT DO GALPÃO  (endereçamento — 04/09/2026)
 // ------------------------------------------------------------------
@@ -8861,6 +8913,77 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
     // deixaria a sequência da máquina sem sentido. A bobina que esta troca
     // encerrou NÃO é reaberta: ela saiu da máquina de verdade, e os fardos
     // informados dela valem. Corrige-se bipando a bobina certa depois.
+    // ── Inventário de bobinas (ver inventarioAberto, lá em cima) ──
+    if (pathname === '/bobinas/inventario' && req.method === 'GET') {
+      const inv = inventarioAberto();
+      if (inv) return jsonOk(res, { aberto: true, ...resumoInventario(inv) });
+      const ult = db.prepare(`SELECT * FROM inventario_bobinas WHERE fim IS NOT NULL ORDER BY id DESC LIMIT 1`).get();
+      return jsonOk(res, { aberto: false, ultimo: ult ? { id: ult.id, inicio: ult.inicio, fim: ult.fim,
+        qtd: db.prepare(`SELECT COUNT(*) n FROM inventario_bobinas_itens WHERE inventario_id=?`).get(ult.id).n } : null });
+    }
+    if (pathname === '/bobinas/inventario/abrir' && req.method === 'POST') {
+      let body; try { body = await lerBodyJson(req); } catch(e) { return jsonErr(res, 400, e.message); }
+      let inv = inventarioAberto();
+      if (!inv) {
+        const operador = (body.operador ? String(body.operador).trim().slice(0, 80) : null) || null;
+        const r = db.prepare(`INSERT INTO inventario_bobinas (inicio, operador) VALUES (?, ?)`)
+          .run(new Date().toISOString(), operador);
+        inv = db.prepare(`SELECT * FROM inventario_bobinas WHERE id = ?`).get(Number(r.lastInsertRowid));
+        logI('bobinas', `Inventário de bobinas #${inv.id} aberto${operador ? ' por ' + operador : ''}`);
+      }
+      return jsonOk(res, { aberto: true, ...resumoInventario(inv) });
+    }
+    if (pathname === '/bobinas/inventario/ler' && req.method === 'POST') {
+      let body; try { body = await lerBodyJson(req); } catch(e) { return jsonErr(res, 400, e.message); }
+      const inv = inventarioAberto();
+      if (!inv) return jsonErr(res, 409, 'Nenhum inventário aberto');
+      const bid = String(body.id || '').trim().toUpperCase();
+      const e = bid && dbStmts.getEtiqueta.get(bid);
+      if (!e) return jsonErr(res, 404, `Etiqueta ${bid} não encontrada`);
+      if (e.tipo !== 'extrusao') return jsonErr(res, 400, `${bid} não é bobina (é ${e.tipo})`);
+      const ja = db.prepare(`SELECT 1 FROM inventario_bobinas_itens WHERE inventario_id=? AND etiqueta_id=?`).get(inv.id, bid);
+      if (ja) return jsonOk(res, { repetida: true, id: bid });
+      const situacao = situacaoBobina(e);
+      const operador = (body.operador ? String(body.operador).trim().slice(0, 80) : null) || null;
+      db.prepare(`INSERT INTO inventario_bobinas_itens (inventario_id, etiqueta_id, lido_em, situacao, operador)
+                  VALUES (?, ?, ?, ?, ?)`).run(inv.id, bid, new Date().toISOString(), situacao, operador);
+      return jsonOk(res, { lida: true, id: bid, situacao,
+        bobina: { cor: e.cor, tipo_bobina: e.tipo_bobina, largura: e.largura, peso: e.peso, destino: e.destino } });
+    }
+    if (pathname === '/bobinas/inventario/remover' && req.method === 'POST') {
+      let body; try { body = await lerBodyJson(req); } catch(e) { return jsonErr(res, 400, e.message); }
+      const inv = inventarioAberto();
+      if (!inv) return jsonErr(res, 409, 'Nenhum inventário aberto');
+      const bid = String(body.id || '').trim().toUpperCase();
+      db.prepare(`DELETE FROM inventario_bobinas_itens WHERE inventario_id=? AND etiqueta_id=?`).run(inv.id, bid);
+      return jsonOk(res, { removida: true, id: bid });
+    }
+    if (pathname === '/bobinas/inventario/concluir' && req.method === 'POST') {
+      let body; try { body = await lerBodyJson(req); } catch(e) { return jsonErr(res, 400, e.message); }
+      const inv = inventarioAberto();
+      if (!inv) return jsonErr(res, 409, 'Nenhum inventário aberto');
+      db.prepare(`UPDATE inventario_bobinas SET fim = ? WHERE id = ?`).run(new Date().toISOString(), inv.id);
+      const fechado = db.prepare(`SELECT * FROM inventario_bobinas WHERE id = ?`).get(inv.id);
+      const r = resumoInventario(fechado);
+      logI('bobinas', `Inventário de bobinas #${inv.id} concluído: ${r.qtd} bobina(s), ${r.kg} kg`);
+      return jsonOk(res, { concluido: true, ...r });
+    }
+    // Lista em texto (uma linha por bobina, separada por ;) para copiar e
+    // mandar adiante. ?id=N; sem id, o aberto ou o último concluído.
+    if (pathname === '/bobinas/inventario/lista' && req.method === 'GET') {
+      const id = parseInt(parsed.query.id, 10);
+      const inv = id ? db.prepare(`SELECT * FROM inventario_bobinas WHERE id = ?`).get(id)
+                     : (inventarioAberto() || db.prepare(`SELECT * FROM inventario_bobinas ORDER BY id DESC LIMIT 1`).get());
+      if (!inv) return jsonErr(res, 404, 'Nenhum inventário');
+      const r = resumoInventario(inv);
+      const linhas = [`INVENTARIO DE BOBINAS #${inv.id} · inicio ${inv.inicio} · fim ${inv.fim || 'em aberto'} · ${r.qtd} bobinas · ${r.kg} kg`,
+                      'etiqueta;cor;tipo;largura;peso_kg;extrusora;impressa_em;situacao_no_sistema;lida_em'];
+      for (const x of r.itens.slice().reverse())
+        linhas.push([x.id, x.cor, x.tipo_bobina, x.largura, x.peso, x.maquina, x.hora_impressao, x.situacao, x.lido_em].join(';'));
+      res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+      return res.end(linhas.join('\n') + '\n');
+    }
+
     if (pathname === '/bobinas/desfazer' && req.method === 'POST') {
       let body; try { body = await lerBodyJson(req); } catch(e) { return jsonErr(res, 400, e.message); }
       const bid = String(body.id || '').trim().toUpperCase();
