@@ -873,9 +873,9 @@ function encerrarBobina(id, fardos, motivo, quando, formato, formatoOrigem) {
 // ── FORMATO QUE A SACOLEIRA ESTÁ CORTANDO (29/09/2026, VPS — Gustavo) ────
 // Três fontes, nesta ordem de trava:
 //   1. cada máquina só corta os formatos dela (PA_FORMATOS_POR_MAQUINA);
-//   2. cada largura de bobina só roda certos formatos: tabela do config
-//      `formatos_por_bobina` (JSON {"160": ["30x40","30x45",...], ...}), que o
-//      Gustavo passa. Sem a largura na tabela, esta trava não filtra nada.
+//   2. cada largura de bobina só roda certos formatos: FORMATOS_POR_BOBINA
+//      (Gustavo, 29/09/2026), ajustável pelo config `formatos_por_bobina`
+//      (JSON {"160": [...]}). Largura fora da tabela: esta trava não filtra.
 //      As PISTAS do CLP não entram: o operador não atualiza quando muda;
 //   3. o COMPRIMENTO que o CLP da sacoleira mostra escolhe entre os que sobram.
 // O CLP chega pela VPS (EKOSERVER → SFTP → acumulador), com até ~15 min de
@@ -885,6 +885,14 @@ const PESO_FARDO_KG = 25;
 // fábrica mede diferente. 35x45 ≈ 460 mm (Gustavo, 29/09/2026). Ajustável sem
 // código pelo config `sac_comprimento_formato` (JSON {"30x45": 452, ...}).
 const SAC_COMPRIMENTO_PADRAO = { '35x45': 460 };
+// Largura da bobina (cm) → formatos que ela atende (áudios do Gustavo, 29/09/2026).
+const FORMATOS_POR_BOBINA = {
+  '175': ['35x45'],
+  '168': ['42x53'],
+  '160': ['30x40', '33x46', '30x45', '40x50', '50x60'],
+  '120': ['60x80'],
+  '80':  ['80x100'],
+};
 function comprimentoFormato(f) {
   let custom = {}; try { custom = JSON.parse(configGet('sac_comprimento_formato', '{}')); } catch(e) {}
   return Number(custom[f]) || SAC_COMPRIMENTO_PADRAO[f] || Number(String(f).split('x')[1]) * 10;
@@ -926,7 +934,8 @@ function sugerirFormato(maq, bobina, clp) {
   const usaClp = clp && !out.clp_velho;
   out.comprimento_mm = usaClp && clp.comprimento_mm ? Number(clp.comprimento_mm) : null;
   let cabem = permitidos;
-  let porBobina = {}; try { porBobina = JSON.parse(configGet('formatos_por_bobina', '{}')); } catch(e) {}
+  let porBobina = FORMATOS_POR_BOBINA;
+  try { const c = JSON.parse(configGet('formatos_por_bobina', '{}')); if (c && Object.keys(c).length) porBobina = c; } catch(e) {}
   const daBobina = out.largura_bobina_cm ? porBobina[String(out.largura_bobina_cm)] : null;
   if (Array.isArray(daBobina) && daBobina.length) {
     cabem = permitidos.filter(f => daBobina.includes(f));
