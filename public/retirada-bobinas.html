@@ -108,6 +108,32 @@
   .modal input:focus{outline:none; border-color:var(--ambar);}
   .modal .btn{width:100%; margin-top:12px;}
 
+  /* 29/09/2026 (Gustavo): formato cortado, quem bipou, peso dos fardos,
+     alerta de peso — e os NÚMEROS com mais evidência. */
+  .sac .s-corte{margin-top:8px; font-size:22px; font-weight:900; line-height:1.1; color:var(--verde);}
+  .sac .s-corte small{display:block; font-size:12px; font-weight:700; color:var(--muted); margin-top:2px;}
+  .sac .s-corte.duvida{color:var(--ambar); font-size:17px;}
+  .sac .s-corte.sem{color:var(--muted); font-size:15px;}
+  .sac .s-kg{font-size:20px; font-weight:900; margin-top:6px;}
+  .sac .s-quem{font-size:13px; font-weight:800; margin-top:2px;}
+  .modal .m-kg{font-size:26px; font-weight:900; text-align:center; margin-top:8px;}
+  .modal .m-kg small{display:block; font-size:12px; font-weight:700; color:var(--muted);}
+  .modal .m-alerta{margin-top:8px; padding:10px 12px; border-radius:12px; background:#3b1414;
+    border:1.5px solid var(--vermelho); color:var(--vermelho); font-weight:800; font-size:14px;}
+  .modal .m-resumo{margin-top:14px; padding:12px; border-radius:12px; background:var(--panel-hi);
+    border:1.5px solid var(--border); font-size:15px; line-height:1.5;}
+  .modal .m-resumo b{font-size:18px;}
+  .fmts{display:flex; flex-wrap:wrap; gap:8px; margin-top:8px;}
+  .fmts .chip{min-width:84px; font-size:17px;}
+  .fmts .chip.cand{border-style:dashed; border-color:var(--ambar);}
+  .fmts .chip.sel{background:rgba(0,255,157,.12);}
+  .m-dica{font-size:12px; color:var(--muted); margin-top:6px;}
+  .nomes{display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; max-height:40dvh; overflow:auto;}
+  .modal input.txt{font-size:20px; font-weight:800; text-align:left;}
+  .h-item .h-dir b{font-size:17px;}
+  .h-item.alerta{border-color:var(--vermelho);}
+  .h-item .h-alerta{color:var(--vermelho);}
+
   .toast{position:fixed; left:50%; transform:translateX(-50%); top:76px; padding:14px 20px; border-radius:14px; font-size:16px; font-weight:800; z-index:100; box-shadow:0 8px 28px rgba(0,0,0,0.6); max-width:92vw; text-align:center; display:none;}
   .toast.ok{background:#0d3b2a; color:var(--verde); border:1.5px solid var(--verde);}
   .toast.erro{background:#3b1414; color:var(--vermelho); border:1.5px solid var(--vermelho);}
@@ -279,11 +305,15 @@ function soltarDestinos(){ document.querySelectorAll('.btn-destino').forEach(b=>
 async function confirmarBaixa(sac){
   if(!bobinaAtual || enviando) return;
   if(BLING && !TURNO){ toast('erro','Escolha o turno primeiro',3000); return; }
-  let fardosAnterior=null;
+  // Quem está bipando é quem vai cortar esta bobina (29/09/2026).
+  const nome=await perguntarNome(sac);
+  if(!nome) return;
+  let fardosAnterior=null, saida=null;
   const montada=(ABERTAS.find(a=>a.sacoleira===sac)||{}).bobina;
   if(montada && montada.id!==bobinaAtual.id){
-    fardosAnterior=await perguntarFardos(montada, sac, 'troca');
-    if(fardosAnterior===null) return;           // cancelou: nada é gravado
+    saida=await perguntarFardos(montada, sac, 'troca');
+    if(saida===null) return;                    // cancelou: nada é gravado
+    fardosAnterior=saida.fardos;
   }
   enviando=true; travarDestinos(sac);
   try{
@@ -292,14 +322,20 @@ async function confirmarBaixa(sac){
       r=await fetch(URL_BASE+'/bobinas/baixa',{
         method:'POST', headers:{'Content-Type':'application/json'},
         body:JSON.stringify({ id:bobinaAtual.id, destino:sac, turno:(BLING&&TURNO)?TURNO.codigo:null,
-                              fardos_anterior:fardosAnterior, operador:(window.EKO_RESPONSAVEL||null) })
+                              fardos_anterior:fardosAnterior,
+                              formato_anterior:saida?saida.formato:null,
+                              formato_anterior_origem:saida?saida.origem:null,
+                              operador:nome })
       });
       d=await r.json();
       // Outro celular montou bobina nesta sacoleira no meio do caminho: o
       // servidor pede os fardos dela. Pergunta e tenta de novo, uma vez.
       if(r.status===409 && d && d.precisa_fardos && tentativa===0){
-        fardosAnterior=await perguntarFardos(d.anterior, sac, 'troca');
-        if(fardosAnterior===null){ soltarDestinos(); enviando=false; return; }
+        await carregarSacoleiras();
+        const nova=(ABERTAS.find(a=>a.sacoleira===sac)||{}).bobina;
+        saida=await perguntarFardos((nova && nova.id===d.anterior.id)?nova:d.anterior, sac, 'troca');
+        if(saida===null){ soltarDestinos(); enviando=false; return; }
+        fardosAnterior=saida.fardos;
         continue;
       }
       break;
@@ -307,35 +343,116 @@ async function confirmarBaixa(sac){
     if(!r.ok || !d.ok){ beep(320,0.25); vibrar(200); toast('erro',esc((d&&d.erro)||'Falha ao registrar'),6000); soltarDestinos(); enviando=false; return; }
     beep(1050,0.14); vibrar([60,50,60]);
     const ped = d.modo==='sem_bling' ? '' : ('<br>pedido '+esc(d.pedido)+(d.modo==='simulacao'?' (simulação)':''));
-    toast('ok','✓ '+esc(bobinaAtual.id)+' na '+sac+ped,3000);
+    toast('ok','✓ '+esc(bobinaAtual.id)+' na '+sac+' · '+esc(nome)+ped,3000);
     cancelarLeitura();
     await atualizarTudo();
   }catch(e){ toast('erro','Erro: '+esc(e.message),5000); soltarDestinos(); }
   enviando=false;
 }
 
-// Pergunta quantos fardos a bobina deu. Resolve com o número, ou null.
+// Pergunta quantos fardos a bobina deu e CONFIRMA o formato que ela virou
+// (29/09/2026): o formato vem pré-selecionado pelo sistema (comprimento da
+// sacoleira, travado pelos formatos da máquina), com a cor da bobina, e o
+// operador só confirma ou troca. Mostra o peso dos fardos (× 25 kg) e avisa
+// quando passa do peso da bobina. Resolve {fardos, formato, origem} ou null.
+const KG_FARDO=25;
 function perguntarFardos(bob, sac, modo){
   return new Promise(resolve=>{
+    const ent=ABERTAS.find(a=>a.sacoleira===sac)||{};
+    const permitidos=ent.permitidos||[];
+    const fmt=bob.formato||{};
+    const cands=fmt.candidatos||[];
+    let escolhido=fmt.sugerido||null;
+    const corNome=(bob.cor_pa&&bob.cor_pa.nome)||bob.cor||'';
     const fundo=document.createElement('div');
     fundo.className='modal-fundo';
     const tit = modo==='troca' ? ('Troca na Sacoleira '+sac) : ('Finalizar Sacoleira '+sac);
     const acao = modo==='troca' ? 'Confirmar troca' : 'Finalizar bobina';
+    const chips=permitidos.map(f=>'<button class="chip'+(cands.includes(f)&&cands.length<permitidos.length?' cand':'')+
+      (f===escolhido?' sel':'')+'" data-f="'+esc(f)+'">'+esc(f.replace('x',' × '))+'</button>').join('');
     fundo.innerHTML='<div class="modal">'+
       '<h2>'+tit+'</h2>'+
-      '<div class="m-sub">Sai a <b>'+esc(bob.id)+'</b> · '+descBob(bob)+' · '+fmtKg(bob.peso)+
-        (bob.baixa_em?('<br>montada '+haQuanto(bob.baixa_em)):'')+'</div>'+
+      '<div class="m-sub">Sai a <b>'+esc(bob.id)+'</b> · '+descBob(bob)+' · <b>'+fmtKg(bob.peso)+'</b>'+
+        (bob.baixa_em?('<br>montada '+haQuanto(bob.baixa_em)):'')+
+        (bob.baixa_operador?(' · bipada por <b>'+esc(bob.baixa_operador)+'</b>'):'')+'</div>'+
+      '<label>FORMATO CORTADO · '+esc(corNome.toUpperCase())+'</label>'+
+      '<div class="fmts">'+chips+'</div>'+
+      '<div class="m-dica">'+(fmt.sugerido?('Sugerido pelo sistema ('+esc(fmt.motivo||'')+'). Confirme ou toque em outro.')
+        :esc(fmt.motivo||'Escolha o formato.'))+'</div>'+
       '<label>QUANTOS FARDOS ELA DEU?</label><input id="md-fardos" type="number" inputmode="numeric" min="0" max="999" step="1" autocomplete="off">'+
+      '<div class="m-kg" id="md-kg"></div>'+
+      '<div id="md-alerta"></div>'+
+      '<div class="m-resumo" id="md-resumo"></div>'+
       '<button class="btn btn-verde" id="md-ok">'+acao+'</button>'+
       '<button class="btn-link" id="md-cancelar">Cancelar</button></div>';
     document.body.appendChild(fundo);
     const inp=fundo.querySelector('#md-fardos');
+    const pintar=()=>{
+      const n=Number(inp.value), temN=inp.value!=='' && Number.isInteger(n) && n>=0;
+      const kg=temN?n*KG_FARDO:null;
+      fundo.querySelector('#md-kg').innerHTML=temN?(fmtKg(kg)+'<small>'+n+' fardo'+(n===1?'':'s')+' × '+KG_FARDO+' kg</small>'):'';
+      const passa=temN && Number(bob.peso)>0 && kg>Number(bob.peso);
+      fundo.querySelector('#md-alerta').innerHTML=passa?('<div class="m-alerta">⚠ '+fmtKg(kg)+' de fardos para uma bobina de '+
+        fmtKg(bob.peso)+' — rendeu mais do que pesa. Confira os fardos antes de confirmar.</div>'):'';
+      fundo.querySelector('#md-resumo').innerHTML='Cortou <b>'+(escolhido?esc(escolhido.replace('x',' × ')):'?')+'</b> · '+esc(corNome)+
+        (temN?(' · <b>'+n+'</b> fardo'+(n===1?'':'s')+' · <b>'+fmtKg(kg)+'</b>'):'')+
+        '<br>por <b>'+esc(bob.baixa_operador||'—')+'</b>';
+    };
+    fundo.querySelectorAll('.fmts .chip').forEach(c=>c.onclick=()=>{
+      escolhido=c.dataset.f;
+      fundo.querySelectorAll('.fmts .chip').forEach(x=>x.classList.toggle('sel',x===c));
+      pintar();
+    });
+    inp.addEventListener('input',pintar);
+    pintar();
     setTimeout(()=>inp.focus(),50);
     const fim=v=>{ fundo.remove(); resolve(v); };
     fundo.querySelector('#md-cancelar').onclick=()=>fim(null);
     fundo.querySelector('#md-ok').onclick=()=>{
       const n=Number(inp.value);
       if(inp.value==='' || !Number.isInteger(n) || n<0 || n>999){ toast('erro','Digite o número de fardos (0 a 999)',3000); inp.focus(); return; }
+      if(n>0 && !escolhido){ toast('erro','Toque no formato que ela cortou',3000); return; }
+      fim({ fardos:n, formato:escolhido, origem:(escolhido && escolhido===fmt.sugerido)?'sugerido':'escolhido' });
+    };
+    inp.addEventListener('keydown',e=>{ if(e.key==='Enter') fundo.querySelector('#md-ok').click(); });
+  });
+}
+
+// Quem está bipando (29/09/2026). Lista os nomes que a pesagem já conhece,
+// deixa digitar um novo e lembra o último neste aparelho. Resolve o nome ou null.
+let NOMES=null;
+async function perguntarNome(sac){
+  if(NOMES===null){
+    try{ const d=await (await fetch(URL_BASE+'/bobinas/operadores')).json(); NOMES=(d&&d.operadores)||[]; }
+    catch(e){ NOMES=[]; }
+  }
+  let ultimo=''; try{ ultimo=localStorage.getItem('eko_bipador')||''; }catch(e){}
+  return new Promise(resolve=>{
+    const fundo=document.createElement('div');
+    fundo.className='modal-fundo';
+    const logado=String(window.EKO_RESPONSAVEL||'').trim().toUpperCase();
+    const lista=[...new Set([ultimo, logado].concat(NOMES).filter(Boolean))];
+    fundo.innerHTML='<div class="modal">'+
+      '<h2>Quem está bipando?</h2>'+
+      '<div class="m-sub">A <b>'+esc(bobinaAtual.id)+'</b> vai para a Sacoleira <b>'+esc(sac)+'</b>. '+
+        'Quem bipa é quem corta esta bobina.</div>'+
+      '<div class="nomes">'+lista.map(n=>'<button class="chip'+(n===ultimo?' sel':'')+'" data-n="'+esc(n)+'">'+esc(n)+'</button>').join('')+'</div>'+
+      '<label>OU DIGITE O NOME</label><input id="md-nome" class="txt" type="text" autocomplete="off" autocapitalize="characters" maxlength="40" value="'+esc(ultimo)+'">'+
+      '<button class="btn btn-verde" id="md-ok">Continuar</button>'+
+      '<button class="btn-link" id="md-cancelar">Cancelar</button></div>';
+    document.body.appendChild(fundo);
+    const inp=fundo.querySelector('#md-nome');
+    fundo.querySelectorAll('.nomes .chip').forEach(c=>c.onclick=()=>{
+      inp.value=c.dataset.n;
+      fundo.querySelectorAll('.nomes .chip').forEach(x=>x.classList.toggle('sel',x===c));
+    });
+    const fim=v=>{ fundo.remove(); resolve(v); };
+    fundo.querySelector('#md-cancelar').onclick=()=>fim(null);
+    fundo.querySelector('#md-ok').onclick=()=>{
+      const n=inp.value.trim().toUpperCase();
+      if(n.length<2){ toast('erro','Toque no seu nome ou digite',3000); inp.focus(); return; }
+      try{ localStorage.setItem('eko_bipador',n); }catch(e){}
+      if(!NOMES.includes(n)) NOMES.unshift(n);
       fim(n);
     };
     inp.addEventListener('keydown',e=>{ if(e.key==='Enter') fundo.querySelector('#md-ok').click(); });
@@ -346,12 +463,14 @@ function perguntarFardos(bob, sac, modo){
 async function finalizar(sac){
   const bob=(ABERTAS.find(a=>a.sacoleira===sac)||{}).bobina;
   if(!bob) return;
-  const n=await perguntarFardos(bob, sac, 'finalizar');
-  if(n===null) return;
+  const saida=await perguntarFardos(bob, sac, 'finalizar');
+  if(saida===null) return;
+  const n=saida.fardos;
   try{
     const r=await fetch(URL_BASE+'/bobinas/finalizar',{
       method:'POST', headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({ sacoleira:sac, fardos:n, operador:(window.EKO_RESPONSAVEL||null) })
+      body:JSON.stringify({ sacoleira:sac, fardos:n, formato:saida.formato, formato_origem:saida.origem,
+                            operador:(window.EKO_RESPONSAVEL||null) })
     });
     const d=await r.json();
     if(!r.ok || !d.ok){ toast('erro',esc((d&&d.erro)||'Falha ao finalizar'),5000); return; }
@@ -373,9 +492,19 @@ async function carregarSacoleiras(){
     const b=a.bobina;
     if(!b) return '<div class="sac"><div class="s-top"><span class="dot"></span>SACOLEIRA '+a.sacoleira+'</div>'+
                   '<div class="s-vazia">Sem bobina</div></div>';
+    // Formato que está sendo cortado agora (sugestão pelo CLP da sacoleira).
+    const f=b.formato||{}, cor=(b.cor_pa&&b.cor_pa.nome)||b.cor||'';
+    let corte;
+    if(f.sugerido) corte='<div class="s-corte">'+esc(f.sugerido.replace('x',' × '))+'<small>cortando · '+esc(cor)+'</small></div>';
+    else if((f.candidatos||[]).length && (f.candidatos||[]).length<(a.permitidos||[]).length)
+      corte='<div class="s-corte duvida">'+esc(f.candidatos.map(x=>x.replace('x','×')).join(' ou '))+'<small>'+esc(f.motivo||'')+'</small></div>';
+    else corte='<div class="s-corte sem">formato ?<small>'+esc(f.motivo||'sem leitura da sacoleira')+'</small></div>';
     return '<div class="sac ativa"><div class="s-top"><span class="dot"></span>SACOLEIRA '+a.sacoleira+'</div>'+
       '<div class="s-mat">'+descCurta(b)+'</div>'+
-      '<div class="s-info">'+esc(b.id)+' · '+fmtKg(b.peso)+'<br>'+haQuanto(b.baixa_em)+'</div>'+
+      corte+
+      '<div class="s-kg">'+fmtKg(b.peso)+'</div>'+
+      (b.baixa_operador?('<div class="s-quem">'+esc(b.baixa_operador)+'</div>'):'')+
+      '<div class="s-info">'+esc(b.id)+' · '+haQuanto(b.baixa_em)+'</div>'+
       '<button class="btn btn-cinza s-fim" onclick="finalizar(\''+a.sacoleira+'\')">Finalizar</button></div>';
   }).join('');
 }
@@ -400,11 +529,14 @@ async function carregarHistorico(){
       let dir;
       if(!x.encerrada_em) dir='<span class="na-maq">na máquina</span>';
       else if(x.fardos==null) dir='<span>—</span><small>sem fardos</small>';
-      else dir='<span>'+x.fardos+' fardo'+(x.fardos===1?'':'s')+'</span>';
-      return '<div class="h-item">'+
+      else dir='<b>'+x.fardos+'</b> fardo'+(x.fardos===1?'':'s')+
+        '<small'+(x.alerta_peso?' class="h-alerta"':'')+'>'+fmtKg(x.peso_fardos)+(x.alerta_peso?' ⚠ passa do peso':'')+'</small>';
+      const fmtTxt=x.formato_cortado?(' · <b>'+esc(x.formato_cortado.replace('x',' × '))+'</b>'):'';
+      return '<div class="h-item'+(x.alerta_peso?' alerta':'')+'">'+
         '<span class="h-hora">'+hora(x.hora)+'</span>'+
         '<span class="h-sac">'+esc(sac)+'</span>'+
-        '<div class="h-mat">'+descCurta(x)+'<small>'+esc(x.id)+' · '+fmtKg(x.peso)+(x.pedido?(' · pedido '+esc(x.pedido)):'')+'</small></div>'+
+        '<div class="h-mat">'+descCurta(x)+fmtTxt+'<small>'+esc(x.id)+' · '+fmtKg(x.peso)+
+          (x.operador?(' · '+esc(x.operador)):'')+(x.pedido?(' · pedido '+esc(x.pedido)):'')+'</small></div>'+
         '<div class="h-dir">'+dir+(ultima?('<button class="h-desf" onclick="desfazer(\''+esc(x.id)+'\',\''+esc(sac)+'\')">desfazer</button>'):'')+'</div></div>';
     }).join('');
   }catch(e){ el.innerHTML='<div class="vazio">Não consegui ler o histórico.</div>'; }

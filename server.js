@@ -800,6 +800,12 @@ function aplicarSchema() {
     // exportador é por data de IMPRESSÃO. Não dá para usar baixa_em: o
     // desfazer apaga esse campo, e a bobina desfeita nunca seria reenviada.
     ['etiquetas', 'alterado_em', 'TEXT'],
+    // 29/09/2026 (Gustavo): o formato que a bobina virou na sacoleira, dito
+    // (ou confirmado) pelo operador quando ela sai. formato_origem diz se o
+    // operador aceitou a sugestão do sistema ('sugerido') ou escolheu outro
+    // ('escolhido'). É o que liga bobina → formato → fardos → quem cortou.
+    ['etiquetas', 'formato_cortado', 'TEXT'],
+    ['etiquetas', 'formato_origem', 'TEXT'],
   ]) {
     const tem = db.prepare(`PRAGMA table_info(${tabela})`).all().some(c => c.name === coluna);
     if (!tem) db.exec(`ALTER TABLE ${tabela} ADD COLUMN ${coluna} ${tipo}`);
@@ -857,9 +863,99 @@ function lerFardos(v) {
   return (Number.isInteger(n) && n >= 0 && n <= 999) ? n : null;
 }
 
-function encerrarBobina(id, fardos, motivo, quando) {
-  db.prepare(`UPDATE etiquetas SET fardos = ?, encerrada_em = ?, encerrada_motivo = ?, alterado_em = ?
-               WHERE id = ? AND encerrada_em IS NULL`).run(fardos, quando, motivo, quando, id);
+function encerrarBobina(id, fardos, motivo, quando, formato, formatoOrigem) {
+  db.prepare(`UPDATE etiquetas SET fardos = ?, encerrada_em = ?, encerrada_motivo = ?, alterado_em = ?,
+                     formato_cortado = COALESCE(?, formato_cortado), formato_origem = COALESCE(?, formato_origem)
+               WHERE id = ? AND encerrada_em IS NULL`)
+    .run(fardos, quando, motivo, quando, formato || null, formato ? (formatoOrigem || null) : null, id);
+}
+
+// ── FORMATO QUE A SACOLEIRA ESTÁ CORTANDO (29/09/2026, VPS — Gustavo) ────
+// Três fontes, nesta ordem de trava:
+//   1. cada máquina só corta os formatos dela (PA_FORMATOS_POR_MAQUINA);
+//   2. cada largura de bobina só roda certos formatos: tabela do config
+//      `formatos_por_bobina` (JSON {"160": ["30x40","30x45",...], ...}), que o
+//      Gustavo passa. Sem a largura na tabela, esta trava não filtra nada.
+//      As PISTAS do CLP não entram: o operador não atualiza quando muda;
+//   3. o COMPRIMENTO que o CLP da sacoleira mostra escolhe entre os que sobram.
+// O CLP chega pela VPS (EKOSERVER → SFTP → acumulador), com até ~15 min de
+// atraso: serve para sugerir, nunca para decidir sozinho.
+const PESO_FARDO_KG = 25;
+// Comprimento típico (mm) por formato: o 2º número × 10, menos os que a
+// fábrica mede diferente. 35x45 ≈ 460 mm (Gustavo, 29/09/2026). Ajustável sem
+// código pelo config `sac_comprimento_formato` (JSON {"30x45": 452, ...}).
+const SAC_COMPRIMENTO_PADRAO = { '35x45': 460 };
+function comprimentoFormato(f) {
+  let custom = {}; try { custom = JSON.parse(configGet('sac_comprimento_formato', '{}')); } catch(e) {}
+  return Number(custom[f]) || SAC_COMPRIMENTO_PADRAO[f] || Number(String(f).split('x')[1]) * 10;
+}
+// '1,60' → 160 (cm). Capa ('92 x 0,5') e texto estranho → null.
+function larguraBobinaCm(txt) {
+  const m = String(txt || '').trim().match(/^(\d+)[,.](\d{1,2})$/);
+  return m ? Math.round(parseFloat(m[1] + '.' + m[2]) * 100) : null;
+}
+// A cor da bobina já usa os nomes do produto acabado (Preta, Branca…).
+function corPaDaBobina(cor) {
+  const c = String(cor || '').trim().toLowerCase();
+  const k = Object.keys(PA_CORES).find(k => PA_CORES[k].nome.toLowerCase() === c);
+  return k ? { key: k, nome: PA_CORES[k].nome } : null;
+}
+let _clpCache = { em: 0, dados: null, erro: null };
+async function clpSacoleiras() {
+  if (Date.now() - _clpCache.em < 60000) return _clpCache;
+  const url = configGet('vps_sacoleiras_url', 'http://100.107.130.114:8765/api/sacoleiras/agora');
+  try {
+    const r = await fetch(url, { signal: AbortSignal.timeout(3000) });
+    const d = await r.json();
+    _clpCache = { em: Date.now(), dados: d.ok ? d.sacoleiras : null, erro: d.ok ? null : (d.erro || 'erro') };
+  } catch (e) {
+    _clpCache = { em: Date.now(), dados: null, erro: e.message };
+  }
+  return _clpCache;
+}
+function sugerirFormato(maq, bobina, clp) {
+  const permitidos = PA_FORMATOS_POR_MAQUINA[maq] || [];
+  const out = { permitidos, candidatos: permitidos, sugerido: null, motivo: '',
+                comprimento_mm: null, largura_bobina_cm: larguraBobinaCm(bobina && bobina.largura),
+                clp_tempo: clp ? clp.tempo : null, clp_velho: false };
+  if (clp && clp.tempo) {
+    // hora LOCAL do EKOSERVER, sem fuso; mais de 60 min = não confia
+    const idadeMin = (Date.now() - new Date(clp.tempo + '-03:00').getTime()) / 60000;
+    out.clp_velho = !(idadeMin < 60);
+  }
+  const usaClp = clp && !out.clp_velho;
+  out.comprimento_mm = usaClp && clp.comprimento_mm ? Number(clp.comprimento_mm) : null;
+  let cabem = permitidos;
+  let porBobina = {}; try { porBobina = JSON.parse(configGet('formatos_por_bobina', '{}')); } catch(e) {}
+  const daBobina = out.largura_bobina_cm ? porBobina[String(out.largura_bobina_cm)] : null;
+  if (Array.isArray(daBobina) && daBobina.length) {
+    cabem = permitidos.filter(f => daBobina.includes(f));
+    out.trava_bobina = true;
+  }
+  out.candidatos = cabem;
+  if (out.comprimento_mm) {
+    const tol = Number(configGet('sac_comprimento_tolerancia_mm', '15')) || 15;
+    const dist = cabem.map(f => [f, Math.abs(comprimentoFormato(f) - out.comprimento_mm)])
+                      .filter(([, d]) => d <= tol).sort((a, b) => a[1] - b[1]);
+    if (dist.length) out.candidatos = dist.map(([f]) => f);
+    // Sugere só quando é claro: um candidato, ou o mais perto com folga de 5 mm.
+    if (dist.length === 1 || (dist.length > 1 && dist[1][1] - dist[0][1] >= 5)) {
+      out.sugerido = dist[0][0];
+      out.motivo = `comprimento ${out.comprimento_mm} mm`;
+    } else if (dist.length > 1) {
+      out.motivo = `comprimento ${out.comprimento_mm} mm serve para ${dist.map(d => d[0]).join(' ou ')}`;
+    } else {
+      out.motivo = `comprimento ${out.comprimento_mm} mm não bate com nenhum formato da ${maq}`;
+    }
+  } else {
+    out.motivo = clp ? (out.clp_velho ? 'leitura da sacoleira atrasada' : 'sacoleira sem comprimento')
+                     : 'sem leitura da sacoleira';
+  }
+  return out;
+}
+function lerFormatoDaMaquina(maq, v) {
+  const f = String(v || '').trim().toLowerCase().replace(/\s/g, '');
+  return (PA_FORMATOS_POR_MAQUINA[maq] || []).includes(f) ? f : null;
 }
 
 // ── INVENTÁRIO DE BOBINAS (28/09/2026, VPS) ─────────────────────────────
@@ -8318,6 +8414,7 @@ const requestHandlerBase = async (req, res) => {
                   e.sessao_id, e.operador, e.maquina, e.largura, e.tipo_bobina, e.turno_codigo, e.bling_pedido_id,
                   e.destino, e.baixa_em, e.baixa_turno, e.baixa_operador,
                   e.fardos, e.encerrada_em, e.encerrada_motivo, e.alterado_em,
+                  e.formato_cortado, e.formato_origem,
                   s.bling_status, s.bling_id, s.bling_erro
              FROM etiquetas e LEFT JOIN sessoes s ON s.id = e.sessao_id
             WHERE date(e.hora_impressao) >= ?
@@ -8584,6 +8681,7 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
                   e.sessao_id, e.operador, e.maquina, e.largura, e.tipo_bobina, e.turno_codigo, e.bling_pedido_id,
                   e.destino, e.baixa_em, e.baixa_turno, e.baixa_operador,
                   e.fardos, e.encerrada_em, e.encerrada_motivo, e.alterado_em,
+                  e.formato_cortado, e.formato_origem,
                   s.bling_status, s.bling_id, s.bling_erro
              FROM etiquetas e LEFT JOIN sessoes s ON s.id = e.sessao_id
              ${onde} ORDER BY e.hora_impressao DESC LIMIT ? OFFSET ?`
@@ -8760,6 +8858,10 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
       // bobina aos fardos daquela máquina (o fardo grava `maquina` P1/P2).
       const destino = normalizarDestinoBobina(body.destino);
       if (!destino) return jsonErr(res, 400, 'Escolha a sacoleira de destino (P1 ou P2)');
+      // Quem bipou é quem vai cortar a bobina (29/09/2026, Gustavo): sem nome
+      // o resumo "quem cortou" fica vazio, então é obrigatório.
+      const operador = (body.operador ? String(body.operador).trim().slice(0, 80) : null) || null;
+      if (!operador) return jsonErr(res, 400, 'Informe o nome de quem está bipando');
 
       // Com o Bling desligado (padrão desde 28/09/2026 — decisão do Frederico:
       // "por ora nada no Bling"), a baixa só registra aqui. Nenhum pedido de
@@ -8880,7 +8982,10 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
       // Bling desligado). O WHERE status confere de novo: dois celulares
       // bipando a mesma bobina ao mesmo tempo não dão duas baixas.
       const agora = new Date().toISOString();
-      const operador = (body.operador ? String(body.operador).trim().slice(0, 80) : null) || null;
+      // O formato que a bobina que SAI virou: confirmado (ou trocado) pelo
+      // operador no mesmo modal dos fardos. Só formato da própria máquina.
+      const formatoAnterior = pedeFardos ? lerFormatoDaMaquina(destino, body.formato_anterior) : null;
+      const origemAnterior = body.formato_anterior_origem === 'sugerido' ? 'sugerido' : 'escolhido';
       // Fecha a anterior e abre a nova juntas: nunca fica a sacoleira com
       // duas bobinas abertas, nem sem nenhuma por uma falha no meio.
       const trocar = makeTransaction(() => {
@@ -8891,11 +8996,12 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
           .run(agora, blingId && !String(blingId).startsWith('SIM-') ? Number(blingId) : null,
                destino, agora, turnoCod || null, operador, agora, bid);
         if (!upd.changes) return false;
-        if (pedeFardos) encerrarBobina(aberta.id, fardosAnterior, 'troca', agora);
+        if (pedeFardos) encerrarBobina(aberta.id, fardosAnterior, 'troca', agora, formatoAnterior, origemAnterior);
         return true;
       });
       if (!trocar()) return jsonErr(res, 409, `Bobina ${bid} JÁ teve baixa`, { ja_baixada: true });
-      if (pedeFardos) logI('bobinas', `Sacoleira ${destino}: ${aberta.id} saiu com ${fardosAnterior} fardo(s)`);
+      if (pedeFardos) logI('bobinas', `Sacoleira ${destino}: ${aberta.id} saiu com ${fardosAnterior} fardo(s)`
+        + (formatoAnterior ? ` · ${formatoAnterior}` : '') + ` · entrou ${bid} por ${operador}`);
 
       // Guarda no histórico do dia (para a tela mostrar o que já saiu).
       try {
@@ -8916,14 +9022,38 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
 
     // O que está montado em cada sacoleira agora.
     if (pathname === '/bobinas/abertas' && req.method === 'GET') {
+      // 29/09/2026: cada sacoleira traz também o formato que ela está
+      // cortando (sugestão pelo CLP, travada pela máquina e pela bobina) e a
+      // cor do produto acabado — a tela mostra na bobina atual e pré-seleciona
+      // no modal dos fardos. Sem CLP a sugestão vem vazia e a tela pede.
+      const clp = await clpSacoleiras();
       const sacoleiras = ['P1', 'P2'].map(p => {
         const a = bobinaAbertaNa(p);
+        const leitura = clp.dados ? clp.dados[p] : null;
         return { sacoleira: p, bobina: a ? {
           id: a.id, cor: a.cor, tipo_bobina: a.tipo_bobina, largura: a.largura, peso: a.peso,
           baixa_em: a.baixa_em, baixa_operador: a.baixa_operador,
-        } : null };
+          cor_pa: corPaDaBobina(a.cor), formato: sugerirFormato(p, a, leitura),
+        } : null, permitidos: PA_FORMATOS_POR_MAQUINA[p] || [],
+          clp: leitura ? { comprimento_mm: leitura.comprimento_mm, operando: leitura.operando,
+                           tempo: leitura.tempo } : null };
       });
-      return jsonOk(res, { sacoleiras });
+      return jsonOk(res, { sacoleiras, clp_erro: clp.erro, peso_fardo_kg: PESO_FARDO_KG });
+    }
+
+    // Nomes para o "quem está bipando": operadores que já aparecem na pesagem
+    // (extrusão) e quem já bipou bobina na sacoleira, mais recentes primeiro.
+    if (pathname === '/bobinas/operadores' && req.method === 'GET') {
+      const nomes = db.prepare(
+        `SELECT nome FROM (
+            SELECT UPPER(TRIM(baixa_operador)) AS nome, MAX(baixa_em) AS quando FROM etiquetas
+             WHERE baixa_operador IS NOT NULL AND TRIM(baixa_operador) <> '' GROUP BY 1
+            UNION ALL
+            SELECT UPPER(TRIM(operador)), MAX(hora_impressao) FROM etiquetas
+             WHERE operador IS NOT NULL AND TRIM(operador) <> '' AND hora_impressao >= date('now','-60 day')
+             GROUP BY 1)
+          GROUP BY nome ORDER BY MAX(quando) DESC`).all().map(r => r.nome);
+      return jsonOk(res, { operadores: nomes });
     }
 
     // Finalizar: a bobina saiu da sacoleira SEM outra no lugar (máquina
@@ -9045,7 +9175,9 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
       if (!a) return jsonErr(res, 409, `A Sacoleira ${sac} não tem bobina aberta`);
       const n = lerFardos(body.fardos);
       if (n === null) return jsonErr(res, 400, `Informe quantos fardos a bobina ${a.id} deu`);
-      encerrarBobina(a.id, n, 'finalizada', new Date().toISOString());
+      const formatoFim = lerFormatoDaMaquina(sac, body.formato);
+      encerrarBobina(a.id, n, 'finalizada', new Date().toISOString(), formatoFim,
+                     body.formato_origem === 'sugerido' ? 'sugerido' : 'escolhido');
       const operador = (body.operador ? String(body.operador).trim().slice(0, 80) : null) || null;
       logI('bobinas', `Sacoleira ${sac}: ${a.id} finalizada com ${n} fardo(s)${operador ? ' por ' + operador : ''}`);
       return jsonOk(res, { finalizada: true, sacoleira: sac, id: a.id, fardos: n });
@@ -9059,8 +9191,16 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
       const desde = new Date(dataLocalISO() + 'T00:00:00-03:00').toISOString();
       const lista = db.prepare(
         `SELECT id, cor, tipo_bobina, largura, peso, destino, baixa_em AS hora, baixa_operador AS operador,
-                baixa_turno AS turno, bling_pedido_id AS pedido, fardos, encerrada_em, encerrada_motivo
+                baixa_turno AS turno, bling_pedido_id AS pedido, fardos, encerrada_em, encerrada_motivo,
+                formato_cortado, formato_origem
            FROM etiquetas WHERE tipo = 'extrusao' AND baixa_em >= ? ORDER BY baixa_em DESC`).all(desde);
+      // Peso dos fardos (nominal: 25 kg cada) e o alerta de bobina que "rendeu
+      // mais do que pesa" — quase sempre fardo contado errado ou bobina trocada.
+      for (const b of lista) {
+        b.peso_fardos = b.fardos != null ? b.fardos * PESO_FARDO_KG : null;
+        b.alerta_peso = b.peso_fardos != null && Number(b.peso) > 0 && b.peso_fardos > Number(b.peso);
+        b.cor_pa = corPaDaBobina(b.cor);
+      }
       const total = lista.reduce((a, b) => a + (Number(b.peso) || 0), 0);
       return jsonOk(res, { baixas: lista, qtd: lista.length, total_kg: +total.toFixed(3) });
     }
