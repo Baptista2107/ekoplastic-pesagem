@@ -9147,6 +9147,45 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
       return res.end(linhas.join('\n') + '\n');
     }
 
+    // Limpar entradas de TESTE (29/09/2026, Gustavo): devolve ao estoque as
+    // bobinas que um nome bipou na sacoleira num dia — para testar de novo com
+    // as mesmas bobinas. Diferente do Desfazer (só a última de cada sacoleira
+    // e só sem fardos), limpa todas daquele nome, com fardos ou não. Protegido
+    // pela senha de supervisor; SEM "confirmar": true só LISTA o que limparia.
+    // Body { senha, operador, dia?: 'AAAA-MM-DD' (padrão hoje), confirmar? }
+    if (pathname === '/bobinas/limpar-teste' && req.method === 'POST') {
+      let body; try { body = await lerBodyJson(req); } catch(e) { return jsonErr(res, 400, e.message); }
+      const hashAtual = configGet('senha_saida_hash', hashSenha('1234'));
+      if (hashSenha((body && body.senha) || '') !== hashAtual) return jsonErr(res, 401, 'Senha de supervisor incorreta.');
+      const nome = String(body.operador || '').trim().toUpperCase();
+      if (nome.length < 2) return jsonErr(res, 400, 'Informe o operador (nome de quem bipou)');
+      const dia = /^\d{4}-\d{2}-\d{2}$/.test(String(body.dia || '')) ? body.dia : dataLocalISO();
+      const ini = new Date(dia + 'T00:00:00-03:00').toISOString();
+      const fim = new Date(new Date(ini).getTime() + 86400000).toISOString();
+      const alvo = db.prepare(
+        `SELECT id, cor, largura, peso, destino, baixa_em, fardos, formato_cortado, encerrada_em
+           FROM etiquetas WHERE tipo = 'extrusao' AND status = 'consumida'
+            AND UPPER(TRIM(baixa_operador)) = ? AND baixa_em >= ? AND baixa_em < ?
+          ORDER BY baixa_em`).all(nome, ini, fim);
+      if (body.confirmar !== true) {
+        return jsonOk(res, { ensaio: true, operador: nome, dia, bobinas: alvo,
+          aviso: alvo.length ? 'Nada foi alterado. Repita com "confirmar": true para limpar.' : 'Nenhuma bobina desse nome nesse dia.' });
+      }
+      const agora = new Date().toISOString();
+      const limpar = makeTransaction(() => {
+        const upd = db.prepare(
+          `UPDATE etiquetas SET status='bipada', destino=NULL, baixa_em=NULL, baixa_turno=NULL,
+                  baixa_operador=NULL, fardos=NULL, encerrada_em=NULL, encerrada_motivo=NULL,
+                  formato_cortado=NULL, formato_origem=NULL, alterado_em=?
+            WHERE id = ? AND status = 'consumida' AND bling_pedido_id IS NULL`);
+        let n = 0; for (const b of alvo) n += upd.run(agora, b.id).changes; return n;
+      });
+      const n = limpar();
+      logW('bobinas', `LIMPEZA DE TESTE: ${n} bobina(s) de ${nome} em ${dia} voltaram ao estoque: `
+        + alvo.map(b => b.id).join(', '));
+      return jsonOk(res, { limpas: n, operador: nome, dia, ids: alvo.map(b => b.id) });
+    }
+
     if (pathname === '/bobinas/desfazer' && req.method === 'POST') {
       let body; try { body = await lerBodyJson(req); } catch(e) { return jsonErr(res, 400, e.message); }
       const bid = String(body.id || '').trim().toUpperCase();
