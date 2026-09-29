@@ -881,6 +881,8 @@ function encerrarBobina(id, fardos, motivo, quando, formato, formatoOrigem) {
 // O CLP chega pela VPS (EKOSERVER → SFTP → acumulador), com até ~15 min de
 // atraso: serve para sugerir, nunca para decidir sozinho.
 const PESO_FARDO_KG = 25;
+// Operadores das sacoleiras (Gustavo, 29/09/2026) — a lista do "quem está bipando".
+const OPERADORES_SACOLEIRA = ['CARINE', 'GISLENE', 'HOZANA', 'ANDRE', 'ITALO', 'ESDRAS', 'HEIDIANE', 'ROMULO'];
 // Comprimento típico (mm) por formato: o 2º número × 10, menos os que a
 // fábrica mede diferente. 35x45 ≈ 460 mm (Gustavo, 29/09/2026). Ajustável sem
 // código pelo config `sac_comprimento_formato` (JSON {"30x45": 452, ...}).
@@ -9050,19 +9052,14 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
       return jsonOk(res, { sacoleiras, clp_erro: clp.erro, peso_fardo_kg: PESO_FARDO_KG });
     }
 
-    // Nomes para o "quem está bipando": operadores que já aparecem na pesagem
-    // (extrusão) e quem já bipou bobina na sacoleira, mais recentes primeiro.
+    // Nomes para o "quem está bipando": os operadores da SACOLEIRA (Gustavo,
+    // 29/09/2026). A 1ª versão listava os da extrusão, que não bipam aqui.
+    // Ajustável sem código pelo config `operadores_sacoleira` (JSON ["NOME",...]).
+    // Nome digitado na hora continua valendo (e o aparelho lembra o último).
     if (pathname === '/bobinas/operadores' && req.method === 'GET') {
-      const nomes = db.prepare(
-        `SELECT nome FROM (
-            SELECT UPPER(TRIM(baixa_operador)) AS nome, MAX(baixa_em) AS quando FROM etiquetas
-             WHERE baixa_operador IS NOT NULL AND TRIM(baixa_operador) <> '' GROUP BY 1
-            UNION ALL
-            SELECT UPPER(TRIM(operador)), MAX(hora_impressao) FROM etiquetas
-             WHERE operador IS NOT NULL AND TRIM(operador) <> '' AND hora_impressao >= date('now','-60 day')
-             GROUP BY 1)
-          GROUP BY nome ORDER BY MAX(quando) DESC`).all().map(r => r.nome);
-      return jsonOk(res, { operadores: nomes });
+      let nomes = OPERADORES_SACOLEIRA;
+      try { const c = JSON.parse(configGet('operadores_sacoleira', '[]')); if (Array.isArray(c) && c.length) nomes = c; } catch(e) {}
+      return jsonOk(res, { operadores: nomes.map(n => String(n).trim().toUpperCase()).filter(Boolean) });
     }
 
     // Finalizar: a bobina saiu da sacoleira SEM outra no lugar (máquina
