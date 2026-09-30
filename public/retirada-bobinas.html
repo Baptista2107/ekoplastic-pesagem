@@ -91,6 +91,7 @@
   .hb-mat{font-size:15px; font-weight:800; line-height:1.3; min-width:0;}
   .hb-num{text-align:right; flex:0 0 auto; line-height:1.1;}
   .hb-num b{font-size:24px; color:var(--verde);}
+  .hb-num .pc, .ht-tot .pc{font-size:13px; font-weight:800; color:var(--muted);}
   .hb-num small{display:block; font-size:12px; font-weight:700; color:var(--muted);}
   .hb-num .na-maq{font-size:14px; font-weight:800;}
   .hb-l2{font-size:13px; color:var(--muted); font-weight:600; margin-top:4px;}
@@ -370,7 +371,7 @@ async function confirmarBaixa(sac){
       r=await fetch(URL_BASE+'/bobinas/baixa',{
         method:'POST', headers:{'Content-Type':'application/json'},
         body:JSON.stringify({ id:bobinaAtual.id, destino:sac, turno:(BLING&&TURNO)?TURNO.codigo:null,
-                              fardos_anterior:fardosAnterior,
+                              fardos_anterior:fardosAnterior, soltos_anterior:saida?saida.soltos:null,
                               formato_anterior:saida?saida.formato:null,
                               formato_anterior_origem:saida?saida.origem:null,
                               operador:nome })
@@ -403,7 +404,9 @@ async function confirmarBaixa(sac){
 // sacoleira, travado pelos formatos da máquina), com a cor da bobina, e o
 // operador só confirma ou troca. Mostra o peso dos fardos (× 25 kg) e avisa
 // quando passa do peso da bobina. Resolve {fardos, formato, origem} ou null.
-const KG_FARDO=25;
+const KG_FARDO=25, PC_FARDO=5, KG_PC=KG_FARDO/PC_FARDO;
+// Pacotes → "17 fardos +2 pc" (fardo = 5 pacotes de 5 kg).
+function txtPc(p){ const f=Math.floor(p/PC_FARDO), s=p%PC_FARDO; return f+' fardo'+(f===1?'':'s')+(s?(' +'+s+' pc'):''); }
 function perguntarFardos(bob, sac, modo){
   return new Promise(resolve=>{
     const ent=ABERTAS.find(a=>a.sacoleira===sac)||{};
@@ -419,7 +422,11 @@ function perguntarFardos(bob, sac, modo){
     // se já houve fim de turno com ela montada, também se pede só a parte
     // deste turno — o total da bobina é a soma, feita pelo servidor.
     const turno = modo==='turno';
-    const antes = Number(bob.fardos_parciais)||0;
+    // Em pacotes (30/09/2026): o que já foi informado em fim de turno e os
+    // soltos que havia no fardo aberto quando esta parte começou.
+    const antes = Number(bob.pacotes_parciais)||0;
+    const ini = Number(bob.soltos_inicio)||0;
+    let soltos = 0;
     const tit = turno ? ('Fim do turno · Sacoleira '+sac) : modo==='troca' ? ('Troca na Sacoleira '+sac) : ('Finalizar Sacoleira '+sac);
     const acao = turno ? 'Registrar fardos do turno' : modo==='troca' ? 'Confirmar troca' : 'Finalizar bobina';
     const chips=permitidos.map(f=>'<button class="chip'+(cands.includes(f)&&cands.length<permitidos.length?' cand':'')+
@@ -433,9 +440,10 @@ function perguntarFardos(bob, sac, modo){
       '<div class="fmts">'+chips+'</div>'+
       '<div class="m-dica">'+(fmt.sugerido?('Sugerido pelo sistema ('+esc(fmt.motivo||'')+'). Confirme ou toque em outro.')
         :esc(fmt.motivo||'Escolha o formato.'))+'</div>'+
-      (antes>0?('<div class="m-dica">Já informado em fim de turno anterior: <b>'+antes+'</b> fardo'+(antes===1?'':'s')+
-        '. Digite só o que ela deu <b>neste turno</b>.</div>'):'')+
-      '<label>'+((turno||antes>0)?'QUANTOS FARDOS ELA DEU NESTE TURNO?':'QUANTOS FARDOS ELA DEU?')+'</label><input id="md-fardos" type="number" inputmode="numeric" min="0" max="999" step="1" autocomplete="off">'+
+      '<label>'+((turno||antes>0)?'FARDOS FECHADOS NESTE TURNO':'FARDOS FECHADOS')+'</label><input id="md-fardos" type="number" inputmode="numeric" min="0" max="999" step="1" autocomplete="off">'+
+      (ini>0?('<div class="m-dica">Havia '+ini+' pacote'+(ini===1?'':'s')+' solto'+(ini===1?'':'s')+' no início — conte o fardo que ela completou.</div>'):'')+
+      '<label>PACOTES SOLTOS AGORA</label><div class="fmts soltos">'+[0,1,2,3,4].map(n=>
+        '<button class="chip'+(n===0?' sel':'')+'" data-s="'+n+'">'+n+'</button>').join('')+'</div>'+
       '<div class="m-kg" id="md-kg"></div>'+
       '<div id="md-alerta"></div>'+
       '<div class="m-resumo" id="md-resumo"></div>'+
@@ -445,20 +453,27 @@ function perguntarFardos(bob, sac, modo){
     const inp=fundo.querySelector('#md-fardos');
     const pintar=()=>{
       const n=Number(inp.value), temN=inp.value!=='' && Number.isInteger(n) && n>=0;
-      const kg=temN?n*KG_FARDO:null;
-      const kgTotal=temN?(n+antes)*KG_FARDO:null;
-      fundo.querySelector('#md-kg').innerHTML=temN?(fmtKg(kg)+'<small>'+n+' fardo'+(n===1?'':'s')+' × '+KG_FARDO+' kg'+
-        (antes>0?(' · bobina até agora: '+(n+antes)+' fardos = '+fmtKg(kgTotal)):'')+'</small>'):'';
+      // Produção desta parte em pacotes: fechados × 5 + soltos agora − soltos no início.
+      const pc=temN?(n*PC_FARDO+soltos-ini):null;
+      const kg=temN?pc*KG_PC:null;
+      const kgTotal=temN?(antes+pc)*KG_PC:null;
+      fundo.querySelector('#md-kg').innerHTML=!temN?'':(pc<0?'<small>não fecha com os soltos do início — confira</small>':
+        (fmtKg(kg)+'<small>'+txtPc(pc)+(antes>0?(' · bobina: '+txtPc(antes+pc)):'')+'</small>'));
       const passa=temN && Number(bob.peso)>0 && kgTotal>Number(bob.peso);
       fundo.querySelector('#md-alerta').innerHTML=passa?('<div class="m-alerta">⚠ '+fmtKg(kgTotal)+' de fardos para uma bobina de '+
         fmtKg(bob.peso)+' — rendeu mais do que pesa. Confira os fardos antes de confirmar.</div>'):'';
       fundo.querySelector('#md-resumo').innerHTML='Cortou <b>'+(escolhido?esc(escolhido.replace('x',' × ')):'?')+'</b> · '+esc(corNome)+
-        (temN?(' · <b>'+n+'</b> fardo'+(n===1?'':'s')+' · <b>'+fmtKg(kg)+'</b>'):'')+
+        (temN&&pc>=0?(' · <b>'+txtPc(pc)+'</b>'):'')+
         '<br>por <b>'+esc(bob.baixa_operador||'—')+'</b>';
     };
-    fundo.querySelectorAll('.fmts .chip').forEach(c=>c.onclick=()=>{
+    fundo.querySelectorAll('.fmts:not(.soltos) .chip').forEach(c=>c.onclick=()=>{
       escolhido=c.dataset.f;
-      fundo.querySelectorAll('.fmts .chip').forEach(x=>x.classList.toggle('sel',x===c));
+      fundo.querySelectorAll('.fmts:not(.soltos) .chip').forEach(x=>x.classList.toggle('sel',x===c));
+      pintar();
+    });
+    fundo.querySelectorAll('.soltos .chip').forEach(c=>c.onclick=()=>{
+      soltos=Number(c.dataset.s);
+      fundo.querySelectorAll('.soltos .chip').forEach(x=>x.classList.toggle('sel',x===c));
       pintar();
     });
     inp.addEventListener('input',pintar);
@@ -469,8 +484,9 @@ function perguntarFardos(bob, sac, modo){
     fundo.querySelector('#md-ok').onclick=()=>{
       const n=Number(inp.value);
       if(inp.value==='' || !Number.isInteger(n) || n<0 || n>999){ toast('erro','Digite o número de fardos (0 a 999)',3000); inp.focus(); return; }
-      if(n>0 && !escolhido){ toast('erro','Toque no formato que ela cortou',3000); return; }
-      fim({ fardos:n, formato:escolhido, origem:(escolhido && escolhido===fmt.sugerido)?'sugerido':'escolhido' });
+      if(n*PC_FARDO+soltos-ini<0){ toast('erro','Havia '+ini+' pacote(s) solto(s) no início — confira fardos e soltos',4000); return; }
+      if(n*PC_FARDO+soltos-ini>0 && !escolhido){ toast('erro','Toque no formato que ela cortou',3000); return; }
+      fim({ fardos:n, soltos, formato:escolhido, origem:(escolhido && escolhido===fmt.sugerido)?'sugerido':'escolhido' });
     };
     inp.addEventListener('keydown',e=>{ if(e.key==='Enter') fundo.querySelector('#md-ok').click(); });
   });
@@ -527,13 +543,13 @@ async function finalizar(sac){
   try{
     const r=await fetch(URL_BASE+'/bobinas/finalizar',{
       method:'POST', headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({ sacoleira:sac, fardos:n, formato:saida.formato, formato_origem:saida.origem,
+      body:JSON.stringify({ sacoleira:sac, fardos:n, soltos:saida.soltos, formato:saida.formato, formato_origem:saida.origem,
                             operador:(window.EKO_RESPONSAVEL||null) })
     });
     const d=await r.json();
     if(!r.ok || !d.ok){ toast('erro',esc((d&&d.erro)||'Falha ao finalizar'),5000); return; }
     beep(1050,0.14); vibrar([60,50,60]);
-    toast('ok','✓ '+esc(bob.id)+' finalizada · '+n+' fardo'+(n===1?'':'s'),3000);
+    toast('ok','✓ '+esc(bob.id)+' finalizada · bobina '+txtPc(d.pacotes_total||0),3000);
     await atualizarTudo();
   }catch(e){ toast('erro','Erro: '+esc(e.message),5000); }
 }
@@ -568,6 +584,11 @@ async function carregarSacoleiras(){
 }
 
 // ── HOJE: o que entrou nas sacoleiras hoje, com os fardos de quem já saiu.
+// Número grande de fardos com os pacotes soltos pequenos ao lado ("12 +2 pc").
+function pcGrande(p, soNumero){
+  const f=Math.floor(p/PC_FARDO), s=p%PC_FARDO;
+  return '<b>'+f+'</b>'+(soNumero?'':(' fardo'+(f===1?'':'s')))+(s?('<span class="pc"> +'+s+' pc</span>'):'');
+}
 async function carregarHistorico(){
   // 30/09/2026: a lista é POR TURNO do corte, uma por sacoleira. A bobina que
   // já estava montada quando o turno começou é do turno que entrou. Fardos à
@@ -587,25 +608,25 @@ async function carregarHistorico(){
     const cab='<div class="ht-cab"><span class="h-sac">'+s.sacoleira+'</span>'+
       '<span class="ht-tit">'+(t?esc(t.label):'Hoje')+
         '<small>'+(t?((t.fim?'encerrado · ':'')+'desde '+quando(t.inicio)+(t.fim?(' até '+quando(t.fim)):'')):'sem turno marcado')+'</small></span>'+
-      '<span class="ht-tot"><b>'+(s.fardos_turno||0)+'</b> fardo'+(s.fardos_turno===1?'':'s')+'<small>'+fmtKg(s.kg_turno||0)+'</small></span></div>';
+      '<span class="ht-tot">'+pcGrande(s.pacotes_turno||0)+'<small>'+fmtKg(s.kg_turno||0)+'</small></span></div>';
     if(!s.bobinas.length) return '<div class="ht">'+cab+'<div class="ht-vazio">nenhuma bobina neste turno</div></div>';
     const itens=s.bobinas.map((x,k)=>{
       // Só a última entrada da sacoleira pode ser desfeita, e só sem fardos.
-      const ultima=k===0 && !x.pedido && !(x.fardos_total>0);
+      const ultima=k===0 && !x.pedido && !(x.pacotes_total>0);
       const pct=x.rendimento_pct, alerta=pct!=null && pct>100;
       const fmt=x.formato_cortado?(' · <b>'+esc(x.formato_cortado.replace('x',' × '))+'</b>'):'';
       // Linha 1: o que é a bobina | fardos deste turno (o número que importa).
       let num;
-      if(x.fardos_turno!=null) num='<b>'+x.fardos_turno+'</b><small>neste turno</small>';
+      if(x.pacotes_turno!=null) num=pcGrande(x.pacotes_turno,true)+'<small>neste turno</small>';
       else if(x.montada) num='<span class="na-maq">na máquina</span>';
       else num='<b>—</b><small>sem fardos</small>';
       // Linha 3: de onde vem o total da bobina, e o rendimento com barra.
       let rend='';
-      if(x.fardos_total!=null){
-        const antes=(x.fardos_turno!=null)?x.fardos_total-x.fardos_turno:0;
-        const conta=(antes>0 && x.fardos_turno!=null)?(antes+' antes + '+x.fardos_turno+' = '):'';
+      if(x.pacotes_total!=null){
+        const antes=(x.pacotes_turno!=null)?x.pacotes_total-x.pacotes_turno:0;
+        const conta=(antes>0 && x.pacotes_turno!=null)?(txtPc(antes)+' antes + '):'';
         rend='<div class="hb-bar'+(alerta?' alerta':'')+'"><i style="width:'+Math.min(100,pct||0)+'%"></i></div>'+
-          '<div class="hb-l3">'+(x.montada?'Até agora: ':'Bobina: ')+conta+'<b>'+x.fardos_total+' fardo'+(x.fardos_total===1?'':'s')+'</b>'+
+          '<div class="hb-l3">'+(x.montada?'Até agora: ':'Bobina: ')+conta+'<b>'+txtPc(x.pacotes_total)+'</b>'+
           (pct!=null?(' · <b class="'+(alerta?'h-alerta':'hb-pct')+'">'+pct+'%</b>'+(alerta?' ⚠ passa do peso':'')):'')+'</div>';
       }
       return '<div class="hb'+(alerta?' alerta':'')+'">'+
@@ -804,7 +825,7 @@ function turnoCorte(acao){
         if(!bob) continue;
         const v=await perguntarFardos(bob, p, 'turno');
         if(v===null){ ok.disabled=false; return; }
-        parciais[p]={ fardos:v.fardos, formato:v.formato, formato_origem:v.origem };
+        parciais[p]={ fardos:v.fardos, soltos:v.soltos, formato:v.formato, formato_origem:v.origem };
       }
       let r, d;
       for(let tentativa=0; tentativa<2; tentativa++){
@@ -816,7 +837,7 @@ function turnoCorte(acao){
           for(const b of (d.bobinas||[])){
             const v=await perguntarFardos(b, b.sacoleira, 'turno');
             if(v===null){ ok.disabled=false; return; }
-            parciais[b.sacoleira]={ fardos:v.fardos, formato:v.formato, formato_origem:v.origem };
+            parciais[b.sacoleira]={ fardos:v.fardos, soltos:v.soltos, formato:v.formato, formato_origem:v.origem };
           }
           continue;
         }
@@ -825,7 +846,7 @@ function turnoCorte(acao){
       if(!r.ok||!d.ok){ beep(320,0.25); vibrar(200); toast('erro',esc((d&&d.erro)||'Falha'),5000); ok.disabled=false;
         if(r.status===401){ inp.value=''; inp.focus(); } return; }
       beep(1050,0.14); vibrar([60,50,60]);
-      const txtF=(d.parciais||[]).map(x=>' · '+x.sacoleira+' '+x.fardos+' fardo'+(x.fardos===1?'':'s')).join('');
+      const txtF=(d.parciais||[]).map(x=>' · '+x.sacoleira+' '+txtPc(x.pacotes)).join('');
       toast('ok', (iniciar?('✓ '+esc(lb(turno))+' iniciado · '+maqs.join(' e ')):'✓ Turno encerrado · '+maqs.join(' e '))+txtF,4000);
       fim(); atualizarTudo();
     }catch(e){ toast('erro','Erro: '+esc(e.message),5000); ok.disabled=false; }
