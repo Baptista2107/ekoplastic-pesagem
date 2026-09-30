@@ -7,17 +7,20 @@ title Ekoplastic Pesagem - Enviar atualizacao
 set "ORIGEM=git@github.com:Baptista2107/ekoplastic-pesagem.git"
 
 REM ===================================================================
-REM  ENDERECO DO MINI PC - preencha com o IP da LAN ou o do Tailscale.
-REM  Deixando VAZIO, o script so' publica no GitHub e nao oferece
-REM  aplicar na estacao.
+REM  ENDERECOS DO MINI PC - a LAN e o Tailscale, separados por espaco.
+REM  O script tenta na ordem e usa o PRIMEIRO que responder: dentro da
+REM  fabrica atende a LAN; de fora (casa, escritorio) atende o Tailscale.
+REM  Antes era um endereco so' e, quando ele nao respondia de onde o
+REM  script rodava, a FASE 5 desistia sem tentar o outro.
+REM  Deixando VAZIO (e sem estacao.txt), o script so' publica no GitHub.
 REM
 REM  A conversa com a estacao e' pela porta 3443 (HTTPS), NAO pela 3000.
 REM  A porta 3000 do sistema escuta so' em 127.0.0.1 - de fora da propria
 REM  maquina ela nunca responde. Quem atende a rede e' a 3443, a mesma
 REM  que o celular usa, liberada no firewall pelo LIBERAR-ACESSO-CELULAR.bat.
 REM  O certificado e' auto-assinado, por isso o curl vai com -k.
-set "MINIPC="
-REM  exemplo:  set "MINIPC=192.168.3.42"
+set "ESTACOES=192.168.3.43 100.70.25.83"
+REM  192.168.3.43 = LAN da fabrica   100.70.25.83 = Tailscale do Mini PC
 REM
 REM  Quantas vezes insistir na FASE 5 quando a estacao estiver ocupada,
 REM  esperando 10s entre uma e outra. 30 = 5 minutos. Suba este numero
@@ -27,11 +30,16 @@ set "TENTATIVAS=30"
 REM ===================================================================
 if not defined TENTATIVAS set "TENTATIVAS=30"
 
-REM  O arquivo estacao.txt, se existir nesta pasta, MANDA MAIS que a
-REM  linha MINIPC acima. E' nele que o DESCOBRIR-MINIPC.bat grava o
-REM  endereco. Assim uma versao nova deste .bat nunca apaga a sua
-REM  configuracao - foi o que aconteceu antes. Ele fica fora do Git.
-if exist "%~dp0estacao.txt" for /f "usebackq eol=# delims=" %%E in ("%~dp0estacao.txt") do if not "%%E"=="" set "MINIPC=%%E"
+REM  O arquivo estacao.txt, se existir nesta pasta, vai NA FRENTE da
+REM  lista acima (um endereco por linha). E' nele que o DESCOBRIR-MINIPC.bat
+REM  grava o endereco. Antes ele SUBSTITUIA a lista: com o Tailscale
+REM  gravado la', dentro da fabrica sem Tailscale a estacao "sumia".
+REM  Agora ele so' passa na frente; os dois enderecos fixos continuam
+REM  sendo tentados. Ele fica fora do Git.
+set "LISTA_TXT="
+if exist "%~dp0estacao.txt" for /f "usebackq eol=# tokens=1" %%W in ("%~dp0estacao.txt") do call set "LISTA_TXT=%%LISTA_TXT%% %%W"
+if defined LISTA_TXT set "ESTACOES=%LISTA_TXT% %ESTACOES%"
+set "MINIPC="
 
 set "LOG=%~dp0OUTPUT_ENVIAR_ATUALIZACAO.TXT"
 
@@ -86,7 +94,10 @@ call :L "OK 3/4: voce esta em dia com o GitHub."
 REM  O commit atual e' lido JA AQUI. Antes ele so' existia depois da FASE 3,
 REM  o que impedia usar a FASE 5 quando nao havia nada novo a enviar.
 set "SHA="
-for /f "delims=" %%H in ('git rev-parse --short HEAD 2^>nul') do set "SHA=%%H"
+REM  --short=7 fixo: o healthcheck da estacao devolve sempre 7 letras
+REM  (commitAtual). Com --short solto o git pode dar 8 ou mais e a
+REM  espera da FASE 5 nunca reconheceria a estacao ja atualizada.
+for /f "delims=" %%H in ('git rev-parse --short^=7 HEAD 2^>nul') do set "SHA=%%H"
 
 set "PEND=0"
 for /f %%N in ('git status --porcelain ^| find /c /v ""') do set "PEND=%%N"
@@ -98,7 +109,7 @@ REM  por exemplo quando a FASE 5 foi pulada numa rodada anterior. Entao,
 REM  havendo endereco da estacao, seguimos direto para aplicar o commit
 REM  que ja existe, em vez de encerrar sem opcao.
 call :L "Nada mudou na pasta - nao ha o que publicar."
-if not defined MINIPC (
+if not defined ESTACOES (
   call :L "E nao ha endereco de estacao configurado. Encerrando."
   call :L "=== FIM DO DIAGNOSTICO ==="
   echo.
@@ -431,7 +442,7 @@ if errorlevel 1 ( call :L "FALHA no git add." & goto :parar )
 git commit -m "%MSG%" >>"%LOG%" 2>&1
 if errorlevel 1 ( call :L "FALHA no git commit." & goto :parar )
 set "SHA="
-for /f "delims=" %%H in ('git rev-parse --short HEAD 2^>nul') do set "SHA=%%H"
+for /f "delims=" %%H in ('git rev-parse --short^=7 HEAD 2^>nul') do set "SHA=%%H"
 call :L "OK: commit %SHA% criado."
 
 if defined TAG (
@@ -476,10 +487,10 @@ call :L ""
 
 REM ================= FASE 5 - APLICAR NA ESTACAO =================
 :aplicar_estacao
-if not defined MINIPC (
+if not defined ESTACOES (
   call :L "O Mini PC nao recebeu nada. Ele continua na versao anterior."
-  call :L "Para poder aplicar daqui, preencha a linha MINIPC no topo"
-  call :L "deste .bat com o IP da estacao."
+  call :L "Para poder aplicar daqui, preencha a linha ESTACOES no topo"
+  call :L "deste .bat com os IPs da estacao."
   call :L "=== FIM DO DIAGNOSTICO ==="
   goto :fim_ok
 )
@@ -487,14 +498,16 @@ if not defined MINIPC (
 call :L "------------------------------------------------------------"
 call :L "FASE 5 - APLICAR NA ESTACAO"
 call :L "------------------------------------------------------------"
-set "URLMINI=https://%MINIPC%:3443"
 set "TMPHC=%TEMP%\eko_mini_hc.tmp"
 set "TMPJ=%TEMP%\eko_mini_body.tmp"
 
-call :L "Consultando a estacao em %URLMINI% ..."
-curl -s -k --max-time 8 "%URLMINI%/healthcheck" > "%TMPHC%" 2>nul
-if errorlevel 1 goto :mini_inalcancavel
-for %%Z in ("%TMPHC%") do if %%~zZ EQU 0 goto :mini_inalcancavel
+REM  Tenta cada endereco da lista; o primeiro que responder o healthcheck
+REM  e' o usado no resto da fase.
+set "MINIPC="
+for %%A in (%ESTACOES%) do if not defined MINIPC call :testar_estacao %%A
+if not defined MINIPC goto :mini_inalcancavel
+set "URLMINI=https://%MINIPC%:3443"
+call :L "OK: a estacao respondeu em %URLMINI%"
 
 type "%TMPHC%" >>"%LOG%"
 echo.
@@ -689,7 +702,7 @@ call :L "=== FIM DO DIAGNOSTICO ==="
 goto :fim_ok
 
 :mini_inalcancavel
-call :L "Nao consegui falar com a estacao em %URLMINI%"
+call :L "Nao consegui falar com a estacao em nenhum endereco: %ESTACOES%"
 call :L "O GitHub nao se perdeu - a estacao e' que nao atendeu."
 call :L "Confira, nesta ordem:"
 call :L "  1. a estacao esta ligada e com o INICIAR.bat rodando?"
@@ -698,6 +711,7 @@ call :L "     o LIBERAR-ACESSO-CELULAR.bat NO MINI PC."
 call :L "  3. o HTTPS subiu la'? Na janela preta do servidor deve aparecer"
 call :L "     a linha HTTPS(rede): https://<ip-do-mini-pc>:3443"
 call :L "  4. o IP mudou? Rode o DESCOBRIR-MINIPC.bat."
+call :L "  5. de fora da fabrica: o Tailscale deste PC esta conectado?"
 del "%TMPHC%" >nul 2>&1
 call :L "=== FIM DO DIAGNOSTICO ==="
 goto :fim_ok
@@ -718,6 +732,14 @@ start "" notepad "%LOG%"
 echo.
 pause
 exit /b 1
+
+:testar_estacao
+call :L "Consultando a estacao em https://%~1:3443 ..."
+curl -s -k --max-time 6 "https://%~1:3443/healthcheck" > "%TMPHC%" 2>nul
+if errorlevel 1 ( call :L "  sem resposta em %~1" & exit /b 0 )
+for %%Z in ("%TMPHC%") do if %%~zZ EQU 0 ( call :L "  resposta vazia em %~1" & exit /b 0 )
+set "MINIPC=%~1"
+exit /b 0
 
 :L
 echo(%~1
