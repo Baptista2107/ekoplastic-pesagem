@@ -164,11 +164,6 @@
   <!-- Turno: só com o Bling ligado (é o cliente da venda). -->
   <div class="turnos oculto" id="turnos"></div>
 
-  <!-- Turno do corte: marcado pelo supervisor (senha). O painel de operação
-       das sacoleiras na VPS corta os turnos por estes registros. -->
-  <div class="sec-tit"><span>Turno do corte</span></div>
-  <div class="tc" id="turno-corte"><div class="carregando">Carregando…</div></div>
-
   <div class="sec-tit"><span>Sacoleiras agora</span></div>
   <div class="sacs" id="sacs"><div class="carregando">Carregando…</div></div>
 
@@ -182,6 +177,13 @@
 
   <div class="sec-tit"><span>Hoje</span><span class="sub" id="hoje-resumo"></span></div>
   <div class="hist" id="lista-hist"><div class="carregando">Carregando…</div></div>
+
+  <!-- Turno do corte: marcado pelo supervisor (senha). O painel de operação
+       das sacoleiras na VPS corta os turnos por estes registros. Fica embaixo,
+       logo acima do inventário (Frederico, 30/09/2026): é ação de supervisor,
+       não do dia a dia do operador. -->
+  <div class="sec-tit"><span>Turno do corte</span></div>
+  <div class="tc" id="turno-corte"><div class="carregando">Carregando…</div></div>
 
   <button class="btn btn-cinza digitar" onclick="abrirInventario()">📋 Inventário de bobinas</button>
 </div>
