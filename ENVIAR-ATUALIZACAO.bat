@@ -311,6 +311,41 @@ del "%SAIDA11%" >nul 2>&1
 if not "%RCT%"=="0" goto :testes_falharam
 
 :sem_material
+REM  --- Teste 12: Cadastros Bling acha produto novo de materia-prima ---
+REM  Em 28/09/2026 o Auxiliar de Fluxo foi cadastrado no Bling e a busca
+REM  nao trouxe nada: material desconhecido era descartado calado e as
+REM  variacoes (onde esta o fornecedor) nunca eram abertas. Este teste
+REM  usa um Bling de mentira e confere o caminho inteiro pela tela.
+if not exist "testes\sync-bling.js" goto :sem_syncbling
+echo.
+echo  Rodando o teste de Cadastros Bling. Leva uns 15 segundos...
+echo.
+set "SAIDA12=%TEMP%\eko_testes12.tmp"
+node testes\sync-bling.js > "%SAIDA12%" 2>&1
+set "RCT=%ERRORLEVEL%"
+type "%SAIDA12%"
+type "%SAIDA12%" >>"%LOG%"
+del "%SAIDA12%" >nul 2>&1
+if not "%RCT%"=="0" goto :testes_falharam
+
+:sem_syncbling
+REM  --- Teste 13: troca Polinylon Tallpack -> Resina EVOH ---
+REM  As etiquetas antigas continuam valendo, lidas como EVOH: retirada
+REM  baixa EVOH no Bling, inventario conta EVOH, e Polinylon Tallpack
+REM  Cristal/Leitoso nao recebe mais entrada. Sem a EVOH mapeada, nada muda.
+if not exist "testes\troca-evoh.js" goto :sem_trocaevoh
+echo.
+echo  Rodando o teste da troca para Resina EVOH. Leva uns 20 segundos...
+echo.
+set "SAIDA13=%TEMP%\eko_testes13.tmp"
+node testes\troca-evoh.js > "%SAIDA13%" 2>&1
+set "RCT=%ERRORLEVEL%"
+type "%SAIDA13%"
+type "%SAIDA13%" >>"%LOG%"
+del "%SAIDA13%" >nul 2>&1
+if not "%RCT%"=="0" goto :testes_falharam
+
+:sem_trocaevoh
 if not exist "testes\janela-atualizacao.js" goto :testes_ok
 echo.
 echo  Rodando o teste da janela de atualizacao. Leva uns 30 segundos...

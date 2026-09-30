@@ -2649,6 +2649,11 @@ const MP_MATERIAIS_PADRAO = {
             corLabel: { 'Colorido':'COL', 'Canela':'CAN', 'Preto':'PTO', 'Leitoso':'LEI' } },
   POLI:   { popular: 'Polinylon',            cores: ['Colorido','Canela','Cristal','Leitoso'],
             corLabel: { 'Colorido':'COL', 'Canela':'CAN', 'Cristal':'CRIS', 'Leitoso':'LEI' } },
+  // Resina EVOH (30/09/2026) — substitui o Polinylon da Tallpack nas cores
+  // Cristal e Leitoso. Big bag pesado, como o Polinylon. As abreviações da
+  // SKU seguem as do Polinylon (CRIS/LEI) de propósito.
+  EVOH:   { popular: 'Resina EVOH', nomeEtiqueta: 'RESINA EVOH', cores: ['Cristal','Leitoso'],
+            corLabel: { 'Cristal':'CRIS', 'Leitoso':'LEI' } },
   CARBO:  { popular: 'Carbonato',            cores: [], corLabel: {} },
   PIG:    { popular: 'Pigmento',             cores: ['Amarelo','Branco','Preto','Verde'],
             corLabel: { 'Amarelo':'AMA', 'Branco':'BRA', 'Preto':'PRE', 'Verde':'VER' } },
@@ -2656,6 +2661,12 @@ const MP_MATERIAIS_PADRAO = {
   // Auxiliar de fluxo (28/09/2026). Sem cor, em sacos de 25 kg, como os
   // demais aditivos: entra por número de sacos e sai por número de sacos.
   AUXFLUX:{ popular: 'Auxiliar de Fluxo',    cores: [], corLabel: {} },
+};
+
+// Troca de produto: chave antiga → chave nova. Ver aplicarSubstituicao().
+const MP_SUBSTITUICOES_PADRAO = {
+  'POLI:Cristal:Tallpack': 'EVOH:Cristal:Tallpack',
+  'POLI:Leitoso:Tallpack': 'EVOH:Leitoso:Tallpack',
 };
 
 // Nomes de cor que o sistema sabe RECONHECER num produto do Bling, mesmo
@@ -2781,6 +2792,12 @@ function seedConfigsBling() {
     "DESSEC::Secmil":             "16620601030",
     // AUXFLUX (cor null) — cadastrado no Bling em 28/09/2026
     "AUXFLUX::Cristal Master":    "16711697477",
+    // RESINA EVOH (30/09/2026) — substitui o Polinylon Tallpack Cristal/Leitoso.
+    // As duas cores são variações do mesmo produto-pai; a SKU distingue a
+    // variação (resolvida no envio via mapa_sku_variacao_mp), como no Ecorafia.
+    // Mapear a EVOH é o que LIGA a troca (ver aplicarSubstituicao).
+    "EVOH:Cristal:Tallpack":      "16711891720",
+    "EVOH:Leitoso:Tallpack":      "16711891720",
     // PIG
     "PIG:Amarelo:Cristal Master": "16571351818",
     "PIG:Amarelo:FG":             "16620454453",
@@ -2816,6 +2833,9 @@ function seedConfigsBling() {
     // 6 letras ("CRISTA") e o cadastro lá é AUXFLUX.CRISTAL — mandar a
     // SKU faz o envio resolver a variação certa, com o id como reserva.
     "AUXFLUX::Cristal Master": "AUXFLUX.CRISTAL",
+    // Resina EVOH: SKUs das variações no Bling (informadas em 30/09/2026).
+    "EVOH:Cristal:Tallpack":   "EVOH.CRISTAL.TALL",
+    "EVOH:Leitoso:Tallpack":   "EVOH.LEI.TALL",
   };
   let inseridas = 0;
   if (!dbStmts.configGet.get('mapa_fornecedor_bling')) {
@@ -2870,11 +2890,18 @@ function seedConfigsBling() {
     dbStmts.configSet.run('bling_simular', '1');           // simulação por padrão
     inseridas++;
   }
+  // Troca de produto (Polinylon Tallpack → Resina EVOH). Gravada UMA vez:
+  // se alguém esvaziar, a próxima atualização não a recoloca. Ela só passa
+  // a valer quando a EVOH estiver mapeada no Bling — ver aplicarSubstituicao.
+  if (!dbStmts.configGet.get('mp_substituicoes')) {
+    dbStmts.configSet.run('mp_substituicoes', JSON.stringify(MP_SUBSTITUICOES_PADRAO));
+    inseridas++;
+  }
 
   // ── CATÁLOGO MP (Etapa 1): fornecedores por material + códigos gravimétricos ──
   // Fonte única no banco. A tela de recebimento lê via GET /catalogo-mp
   // (com fallback embutido no cliente). O cadastro pela tela vem nas etapas seguintes.
-  const mpFornecedoresPadrao = {"GBD": ["Cedro", "Ecorafia", "Ecolog", "Forcoplast", "Gold Green", "Piquiri", "Redeplast", "Tupaciguara", "WT dos Santos"], "POLI": ["Ecolog", "Tallpack", "Valgroup", "Ycaro"], "CARBO": ["Cristal Master", "FG", "Karina", "SecMil", "W R"], "PIG": ["Cristal Master", "FG", "Karina"], "DESSEC": ["COLLOR-X", "Cromex", "INNOVACOLOR", "Cristal Master", "FG", "Karina", "SecMil"], "AUXFLUX": ["Cristal Master"]};
+  const mpFornecedoresPadrao = {"GBD": ["Cedro", "Ecorafia", "Ecolog", "Forcoplast", "Gold Green", "Piquiri", "Redeplast", "Tupaciguara", "WT dos Santos"], "POLI": ["Ecolog", "Tallpack", "Valgroup", "Ycaro"], "EVOH": ["Tallpack"], "CARBO": ["Cristal Master", "FG", "Karina", "SecMil", "W R"], "PIG": ["Cristal Master", "FG", "Karina"], "DESSEC": ["COLLOR-X", "Cromex", "INNOVACOLOR", "Cristal Master", "FG", "Karina", "SecMil"], "AUXFLUX": ["Cristal Master"]};
   const mpCodigosGravPadrao = [{"matKey": "PIG", "cor": "Amarelo", "forn": null, "codigo": "P1"}, {"matKey": "PIG", "cor": "Verde", "forn": null, "codigo": "P2"}, {"matKey": "PIG", "cor": "Preto", "forn": null, "codigo": "P3"}, {"matKey": "PIG", "cor": "Branco", "forn": null, "codigo": "P4"}, {"matKey": "CARBO", "cor": null, "forn": "Cristal Master", "codigo": "C1"}, {"matKey": "CARBO", "cor": null, "forn": "FG", "codigo": "C2"}, {"matKey": "CARBO", "cor": null, "forn": "Karina", "codigo": "C3"}, {"matKey": "CARBO", "cor": null, "forn": "W R", "codigo": "C4"}, {"matKey": "DESSEC", "cor": null, "forn": "Cristal Master", "codigo": "D1"}, {"matKey": "DESSEC", "cor": null, "forn": "COLLOR-X", "codigo": "D3"}, {"matKey": "DESSEC", "cor": null, "forn": "Cromex", "codigo": "D4"}, {"matKey": "DESSEC", "cor": null, "forn": "INNOVACOLOR", "codigo": "D5"}, {"matKey": "GBD", "cor": "Canela", "forn": "Cedro", "codigo": "CAN1"}, {"matKey": "GBD", "cor": "Canela", "forn": "Tupaciguara", "codigo": "CAN2"}, {"matKey": "GBD", "cor": "Canela", "forn": "WT dos Santos", "codigo": "CAN3"}, {"matKey": "GBD", "cor": "Canela", "forn": "Piquiri", "codigo": "CAN4"}, {"matKey": "GBD", "cor": "Colorido", "forn": "Cedro", "codigo": "COL1"}, {"matKey": "GBD", "cor": "Colorido", "forn": "Forcoplast", "codigo": "COL2"}, {"matKey": "GBD", "cor": "Colorido", "forn": "Piquiri", "codigo": "COL3"}, {"matKey": "GBD", "cor": "Colorido", "forn": "Tupaciguara", "codigo": "COL4"}, {"matKey": "GBD", "cor": "Colorido", "forn": "WT dos Santos", "codigo": "COL5"}, {"matKey": "GBD", "cor": "Preto", "forn": "Cedro", "codigo": "PT1"}, {"matKey": "GBD", "cor": "Preto", "forn": "Forcoplast", "codigo": "PT2"}, {"matKey": "GBD", "cor": "Preto", "forn": "Tupaciguara", "codigo": "PT3"}, {"matKey": "GBD", "cor": "Preto", "forn": "Piquiri", "codigo": "PT4"}, {"matKey": "GBD", "cor": "Colorido", "forn": "Ecorafia", "codigo": "COL6"}, {"matKey": "GBD", "cor": "Canela", "forn": "Ecorafia", "codigo": "CAN4"}, {"matKey": "GBD", "cor": "Leitoso", "forn": "Ecorafia", "codigo": "LEI1"}, {"matKey": "GBD", "cor": "Colorido", "forn": "Gold Green", "codigo": "COL7"}, {"matKey": "GBD", "cor": "Preto", "forn": "Gold Green", "codigo": "PT5"}, {"matKey": "GBD", "cor": "Leitoso", "forn": "Gold Green", "codigo": "LEI2"}, {"matKey": "GBD", "cor": "Canela", "forn": "Gold Green", "codigo": "CAN5"}, {"matKey": "POLI", "cor": "Canela", "forn": "Ycaro", "codigo": "NCAN1"}, {"matKey": "POLI", "cor": "Canela", "forn": "Ecolog", "codigo": "NCAN2"}, {"matKey": "POLI", "cor": "Colorido", "forn": "Ecolog", "codigo": "NCOL1"}, {"matKey": "POLI", "cor": "Colorido", "forn": "Ycaro", "codigo": "NCOL2"}, {"matKey": "POLI", "cor": "Colorido", "forn": "Tallpack", "codigo": "NCOL3"}, {"matKey": "POLI", "cor": "Cristal", "forn": "Ycaro", "codigo": "NCRIS1"}, {"matKey": "POLI", "cor": "Leitoso", "forn": "Ecolog", "codigo": "NLEI1"}, {"matKey": "POLI", "cor": "Leitoso", "forn": "Tallpack", "codigo": "NLEI2"}, {"matKey": "POLI", "cor": "Leitoso", "forn": "Valgroup", "codigo": "NLEI3"}, {"matKey": "POLI", "cor": "Leitoso", "forn": "Ycaro", "codigo": "NLEI4"}, {"matKey": "AUXFLUX", "cor": null, "forn": "Cristal Master", "codigo": "A1"}];
   // ── POR QUE ESTES TRÊS PRECISAM MESCLAR ──────────────────────────
   //  Até 28/09/2026 os três catálogos de MP só eram gravados quando a
@@ -4652,6 +4679,116 @@ function imprimirEPersistirEtiqueta(dados, callback) {
 function chaveProduto(mat, cor, forn) { return `${mat || ''}:${cor || ''}:${forn || ''}`; }
 
 // ──────────────────────────────────────────────────────────────────
+// QUEM ENTRA E SAI POR SACOS (e quantos kg tem o saco)
+// Os aditivos de sempre ficam em MP_CONTAGEM_MANUAL; um material criado
+// pela tela (Cadastros Bling) traz "porSacos" no próprio cadastro. Antes
+// esta lista era só a fixa: material novo contado em sacos precisava de
+// atualização de código para entrar e sair por sacos.
+// ──────────────────────────────────────────────────────────────────
+function materiaisPorSacos() {
+  const r = { ...MP_CONTAGEM_MANUAL };
+  try {
+    const mats = lerCatalogoMP().materiais || {};
+    for (const [k, m] of Object.entries(mats)) {
+      if (!m || m.porSacos !== true || r[k]) continue;
+      r[k] = Number(m.kgPorSaco) > 0 ? Number(m.kgPorSaco) : 25;
+    }
+  } catch (e) { /* catálogo ilegível: fica a lista fixa, que é a de sempre */ }
+  return r;
+}
+
+// ──────────────────────────────────────────────────────────────────
+// TROCA DE PRODUTO (30/09/2026)
+// Polinylon Tallpack Cristal/Leitoso passou a ser RESINA EVOH Tallpack
+// Cristal/Leitoso. As etiquetas antigas CONTINUAM valendo — são as
+// mesmas, coladas nos mesmos big bags — mas passam a ser LIDAS como o
+// produto novo: a retirada baixa EVOH no Bling, o inventário conta EVOH,
+// o retorno volta como EVOH. O registro original da etiqueta não muda.
+//
+// A troca só LIGA quando o produto novo está mapeado no Bling
+// (mapa_produto_bling). Antes disso tudo segue exatamente como hoje —
+// não há janela em que uma retirada fique sem produto para lançar.
+// A configuração fica no banco (mp_substituicoes) e é gravada uma única
+// vez: se um dia for esvaziada, uma atualização não a traz de volta.
+// ──────────────────────────────────────────────────────────────────
+// (MP_SUBSTITUICOES_PADRAO fica junto de MP_MATERIAIS_PADRAO: o seed roda antes daqui.)
+
+// Todas as trocas cadastradas, cada uma dizendo se já está valendo.
+function listarSubstituicoes() {
+  let subs = {}, mapa = {};
+  try { subs = JSON.parse(configGet('mp_substituicoes', '{}')) || {}; } catch (e) { subs = {}; }
+  try { mapa = JSON.parse(configGet('mapa_produto_bling', '{}')) || {}; } catch (e) { mapa = {}; }
+  const mapeados = new Set(Object.keys(mapa).map(k => k.toLowerCase()));
+  let mats = {};
+  try { mats = lerCatalogoMP().materiais || {}; } catch (e) {}
+  const nomeDe = chave => {
+    const [m, c, f] = String(chave).split(':');
+    const pop = (mats[m] && mats[m].popular) || (MP_MATERIAIS_PADRAO[m] && MP_MATERIAIS_PADRAO[m].popular) || m;
+    return [pop, c, f].filter(Boolean).join(' · ');
+  };
+  const lista = [];
+  for (const [de, para] of Object.entries(subs)) {
+    if (!de || !para || typeof para !== 'string') continue;
+    const [material, cor, fornecedor] = para.split(':');
+    if (!material) continue;
+    lista.push({ de, para, ativa: mapeados.has(para.toLowerCase()),
+                 de_nome: nomeDe(de), para_nome: nomeDe(para),
+                 material, cor: cor || null, fornecedor: fornecedor || null });
+  }
+  return lista;
+}
+
+// A troca que vale AGORA para este produto (ou null). Sem diferença de
+// maiúsculas: há etiquetas antigas com o fornecedor em caixa alta.
+function substituicaoAtiva(mat, cor, forn) {
+  const k = chaveProduto(mat, cor, forn).toLowerCase();
+  return listarSubstituicoes().find(s => s.ativa && s.de.toLowerCase() === k) || null;
+}
+
+// Início da SKU impressa, pela mesma regra da tela de Recebimento:
+// MATERIAL[.COR].FORNECEDOR(6 letras).
+function prefixoSkuMP(mat, cor, forn) {
+  let lab = '';
+  if (cor) {
+    let m = {};
+    try { m = (lerCatalogoMP().materiais || {})[mat] || MP_MATERIAIS_PADRAO[mat] || {}; } catch (e) {}
+    lab = String((m.corLabel && m.corLabel[cor]) || corLabelPadrao(cor)).toUpperCase();
+  }
+  const f = String(forn || '').replace(/[^A-Za-z0-9]/g, '').substring(0, 6).toUpperCase();
+  return `${mat}${lab ? '.' + lab : ''}.${f}`;
+}
+
+// Como a etiqueta deve ser LIDA hoje. Devolve uma cópia — o registro no
+// banco não é alterado. Só matéria-prima (recebimento/retorno/retirada).
+function aplicarSubstituicao(et) {
+  if (!et || !et.material_key) return et;
+  if (!['recebimento', 'retorno', 'retirada'].includes(et.tipo)) return et;
+  const s = substituicaoAtiva(et.material_key, et.cor, et.fornecedor);
+  if (!s) return et;
+  let cat = { materiais: {}, codigos: [] };
+  try { cat = lerCatalogoMP(); } catch (e) {}
+  const mat = (cat.materiais || {})[s.material] || MP_MATERIAIS_PADRAO[s.material] || {};
+  const nome = String(mat.nomeEtiqueta || mat.popular || s.material).toUpperCase();
+  // Código gravimétrico do produto novo, se já cadastrado; senão fica o antigo.
+  const cod = (cat.codigos || []).find(c => c.matKey === s.material && (c.cor || null) === (s.cor || null)
+                                            && (c.forn == null || c.forn === s.fornecedor));
+  const sku = et.sku ? String(et.sku).replace(/^[^|]*?(?=\s*\||$)/, prefixoSkuMP(s.material, s.cor, s.fornecedor)) : et.sku;
+  return { ...et,
+    material_key: s.material, material_nome: nome, material_label: nome,
+    cor: s.cor, fornecedor: s.fornecedor,
+    codigo: cod ? cod.codigo : et.codigo, sku,
+    substituida_de: { material_key: et.material_key, material_nome: et.material_nome, cor: et.cor,
+                      fornecedor: et.fornecedor, codigo: et.codigo, sku: et.sku },
+  };
+}
+
+// Mensagem para quem tenta dar ENTRADA num produto que foi trocado.
+function mensagemProdutoTrocado(s) {
+  return `${s.de_nome} foi substituído por ${s.para_nome}. `
+       + `Selecione ${s.para_nome.split(' · ').join(' › ')} — o produto antigo não recebe mais entradas.`;
+}
+
+// ──────────────────────────────────────────────────────────────────
 // Payload Bling pra sessão de PRODUTO ACABADO (entrada de sacolas/fardos).
 // - Contato/fornecedor: o TURNO (PA_TURNOS[turno_codigo].bling).
 // - 1 item por etiqueta 'P'. Produto: id = produto-PAI da cor (PA_CORES),
@@ -6051,7 +6188,9 @@ const requestHandlerBase = async (req, res) => {
     if ((m = pathname.match(/^\/etiquetas?\/([RTSEOP]\d+)$/)) && req.method === 'GET') {
       const et = dbStmts.getEtiqueta.get(m[1]);
       if (!et) return jsonErr(res, 404, `Etiqueta ${m[1]} não encontrada`);
-      return jsonOk(res, { etiqueta: et });
+      // Etiqueta de produto trocado é lida como o produto novo (ver
+      // aplicarSubstituicao). Sem troca valendo, volta exatamente o registro.
+      return jsonOk(res, { etiqueta: aplicarSubstituicao(et) });
     }
 
     // POST /etiqueta/:id/bipar
@@ -6152,7 +6291,7 @@ const requestHandlerBase = async (req, res) => {
         if (consumoAtivo) {
           return jsonErr(res, 409, `Etiqueta ${origId} já foi retirada`, {
             ja_consumida: true,
-            etiqueta: orig,
+            etiqueta: aplicarSubstituicao(orig),
             consumo: consumoAtivo,
           });
         }
@@ -6160,6 +6299,10 @@ const requestHandlerBase = async (req, res) => {
         // novo (cria nova virtual). A original será re-marcada 'consumida' abaixo.
       }
       // status === 'aguardando_bipe' ou 'bipada' — pode consumir
+
+      // Produto trocado: a retirada sai como o produto NOVO (é ele que tem
+      // saldo no Bling). A etiqueta original fica como foi impressa.
+      const lida = aplicarSubstituicao(orig);
 
       // Cria etiqueta virtual de retirada
       const seqRet = getProximoSeq('retirada');
@@ -6172,16 +6315,16 @@ const requestHandlerBase = async (req, res) => {
           seq_sessao:     seqSessaoRet,
           tipo:           'retirada',
           sub_tipo:       'graos-bipados',
-          material_key:   orig.material_key,
-          material_nome:  orig.material_nome,
-          material_label: orig.material_label,
-          cor:            orig.cor,
-          fornecedor:     orig.fornecedor,
+          material_key:   lida.material_key,
+          material_nome:  lida.material_nome,
+          material_label: lida.material_label,
+          cor:            lida.cor,
+          fornecedor:     lida.fornecedor,
           lote:           orig.lote,
           peso:           orig.peso,                 // mesmo peso da original (palete inteiro)
           qtd_sacos:      null,
-          codigo:         orig.codigo,
-          sku:            orig.sku,
+          codigo:         lida.codigo,
+          sku:            lida.sku,
           status:         'bipada',                  // já entra bipada (registro válido)
           ref_id:         origId,                    // aponta pra etiqueta original consumida
           hora_impressao: new Date().toISOString(),
@@ -6196,8 +6339,9 @@ const requestHandlerBase = async (req, res) => {
           .run(new Date().toISOString(), origId);
       });
       tr();
-      logI('retirada', `Consumida ${origId} → ${idVirt} (sessão #${sessaoIdRet})`, {
-        material: orig.material_key, peso: orig.peso, fornecedor: orig.fornecedor
+      logI('retirada', `Consumida ${origId} → ${idVirt} (sessão #${sessaoIdRet})`
+        + (lida.substituida_de ? ` — lida como ${chaveProduto(lida.material_key, lida.cor, lida.fornecedor)} (troca de produto)` : ''), {
+        material: lida.material_key, peso: orig.peso, fornecedor: lida.fornecedor
       });
       // Registra a retirada no log de produção (CSV materia-prima) — a virtual
       // nasce 'bipada' e não passa pelo /bipar, então registramos aqui.
@@ -6243,9 +6387,11 @@ const requestHandlerBase = async (req, res) => {
     // barras impresso saiu fraco/borrado e não lê no leitor — tira uma cópia nova.
     if ((m = pathname.match(/^\/etiquetas?\/([RTSEO]\d+)\/reimprimir$/)) && req.method === 'POST') {
       const idRe = m[1];
-      const et = dbStmts.getEtiqueta.get(idRe);
-      if (!et) return jsonErr(res, 404, `Etiqueta ${idRe} não encontrada`);
-      if (et.status === 'cancelada') return jsonErr(res, 400, `Etiqueta ${idRe} está cancelada — não faz sentido reimprimir`);
+      const etReg = dbStmts.getEtiqueta.get(idRe);
+      if (!etReg) return jsonErr(res, 404, `Etiqueta ${idRe} não encontrada`);
+      if (etReg.status === 'cancelada') return jsonErr(res, 400, `Etiqueta ${idRe} está cancelada — não faz sentido reimprimir`);
+      // Produto trocado: a cópia sai com o nome do produto que vale hoje.
+      const et = aplicarSubstituicao(etReg);
       // Reconstrói os dados a partir do que foi salvo, para gerar o MESMO EPL.
       const dadosRe = {
         tipo:           et.tipo,
@@ -6292,6 +6438,12 @@ const requestHandlerBase = async (req, res) => {
       if (et.status === 'cancelada') return jsonErr(res, 400, `Etiqueta ${idC} está cancelada`);
       try { exigeCampos(body, ['materialKey','fornecedor','codigo','sku']); }
       catch(e) { return jsonErr(res, 400, e.message); }
+      // Corrigir PARA um produto que foi trocado seria dar entrada nele por
+      // outra porta — mesma regra do recebimento.
+      {
+        const trocaC = substituicaoAtiva(String(body.materialKey).toUpperCase(), body.cor || null, body.fornecedor);
+        if (trocaC) return jsonErr(res, 409, mensagemProdutoTrocado(trocaC), { trava: 'produto_substituido', substituto: trocaC.para });
+      }
 
       dbStmts.corrigirEtiqueta.run({
         id:             idC,
@@ -6350,7 +6502,17 @@ const requestHandlerBase = async (req, res) => {
       const sessao = dbStmts.getSessao.get(sessaoIdRet);
       if (!sessao) return jsonErr(res, 404, 'Sessão não encontrada');
       if (sessao.tipo !== 'retirada') return jsonErr(res, 400, `Sessão #${sessaoIdRet} não é de retirada`);
-      const KG_SACO = 25;
+      // QUEM PODE SAIR POR SACOS é quem ENTRA por sacos: os aditivos de
+      // sempre (MP_CONTAGEM_MANUAL) e o material criado pela tela marcado
+      // como "por sacos". Com nomes fixos aqui dentro, um material novo
+      // contado em sacos passava no recebimento e era recusado na retirada
+      // — meio caminho, que é pior que caminho nenhum.
+      const matKey = String(body.materialKey).toUpperCase();
+      const porSacosMap = materiaisPorSacos();
+      const porSacos = Object.keys(porSacosMap);
+      if (!porSacosMap[matKey]) return jsonErr(res, 400,
+        `materialKey inválido para aditivo contado: ${matKey} (use ${porSacos.join(', ')})`);
+      const KG_SACO = porSacosMap[matKey];
       // Sacos fechados (25 kg) e/ou PESO AVULSO. O avulso cobre o saco aberto,
       // antigo ou sem etiqueta, que não tem o peso padrão — sem ele, esse
       // material ficaria de fora da retirada.
@@ -6362,15 +6524,6 @@ const requestHandlerBase = async (req, res) => {
         return jsonErr(res, 400, 'Informe a quantidade de sacos ou um peso avulso');
       }
       const peso = Number((qtdSacos * KG_SACO + pesoAvulso).toFixed(3));
-      // QUEM PODE SAIR POR SACOS é quem ENTRA por sacos: a lista vem do
-      // MP_CONTAGEM_MANUAL, não de dois nomes escritos aqui dentro. Com os
-      // nomes fixos, um material novo contado em sacos passava no
-      // recebimento e era recusado na retirada — meio caminho, que é pior
-      // que caminho nenhum: entra estoque que não tem como sair.
-      const matKey = String(body.materialKey).toUpperCase();
-      const porSacos = Object.keys(MP_CONTAGEM_MANUAL);
-      if (!porSacos.includes(matKey)) return jsonErr(res, 400,
-        `materialKey inválido para aditivo contado: ${matKey} (use ${porSacos.join(', ')})`);
       // Cor só é exigida de quem TEM cor no catálogo — hoje só o pigmento.
       const materiaisCat = (() => { try { return lerCatalogoMP().materiais || {}; } catch(e) { return {}; } })();
       const catMat = materiaisCat[matKey] || MP_MATERIAIS_PADRAO[matKey] || {};
@@ -6439,19 +6592,27 @@ const requestHandlerBase = async (req, res) => {
       if (sessaoRto.tipo !== 'retorno') return jsonErr(res, 400, `Sessão #${sessaoIdRto} não é de retorno`);
       const qtdSacosRto = parseInt(body.qtd_sacos);
       if (!qtdSacosRto || qtdSacosRto < 1) return jsonErr(res, 400, 'qtd_sacos deve ser inteiro >= 1');
-      const KG_SACO_RTO = 25;
-      const pesoRto = qtdSacosRto * KG_SACO_RTO;
+      // Volta por sacos quem sai por sacos (mesma lista da retirada). O
+      // Carbonato fica de fora como sempre ficou: ele não volta em sacos.
       const matKeyRto = String(body.materialKey).toUpperCase();
-      if (!['PIG','DESSEC'].includes(matKeyRto)) return jsonErr(res, 400, `materialKey inválido para aditivo contado: ${matKeyRto} (use PIG ou DESSEC)`);
-      const corRto = (matKeyRto === 'PIG') ? (body.cor || null) : null;
-      if (matKeyRto === 'PIG' && !corRto) return jsonErr(res, 400, 'cor obrigatória para PIG');
+      const porSacosRto = materiaisPorSacos();
+      delete porSacosRto.CARBO;
+      if (!porSacosRto[matKeyRto]) return jsonErr(res, 400,
+        `materialKey inválido para aditivo contado: ${matKeyRto} (use ${Object.keys(porSacosRto).join(', ')})`);
+      const KG_SACO_RTO = porSacosRto[matKeyRto];
+      const pesoRto = qtdSacosRto * KG_SACO_RTO;
+      // Cor só para quem tem cor no catálogo (o Pigmento).
+      const catMatRto = (() => { try { return (lerCatalogoMP().materiais || {})[matKeyRto] || MP_MATERIAIS_PADRAO[matKeyRto] || {}; } catch(e) { return MP_MATERIAIS_PADRAO[matKeyRto] || {}; } })();
+      const temCorRto = Array.isArray(catMatRto.cores) && catMatRto.cores.length > 0;
+      const corRto = temCorRto ? (body.cor || null) : null;
+      if (temCorRto && !corRto) return jsonErr(res, 400, `cor obrigatória para ${matKeyRto}`);
 
       const seqRto = getProximoSeq('retorno');
       const idVirtRto = 'T' + String(seqRto).padStart(7, '0');
       const seqSessaoRto = proximoSeqSessao(sessaoIdRto);
       const corLabelRto = corRto || '';
       const skuFornRto = '.' + String(body.fornecedor).replace(/[^A-Za-z0-9]/g,'').substring(0,6).toUpperCase();
-      const matLabelRto = matKeyRto === 'PIG' ? 'Pigmento' : 'Dessecante';
+      const matLabelRto = matKeyRto === 'PIG' ? 'Pigmento' : matKeyRto === 'DESSEC' ? 'Dessecante' : (catMatRto.popular || matKeyRto);
       const skuRto = `${matKeyRto}${corRto ? '.' + corLabelRto.substring(0,3).toUpperCase() : ''}${skuFornRto} | ${pesoRto} | SACOS`;
       const codigoRto = body.codigo || `${matKeyRto}${corRto ? corRto.substring(0,1).toUpperCase() : ''}`;
 
@@ -6586,6 +6747,32 @@ const requestHandlerBase = async (req, res) => {
         exigeCampos(dados, ['tipo','fornecedor','peso','codigo','sku','lote']);
         if (!dados.materialKey && !dados.material_key) throw new Error('Campo obrigatório ausente: materialKey');
       } catch(e) { return jsonErr(res, 400, e.message); }
+      // ── TROCA DE PRODUTO ──────────────────────────────────────────
+      // Entrada NOVA (recebimento, ou retorno sem etiqueta de origem) de um
+      // produto que foi trocado é recusada: daqui pra frente só o produto
+      // novo. O retorno COM etiqueta de origem não é recusado — ele volta
+      // como o produto novo (a tela já recebe a etiqueta lida assim; aqui é
+      // a garantia para quem bipou um segundo antes da troca ligar).
+      // Uma nova tentativa de algo que JÁ foi impresso passa direto.
+      const tipoEnt = dados.tipo || 'recebimento';
+      if ((tipoEnt === 'recebimento' || tipoEnt === 'retorno') && !idempotenciaGet(dados.clientToken)) {
+        const matEnt = String(dados.materialKey || dados.material_key).toUpperCase();
+        const troca = substituicaoAtiva(matEnt, dados.cor || null, dados.fornecedor);
+        if (troca) {
+          const temOrigem = !!(dados.ref_id || dados.origId);
+          if (tipoEnt === 'recebimento' || !temOrigem) {
+            logW('print', `Recusado: entrada de ${troca.de} — produto trocado por ${troca.para}`, { tipo: tipoEnt });
+            return jsonErr(res, 409, mensagemProdutoTrocado(troca), { trava: 'produto_substituido', substituto: troca.para });
+          }
+          const lida = aplicarSubstituicao({ tipo: tipoEnt, material_key: matEnt, material_nome: dados.materialNomeEt || dados.material_nome,
+                                             cor: dados.cor || null, fornecedor: dados.fornecedor, codigo: dados.codigo, sku: dados.sku });
+          logI('print', `Retorno de ${dados.ref_id || dados.origId}: ${troca.de} volta como ${troca.para} (troca de produto)`);
+          dados.materialKey = lida.material_key; delete dados.material_key;
+          dados.materialNomeEt = lida.material_nome; dados.material_nome = lida.material_nome;
+          dados.cor = lida.cor; dados.fornecedor = lida.fornecedor;
+          dados.codigo = lida.codigo; dados.sku = lida.sku;
+        }
+      }
       // seq é atribuído pelo servidor (C2) — qualquer seq vindo do corpo é ignorado.
       return imprimirEPersistirEtiqueta(dados, resp => {
         if (resp.ok) jsonOk(res, resp);
@@ -7196,7 +7383,11 @@ const requestHandlerBase = async (req, res) => {
         // Nomes conhecidos, para reconhecer o que vier do Bling.
         const materiais = Object.keys(cat.materiais || {});
         const coresConhecidas = [...new Set(Object.values(cat.materiais || {}).flatMap(m => m.cores || []))];
-        const fornConhecidos  = [...new Set(Object.values(cat.fornecedores || {}).flat())];
+        // Fornecedor: os do catálogo E os que já têm contato no Bling. Um
+        // fornecedor que só fornece o material novo ainda não está em lista
+        // de material nenhuma — mas o contato dele já está mapeado.
+        const fornConhecidos  = [...new Set([...Object.values(cat.fornecedores || {}).flat(),
+                                             ...Object.keys(mapaForn || {})])];
 
         const norm = t => String(t || '').toUpperCase()
           .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
@@ -7218,31 +7409,89 @@ const requestHandlerBase = async (req, res) => {
           if (!termosCor.has(norm(termo))) termosCor.set(norm(termo), cor);
         }
         const coresOrdenadas = [...termosCor.keys()].sort((a, b) => b.length - a.length);
+        // Como cada material é reconhecido no nome/código do Bling. Os fixos
+        // valem para os materiais antigos; um material criado pela tela traz
+        // os dele (chave, nome e apelidos cadastrados). Sem isso, um material
+        // novo nunca seria reconhecido — foi o que aconteceu com o AUXILIAR
+        // DE FLUXO: a busca não tinha como saber que aquilo era matéria-prima.
+        const apelidosFixos = { GBD: ['GBD', 'GRAO BAIXA', 'BAIXA DENSIDADE'], POLI: ['POLI', 'POLINYLON', 'NYLON'],
+                                CARBO: ['CARBO', 'CARBONATO'], PIG: ['PIG', 'PIGMENTO'], DESSEC: ['DESSEC', 'DESSECANTE'],
+                                AUXFLUX: ['AUXFLUX', 'AUXILIAR DE FLUXO', 'AUXILIAR FLUXO'],
+                                EVOH: ['EVOH', 'RESINA EVOH'] };
+        const alvosDe = m => {
+          const mat = (cat.materiais || {})[m] || {};
+          return [...new Set([m, ...(apelidosFixos[m] || []), mat.popular,
+                              ...(Array.isArray(mat.apelidos) ? mat.apelidos : [])]
+                   .filter(Boolean).map(norm).filter(a => a.length >= 3))];
+        };
         const interpretar = (nome, codigo) => {
-          let N = norm(nome) + ' ' + norm(codigo);
-          const apelidos = { GBD: ['GBD', 'GRAO BAIXA', 'BAIXA DENSIDADE'], POLI: ['POLI', 'POLINYLON', 'NYLON'],
-                             CARBO: ['CARBO', 'CARBONATO'], PIG: ['PIG', 'PIGMENTO'], DESSEC: ['DESSEC', 'DESSECANTE'],
-                             AUXFLUX: ['AUXFLUX', 'AUXILIAR DE FLUXO', 'AUXILIAR FLUXO'] };
-          let material = null;
+          const C = norm(codigo);                       // SKU: "AUXFLUX.CRISTAL" → "AUXFLUX CRISTAL"
+          let N = norm(nome) + ' ' + C;
+          // O apelido MAIS LONGO que casar vence: "RESINA EVOH" é mais
+          // específico que um apelido curto que por acaso apareça no nome.
+          let material = null, tamanhoAchado = 0;
           for (const m of materiais) {
-            const alvos = apelidos[m] || [m];
-            if (alvos.some(a => N.includes(norm(a)))) { material = m; break; }
+            for (const a of alvosDe(m)) {
+              if (a.length > tamanhoAchado && N.includes(a)) { material = m; tamanhoAchado = a.length; }
+            }
           }
           const semEspaco = t => norm(t).replace(/ /g, '');
-          const forn = fornOrdenados.find(f => N.includes(norm(f)) || N.replace(/ /g, '').includes(semEspaco(f))) || null;
-          if (forn) {
-            // Remove o fornecedor do texto nas duas formas: com espaços (vem do
-            // nome, "CRISTAL MASTER") e sem (vem do código, "CRISTALMASTER").
-            N = N.split(norm(forn)).join(' ');
-            N = N.split(' ').map(p => p.includes(semEspaco(forn)) ? ' ' : p).join(' ');
+          let forn = fornOrdenados.find(f => N.includes(norm(f)) || N.replace(/ /g, '').includes(semEspaco(f))) || null;
+          // Nome sem fornecedor: pela convenção MATERIAL.COR.FORNECEDOR, a
+          // ÚLTIMA parte da SKU é o fornecedor, às vezes abreviado
+          // ("EVOH.CRISTAL.TALL" = Tallpack). Só vale se casar com UM só.
+          if (!forn && C.includes(' ')) {
+            const ult = C.split(' ').pop();
+            const casam = ult.length >= 4 ? fornOrdenados.filter(f => semEspaco(f).startsWith(ult)) : [];
+            if (casam.length === 1) forn = casam[0];
           }
-          const termo = coresOrdenadas.find(t => N.includes(t)) || null;
-          const cor = termo ? termosCor.get(termo) : null;
+          // A COR sai do NOME, não da SKU: na SKU o fornecedor vem abreviado
+          // ("AUXFLUX.CRISTAL" = Cristal Master) e seria lido como a cor
+          // Cristal — e o produto viraria "Auxiliar de Fluxo Cristal", uma
+          // combinação que não existe. Achado ao reproduzir o caso de 28/09.
+          let T = norm(nome);
+          if (forn) {
+            // Remove o fornecedor do nome nas duas formas: com espaços
+            // ("CRISTAL MASTER") e sem ("CRISTALMASTER").
+            T = T.split(norm(forn)).join(' ');
+            T = T.split(' ').map(p => p.includes(semEspaco(forn)) ? ' ' : p).join(' ');
+          }
+          const termo = coresOrdenadas.find(t => T.includes(t)) || null;
+          let cor = termo ? termosCor.get(termo) : null;
+          // Nome sem cor: a SKU ainda pode dizer ("GBD.COL.X"), pela
+          // abreviação do próprio material ou pelo nome inteiro da cor —
+          // pulando a 1ª parte (o material) e a parte que é o fornecedor.
+          if (!cor && C) {
+            const fornSE = forn ? semEspaco(forn) : '';
+            const labs = (material && cat.materiais[material] && cat.materiais[material].corLabel) || {};
+            for (const sg of C.split(' ').slice(1)) {
+              if (fornSE && sg.length >= 3 && fornSE.startsWith(sg)) continue;
+              const porLabel = Object.keys(labs).find(c => norm(labs[c]) === sg);
+              if (porLabel) { cor = porLabel; break; }
+              if (termosCor.has(sg)) { cor = termosCor.get(sg); break; }
+            }
+          }
           return { material, cor, fornecedor: forn };
         };
 
-        // Busca paginada dos produtos do Bling.
-        const achados = [];
+        // ── O QUE NÃO É MATÉRIA-PRIMA ────────────────────────────────
+        // Produto acabado, bobina, capa e resíduo moram no mesmo Bling. Eles
+        // não podem aparecer como "matéria-prima desconhecida", senão a lista
+        // do que precisa de atenção vira ruído e ninguém mais lê.
+        const skuNaoMP = /^(AM|BC|PT|REC)(\.|$)|^BOB\.|^CAPA\.|^RES\.|^APARA\./i;
+        const idsNaoMP = new Set();
+        for (const c of Object.values(PA_CORES)) if (c.bling_pai) idsNaoMP.add(String(c.bling_pai));
+        // O cache de variações guarda SKU → id de PA e TAMBÉM de MP (o envio
+        // de MP resolve variação pela SKU e grava ali). Só as SKUs de PA saem.
+        try { for (const [sku, v] of Object.entries(JSON.parse(configGet('mapa_variacao_pa_bling', '{}')))) if (skuNaoMP.test(sku)) idsNaoMP.add(String(v)); } catch(e) {}
+        try { for (const b of Object.values(JSON.parse(configGet('mapa_bobina_bling', '{}')))) if (b && b.id) idsNaoMP.add(String(b.id)); } catch(e) {}
+        for (const c of Object.values(CAPAS_CATALOGO)) if (c.id) idsNaoMP.add(String(c.id));
+        for (const c of Object.values(OUTRAS_CATALOGO)) if (c.blingId) idsNaoMP.add(String(c.blingId));
+        const naoEhMP = p => idsNaoMP.has(String(p.id)) || skuNaoMP.test(String(p.codigo || ''))
+                          || (p.pai && (idsNaoMP.has(String(p.pai.id)) || skuNaoMP.test(String(p.pai.codigo || ''))));
+
+        // ── 1) A LISTAGEM (a mesma chamada de sempre) ────────────────
+        const listados = [];
         let pagina = 1, paginasLidas = 0;
         while (pagina <= 20) {
           const r = await proxyChamada(token, 'GET', '/Api/v3/produtos', `?pagina=${pagina}&limite=100&criterio=2`, '');
@@ -7250,32 +7499,100 @@ const requestHandlerBase = async (req, res) => {
           const lista = Array.isArray(d.data) ? d.data : [];
           paginasLidas++;
           if (!lista.length) break;
-          for (const p of lista) {
-            const codigo = String(p.codigo || '');
-            const nome   = String(p.nome || '');
-            const info = interpretar(nome, codigo);
-            if (!info.material) continue;                       // não é matéria-prima reconhecida
-            const chave = chaveProduto(info.material, info.cor || '', info.fornecedor || '');
-            // A cor pode ser conhecida no sistema e mesmo assim não existir
-            // NESTE material — "Amarelo" existia no Pigmento e não no Grão.
-            // Enquanto ela não entra no catálogo do material, a tela de
-            // Recebimento não tem como oferecê-la ao operador.
-            const coresDoMaterial = (cat.materiais[info.material] && cat.materiais[info.material].cores) || [];
-            const corNova = !!(info.cor && !coresDoMaterial.includes(info.cor));
-            const labelAtual = (cat.materiais[info.material] && cat.materiais[info.material].corLabel) || {};
-            achados.push({
-              bling_id: String(p.id), codigo, nome,
-              material: info.material, cor: info.cor, fornecedor: info.fornecedor,
-              chave,
-              ja_existe: !!mapaProd[chave],
-              formato: p.formato || null,                        // 'S' simples / 'V' com variação
-              completo: !!(info.material && info.fornecedor),     // dá para cadastrar direto?
-              cor_nova: corNova,                                  // precisa entrar no catálogo do material
-              cor_label: info.cor ? (labelAtual[info.cor] || corLabelPadrao(info.cor)) : null,
-            });
-          }
+          listados.push(...lista);
           if (lista.length < 100) break;
           pagina++;
+        }
+
+        // ── 2) AS VARIAÇÕES ──────────────────────────────────────────
+        // Produto com variação ('V'): o nome do pai diz o MATERIAL
+        // ("AUXILIAR DE FLUXO") e só a variação diz o FORNECEDOR e a COR
+        // ("Fornecedor:CRISTAL MASTER"). A busca lia só a listagem, então o
+        // fornecedor nunca aparecia. Agora o detalhe de cada pai é aberto e
+        // cada variação é lida com o nome do pai junto.
+        // Ritmo de 350 ms entre consultas: o Bling aceita 3 por segundo, e
+        // a estação faz outros envios ao mesmo tempo.
+        const expandidas = [], paisAbertos = new Set();
+        let consultasVariacao = 0, variacoesFalharam = 0;
+        for (const p of listados) {
+          if (p.formato !== 'V' || naoEhMP(p)) continue;
+          if (consultasVariacao >= 40) break;
+          consultasVariacao++;
+          await new Promise(ok => setTimeout(ok, 350));
+          try {
+            const r = await proxyChamada(token, 'GET', '/Api/v3/produtos/' + encodeURIComponent(p.id), '', '');
+            let d = {}; try { d = JSON.parse(r.body); } catch(e) {}
+            const vars = (d.data && Array.isArray(d.data.variacoes)) ? d.data.variacoes : [];
+            if (!vars.length) continue;                   // sem variação legível: o pai segue como antes
+            paisAbertos.add(String(p.id));
+            for (const v of vars) {
+              expandidas.push({ id: v.id, nome: String(v.nome || ''), codigo: String(v.codigo || ''),
+                                formato: 'V', atributos: (v.variacao && v.variacao.nome) || '',
+                                pai: { id: p.id, nome: String(p.nome || ''), codigo: String(p.codigo || '') } });
+            }
+          } catch(e) { variacoesFalharam++; }
+        }
+
+        // ── 3) UM CANDIDATO POR PRODUTO ──────────────────────────────
+        // A variação vem primeiro: se o Bling também a listar sozinha, fica
+        // a versão que tem o nome do pai junto. O pai cujas variações foram
+        // abertas sai — quem o representa são as variações.
+        const candidatos = new Map();
+        for (const v of expandidas) candidatos.set(String(v.id), v);
+        for (const p of listados) {
+          const id = String(p.id);
+          if (candidatos.has(id) || paisAbertos.has(id)) continue;
+          candidatos.set(id, p);
+        }
+
+        // Chave e nome sugeridos para um material que o sistema não conhece:
+        // a SKU "AUXFLUX.CRISTAL" já diz "AUXFLUX"; sem SKU, a 1ª palavra.
+        const tituloDe = t => String(t || '').toLowerCase().replace(/(^|\s)\S/g, x => x.toUpperCase()).trim();
+        const sugestaoDe = p => {
+          const cod = String(p.codigo || (p.pai && p.pai.codigo) || '');
+          let k = cod ? cod.split('.')[0] : String((p.pai && p.pai.nome) || p.nome || '').split(/\s+/).pop();
+          k = norm(k).replace(/ /g, '').slice(0, 10);
+          return { chave: /^[A-Z][A-Z0-9]{1,9}$/.test(k) ? k : null,
+                   nome: tituloDe((p.pai && p.pai.nome) || p.nome) };
+        };
+
+        const achados = [], naoReconhecidos = [];
+        for (const p of candidatos.values()) {
+          if (naoEhMP(p)) continue;
+          const codigo = String(p.codigo || '');
+          const nome   = String(p.nome || '');
+          // O pai entra no texto: é ele que diz qual é o material.
+          const texto = [p.pai && p.pai.nome, nome, p.atributos].filter(Boolean).join(' ');
+          const info = interpretar(texto, codigo);
+          if (!info.material) {
+            // Antes: `continue` e o produto sumia calado. Agora ele aparece —
+            // pode ser um material novo que só precisa ser criado.
+            const sug = sugestaoDe(p);
+            naoReconhecidos.push({ bling_id: String(p.id), codigo, nome,
+                                   pai: p.pai ? { id: String(p.pai.id), nome: p.pai.nome, codigo: p.pai.codigo } : null,
+                                   formato: p.formato || null,
+                                   fornecedor: info.fornecedor, cor: info.cor,
+                                   sugestao_material: sug.chave, sugestao_nome: sug.nome });
+            continue;
+          }
+          const chave = chaveProduto(info.material, info.cor || '', info.fornecedor || '');
+          // A cor pode ser conhecida no sistema e mesmo assim não existir
+          // NESTE material — "Amarelo" existia no Pigmento e não no Grão.
+          // Enquanto ela não entra no catálogo do material, a tela de
+          // Recebimento não tem como oferecê-la ao operador.
+          const coresDoMaterial = (cat.materiais[info.material] && cat.materiais[info.material].cores) || [];
+          const corNova = !!(info.cor && !coresDoMaterial.includes(info.cor));
+          const labelAtual = (cat.materiais[info.material] && cat.materiais[info.material].corLabel) || {};
+          achados.push({
+            bling_id: String(p.id), codigo, nome: p.pai ? `${p.pai.nome} · ${p.atributos || nome}` : nome,
+            material: info.material, cor: info.cor, fornecedor: info.fornecedor,
+            chave,
+            ja_existe: !!mapaProd[chave],
+            formato: p.formato || null,                        // 'S' simples / 'V' variação (grava a SKU dela)
+            completo: !!(info.material && info.fornecedor),     // dá para cadastrar direto?
+            cor_nova: corNova,                                  // precisa entrar no catálogo do material
+            cor_label: info.cor ? (labelAtual[info.cor] || corLabelPadrao(info.cor)) : null,
+          });
         }
 
         const novos = achados.filter(a => !a.ja_existe);
@@ -7300,11 +7617,20 @@ const requestHandlerBase = async (req, res) => {
             + coresPendentes.map(c => `${c.material}/${c.cor}`).join(', '));
         }
 
+        if (naoReconhecidos.length) {
+          logI('sync', `Sincronização: ${naoReconhecidos.length} produto(s) sem material conhecido — `
+            + [...new Set(naoReconhecidos.map(n => n.sugestao_material || n.nome))].slice(0, 8).join(', '));
+        }
         return jsonOk(res, {
           paginas_lidas: paginasLidas,
+          produtos_lidos: listados.length,
+          variacoes_abertas: expandidas.length,
+          pais_consultados: consultasVariacao,
+          variacoes_com_falha: variacoesFalharam,
           total_mp_encontrados: achados.length,
           ja_cadastrados: achados.length - novos.length,
           novos,
+          nao_reconhecidos: naoReconhecidos,
           cores_pendentes: coresPendentes,
           fornecedores_sem_contato: [...new Set(novos.filter(n => n.fornecedor && !mapaForn[n.fornecedor]).map(n => n.fornecedor))],
         });
@@ -7328,6 +7654,48 @@ const requestHandlerBase = async (req, res) => {
       } catch(e) { return jsonErr(res, 502, 'Erro ao consultar contatos: ' + e.message); }
     }
 
+    // ── CRIAR UM MATERIAL NOVO PELA TELA ─────────────────────────────
+    // Produto do Bling que a busca não reconhece (material que o sistema
+    // ainda não tem) pode virar material aqui, sem atualização de código.
+    // Foi o que faltou com o AUXILIAR DE FLUXO em 28/09/2026.
+    //   { matKey, popular, unidade: 'sacos'|'bigbag', apelidos?: [] }
+    // 'sacos' = entra e sai por número de sacos de 25 kg (como os aditivos);
+    // 'bigbag' = pesado na balança, com etiqueta (como grão e Polinylon).
+    // Não sobrescreve material que já existe — a chave é a identidade dele
+    // nas etiquetas e nos mapas do Bling.
+    if (pathname === '/sync/mp/material' && req.method === 'POST') {
+      let body; try { body = await lerBodyJson(req); } catch(e) { return jsonErr(res, 400, e.message); }
+      const matKey  = String(body.matKey || '').trim().toUpperCase();
+      const popular = String(body.popular || '').trim().replace(/\s+/g, ' ');
+      const unidade = String(body.unidade || '').trim().toLowerCase();
+      if (!/^[A-Z][A-Z0-9]{1,9}$/.test(matKey))
+        return jsonErr(res, 400, 'A sigla do material deve ter de 2 a 10 letras ou números, começando por letra, sem espaço (ex.: AUXFLUX).');
+      if (popular.length < 2 || popular.length > 40)
+        return jsonErr(res, 400, 'O nome do material deve ter de 2 a 40 caracteres.');
+      if (!['sacos', 'bigbag'].includes(unidade))
+        return jsonErr(res, 400, 'Informe como o material entra: "sacos" (sacos de 25 kg) ou "bigbag" (pesado na balança).');
+      // Siglas que já são de outra coisa no sistema (produto acabado,
+      // bobina, capa, resíduo) não podem virar matéria-prima.
+      const reservadas = ['AM', 'BC', 'PT', 'REC', 'BOB', 'CAPA', 'RES', 'APARA', 'PA', 'MP'];
+      if (reservadas.includes(matKey)) return jsonErr(res, 409, `A sigla ${matKey} já é usada pelo sistema para outra coisa. Escolha outra.`);
+      const mats = JSON.parse(configGet('mp_materiais', '{}'));
+      if (mats[matKey] || MP_MATERIAIS_PADRAO[matKey])
+        return jsonErr(res, 409, `Já existe um material com a sigla ${matKey} (${(mats[matKey] || MP_MATERIAIS_PADRAO[matKey]).popular || matKey}). Nada foi alterado.`);
+      const apelidos = [...new Set((Array.isArray(body.apelidos) ? body.apelidos : [])
+        .map(a => String(a || '').trim().toUpperCase()).filter(a => a.length >= 3 && a.length <= 40))].slice(0, 6);
+      mats[matKey] = {
+        popular, nomeEtiqueta: popular.toUpperCase(), cores: [], corLabel: {},
+        porSacos: unidade === 'sacos', kgPorSaco: unidade === 'sacos' ? 25 : null,
+        apelidos, criadoEm: new Date().toISOString(), origem: 'cadastros-bling',
+      };
+      configSet('mp_materiais', JSON.stringify(mats));
+      const fornCatM = JSON.parse(configGet('mp_fornecedores', '{}'));
+      if (!Array.isArray(fornCatM[matKey])) { fornCatM[matKey] = []; configSet('mp_fornecedores', JSON.stringify(fornCatM)); }
+      logI('sync', `Material novo criado pela tela: ${matKey} — ${popular} (${unidade === 'sacos' ? 'sacos de 25 kg' : 'big bag pesado'})`
+        + (apelidos.length ? ` · reconhecido também por ${apelidos.join(', ')}` : ''));
+      return jsonOk(res, { criado: true, matKey, material: mats[matKey] });
+    }
+
     // Grava no sistema o que o operador confirmou.
     if (pathname === '/sync/mp/confirmar' && req.method === 'POST') {
       let body; try { body = await lerBodyJson(req); } catch(e) { return jsonErr(res, 400, e.message); }
@@ -7343,6 +7711,9 @@ const requestHandlerBase = async (req, res) => {
 
       const mats = JSON.parse(configGet('mp_materiais', '{}'));
       const coresCadastradas = [];
+      // Para avisar se este cadastro LIGOU uma troca de produto (ex.: mapear
+      // a Resina EVOH liga a leitura das etiquetas antigas de Polinylon).
+      const trocasAntes = new Set(listarSubstituicoes().filter(t => t.ativa).map(t => t.de));
 
       const feitos = [], erros = [];
       for (const it of itens) {
@@ -7393,7 +7764,10 @@ const requestHandlerBase = async (req, res) => {
         for (const c of coresCadastradas) logI('sync', `Cor cadastrada pelo Bling: ${c.material} · ${c.cor} (SKU ${c.label})`);
       }
       for (const f of feitos) logI('sync', `Cadastrado pelo Bling: ${f.chave} → produto ${f.bling_id}${f.codigo_gravimetrico ? ' · código ' + f.codigo_gravimetrico : ''}`);
-      return jsonOk(res, { cadastrados: feitos.length, feitos, erros, cores_cadastradas: coresCadastradas });
+      const trocasAtivadas = listarSubstituicoes().filter(t => t.ativa && !trocasAntes.has(t.de));
+      for (const t of trocasAtivadas) logI('sync', `Troca de produto LIGADA: etiquetas de ${t.de} passam a ser lidas como ${t.para}`);
+      return jsonOk(res, { cadastrados: feitos.length, feitos, erros, cores_cadastradas: coresCadastradas,
+                           trocas_ativadas: trocasAtivadas.map(t => ({ de: t.de, para: t.para, de_nome: t.de_nome, para_nome: t.para_nome })) });
     }
 
     if (pathname === '/produto-acabado/etiqueta-gaiola' && req.method === 'POST') {
@@ -9255,12 +9629,18 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
       let mapaProd = {};
       try { mapaProd = JSON.parse(configGet('mapa_produto_bling', '{}')); } catch(e) {}
       const produtos = [];
+      const porSacosInv = materiaisPorSacos();
+      // Produto trocado (ex.: Polinylon Tallpack Cristal → Resina EVOH) sai
+      // da lista enquanto a troca vale: as etiquetas dele são lidas como o
+      // produto novo e é nele que entram na contagem.
+      const trocadosInv = new Set(listarSubstituicoes().filter(t => t.ativa).map(t => t.de.toLowerCase()));
       for (const chave of Object.keys(mapaProd)) {
         const partes = chave.split(':');
         const material = partes[0], cor = partes[1] || null, fornecedor = partes[2] || null;
         if (!cat.materiais[material]) continue;   // só MP conhecida (ignora bobina/PA)
+        if (trocadosInv.has(chave.toLowerCase())) continue;
         produtos.push({ material, materialNome: (cat.materiais[material].popular || material), cor, fornecedor, chave,
-                        manual: !!MP_CONTAGEM_MANUAL[material], kgPorSaco: MP_CONTAGEM_MANUAL[material] || null });
+                        manual: !!porSacosInv[material], kgPorSaco: porSacosInv[material] || null });
       }
       produtos.sort((a,b) => a.chave.localeCompare(b.chave));
       return jsonOk(res, { produtos });
@@ -9358,7 +9738,11 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
 
     if (pathname === '/catalogo-mp' && req.method === 'GET') {
       const c = lerCatalogoMP();
-      return jsonOk(res, { fornecedores: c.fornecedores, codigos: c.codigos, materiais: c.materiais });
+      // substituicoes: trocas de produto cadastradas, cada uma com "ativa".
+      // A tela de Recebimento usa as ativas para avisar antes de pesar.
+      let subsCat = [];
+      try { subsCat = listarSubstituicoes().map(t => ({ de: t.de, para: t.para, ativa: t.ativa, de_nome: t.de_nome, para_nome: t.para_nome })); } catch(e) {}
+      return jsonOk(res, { fornecedores: c.fornecedores, codigos: c.codigos, materiais: c.materiais, substituicoes: subsCat });
     }
 
     // ─── CORES DE UM MATERIAL ───────────────────────────────────────

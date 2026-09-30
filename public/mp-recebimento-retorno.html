@@ -1658,6 +1658,12 @@ const MATERIAIS = {
             cores: ['Colorido','Canela','Cristal','Leitoso'],
             corLabel: { 'Colorido':'COL','Canela':'CAN','Cristal':'CRIS','Leitoso':'LEI' },
             forn: ['Ecolog','Tallpack','Valgroup','Ycaro'] },
+  // Resina EVOH (30/09/2026) — substitui o Polinylon da Tallpack (Cristal e
+  // Leitoso). Big bag pesado, como o Polinylon.
+  EVOH:   { popular: 'Resina EVOH', nomeEtiqueta: 'RESINA EVOH',
+            cores: ['Cristal','Leitoso'],
+            corLabel: { 'Cristal':'CRIS','Leitoso':'LEI' },
+            forn: ['Tallpack'] },
   CARBO:  { popular: 'Carbonato', nomeEtiqueta: 'CARBONATO', cores: [], corLabel: {},
             forn: ['Cristal Master','FG','Karina','SecMil','W R'] },
   PIG:    { popular: 'Pigmento', nomeEtiqueta: 'PIGMENTO',
@@ -2191,12 +2197,14 @@ function selForn(f) {
   beepCk();
   renderFornecedores();
   atualizarEstadoBlocos();
+  avisarSeTrocado(estado.material, estado.cor, f);
 }
 function selCor(c) {
   estado.cor = c;
   beepCk();
   renderCores();
   atualizarEstadoBlocos();
+  avisarSeTrocado(estado.material, c, estado.fornecedor);
 }
 function avisoForneTravado() {
   beepWarn();
@@ -2458,7 +2466,20 @@ async function imprimir() {
   }
 
   const m = MATERIAIS[dadosImpr.materialKey];
-  const codigo = buscarCodigo(dadosImpr.materialKey, dadosImpr.cor, dadosImpr.fornecedor);
+  // Produto trocado não recebe entrada nova. O retorno COM etiqueta de
+  // origem passa: a etiqueta já chega aqui lida como o produto novo.
+  if (dadosImpr.subTipo !== 'graos-com-etiq') {
+    const t = trocaDoProduto(dadosImpr.materialKey, dadosImpr.cor, dadosImpr.fornecedor);
+    if (t) { showToast('erro', '⛔', msgTroca(t)); beepErro(); return; }
+  }
+  let codigo = buscarCodigo(dadosImpr.materialKey, dadosImpr.cor, dadosImpr.fornecedor);
+  // Retorno de etiqueta de produto trocado, sem código do produto novo
+  // cadastrado ainda: mantém o código da etiqueta de origem. Sem isso, a
+  // sobra de um big bag antigo não teria como voltar ao estoque.
+  if (!codigo && dadosImpr.subTipo === 'graos-com-etiq' && estado.retEtiquetaOriginal
+      && estado.retEtiquetaOriginal.substituida && estado.retEtiquetaOriginal.codigoOrigem) {
+    codigo = estado.retEtiquetaOriginal.codigoOrigem;
+  }
   if (!codigo) {
     showToast('erro', '✗', `Combinação ${dadosImpr.materialKey}/${dadosImpr.cor || '-'}/${dadosImpr.fornecedor} sem código cadastrado`);
     beepErro();
@@ -2525,7 +2546,9 @@ async function imprimir() {
     });
     const result = await resp.json();
     if (!resp.ok || !result.ok) {
-      throw new Error(result.error || result.erro || `HTTP ${resp.status}`);
+      const falha = new Error(result.error || result.erro || `HTTP ${resp.status}`);
+      falha.recusa = resp.status === 409;   // regra do servidor, não impressora
+      throw falha;
     }
     // O número é atribuído pelo SERVIDOR (C2). Usa o id/seq retornados como verdade.
     estado.tokenPendente = null;   // sucesso → próxima usa token novo
@@ -2535,6 +2558,13 @@ async function imprimir() {
   } catch(e) {
     btnImp.disabled = false;
     btnImp.textContent = btnTextoOriginal;
+    if (e.recusa) {
+      // Nada foi impresso: a próxima tentativa usa um token novo.
+      estado.tokenPendente = null;
+      showToast('erro', '⛔', e.message);
+      beepErro();
+      return;
+    }
     showToast('erro', '✗', 'Falha na impressão: ' + e.message + ' — Servidor INICIAR_IMPRESSORA.bat rodando?');
     beepErro();
     return;
@@ -3236,6 +3266,11 @@ async function processarBipeRetorno(input) {
       pesoOriginal: e.peso,
       tipoOrigem: e.tipo,        // 'recebimento' ou 'retorno' (2ª volta)
       statusOrigem: e.status,    // 'consumida' = saiu para produção (esperado)
+      // Produto trocado (ex.: Polinylon Tallpack → Resina EVOH): a etiqueta
+      // já chega lida como o produto novo; o código dela serve de reserva
+      // enquanto o código gravimétrico do produto novo não for cadastrado.
+      substituida: !!e.substituida_de,
+      codigoOrigem: e.codigo || null,
     };
     estado.retPeso = 0;
     document.getElementById('ret-peso-input').value = '';
@@ -3450,8 +3485,9 @@ function setRetoOrigem(origem) {
 // ─── SEM ETIQUETA: render dos seletores (só GBD e POLI) ───
 function renderRetoSemEtiqMateriais() {
   const cont = document.getElementById('reto-se-mat-opts');
-  // Só grãos voltam de produção — GBD e POLI
-  const matsValidos = ['GBD', 'POLI'];
+  // Só o que é big bag pesado volta de produção sem etiqueta (grão,
+  // Polinylon, Resina EVOH...). Material por sacos volta em Aditivos.
+  const matsValidos = Object.keys(MATERIAIS).filter(k => !isComposto(k));
   cont.innerHTML = matsValidos.map(k => {
     const m = MATERIAIS[k];
     const cls = estado.retoMatManual === k ? 'opt sel' : 'opt';
@@ -3488,6 +3524,7 @@ function selRetoSeForn(f) {
   renderRetoSemEtiqFornecedores();
   atualizarEtiqueta();
   beepCk();
+  avisarSeTrocado(estado.retoMatManual, estado.retoCorManual, f);
 }
 
 function renderRetoSemEtiqCores() {
@@ -3514,6 +3551,7 @@ function selRetoSeCor(c) {
   renderRetoSemEtiqCores();
   atualizarEtiqueta();
   beepCk();
+  avisarSeTrocado(estado.retoMatManual, c, estado.retoFornManual);
 }
 
 function atualizarRetoSeManual() {
@@ -3529,25 +3567,33 @@ function simularPesoRetoSe() {
   atualizarEtiqueta();
 }
 
-// ─── ADITIVOS: render dos seletores (só PIG) ───
+// Aditivos que voltam em sacos fechados: todo material "por sacos" (os
+// compostos) menos o Carbonato, que não volta em sacos. Hoje: Pigmento,
+// Dessecante e Auxiliar de Fluxo — e o que for cadastrado por sacos.
+function aditivosRetorno() {
+  return COMPOSTOS.filter(k => k !== 'CARBO' && MATERIAIS[k]);
+}
+
+// ─── ADITIVOS: render dos seletores ───
 function renderRetoAditivos() {
   const mat = estado.retoAditivoMat || 'PIG';
   const m = MATERIAIS[mat];
-  // Seletor de material (Pigmento | Dessecante)
+  // Seletor de material (Pigmento | Dessecante | Auxiliar de Fluxo ...)
   const contMat = document.getElementById('reto-ad-mat-opts');
   if (contMat) {
-    contMat.innerHTML = ['PIG','DESSEC'].map(k => {
+    contMat.innerHTML = aditivosRetorno().map(k => {
       const cls = mat === k ? 'opt sel' : 'opt';
       return `<button class="${cls}" onclick="selRetoAditivoMat('${k}')">${MATERIAIS[k].popular}</button>`;
     }).join('');
   }
-  // Cor — só para pigmento (dessecante não tem cor)
+  // Cor — só para quem tem cor (o Pigmento)
+  const temCor = (m.cores || []).length > 0;
   const blocoCor = document.getElementById('reto-ad-cor-bloco');
-  if (blocoCor) blocoCor.style.display = (mat === 'PIG') ? '' : 'none';
+  if (blocoCor) blocoCor.style.display = temCor ? '' : 'none';
   const cont = document.getElementById('reto-ad-cor-opts');
   if (cont) {
-    cont.innerHTML = (mat === 'PIG' ? m.cores : []).map(c => {
-      const codigo = buscarCodigo('PIG', c, null);
+    cont.innerHTML = (temCor ? m.cores : []).map(c => {
+      const codigo = buscarCodigo(mat, c, estado.retoAditivoForn);
       const cls = estado.retoAditivoCor === c ? 'opt sel' : 'opt';
       return `<button class="${cls}" onclick="selRetoAditivoCor('${c}')">${c} <span style="opacity:0.6;font-size:10px;margin-left:4px">${codigo || ''}</span></button>`;
     }).join('');
@@ -3585,10 +3631,11 @@ function selRetoAditivoMat(k) {
 // lista da direita. Pode somar vários lotes. O ✕ da lista cancela/remove o item.
 async function adicionarRetoAditivo() {
   const mat = estado.retoAditivoMat || 'PIG';
-  const cor = mat === 'PIG' ? estado.retoAditivoCor : null;
+  const temCor = ((MATERIAIS[mat] && MATERIAIS[mat].cores) || []).length > 0;
+  const cor = temCor ? estado.retoAditivoCor : null;
   const forn = estado.retoAditivoForn;
   const sacos = estado.retoSacosFechados;
-  if (mat === 'PIG' && !cor) { showToast('warn', '⚠', 'Selecione a cor do pigmento'); beepWarn(); return; }
+  if (temCor && !cor) { showToast('warn', '⚠', mat === 'PIG' ? 'Selecione a cor do pigmento' : 'Selecione a cor'); beepWarn(); return; }
   if (!forn) { showToast('warn', '⚠', 'Selecione o fornecedor'); beepWarn(); return; }
   if (!sacos || sacos < 1) { showToast('warn', '⚠', 'Indique a quantidade de sacos'); beepWarn(); return; }
   const btn = document.getElementById('btn-add-aditivo');
@@ -3923,9 +3970,12 @@ async function carregarCatalogoMP() {
         const m = cat.materiais[k];
         if (!m) continue;
         if (!MATERIAIS[k]) {
-          MATERIAIS[k] = { popular: m.popular || k, nomeEtiqueta: String(m.popular || k).toUpperCase(),
+          MATERIAIS[k] = { popular: m.popular || k, nomeEtiqueta: String(m.nomeEtiqueta || m.popular || k).toUpperCase(),
                            cores: [], corLabel: {}, forn: [] };
         }
+        // Material cadastrado "por sacos" (Cadastros Bling) entra por número
+        // de sacos, como os aditivos — sem precisar mexer neste HTML.
+        if (m.porSacos === true && !COMPOSTOS.includes(k)) COMPOSTOS.push(k);
         if (Array.isArray(m.cores)) MATERIAIS[k].cores = m.cores.slice();
         // A abreviação da SKU vem junto. O que o banco traz tem prioridade;
         // o que não vier continua valendo do embutido, e cor sem abreviação
@@ -3943,7 +3993,30 @@ async function carregarCatalogoMP() {
     if (cat && Array.isArray(cat.codigos) && cat.codigos.length) {
       CODIGOS_GRAVIMETRICOS = cat.codigos;
     }
+    // Trocas de produto que JÁ valem (ex.: Polinylon Tallpack Cristal →
+    // Resina EVOH). Serve para avisar antes de pesar; quem recusa de
+    // verdade é o servidor.
+    if (cat && Array.isArray(cat.substituicoes)) {
+      TROCAS_ATIVAS = cat.substituicoes.filter(t => t && t.ativa);
+    }
   } catch(e) { /* fallback: mantém os valores embutidos acima */ }
+}
+
+// ─── TROCA DE PRODUTO ───
+let TROCAS_ATIVAS = [];
+function trocaDoProduto(mat, cor, forn) {
+  if (!mat || !forn) return null;
+  const k = `${mat}:${cor || ''}:${forn}`.toLowerCase();
+  return TROCAS_ATIVAS.find(t => String(t.de).toLowerCase() === k) || null;
+}
+function msgTroca(t) {
+  return `${t.de_nome} foi substituído por ${t.para_nome}. Selecione ${String(t.para_nome).split(' · ').join(' › ')}.`;
+}
+// Aviso na hora da escolha — antes de pesar, não depois.
+function avisarSeTrocado(mat, cor, forn) {
+  const t = trocaDoProduto(mat, cor, forn);
+  if (t) { showToast('erro', '⛔', msgTroca(t)); beepWarn(); }
+  return t;
 }
 
 // INIT — só depois que o colaborador entrar com a senha dele. O nome fica em

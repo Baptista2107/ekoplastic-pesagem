@@ -1582,6 +1582,15 @@ async function carregarCatalogoRetirada() {
     const r = await fetch(URL_BASE + '/catalogo-mp');
     if (!r.ok) return;
     const cat = await r.json();
+    // Material cadastrado "por sacos" pela tela (Cadastros Bling) sai por
+    // sacos aqui, junto dos aditivos — sem precisar mexer neste HTML. O
+    // Carbonato continua fora, como sempre esteve nesta tela.
+    if (cat && cat.materiais) {
+      for (const [k, m] of Object.entries(cat.materiais)) {
+        if (!m || m.porSacos !== true || ADITIVOS[k] || k === 'CARBO') continue;
+        ADITIVOS[k] = { label: m.popular || k, cores: null, fornecedores: [] };
+      }
+    }
     if (cat && cat.fornecedores) {
       for (const k of Object.keys(ADITIVOS)) {
         if (Array.isArray(cat.fornecedores[k])) ADITIVOS[k].fornecedores = cat.fornecedores[k];
@@ -1606,7 +1615,7 @@ renderFornecedores();
 renderCores();
 ajustarSacos(0);
 renderHistorico();
-carregarCatalogoRetirada().then(() => { renderFornecedores(); renderCores(); });
+carregarCatalogoRetirada().then(() => { renderTipos(); renderFornecedores(); renderCores(); });
 restaurarSessaoAberta();
 
 </script>

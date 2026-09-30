@@ -430,9 +430,10 @@ h1 {
   <div class="card">
     <div class="card-titulo">🔄 Sincronizar matéria-prima com o Bling</div>
     <div class="card-desc">
-      Procura no Bling os produtos de matéria-prima que ainda não estão no sistema.
-      Ele já identifica material, cor e fornecedor pelo nome — você confere, informa o
-      código gravimétrico e confirma. Não precisa de nova versão do sistema.
+      Procura no Bling os produtos de matéria-prima que ainda não estão no sistema —
+      inclusive as variações (fornecedor/cor) de cada produto. Material que o sistema
+      ainda não tem aparece à parte, para você cadastrar aqui mesmo.
+      Não precisa de nova versão do sistema.
     </div>
     <div class="card-acoes">
       <button class="btn btn-primary" onclick="syncProcurar()">🔍 PROCURAR NOVOS</button>
@@ -1300,6 +1301,89 @@ function alternarGrupo(id){
 // ── Sincronizar matéria-prima com o Bling ────────────────────────────
 let SYNC_NOVOS = [];
 let SYNC_CORES = [];
+let SYNC_DESC  = [];      // grupos de produtos cujo MATERIAL o sistema não tem
+let SYNC_TROCAS = [];     // trocas de produto cadastradas (ex.: Polinylon → EVOH)
+let SYNC_AVISO = '';      // mensagem que fica no topo depois de uma ação
+const escS = t => String(t == null ? '' : t).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+// Produto que a busca achou mas cujo material o sistema não conhece. Até
+// 30/09/2026 ele era descartado calado — foi assim que o AUXILIAR DE FLUXO
+// "não apareceu". Agora vem agrupado pelo produto-pai, com sigla e nome já
+// sugeridos, e dá para criar o material aqui mesmo.
+function syncAgruparDesconhecidos(lista){
+  const g = new Map();
+  for (const n of lista) {
+    const k = (n.pai && n.pai.id) || n.sugestao_material || n.bling_id;
+    if (!g.has(k)) g.set(k, { chave: n.sugestao_material || '', nome: n.sugestao_nome || '',
+                              titulo: (n.pai && n.pai.nome) || n.nome, produtos: [] });
+    g.get(k).produtos.push(n);
+  }
+  return [...g.values()];
+}
+function syncHtmlDesconhecidos(){
+  if(!SYNC_DESC.length) return '';
+  const total = SYNC_DESC.reduce((a,g)=>a+g.produtos.length,0);
+  return `<div style="background:rgba(120,160,255,0.08); border:1px solid rgba(120,160,255,0.35);
+                      border-radius:10px; padding:12px; margin-bottom:12px;">
+      <div style="font-weight:800; color:#9db8ff; margin-bottom:4px">
+        ❓ ${total} produto(s) do Bling com um material que o sistema ainda não tem</div>
+      <div style="font-size:12.5px; opacity:.8; margin-bottom:10px">
+        Se for matéria-prima nova, cadastre o material — na busca seguinte os produtos já aparecem
+        prontos para cadastrar, com fornecedor e código gravimétrico. Se não for matéria-prima, ignore.</div>`
+    + SYNC_DESC.map((g,i) => `
+        <div style="background:rgba(0,0,0,0.22); border-radius:10px; padding:10px 12px; margin-bottom:8px;">
+          <div style="font-weight:800">${escS(g.titulo)}</div>
+          <div style="font-size:12px; opacity:.65; font-family:monospace; margin-top:2px">`
+            + g.produtos.map(p => escS(`${p.codigo || '(sem SKU)'} · id ${p.bling_id}${p.fornecedor ? ' · ' + p.fornecedor : ''}`)).join('<br>')
+          + `</div>
+          <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; align-items:center;">
+            <input class="sync-in" data-m="chave" data-i="${i}" value="${escS(g.chave)}" placeholder="sigla (ex.: AUXFLUX)"
+                   maxlength="10" style="width:130px; text-transform:uppercase">
+            <input class="sync-in" data-m="nome" data-i="${i}" value="${escS(g.nome)}" placeholder="nome do material"
+                   maxlength="40" style="width:210px">
+            <select class="sync-in" data-m="unidade" data-i="${i}">
+              <option value="">como entra e sai?</option>
+              <option value="sacos">por sacos de 25 kg</option>
+              <option value="bigbag">big bag pesado</option>
+            </select>
+            <button class="btn" onclick="syncCriarMaterial(${i})">＋ CADASTRAR MATERIAL</button>
+          </div>
+        </div>`).join('')
+    + `</div>`;
+}
+async function syncCriarMaterial(i){
+  const g = SYNC_DESC[i]; if(!g) return;
+  const v = c => { const e=document.querySelector(`.sync-in[data-m="${c}"][data-i="${i}"]`); return e ? e.value.trim() : ''; };
+  const corpo = { matKey: v('chave').toUpperCase(), popular: v('nome'), unidade: v('unidade'), apelidos: [g.titulo] };
+  if(!corpo.matKey || !corpo.popular){ alert('Preencha a sigla e o nome do material.'); return; }
+  if(!corpo.unidade){ alert('Escolha como o material entra e sai: por sacos de 25 kg ou big bag pesado.'); return; }
+  const comoEntra = corpo.unidade === 'sacos' ? 'por sacos de 25 kg' : 'big bag pesado na balança';
+  if(!confirm(`Cadastrar o material ${corpo.matKey} — ${corpo.popular} (${comoEntra})?\n\nA sigla não pode ser trocada depois: ela vai nas etiquetas e no Bling.`)) return;
+  try{
+    const r=await fetch('/sync/mp/material',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(corpo)});
+    const d=await r.json();
+    if(!r.ok || !d.ok){ alert((d&&d.erro)||'Não consegui cadastrar o material.'); return; }
+    SYNC_AVISO = `✓ Material ${escS(corpo.matKey)} — ${escS(corpo.popular)} cadastrado (${comoEntra}). Confira abaixo os produtos dele e cadastre.`;
+    await syncProcurar();
+  }catch(e){ alert('Erro: '+e.message); }
+}
+
+// Trocas de produto (ex.: Polinylon Tallpack Cristal → Resina EVOH). A troca
+// só passa a valer quando o produto novo é cadastrado aqui — por isso o aviso
+// aparece junto do produto novo, antes de confirmar.
+function syncTrocaQueLiga(chave){
+  const k = String(chave||'').toLowerCase();
+  return SYNC_TROCAS.find(t => !t.ativa && String(t.para).toLowerCase() === k) || null;
+}
+function syncHtmlTrocas(){
+  if(!SYNC_TROCAS.length) return '';
+  return `<div style="font-size:12.5px; opacity:.85; margin-bottom:10px; line-height:1.5">`
+    + SYNC_TROCAS.map(t => t.ativa
+        ? `🔁 <b>${escS(t.de_nome)}</b> → <b>${escS(t.para_nome)}</b> · <span style="color:#2ee6a6">valendo</span> — as etiquetas antigas são lidas como o produto novo.`
+        : `🔁 <b>${escS(t.de_nome)}</b> → <b>${escS(t.para_nome)}</b> · <span style="color:#ffb648">aguardando</span> — passa a valer quando ${escS(t.para_nome)} for cadastrado aqui.`)
+      .join('<br>')
+    + `</div>`;
+}
 
 // Cores que o Bling tem e o catálogo do material não. Aparecem separadas
 // dos produtos de propósito: até 01/09/2026 uma cor nova simplesmente não
@@ -1360,16 +1444,25 @@ async function syncProcurar(){
     if(!r.ok || !d.ok){ el.innerHTML = '<div style="color:#ff6b6b">'+((d&&d.erro)||'Falha na consulta')+'</div>'; return; }
     SYNC_NOVOS = d.novos || [];
     SYNC_CORES = d.cores_pendentes || [];
-    if(!SYNC_NOVOS.length && !SYNC_CORES.length){
-      el.innerHTML = `<div style="color:#2ee6a6">✓ Nada novo. ${d.ja_cadastrados} produto(s) de matéria-prima já estão no sistema.</div>`;
+    SYNC_DESC  = syncAgruparDesconhecidos(d.nao_reconhecidos || []);
+    try { const rc = await fetch('/catalogo-mp'); const c = await rc.json(); SYNC_TROCAS = (c && c.substituicoes) || []; } catch(e) { SYNC_TROCAS = []; }
+    // O que a busca leu — para dar para confiar num "nada novo".
+    const topo = (SYNC_AVISO ? `<div style="color:#2ee6a6; margin-bottom:10px">${SYNC_AVISO}</div>` : '')
+      + `<div style="font-size:12px; opacity:.6; margin-bottom:10px">Li ${d.produtos_lidos != null ? d.produtos_lidos : '?'} produto(s) no Bling`
+      + (d.pais_consultados ? ` e abri as variações de ${d.pais_consultados} (${d.variacoes_abertas} variações)` : '')
+      + `.${d.variacoes_com_falha ? ` <span style="color:#ffb648">${d.variacoes_com_falha} consulta(s) de variação falharam — procure de novo daqui a pouco.</span>` : ''}</div>`
+      + syncHtmlTrocas();
+    SYNC_AVISO = '';
+    if(!SYNC_NOVOS.length && !SYNC_CORES.length && !SYNC_DESC.length){
+      el.innerHTML = topo + `<div style="color:#2ee6a6">✓ Nada novo. ${d.ja_cadastrados} produto(s) de matéria-prima já estão no sistema.</div>`;
       return;
     }
     if(!SYNC_NOVOS.length){
-      el.innerHTML = syncHtmlCores()
-        + `<div style="color:#2ee6a6">Nenhum produto novo — ${d.ja_cadastrados} já estavam cadastrados.</div>`;
+      el.innerHTML = topo + syncHtmlCores() + syncHtmlDesconhecidos()
+        + `<div style="color:#2ee6a6">Nenhum produto novo pronto para cadastrar — ${d.ja_cadastrados} já estavam cadastrados.</div>`;
       return;
     }
-    el.innerHTML = syncHtmlCores()
+    el.innerHTML = topo + syncHtmlCores() + syncHtmlDesconhecidos()
       + `<div style="margin-bottom:10px; font-size:14px;">
          <b>${SYNC_NOVOS.length} produto(s) novo(s)</b> encontrados no Bling
          <span style="opacity:.6">· ${d.ja_cadastrados} já estavam cadastrados</span>
@@ -1389,6 +1482,7 @@ async function syncProcurar(){
                 <input class="sync-in" data-c="codigo_gravimetrico" data-i="${i}" value="" placeholder="cód. gravim." style="width:110px">
               </div>
               ${n.cor_nova ? '<div style="font-size:12px; color:#ffb648; margin-top:6px">🎨 cor nova neste material — vai ser cadastrada junto</div>' : ''}
+              ${syncTrocaQueLiga(n.chave) ? `<div style="font-size:12px; color:#9db8ff; margin-top:6px">🔁 ao cadastrar, as etiquetas de ${escS(syncTrocaQueLiga(n.chave).de_nome)} passam a ser lidas como este produto (retirada, retorno e inventário)</div>` : ''}
               ${!n.fornecedor ? '<div style="font-size:12px; color:#ffb648; margin-top:6px">⚠ fornecedor não reconhecido — digite o nome exato</div>' : ''}
             </div>
           </label>
@@ -1434,7 +1528,11 @@ async function syncConfirmar(){
     el.innerHTML = `<div style="color:#2ee6a6">✓ ${d.cadastrados} produto(s) cadastrados. Já aparecem nas telas de matéria-prima.</div>`
       + (nc.length ? '<div style="color:#2ee6a6; margin-top:6px">🎨 '+nc.length+' cor(es) nova(s) no catálogo: '
           + nc.map(c=>`${c.material}/${c.cor} (${c.label})`).join(', ')+'</div>' : '')
-      + (d.erros && d.erros.length ? '<div style="color:#ffb648; margin-top:8px">'+d.erros.length+' com problema — confira os campos.</div>' : '');
+      + ((d.trocas_ativadas||[]).length ? '<div style="color:#9db8ff; margin-top:6px">🔁 Troca valendo a partir de agora: '
+          + d.trocas_ativadas.map(t=>`${escS(t.de_nome)} → ${escS(t.para_nome)}`).join('; ')
+          + '. As etiquetas antigas são lidas como o produto novo.</div>' : '')
+      + (d.erros && d.erros.length ? '<div style="color:#ffb648; margin-top:8px">'+d.erros.length+' com problema — '
+          + d.erros.map(x=>escS(x.erro)).join('; ')+'</div>' : '');
     if(typeof cgCarregar==="function") cgCarregar();
   }catch(e){ el.innerHTML='<div style="color:#ff6b6b">Erro: '+e.message+'</div>'; }
 }
