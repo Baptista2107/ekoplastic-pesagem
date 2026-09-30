@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════
-//  FARDOS POR TURNO NA SACOLEIRA  (30/09/2026, pedido do Frederico)
+//  FARDOS POR TURNO NA SACOLEIRA  (30/09/2026, pedido do Gustavo)
 //  ------------------------------------------------------------------
 //  Encerrar o turno não é acabar a bobina. No fim do turno o supervisor
 //  diz quanto a bobina montada deu NAQUELE turno; ela continua montada;
@@ -162,7 +162,7 @@ function criarBobina(db, id, seq, peso) {
     ok(l1 && l1.pacotes_turno === 70, 'total do turno A na P1 = 14 fardos (70 pc)', l1 && l1.pacotes_turno);
 
     // 8. PACOTES SOLTOS (fardo = 5 pacotes). O exemplo combinado com o
-    //    Frederico: A acaba com 3 fechados e 2 soltos → 17 pc. B completa o
+    //    Gustavo: A acaba com 3 fechados e 2 soltos → 17 pc. B completa o
     //    fardo misto e fecha mais 4 (5 fechados), 1 solto → 5×5 + 1 − 2 = 24.
     comBanco(db => { criarBobina(db, 'E9900010', 9900010, 400); criarBobina(db, 'E9900011', 9900011, 400);
                      criarBobina(db, 'E9900012', 9900012, 400); });

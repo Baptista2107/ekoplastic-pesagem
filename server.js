@@ -867,7 +867,7 @@ function lerFardos(v) {
   return (Number.isInteger(n) && n >= 0 && n <= 999) ? n : null;
 }
 
-// ── PACOTES SOLTOS (30/09/2026, Frederico) ──────────────────────────────
+// ── PACOTES SOLTOS (30/09/2026, Gustavo) ────────────────────────────────
 // Fardo = 5 pacotes de 5 kg. A bobina (ou o turno) pode acabar no meio de
 // um fardo, e o fardo é completado pela bobina seguinte. O operador informa
 // só o que vê: FARDOS FECHADOS desde o início da parte (contando o fardo
@@ -1050,7 +1050,7 @@ db.exec(`
   );
 `);
 
-// ── TURNO DO CORTE (30/09/2026, VPS, pedido do Frederico) ────────────────
+// ── TURNO DO CORTE (30/09/2026, VPS, pedido do Gustavo) ──────────────────
 // O turno das sacoleiras é MARCADO pelo supervisor no coletor, não tirado do
 // relógio: o painel de operação da VPS corta a linha do tempo da máquina
 // nestes registros. Uma linha por sacoleira (as duas costumam ir juntas, mas
@@ -1075,7 +1075,7 @@ db.exec(`
 `);
 const TURNOS_CORTE = { A: 'Turno A', C: 'Turno C', EXTRA: 'Extra' };
 
-// ── FARDOS POR TURNO (30/09/2026, pedido do Frederico) ───────────────────
+// ── FARDOS POR TURNO (30/09/2026, pedido do Gustavo) ─────────────────────
 // Encerrar o turno NÃO é acabar a bobina: ela continua montada e o próximo
 // turno segue cortando. Então, ao fechar o turno de uma sacoleira que tem
 // bobina montada, o supervisor informa quantos fardos ela deu NAQUELE turno
@@ -9971,7 +9971,7 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
     // Lido da ETIQUETA, não da lista `baixas_bobinas_<dia>` do config: os
     // fardos chegam depois da baixa (na troca ou no Finalizar), e a lista é
     // um retrato do momento da baixa. baixa_em é UTC; o dia é o local (-03:00).
-    // Lista POR TURNO (30/09/2026, Frederico): cada sacoleira mostra o turno
+    // Lista POR TURNO (30/09/2026, Gustavo): cada sacoleira mostra o turno
     // do corte dela — o aberto, ou o último que fechou. Entra toda bobina que
     // esteve na máquina em algum momento do turno: a que já estava montada
     // quando o turno começou é do turno que entrou. Para cada uma: os fardos
