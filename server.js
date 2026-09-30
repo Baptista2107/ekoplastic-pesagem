@@ -2810,10 +2810,11 @@ const MP_MATERIAIS_PADRAO = {
 };
 
 // Troca de produto: chave antiga → chave nova. Ver aplicarSubstituicao().
-const MP_SUBSTITUICOES_PADRAO = {
-  'POLI:Cristal:Tallpack': 'EVOH:Cristal:Tallpack',
-  'POLI:Leitoso:Tallpack': 'EVOH:Leitoso:Tallpack',
-};
+// VAZIO desde 30/09/2026 (noite): a troca Polinylon Tallpack → Resina EVOH
+// foi DESFEITA a pedido do Frederico — as etiquetas voltam a ser lidas como
+// Polinylon. O mecanismo continua no código e só age se alguém cadastrar
+// uma troca em mp_substituicoes. Ver desfazerTrocaPoliEvoh().
+const MP_SUBSTITUICOES_PADRAO = {};
 
 // Nomes de cor que o sistema sabe RECONHECER num produto do Bling, mesmo
 // que ainda não estejam cadastrados em nenhum material. Sem esta lista,
@@ -3506,6 +3507,143 @@ function ajustarCompatibilizantePaPe() {
   } catch (e) { logW('db', 'Falha no ajuste do Compatibilizante PA/PE', { erro: e && e.message }); }
 }
 ajustarCompatibilizantePaPe();
+
+// ──────────────────────────────────────────────────────────────────
+// DESFAZER A TROCA POLINYLON TALLPACK → RESINA EVOH (30/09/2026, noite)
+// Pedido do Frederico: as etiquetas voltam a ser lidas como POLINYLON
+// CRISTAL/LEITOSO TALLPACK, como eram no recebimento. Roda UMA vez (marca
+// em config) na primeira subida desta versão:
+//   1. tira as duas trocas de mp_substituicoes → leitura, retirada,
+//      retorno, inventário e recebimento voltam ao original;
+//   2. etiquetas de RETORNO que a troca converteu sozinha (retorno com
+//      etiqueta de origem Polinylon Tallpack) e que ainda estão em
+//      estoque voltam a ser Polinylon — senão, ao sair, baixariam EVOH;
+//   3. NÃO mexe no que já foi para o Bling (retiradas que saíram como
+//      EVOH) nem no que alguém recebeu como EVOH de propósito: isso vai
+//      para o relatório logs/troca-evoh-desfeita.txt, para o acerto no Bling.
+// A Resina EVOH continua cadastrada (material, fornecedor, Bling).
+// ──────────────────────────────────────────────────────────────────
+function desfazerTrocaPoliEvoh() {
+  const MARCA = 'patch_troca_evoh_desfeita';
+  try {
+    if (dbStmts.configGet.get(MARCA)) return;
+    const agora = new Date().toISOString();
+    let subs = {};
+    try { subs = JSON.parse(configGet('mp_substituicoes', '{}')) || {}; } catch (e) { subs = {}; }
+    const alvos = ['poli:cristal:tallpack', 'poli:leitoso:tallpack'];
+    const removidas = [];
+    for (const k of Object.keys(subs)) {
+      if (alvos.includes(k.toLowerCase()) && /^EVOH:/i.test(String(subs[k]))) { removidas.push({ de: k, para: subs[k] }); delete subs[k]; }
+    }
+    configSet('mp_substituicoes', JSON.stringify(subs));
+
+    // Retornos convertidos pela troca, ainda em estoque.
+    const origemDe = id => {
+      let et = id ? dbStmts.getEtiqueta.get(id) : null, passos = 0;
+      while (et && String(et.material_key || '').toUpperCase() === 'EVOH' && et.ref_id && passos < 10) { et = dbStmts.getEtiqueta.get(et.ref_id); passos++; }
+      return et;
+    };
+    const candidatos = db.prepare(`SELECT * FROM etiquetas WHERE tipo = 'retorno' AND UPPER(material_key) = 'EVOH'
+                                   AND ref_id IS NOT NULL AND status IN ('bipada','aguardando_bipe')`).all();
+    const revertidos = [];
+    const upd = db.prepare(`UPDATE etiquetas SET material_key = ?, material_nome = ?, material_label = ?, fornecedor = ?,
+                            codigo = ?, sku = ?, alterado_em = ? WHERE id = ?`);
+    for (const t of candidatos) {
+      const o = origemDe(t.ref_id);
+      if (!o || String(o.material_key || '').toUpperCase() !== 'POLI') continue;
+      if (String(o.fornecedor || '').toLowerCase() !== 'tallpack') continue;
+      if (String(o.cor || '').toLowerCase() !== String(t.cor || '').toLowerCase()) continue;
+      const prefO = String(o.sku || '').split('|')[0].trim();
+      const sku = (prefO && t.sku) ? String(t.sku).replace(/^[^|]*?(?=\s*\||$)/, prefO) : (t.sku || o.sku);
+      upd.run(o.material_key, o.material_nome, o.material_label, o.fornecedor, o.codigo || t.codigo, sku, agora, t.id);
+      revertidos.push({ id: t.id, origem: o.id, cor: t.cor, peso: t.peso, sessao_id: t.sessao_id });
+      try { gravarLogProducaoBipagem(dbStmts.getEtiqueta.get(t.id), 'correcao'); } catch (e) {}
+    }
+
+    // O que ficou como EVOH: retiradas (já foram ao Bling) e o que foi
+    // recebido/retornado como EVOH sem origem Polinylon.
+    const sessaoDe = id => id ? db.prepare('SELECT id, tipo, bling_status, bling_id FROM sessoes WHERE id = ?').get(id) : null;
+    const porSessao = (lista) => {
+      const m = new Map();
+      for (const e of lista) {
+        const s = sessaoDe(e.sessao_id) || { id: e.sessao_id || null, bling_status: null, bling_id: null };
+        const k = String(s.id);
+        if (!m.has(k)) m.set(k, { sessao_id: s.id, bling_status: s.bling_status || null, bling_id: s.bling_id || null, kg: 0, etiquetas: [] });
+        const g = m.get(k); g.kg = +(g.kg + Number(e.peso || 0)).toFixed(3); g.etiquetas.push(e.id);
+      }
+      return [...m.values()];
+    };
+    const retiradasEvoh = db.prepare(`SELECT id, ref_id, cor, peso, sessao_id FROM etiquetas
+                                      WHERE tipo = 'retirada' AND UPPER(material_key) = 'EVOH' AND status != 'cancelada'`).all();
+    const emEstoqueEvoh = db.prepare(`SELECT id, tipo, cor, peso, sessao_id, status FROM etiquetas
+                                      WHERE tipo IN ('recebimento','retorno') AND UPPER(material_key) = 'EVOH'
+                                        AND status IN ('bipada','aguardando_bipe')`).all();
+    const kgPorCor = l => l.reduce((a, e) => { const c = e.cor || '-'; a[c] = +((a[c] || 0) + Number(e.peso || 0)).toFixed(3); return a; }, {});
+    const info = {
+      em: agora,
+      removidas,
+      retornos_revertidos: revertidos,
+      retornos_revertidos_sessoes: porSessao(revertidos),
+      retiradas_evoh: { etiquetas: retiradasEvoh.length, kg_por_cor: kgPorCor(retiradasEvoh), sessoes: porSessao(retiradasEvoh) },
+      evoh_em_estoque: emEstoqueEvoh.map(e => ({ id: e.id, tipo: e.tipo, cor: e.cor, peso: e.peso })),
+    };
+    configSet(MARCA, JSON.stringify(info));
+
+    if (removidas.length || revertidos.length || retiradasEvoh.length || emEstoqueEvoh.length) {
+      logI('db', `Troca Polinylon → EVOH DESFEITA: ${removidas.length} troca(s) desligada(s), ${revertidos.length} retorno(s) voltaram a Polinylon`
+        + `, ${retiradasEvoh.length} retirada(s) tinham saído como EVOH (${Object.entries(info.retiradas_evoh.kg_por_cor).map(([c, kg]) => `${c} ${kg} kg`).join(', ') || '0 kg'})`);
+      // Relatório legível, para o acerto no Bling.
+      const L = [];
+      L.push('TROCA POLINYLON TALLPACK -> RESINA EVOH - DESFEITA');
+      L.push(`Quando: ${new Date(agora).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`);
+      L.push('');
+      L.push('As etiquetas de Polinylon Cristal/Leitoso Tallpack voltaram a ser lidas como Polinylon.');
+      L.push('Polinylon Tallpack Cristal/Leitoso voltou a poder entrar no Recebimento. A Resina EVOH segue cadastrada.');
+      L.push('');
+      L.push(`RETORNOS QUE VOLTARAM A SER POLINYLON (${revertidos.length}) - a etiqueta impressa diz RESINA EVOH; reimprima se quiser:`);
+      for (const r of revertidos) L.push(`  ${r.id}  ${r.cor || ''}  ${r.peso} kg  (origem ${r.origem}, sessao #${r.sessao_id || '-'})`);
+      for (const g of info.retornos_revertidos_sessoes) L.push(`  -> sessao de retorno #${g.sessao_id}: foi ao Bling como EVOH (${g.kg} kg, pedido ${g.bling_id || '-'}, ${g.bling_status || 'sem envio'})`);
+      L.push('');
+      L.push(`RETIRADAS QUE SAIRAM COMO RESINA EVOH NO BLING (${retiradasEvoh.length}):`);
+      for (const g of info.retiradas_evoh.sessoes) L.push(`  sessao #${g.sessao_id}  pedido Bling ${g.bling_id || '-'} (${g.bling_status || 'sem envio'})  ${g.kg} kg  etiquetas ${g.etiquetas.join(', ')}`);
+      L.push(`  total por cor: ${Object.entries(info.retiradas_evoh.kg_por_cor).map(([c, kg]) => `${c} ${kg} kg`).join(', ') || '0 kg'}`);
+      L.push('');
+      L.push(`ETIQUETAS AINDA EM ESTOQUE COMO RESINA EVOH (${emEstoqueEvoh.length}) - recebidas/retornadas como EVOH, nao foram mexidas:`);
+      for (const e of emEstoqueEvoh) L.push(`  ${e.id}  ${e.tipo}  ${e.cor || ''}  ${e.peso} kg`);
+      L.push('');
+      L.push('ACERTO NO BLING: a Resina EVOH Cristal/Leitoso deve ficar so com o que e EVOH de verdade.');
+      L.push('A diferenca volta para o Polinylon Tallpack da mesma cor.');
+      try { fs.mkdirSync(LOG_DIR, { recursive: true }); fs.writeFileSync(path.join(LOG_DIR, 'troca-evoh-desfeita.txt'), L.join('\r\n') + '\r\n'); } catch (e) {}
+    }
+  } catch (e) { logW('db', 'Falha ao desfazer a troca Polinylon → EVOH', { erro: e && e.message }); }
+}
+desfazerTrocaPoliEvoh();
+
+// Resumo para o /healthcheck (a FASE 5 do ENVIAR-ATUALIZACAO.bat mostra):
+// só quando a desfeita encontrou algo, e só nos 3 dias seguintes.
+function resumoTrocaEvohDesfeita() {
+  try {
+    const r = dbStmts.configGet.get('patch_troca_evoh_desfeita');
+    if (!r) return null;
+    const i = JSON.parse(r.valor || '{}');
+    if (!i.em || Date.now() - Date.parse(i.em) > 3 * 86400e3) return null;
+    const achou = (i.removidas || []).length || (i.retornos_revertidos || []).length
+               || ((i.retiradas_evoh || {}).etiquetas || 0) || (i.evoh_em_estoque || []).length;
+    if (!achou) return null;
+    return {
+      em: i.em,
+      trocas_desligadas: (i.removidas || []).map(x => x.de),
+      retornos_revertidos: (i.retornos_revertidos || []).map(x => x.id),
+      retiradas_evoh: {
+        etiquetas: (i.retiradas_evoh || {}).etiquetas || 0,
+        kg_por_cor: (i.retiradas_evoh || {}).kg_por_cor || {},
+        pedidos_bling: ((i.retiradas_evoh || {}).sessoes || []).map(g => g.bling_id).filter(Boolean),
+      },
+      evoh_em_estoque: (i.evoh_em_estoque || []).map(x => x.id),
+      relatorio: 'logs/troca-evoh-desfeita.txt',
+    };
+  } catch (e) { return null; }
+}
 
 // ──────────────────────────────────────────────────────────────────
 // Catálogo de MP (fornecedores por material, códigos gravimétricos e
@@ -6120,6 +6258,7 @@ const requestHandlerBase = async (req, res) => {
         bling:     { autenticado: !!(tk.accessToken || tk.refreshToken), token_expira_em_s: tk.expiresAt ? Math.max(0, Math.round((tk.expiresAt - Date.now())/1000)) : null, simulacao: configGet('bling_simular', '1') === '1',
                      host_api: blingHostApi(), host_oauth: blingHostOauth() },
         banco:     counts,
+        ...((r => (r ? { troca_evoh_desfeita: r } : {}))(resumoTrocaEvohDesfeita())),
       });
     }
 

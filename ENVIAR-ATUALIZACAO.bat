@@ -340,10 +340,10 @@ del "%SAIDA12%" >nul 2>&1
 if not "%RCT%"=="0" goto :testes_falharam
 
 :sem_syncbling
-REM  --- Teste 13: troca Polinylon Tallpack -> Resina EVOH ---
-REM  As etiquetas antigas continuam valendo, lidas como EVOH: retirada
-REM  baixa EVOH no Bling, inventario conta EVOH, e Polinylon Tallpack
-REM  Cristal/Leitoso nao recebe mais entrada. Sem a EVOH mapeada, nada muda.
+REM  --- Teste 13: mecanismo de troca de produto (ex.: Polinylon -> EVOH) ---
+REM  A troca Polinylon Tallpack -> EVOH foi DESFEITA em 30/09/2026; o padrao
+REM  e' sem troca. O mecanismo segue no codigo: ligado pela configuracao, a
+REM  etiqueta antiga e' lida como o produto novo. Sem mapa no Bling, nada muda.
 if not exist "testes\troca-evoh.js" goto :sem_trocaevoh
 echo.
 echo  Rodando o teste da troca para Resina EVOH. Leva uns 20 segundos...
@@ -392,6 +392,23 @@ del "%SAIDA15%" >nul 2>&1
 if not "%RCT%"=="0" goto :testes_falharam
 
 :sem_compat
+REM  --- Teste 16: troca Polinylon -> EVOH desfeita ---
+REM  As etiquetas de Polinylon Cristal/Leitoso Tallpack voltam a ser lidas
+REM  como Polinylon. Retorno que a troca converteu volta a Polinylon; o que
+REM  ja foi ao Bling como EVOH nao e' mexido e vai para o relatorio de acerto.
+if not exist "testes\troca-evoh-desfeita.js" goto :sem_desfeita
+echo.
+echo  Rodando o teste da troca desfeita. Leva uns 15 segundos...
+echo.
+set "SAIDA16=%TEMP%\eko_testes16.tmp"
+node testes\troca-evoh-desfeita.js > "%SAIDA16%" 2>&1
+set "RCT=%ERRORLEVEL%"
+type "%SAIDA16%"
+type "%SAIDA16%" >>"%LOG%"
+del "%SAIDA16%" >nul 2>&1
+if not "%RCT%"=="0" goto :testes_falharam
+
+:sem_desfeita
 if not exist "testes\janela-atualizacao.js" goto :testes_ok
 echo.
 echo  Rodando o teste da janela de atualizacao. Leva uns 30 segundos...

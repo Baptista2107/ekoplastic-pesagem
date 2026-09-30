@@ -11,8 +11,13 @@
 //
 //  A regra que protege a operação: a troca só LIGA quando a EVOH está
 //  mapeada no Bling. Os IDs/SKUs da EVOH vieram em 30/09/2026 e entram
-//  com a atualização — então é a INSTALAÇÃO que liga a troca. Este teste
-//  prova os dois lados (sem mapa, nada muda) e que dá para desligar.
+//  com a atualização. Este teste prova os dois lados (sem mapa, nada muda)
+//  e que dá para desligar.
+//
+//  30/09/2026 (noite): a troca foi DESFEITA a pedido do Frederico — o
+//  padrão agora é SEM troca (ver troca-evoh-desfeita.js). O mecanismo
+//  continua no código; aqui ele é ligado pela configuração, como seria
+//  numa troca futura, para provar que segue funcionando.
 //
 //  O Bling aqui é de mentira: listagem, detalhe com variações, busca por
 //  SKU e os pedidos de compra/venda são gravados para conferência.
@@ -145,7 +150,7 @@ async function etiqueta(sessao_id, tipo, mat, nomeEt, cor, forn, peso, extra = {
                                    bling_host_oauth: 'localhost:' + portaFake });
 
     // ── [1] O CATÁLOGO JÁ TEM A RESINA EVOH ────────────────────────
-    console.log('[1] A Resina EVOH vem no catálogo, já mapeada no Bling — a troca vale desde a instalação');
+    console.log('[1] A Resina EVOH vem no catálogo, já mapeada no Bling; a troca só vale se for configurada');
     const cat = await req('GET', '/catalogo-mp');
     const evoh = (cat.body.materiais || {}).EVOH || {};
     ok(evoh.popular === 'Resina EVOH' && JSON.stringify(evoh.cores) === '["Cristal","Leitoso"]',
@@ -156,9 +161,13 @@ async function etiqueta(sessao_id, tipo, mat, nomeEt, cor, forn, peso, extra = {
        'mapeada no Bling: produto 16711891720 (as duas cores)', mapa0);
     ok(skus0['EVOH:Cristal:Tallpack'] === 'EVOH.CRISTAL.TALL' && skus0['EVOH:Leitoso:Tallpack'] === 'EVOH.LEI.TALL',
        'com as SKUs das variações: EVOH.CRISTAL.TALL e EVOH.LEI.TALL', skus0);
-    const subs0 = cat.body.substituicoes || [];
+    ok((cat.body.substituicoes || []).length === 0,
+       'por padrão NÃO há troca nenhuma (desfeita em 30/09/2026)', cat.body.substituicoes);
+    await req('POST', '/config', { mp_substituicoes: JSON.stringify({
+      'POLI:Cristal:Tallpack': 'EVOH:Cristal:Tallpack', 'POLI:Leitoso:Tallpack': 'EVOH:Leitoso:Tallpack' }) });
+    const subs0 = (await req('GET', '/catalogo-mp')).body.substituicoes || [];
     ok(subs0.length === 2 && subs0.every(t => t.ativa === true),
-       'as duas trocas VALEM desde a instalação (a EVOH já vem mapeada)', subs0);
+       'configurada, a troca vale (o mecanismo continua disponível)', subs0);
 
     // ── [2] SEM A EVOH MAPEADA: NADA MUDA ──────────────────────────
     console.log('\n[2] Sem a EVOH mapeada, tudo segue exatamente como hoje');
@@ -194,8 +203,9 @@ async function etiqueta(sessao_id, tipo, mat, nomeEt, cor, forn, peso, extra = {
     await req('POST', '/config', { mapa_produto_bling: JSON.stringify(semEvoh) });
     await derrubarServidor();
     await subirServidor();
-    ok(((await req('GET', '/catalogo-mp')).body.substituicoes || []).every(t => t.ativa === true),
-       'num banco que ainda não tinha a EVOH, INSTALAR a atualização já liga a troca');
+    const subsR = (await req('GET', '/catalogo-mp')).body.substituicoes || [];
+    ok(subsR.length === 2 && subsR.every(t => t.ativa === true),
+       'reiniciando, a EVOH volta ao mapa e a troca configurada continua valendo', subsR);
     const p = await req('GET', '/sync/mp/procurar');
     const novos = (p.body && p.body.novos) || [];
     ok(p.status === 200 && !novos.length && p.body.ja_cadastrados === 3,
