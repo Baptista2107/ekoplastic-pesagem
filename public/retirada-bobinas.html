@@ -134,6 +134,18 @@
   .h-item.alerta{border-color:var(--vermelho);}
   .h-item .h-alerta{color:var(--vermelho);}
 
+  /* 30/09/2026 (Frederico): turno do corte marcado pelo supervisor. */
+  .tc{background:var(--panel); border:1.5px solid var(--border); border-radius:14px; padding:12px;}
+  .tc.sem{border-color:var(--ambar);}
+  .tc-maqs{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
+  .tc-maq{font-size:12px; font-weight:800; letter-spacing:.8px; color:var(--muted);}
+  .tc-maq b{display:block; font-size:20px; letter-spacing:0; color:var(--verde); margin-top:2px;}
+  .tc-maq b.sem{color:var(--ambar); font-size:16px;}
+  .tc-maq small{display:block; font-size:12px; font-weight:700; letter-spacing:0; color:var(--muted);}
+  .tc-bts{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:10px;}
+  .tc-bts .btn{min-height:44px; font-size:14px; padding:8px;}
+  .modal input.senha{font-size:24px; letter-spacing:6px;}
+
   .toast{position:fixed; left:50%; transform:translateX(-50%); top:76px; padding:14px 20px; border-radius:14px; font-size:16px; font-weight:800; z-index:100; box-shadow:0 8px 28px rgba(0,0,0,0.6); max-width:92vw; text-align:center; display:none;}
   .toast.ok{background:#0d3b2a; color:var(--verde); border:1.5px solid var(--verde);}
   .toast.erro{background:#3b1414; color:var(--vermelho); border:1.5px solid var(--vermelho);}
@@ -151,6 +163,11 @@
 <div class="wrap" id="tela-sac">
   <!-- Turno: só com o Bling ligado (é o cliente da venda). -->
   <div class="turnos oculto" id="turnos"></div>
+
+  <!-- Turno do corte: marcado pelo supervisor (senha). O painel de operação
+       das sacoleiras na VPS corta os turnos por estes registros. -->
+  <div class="sec-tit"><span>Turno do corte</span></div>
+  <div class="tc" id="turno-corte"><div class="carregando">Carregando…</div></div>
 
   <div class="sec-tit"><span>Sacoleiras agora</span></div>
   <div class="sacs" id="sacs"><div class="carregando">Carregando…</div></div>
@@ -654,7 +671,78 @@ async function copiarInventario(){
 }
 function voltarSacoleiras(){ mostrarTela('sac'); atualizarTudo(); }
 
-async function atualizarTudo(){ await Promise.all([carregarSacoleiras(), carregarHistorico()]); }
+// ── TURNO DO CORTE (30/09/2026): só o supervisor inicia, troca e encerra.
+let TC={ sacoleiras:[], turnos:[] };
+async function carregarTurnoCorte(){
+  const el=document.getElementById('turno-corte');
+  try{ const d=await (await fetch(URL_BASE+'/bobinas/turno-corte')).json(); if(d&&d.ok) TC=d; }
+  catch(e){ el.innerHTML='<div class="vazio">Não consegui ler o turno.</div>'; return; }
+  const lb=c=>(TC.turnos.find(t=>t.codigo===c)||{}).label||c;
+  const algumSem=TC.sacoleiras.some(s=>!s.turno);
+  el.className='tc'+(algumSem?' sem':'');
+  el.innerHTML='<div class="tc-maqs">'+TC.sacoleiras.map(s=>'<div class="tc-maq">SACOLEIRA '+s.sacoleira+
+      (s.turno?('<b>'+esc(lb(s.turno.turno))+'</b><small>desde '+diaHora(s.turno.inicio)+'</small>')
+              :'<b class="sem">sem turno</b><small>fora de turno</small>')+'</div>').join('')+'</div>'+
+    '<div class="tc-bts"><button class="btn btn-verde" onclick="turnoCorte(\'iniciar\')">'+(algumSem&&TC.sacoleiras.every(s=>!s.turno)?'Iniciar turno':'Iniciar / trocar')+'</button>'+
+    '<button class="btn btn-cinza" onclick="turnoCorte(\'encerrar\')"'+(TC.sacoleiras.some(s=>s.turno)?'':' disabled')+'>Encerrar turno</button></div>';
+}
+function turnoCorte(acao){
+  const iniciar=acao==='iniciar';
+  const abertas=TC.sacoleiras.filter(s=>s.turno).map(s=>s.sacoleira);
+  let turno=null, maqs=iniciar?['P1','P2']:abertas.slice();
+  const fundo=document.createElement('div');
+  fundo.className='modal-fundo';
+  fundo.innerHTML='<div class="modal">'+
+    '<h2>'+(iniciar?'Iniciar turno do corte':'Encerrar turno do corte')+'</h2>'+
+    '<div class="m-sub">'+(iniciar?'Se a sacoleira já tem turno aberto, ele é encerrado agora e o novo começa no mesmo instante.'
+      :'A sacoleira fica <b>fora de turno</b> até alguém iniciar o próximo. A bobina montada continua na máquina.')+'</div>'+
+    (iniciar?('<label>TURNO</label><div class="fmts" id="md-turnos">'+TC.turnos.map(t=>
+      '<button class="chip" data-t="'+esc(t.codigo)+'">'+esc(t.label)+'</button>').join('')+'</div>'):'')+
+    '<label>SACOLEIRA</label><div class="fmts" id="md-maqs">'+['P1','P2'].map(p=>
+      '<button class="chip'+(maqs.includes(p)?' sel':'')+'" data-p="'+p+'"'+(!iniciar&&!abertas.includes(p)?' disabled':'')+'>'+p+'</button>').join('')+'</div>'+
+    '<label>SENHA DO SUPERVISOR</label><input id="md-senha" class="senha" type="password" inputmode="numeric" autocomplete="off" maxlength="8">'+
+    '<div class="m-resumo" id="md-resumo"></div>'+
+    '<button class="btn btn-verde" id="md-ok">'+(iniciar?'Iniciar':'Encerrar')+'</button>'+
+    '<button class="btn-link" id="md-cancelar">Cancelar</button></div>';
+  document.body.appendChild(fundo);
+  const lb=c=>(TC.turnos.find(t=>t.codigo===c)||{}).label||c;
+  const pintar=()=>{
+    fundo.querySelectorAll('#md-turnos .chip').forEach(c=>c.classList.toggle('sel',c.dataset.t===turno));
+    fundo.querySelectorAll('#md-maqs .chip').forEach(c=>c.classList.toggle('sel',maqs.includes(c.dataset.p)));
+    const alvo=maqs.slice().sort().join(' e ')||'?';
+    fundo.querySelector('#md-resumo').innerHTML=iniciar
+      ? ('Começa <b>'+(turno?esc(lb(turno)):'?')+'</b> na <b>'+alvo+'</b>'+
+         maqs.map(p=>{ const s=TC.sacoleiras.find(x=>x.sacoleira===p); return s&&s.turno?('<br>encerra '+esc(lb(s.turno.turno))+' da '+p):''; }).join(''))
+      : ('Encerra o turno da <b>'+alvo+'</b>');
+  };
+  fundo.querySelectorAll('#md-turnos .chip').forEach(c=>c.onclick=()=>{ turno=c.dataset.t; pintar(); });
+  fundo.querySelectorAll('#md-maqs .chip').forEach(c=>c.onclick=()=>{
+    const p=c.dataset.p; maqs=maqs.includes(p)?maqs.filter(x=>x!==p):maqs.concat(p); pintar(); });
+  pintar();
+  const inp=fundo.querySelector('#md-senha');
+  const fim=()=>fundo.remove();
+  fundo.querySelector('#md-cancelar').onclick=fim;
+  const ok=fundo.querySelector('#md-ok');
+  ok.onclick=async()=>{
+    if(iniciar && !turno){ toast('erro','Toque no turno',3000); return; }
+    if(!maqs.length){ toast('erro','Toque na sacoleira',3000); return; }
+    if(!inp.value){ toast('erro','Digite a senha do supervisor',3000); inp.focus(); return; }
+    ok.disabled=true;
+    try{
+      const r=await fetch(URL_BASE+'/bobinas/turno-corte/'+acao,{ method:'POST', headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({ senha:inp.value, turno, maquinas:maqs, operador:(window.EKO_RESPONSAVEL||null) }) });
+      const d=await r.json();
+      if(!r.ok||!d.ok){ beep(320,0.25); vibrar(200); toast('erro',esc((d&&d.erro)||'Falha'),5000); ok.disabled=false;
+        if(r.status===401){ inp.value=''; inp.focus(); } return; }
+      beep(1050,0.14); vibrar([60,50,60]);
+      toast('ok', iniciar?('✓ '+esc(lb(turno))+' iniciado · '+maqs.join(' e ')):'✓ Turno encerrado · '+maqs.join(' e '),3000);
+      fim(); carregarTurnoCorte();
+    }catch(e){ toast('erro','Erro: '+esc(e.message),5000); ok.disabled=false; }
+  };
+  inp.addEventListener('keydown',e=>{ if(e.key==='Enter') ok.click(); });
+}
+
+async function atualizarTudo(){ await Promise.all([carregarTurnoCorte(), carregarSacoleiras(), carregarHistorico()]); }
 
 // ── TURNO (só com o Bling ligado: é o cliente da venda)
 async function carregarModo(){

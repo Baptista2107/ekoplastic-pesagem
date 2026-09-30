@@ -993,6 +993,42 @@ db.exec(`
   );
 `);
 
+// ── TURNO DO CORTE (30/09/2026, VPS, pedido do Frederico) ────────────────
+// O turno das sacoleiras é MARCADO pelo supervisor no coletor, não tirado do
+// relógio: o painel de operação da VPS corta a linha do tempo da máquina
+// nestes registros. Uma linha por sacoleira (as duas costumam ir juntas, mas
+// podem não ir). Turno aberto = fim NULL; no máximo um aberto por sacoleira.
+// Iniciar um turno numa sacoleira que já tem outro aberto ENCERRA o anterior
+// no mesmo instante (motivo 'troca') — na virada é um toque só. "Encerrar"
+// fecha sem abrir outro (motivo 'encerrado'): a máquina fica fora de turno.
+// Não mexe em bobina: a bobina montada segue na máquina de um turno para o outro.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS turnos_corte (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    maquina       TEXT NOT NULL,   -- P1 | P2
+    turno         TEXT NOT NULL,   -- A | C | EXTRA
+    inicio        TEXT NOT NULL,   -- ISO UTC
+    fim           TEXT,            -- NULL = aberto
+    fim_motivo    TEXT,            -- troca | encerrado
+    aberto_por    TEXT,
+    encerrado_por TEXT,
+    alterado_em   TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS ix_turnos_corte_maq ON turnos_corte (maquina, inicio);
+`);
+const TURNOS_CORTE = { A: 'Turno A', C: 'Turno C', EXTRA: 'Extra' };
+
+function turnoCorteAberto(maq) {
+  return db.prepare(`SELECT * FROM turnos_corte WHERE maquina = ? AND fim IS NULL ORDER BY id DESC LIMIT 1`).get(maq) || null;
+}
+
+// Lista de sacoleiras do corpo do pedido; vazia ou inválida → null.
+function lerMaquinasCorte(v) {
+  const l = Array.isArray(v) ? v : [v];
+  const maqs = [...new Set(l.map(x => normalizarDestinoBobina(x)).filter(Boolean))].sort();
+  return maqs.length ? maqs : null;
+}
+
 function inventarioAberto() {
   return db.prepare(`SELECT * FROM inventario_bobinas WHERE fim IS NULL ORDER BY id DESC LIMIT 1`).get() || null;
 }
@@ -9088,6 +9124,15 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
       return jsonOk(res, { filtro: 'inventario', inventarios: invs.map(i => ({ ...i, itens: itens.all(i.id) })) });
     }
 
+    // Turnos do corte para o exportador (30/09/2026, VPS): os abertos e os
+    // alterados desde ?desde= (abrir e encerrar carimbam alterado_em).
+    if (pathname === '/dashboard/turnos-corte' && req.method === 'GET') {
+      const desde = String(parsed.query.desde || '1970-01-01').trim();
+      const turnos = db.prepare(
+        `SELECT * FROM turnos_corte WHERE fim IS NULL OR alterado_em >= ? ORDER BY inicio, id`).all(desde);
+      return jsonOk(res, { filtro: 'turnos_corte', turnos });
+    }
+
     // Sessões do período (com status de envio ao Bling e erros).
     if (pathname === '/dashboard/sessoes' && req.method === 'GET') {
       const q = parsed.query;
@@ -9434,6 +9479,60 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
       let nomes = OPERADORES_SACOLEIRA;
       try { const c = JSON.parse(configGet('operadores_sacoleira', '[]')); if (Array.isArray(c) && c.length) nomes = c; } catch(e) {}
       return jsonOk(res, { operadores: nomes.map(n => String(n).trim().toUpperCase()).filter(Boolean) });
+    }
+
+    // ── Turno do corte (ver turnoCorteAberto, lá em cima) ──
+    // GET: o turno aberto de cada sacoleira e os últimos registros.
+    if (pathname === '/bobinas/turno-corte' && req.method === 'GET') {
+      const sacoleiras = ['P1', 'P2'].map(p => ({ sacoleira: p, turno: turnoCorteAberto(p) }));
+      const recentes = db.prepare(`SELECT * FROM turnos_corte ORDER BY inicio DESC, id DESC LIMIT 12`).all();
+      return jsonOk(res, { sacoleiras, recentes,
+                           turnos: Object.entries(TURNOS_CORTE).map(([codigo, label]) => ({ codigo, label })) });
+    }
+
+    // POST iniciar { senha, turno: 'A'|'C'|'EXTRA', maquinas: ['P1','P2'], operador }
+    // POST encerrar { senha, maquinas, operador }
+    // Só o supervisor (a mesma senha da trava de saída). Iniciar numa sacoleira
+    // com turno aberto encerra o aberto no mesmo instante (motivo 'troca').
+    if ((pathname === '/bobinas/turno-corte/iniciar' || pathname === '/bobinas/turno-corte/encerrar')
+        && req.method === 'POST') {
+      let body; try { body = await lerBodyJson(req); } catch(e) { return jsonErr(res, 400, e.message); }
+      const iniciar = pathname.endsWith('/iniciar');
+      const hashAtual = configGet('senha_saida_hash', hashSenha('1234'));
+      if (hashSenha(String((body && body.senha) || '')) !== hashAtual) {
+        logDesvio({ tipo: 'turno_corte_senha_incorreta', tela: 'bobinas',
+                    detalhe: `senha incorreta ao ${iniciar ? 'iniciar' : 'encerrar'} turno do corte` });
+        return jsonErr(res, 401, 'Senha de supervisor incorreta.');
+      }
+      const maqs = lerMaquinasCorte(body.maquinas);
+      if (!maqs) return jsonErr(res, 400, 'Escolha a sacoleira (P1, P2 ou as duas)');
+      const operador = (body.operador ? String(body.operador).trim().slice(0, 80) : null) || null;
+      const agora = new Date().toISOString();
+      const fechar = db.prepare(
+        `UPDATE turnos_corte SET fim = ?, fim_motivo = ?, encerrado_por = ?, alterado_em = ? WHERE id = ?`);
+      if (!iniciar) {
+        const abertos = maqs.map(p => turnoCorteAberto(p)).filter(Boolean);
+        if (!abertos.length) return jsonErr(res, 409, `Nenhum turno aberto na ${maqs.join(' e ')}`);
+        makeTransaction(() => { for (const t of abertos) fechar.run(agora, 'encerrado', operador, agora, t.id); })();
+        logI('bobinas', `Turno do corte ENCERRADO: ${abertos.map(t => `${t.maquina} ${t.turno}`).join(', ')}`
+          + (operador ? ` por ${operador}` : ''));
+        return jsonOk(res, { encerrados: abertos.map(t => ({ maquina: t.maquina, turno: t.turno, inicio: t.inicio })), fim: agora });
+      }
+      const turno = String(body.turno || '').trim().toUpperCase();
+      if (!TURNOS_CORTE[turno]) return jsonErr(res, 400, 'Turno inválido (A, C ou Extra)');
+      const trocados = [];
+      makeTransaction(() => {
+        for (const p of maqs) {
+          const ab = turnoCorteAberto(p);
+          if (ab) { fechar.run(agora, 'troca', operador, agora, ab.id); trocados.push({ maquina: p, turno: ab.turno, inicio: ab.inicio }); }
+          db.prepare(`INSERT INTO turnos_corte (maquina, turno, inicio, aberto_por, alterado_em) VALUES (?,?,?,?,?)`)
+            .run(p, turno, agora, operador, agora);
+        }
+      })();
+      logI('bobinas', `Turno do corte INICIADO: ${TURNOS_CORTE[turno]} na ${maqs.join(' e ')}`
+        + (trocados.length ? ` (encerrou ${trocados.map(t => `${t.maquina} ${t.turno}`).join(', ')})` : '')
+        + (operador ? ` por ${operador}` : ''));
+      return jsonOk(res, { iniciado: { turno, maquinas: maqs, inicio: agora }, encerrados: trocados });
     }
 
     // Finalizar: a bobina saiu da sacoleira SEM outra no lugar (máquina
