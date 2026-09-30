@@ -9827,6 +9827,50 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
     // Lido da ETIQUETA, não da lista `baixas_bobinas_<dia>` do config: os
     // fardos chegam depois da baixa (na troca ou no Finalizar), e a lista é
     // um retrato do momento da baixa. baixa_em é UTC; o dia é o local (-03:00).
+    // Lista POR TURNO (30/09/2026, Frederico): cada sacoleira mostra o turno
+    // do corte dela — o aberto, ou o último que fechou. Entra toda bobina que
+    // esteve na máquina em algum momento do turno: a que já estava montada
+    // quando o turno começou é do turno que entrou. Para cada uma: os fardos
+    // DESTE turno (partes amarradas a ele), o total e o rendimento da bobina
+    // (fardos × 25 kg ÷ peso). Rendimento só é final quando a bobina sai;
+    // montada, é "até agora". Sacoleira que nunca teve turno: janela de hoje.
+    if (pathname === '/bobinas/do-turno' && req.method === 'GET') {
+      const agora = new Date().toISOString();
+      const hoje0 = new Date(dataLocalISO() + 'T00:00:00-03:00').toISOString();
+      const parteTurno = db.prepare(
+        `SELECT COALESCE(SUM(fardos), 0) AS n, COUNT(*) AS c FROM bobina_parciais WHERE etiqueta_id = ? AND turno_corte_id = ?`);
+      const sacoleiras = ['P1', 'P2'].map(maq => {
+        const t = db.prepare(`SELECT * FROM turnos_corte WHERE maquina = ? ORDER BY (fim IS NULL) DESC, inicio DESC, id DESC LIMIT 1`).get(maq) || null;
+        const ini = t ? t.inicio : hoje0, fim = (t && t.fim) || agora;
+        const bobinas = db.prepare(
+          `SELECT id, cor, tipo_bobina, largura, peso, baixa_em, baixa_operador AS operador, bling_pedido_id AS pedido,
+                  fardos, encerrada_em, encerrada_motivo, formato_cortado
+             FROM etiquetas WHERE tipo = 'extrusao' AND destino = ? AND baixa_em IS NOT NULL
+              AND baixa_em <= ? AND (encerrada_em IS NULL OR encerrada_em >= ?)
+            ORDER BY baixa_em DESC`).all(maq, fim, ini);
+        let fardosTurno = 0;
+        for (const b of bobinas) {
+          const montada = !b.encerrada_em;
+          const parc = fardosParciaisDe(b.id).fardos;
+          const total = montada ? parc : (b.fardos != null ? b.fardos : null);
+          const noTurno = t ? parteTurno.get(b.id, t.id) : { n: 0, c: 0 };
+          // Sem turno registrado (janela de hoje): a bobina inteira conta aqui.
+          b.fardos_turno = t ? (noTurno.c ? noTurno.n : null) : total;
+          b.fardos_total = total;
+          b.montada = montada;
+          b.veio_de_antes = b.baixa_em < ini;
+          b.rendimento_pct = (total != null && Number(b.peso) > 0) ? Math.round(total * PESO_FARDO_KG / Number(b.peso) * 100) : null;
+          b.rendimento_final = !montada;
+          b.cor_pa = corPaDaBobina(b.cor);
+          if (b.fardos_turno) fardosTurno += b.fardos_turno;
+        }
+        return { sacoleira: maq, turno: t ? { id: t.id, turno: t.turno, label: TURNOS_CORTE[t.turno] || t.turno,
+                                                inicio: t.inicio, fim: t.fim } : null,
+                 bobinas, fardos_turno: fardosTurno, kg_turno: fardosTurno * PESO_FARDO_KG };
+      });
+      return jsonOk(res, { sacoleiras, peso_fardo_kg: PESO_FARDO_KG });
+    }
+
     if (pathname === '/bobinas/baixas-hoje' && req.method === 'GET') {
       const desde = new Date(dataLocalISO() + 'T00:00:00-03:00').toISOString();
       const lista = db.prepare(

@@ -146,6 +146,21 @@ function criarBobina(db, id, seq, peso) {
     r = await req('POST', '/bobinas/finalizar', { sacoleira: 'P1', fardos: 9 });
     ok(r.status === 200 && r.body.fardos_total === 9, 'bobina sem fim de turno no meio: total = o informado (9)', r.body);
 
+    // 7. lista por turno: P1 está no turno A (aberto na troca EXTRA → A).
+    //    E9900002 veio do EXTRA (2 lá) e saiu no A com 5; E9900003 entrou e
+    //    saiu no A com 9. Fardos do turno A = 5 + 9 = 14.
+    r = await req('GET', '/bobinas/do-turno');
+    const l1 = r.body && r.body.sacoleiras.find(s => s.sacoleira === 'P1');
+    const b2 = l1 && l1.bobinas.find(b => b.id === 'E9900002');
+    const b3 = l1 && l1.bobinas.find(b => b.id === 'E9900003');
+    ok(l1 && l1.turno && l1.turno.turno === 'A' && !l1.turno.fim, 'lista da P1 é do turno A aberto', l1 && l1.turno);
+    ok(l1 && l1.bobinas.length === 2 && !l1.bobinas.some(b => b.id === 'E9900001'),
+       'entram só as bobinas que estiveram na máquina no turno A', l1 && l1.bobinas.map(b => b.id));
+    ok(b2 && b2.veio_de_antes && b2.fardos_turno === 5 && b2.fardos_total === 7 && b2.rendimento_pct === 44,
+       'E9900002: veio de antes, 5 neste turno, 7 no total, rendimento 44%', b2);
+    ok(b3 && !b3.veio_de_antes && b3.fardos_turno === 9 && b3.rendimento_pct === 56, 'E9900003: 9 neste turno, rendimento 56%', b3);
+    ok(l1 && l1.fardos_turno === 14, 'total do turno A na P1 = 14 fardos', l1 && l1.fardos_turno);
+
     // 6. dashboard
     r = await req('GET', '/dashboard/bobina-parciais?desde=2000-01-01');
     ok(r.status === 200 && r.body.parciais.length === 6, '/dashboard/bobina-parciais devolve as 6 partes (3 + 2 + 1)', r.body);
