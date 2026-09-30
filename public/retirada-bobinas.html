@@ -144,6 +144,7 @@
   .tc-maq small{display:block; font-size:12px; font-weight:700; letter-spacing:0; color:var(--muted);}
   .tc-bts{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:10px;}
   .tc-bts .btn{min-height:44px; font-size:14px; padding:8px;}
+  .btn-vermelho{background:var(--vermelho); color:#2a0707;}
   .modal input.senha{font-size:24px; letter-spacing:6px;}
 
   .toast{position:fixed; left:50%; transform:translateX(-50%); top:76px; padding:14px 20px; border-radius:14px; font-size:16px; font-weight:800; z-index:100; box-shadow:0 8px 28px rgba(0,0,0,0.6); max-width:92vw; text-align:center; display:none;}
@@ -697,7 +698,7 @@ async function carregarTurnoCorte(){
       (s.turno?('<b>'+esc(lb(s.turno.turno))+'</b><small>desde '+diaHora(s.turno.inicio)+'</small>')
               :'<b class="sem">sem turno</b><small>fora de turno</small>')+'</div>').join('')+'</div>'+
     '<div class="tc-bts"><button class="btn btn-verde" onclick="turnoCorte(\'iniciar\')">'+(algumSem&&TC.sacoleiras.every(s=>!s.turno)?'Iniciar turno':'Iniciar / trocar')+'</button>'+
-    '<button class="btn btn-cinza" onclick="turnoCorte(\'encerrar\')"'+(TC.sacoleiras.some(s=>s.turno)?'':' disabled')+'>Encerrar turno</button></div>';
+    '<button class="btn btn-vermelho" onclick="turnoCorte(\'encerrar\')"'+(TC.sacoleiras.some(s=>s.turno)?'':' disabled')+'>Encerrar turno</button></div>';
 }
 function turnoCorte(acao){
   const iniciar=acao==='iniciar';
@@ -717,7 +718,7 @@ function turnoCorte(acao){
       '<button class="chip'+(maqs.includes(p)?' sel':'')+'" data-p="'+p+'"'+(!iniciar&&!abertas.includes(p)?' disabled':'')+'>'+p+'</button>').join('')+'</div>'+
     '<label>SENHA DO SUPERVISOR</label><input id="md-senha" class="senha" type="password" inputmode="numeric" autocomplete="off" maxlength="8">'+
     '<div class="m-resumo" id="md-resumo"></div>'+
-    '<button class="btn btn-verde" id="md-ok">'+(iniciar?'Iniciar':'Encerrar')+'</button>'+
+    '<button class="btn '+(iniciar?'btn-verde':'btn-vermelho')+'" id="md-ok">'+(iniciar?'Iniciar':'Encerrar turno')+'</button>'+
     '<button class="btn-link" id="md-cancelar">Cancelar</button></div>';
   document.body.appendChild(fundo);
   const lb=c=>(TC.turnos.find(t=>t.codigo===c)||{}).label||c;
