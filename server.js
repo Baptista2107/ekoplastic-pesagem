@@ -9024,7 +9024,7 @@ const requestHandlerBase = async (req, res) => {
                   e.sessao_id, e.operador, e.maquina, e.largura, e.tipo_bobina, e.turno_codigo, e.bling_pedido_id,
                   e.destino, e.baixa_em, e.baixa_turno, e.baixa_operador,
                   e.fardos, e.encerrada_em, e.encerrada_motivo, e.alterado_em,
-                  e.formato_cortado, e.formato_origem,
+                  e.formato_cortado, e.formato_origem, e.pacotes,
                   s.bling_status, s.bling_id, s.bling_erro
              FROM etiquetas e LEFT JOIN sessoes s ON s.id = e.sessao_id
             WHERE date(e.hora_impressao) >= ?
@@ -9291,7 +9291,7 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
                   e.sessao_id, e.operador, e.maquina, e.largura, e.tipo_bobina, e.turno_codigo, e.bling_pedido_id,
                   e.destino, e.baixa_em, e.baixa_turno, e.baixa_operador,
                   e.fardos, e.encerrada_em, e.encerrada_motivo, e.alterado_em,
-                  e.formato_cortado, e.formato_origem,
+                  e.formato_cortado, e.formato_origem, e.pacotes,
                   s.bling_status, s.bling_id, s.bling_erro
              FROM etiquetas e LEFT JOIN sessoes s ON s.id = e.sessao_id
              ${onde} ORDER BY e.hora_impressao DESC LIMIT ? OFFSET ?`
