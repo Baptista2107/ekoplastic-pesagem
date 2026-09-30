@@ -383,20 +383,28 @@ function perguntarFardos(bob, sac, modo){
     const corNome=(bob.cor_pa&&bob.cor_pa.nome)||bob.cor||'';
     const fundo=document.createElement('div');
     fundo.className='modal-fundo';
-    const tit = modo==='troca' ? ('Troca na Sacoleira '+sac) : ('Finalizar Sacoleira '+sac);
-    const acao = modo==='troca' ? 'Confirmar troca' : 'Finalizar bobina';
+    // modo 'turno' (30/09/2026): fim do turno com a bobina montada. Ela NÃO
+    // sai: o número é só o que ela deu neste turno. Na troca e no Finalizar,
+    // se já houve fim de turno com ela montada, também se pede só a parte
+    // deste turno — o total da bobina é a soma, feita pelo servidor.
+    const turno = modo==='turno';
+    const antes = Number(bob.fardos_parciais)||0;
+    const tit = turno ? ('Fim do turno · Sacoleira '+sac) : modo==='troca' ? ('Troca na Sacoleira '+sac) : ('Finalizar Sacoleira '+sac);
+    const acao = turno ? 'Registrar fardos do turno' : modo==='troca' ? 'Confirmar troca' : 'Finalizar bobina';
     const chips=permitidos.map(f=>'<button class="chip'+(cands.includes(f)&&cands.length<permitidos.length?' cand':'')+
       (f===escolhido?' sel':'')+'" data-f="'+esc(f)+'">'+esc(f.replace('x',' × '))+'</button>').join('');
     fundo.innerHTML='<div class="modal">'+
       '<h2>'+tit+'</h2>'+
-      '<div class="m-sub">Sai a <b>'+esc(bob.id)+'</b> · '+descBob(bob)+' · <b>'+fmtKg(bob.peso)+'</b>'+
+      '<div class="m-sub">'+(turno?'Continua na máquina a <b>':'Sai a <b>')+esc(bob.id)+'</b> · '+descBob(bob)+' · <b>'+fmtKg(bob.peso)+'</b>'+
         (bob.baixa_em?('<br>montada '+haQuanto(bob.baixa_em)):'')+
         (bob.baixa_operador?(' · bipada por <b>'+esc(bob.baixa_operador)+'</b>'):'')+'</div>'+
       '<label>FORMATO CORTADO · '+esc(corNome.toUpperCase())+'</label>'+
       '<div class="fmts">'+chips+'</div>'+
       '<div class="m-dica">'+(fmt.sugerido?('Sugerido pelo sistema ('+esc(fmt.motivo||'')+'). Confirme ou toque em outro.')
         :esc(fmt.motivo||'Escolha o formato.'))+'</div>'+
-      '<label>QUANTOS FARDOS ELA DEU?</label><input id="md-fardos" type="number" inputmode="numeric" min="0" max="999" step="1" autocomplete="off">'+
+      (antes>0?('<div class="m-dica">Já informado em fim de turno anterior: <b>'+antes+'</b> fardo'+(antes===1?'':'s')+
+        '. Digite só o que ela deu <b>neste turno</b>.</div>'):'')+
+      '<label>'+((turno||antes>0)?'QUANTOS FARDOS ELA DEU NESTE TURNO?':'QUANTOS FARDOS ELA DEU?')+'</label><input id="md-fardos" type="number" inputmode="numeric" min="0" max="999" step="1" autocomplete="off">'+
       '<div class="m-kg" id="md-kg"></div>'+
       '<div id="md-alerta"></div>'+
       '<div class="m-resumo" id="md-resumo"></div>'+
@@ -407,9 +415,11 @@ function perguntarFardos(bob, sac, modo){
     const pintar=()=>{
       const n=Number(inp.value), temN=inp.value!=='' && Number.isInteger(n) && n>=0;
       const kg=temN?n*KG_FARDO:null;
-      fundo.querySelector('#md-kg').innerHTML=temN?(fmtKg(kg)+'<small>'+n+' fardo'+(n===1?'':'s')+' × '+KG_FARDO+' kg</small>'):'';
-      const passa=temN && Number(bob.peso)>0 && kg>Number(bob.peso);
-      fundo.querySelector('#md-alerta').innerHTML=passa?('<div class="m-alerta">⚠ '+fmtKg(kg)+' de fardos para uma bobina de '+
+      const kgTotal=temN?(n+antes)*KG_FARDO:null;
+      fundo.querySelector('#md-kg').innerHTML=temN?(fmtKg(kg)+'<small>'+n+' fardo'+(n===1?'':'s')+' × '+KG_FARDO+' kg'+
+        (antes>0?(' · bobina até agora: '+(n+antes)+' fardos = '+fmtKg(kgTotal)):'')+'</small>'):'';
+      const passa=temN && Number(bob.peso)>0 && kgTotal>Number(bob.peso);
+      fundo.querySelector('#md-alerta').innerHTML=passa?('<div class="m-alerta">⚠ '+fmtKg(kgTotal)+' de fardos para uma bobina de '+
         fmtKg(bob.peso)+' — rendeu mais do que pesa. Confira os fardos antes de confirmar.</div>'):'';
       fundo.querySelector('#md-resumo').innerHTML='Cortou <b>'+(escolhido?esc(escolhido.replace('x',' × ')):'?')+'</b> · '+esc(corNome)+
         (temN?(' · <b>'+n+'</b> fardo'+(n===1?'':'s')+' · <b>'+fmtKg(kg)+'</b>'):'')+
@@ -542,9 +552,10 @@ async function carregarHistorico(){
     el.innerHTML=lista.map(x=>{
       const sac=String(x.destino||'').replace(/^Sacoleira\s*/i,'')||'—';
       // Não oferece desfazer para bobina que já deu fardos (foi usada).
-      const ultima=!vistas[sac] && !x.pedido && !(x.fardos>0); vistas[sac]=1;
+      const ultima=!vistas[sac] && !x.pedido && !(x.fardos>0) && !(x.fardos_parciais>0); vistas[sac]=1;
       let dir;
-      if(!x.encerrada_em) dir='<span class="na-maq">na máquina</span>';
+      if(!x.encerrada_em) dir='<span class="na-maq">na máquina</span>'+
+        (x.fardos_parciais>0?('<small>'+x.fardos_parciais+' fardo'+(x.fardos_parciais===1?'':'s')+' em turnos anteriores</small>'):'');
       else if(x.fardos==null) dir='<span>—</span><small>sem fardos</small>';
       else dir='<b>'+x.fardos+'</b> fardo'+(x.fardos===1?'':'s')+
         '<small'+(x.alerta_peso?' class="h-alerta"':'')+'>'+fmtKg(x.peso_fardos)+(x.alerta_peso?' ⚠ passa do peso':'')+'</small>';
@@ -690,12 +701,14 @@ function turnoCorte(acao){
   const iniciar=acao==='iniciar';
   const abertas=TC.sacoleiras.filter(s=>s.turno).map(s=>s.sacoleira);
   let turno=null, maqs=iniciar?['P1','P2']:abertas.slice();
+  const parciais={};   // { P1: {fardos, formato, formato_origem} } — fardos do turno que fecha
   const fundo=document.createElement('div');
   fundo.className='modal-fundo';
   fundo.innerHTML='<div class="modal">'+
     '<h2>'+(iniciar?'Iniciar turno do corte':'Encerrar turno do corte')+'</h2>'+
     '<div class="m-sub">'+(iniciar?'Se a sacoleira já tem turno aberto, ele é encerrado agora e o novo começa no mesmo instante.'
-      :'A sacoleira fica <b>fora de turno</b> até alguém iniciar o próximo. A bobina montada continua na máquina.')+'</div>'+
+      :'A sacoleira fica <b>fora de turno</b> até alguém iniciar o próximo. A bobina montada continua na máquina.')+
+    '<br>Com bobina montada, a seguir peço quantos fardos ela deu <b>neste turno</b>.</div>'+
     (iniciar?('<label>TURNO</label><div class="fmts" id="md-turnos">'+TC.turnos.map(t=>
       '<button class="chip" data-t="'+esc(t.codigo)+'">'+esc(t.label)+'</button>').join('')+'</div>'):'')+
     '<label>SACOLEIRA</label><div class="fmts" id="md-maqs">'+['P1','P2'].map(p=>
@@ -729,14 +742,41 @@ function turnoCorte(acao){
     if(!inp.value){ toast('erro','Digite a senha do supervisor',3000); inp.focus(); return; }
     ok.disabled=true;
     try{
-      const r=await fetch(URL_BASE+'/bobinas/turno-corte/'+acao,{ method:'POST', headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({ senha:inp.value, turno, maquinas:maqs, operador:(window.EKO_RESPONSAVEL||null) }) });
-      const d=await r.json();
+      // Fardos do turno que fecha (30/09/2026): cada sacoleira cujo turno
+      // fecha agora e que tem bobina montada. Perguntado uma vez; se a senha
+      // estiver errada, o que foi digitado fica guardado para a nova tentativa.
+      await carregarSacoleiras();
+      const fecham=maqs.filter(p=>{ const s=TC.sacoleiras.find(x=>x.sacoleira===p); return s&&s.turno; });
+      for(const p of fecham){
+        if(parciais[p]) continue;
+        const bob=(ABERTAS.find(a=>a.sacoleira===p)||{}).bobina;
+        if(!bob) continue;
+        const v=await perguntarFardos(bob, p, 'turno');
+        if(v===null){ ok.disabled=false; return; }
+        parciais[p]={ fardos:v.fardos, formato:v.formato, formato_origem:v.origem };
+      }
+      let r, d;
+      for(let tentativa=0; tentativa<2; tentativa++){
+        r=await fetch(URL_BASE+'/bobinas/turno-corte/'+acao,{ method:'POST', headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({ senha:inp.value, turno, maquinas:maqs, parciais, operador:(window.EKO_RESPONSAVEL||null) }) });
+        d=await r.json();
+        // Bobina montada por outro aparelho no meio do caminho: pergunta a que faltou.
+        if(r.status===409 && d && d.precisa_fardos && tentativa===0){
+          for(const b of (d.bobinas||[])){
+            const v=await perguntarFardos(b, b.sacoleira, 'turno');
+            if(v===null){ ok.disabled=false; return; }
+            parciais[b.sacoleira]={ fardos:v.fardos, formato:v.formato, formato_origem:v.origem };
+          }
+          continue;
+        }
+        break;
+      }
       if(!r.ok||!d.ok){ beep(320,0.25); vibrar(200); toast('erro',esc((d&&d.erro)||'Falha'),5000); ok.disabled=false;
         if(r.status===401){ inp.value=''; inp.focus(); } return; }
       beep(1050,0.14); vibrar([60,50,60]);
-      toast('ok', iniciar?('✓ '+esc(lb(turno))+' iniciado · '+maqs.join(' e ')):'✓ Turno encerrado · '+maqs.join(' e '),3000);
-      fim(); carregarTurnoCorte();
+      const txtF=(d.parciais||[]).map(x=>' · '+x.sacoleira+' '+x.fardos+' fardo'+(x.fardos===1?'':'s')).join('');
+      toast('ok', (iniciar?('✓ '+esc(lb(turno))+' iniciado · '+maqs.join(' e ')):'✓ Turno encerrado · '+maqs.join(' e '))+txtF,4000);
+      fim(); atualizarTudo();
     }catch(e){ toast('erro','Erro: '+esc(e.message),5000); ok.disabled=false; }
   };
   inp.addEventListener('keydown',e=>{ if(e.key==='Enter') ok.click(); });

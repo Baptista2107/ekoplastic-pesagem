@@ -357,6 +357,23 @@ del "%SAIDA13%" >nul 2>&1
 if not "%RCT%"=="0" goto :testes_falharam
 
 :sem_trocaevoh
+REM  --- Teste 14: fardos por turno na sacoleira ---
+REM  Encerrar o turno nao e' acabar a bobina: ela segue montada e o fim
+REM  do turno registra so' o que ela deu naquele turno. O total da bobina
+REM  e' a soma das partes. Sem os fardos, o turno nao fecha.
+if not exist "testes\fardos-turno.js" goto :sem_fardosturno
+echo.
+echo  Rodando o teste dos fardos por turno. Leva uns 10 segundos...
+echo.
+set "SAIDA14=%TEMP%\eko_testes14.tmp"
+node testes\fardos-turno.js > "%SAIDA14%" 2>&1
+set "RCT=%ERRORLEVEL%"
+type "%SAIDA14%"
+type "%SAIDA14%" >>"%LOG%"
+del "%SAIDA14%" >nul 2>&1
+if not "%RCT%"=="0" goto :testes_falharam
+
+:sem_fardosturno
 if not exist "testes\janela-atualizacao.js" goto :testes_ok
 echo.
 echo  Rodando o teste da janela de atualizacao. Leva uns 30 segundos...
