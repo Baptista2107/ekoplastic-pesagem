@@ -374,6 +374,24 @@ del "%SAIDA14%" >nul 2>&1
 if not "%RCT%"=="0" goto :testes_falharam
 
 :sem_fardosturno
+REM  --- Teste 15: Compatibilizante PA/PE (saco de 20 kg, PARABOR) ---
+REM  O material foi criado pela tela com sacos de 25 kg e sem fornecedor.
+REM  A atualizacao acha o material pelo nome no banco da estacao e ajusta
+REM  uma vez: nome sem "Aditivo", saco de 20 kg e o fornecedor PARABOR.
+REM  Os outros aditivos continuam com 25 kg.
+if not exist "testes\compatibilizante.js" goto :sem_compat
+echo.
+echo  Rodando o teste do Compatibilizante. Leva uns 15 segundos...
+echo.
+set "SAIDA15=%TEMP%\eko_testes15.tmp"
+node testes\compatibilizante.js > "%SAIDA15%" 2>&1
+set "RCT=%ERRORLEVEL%"
+type "%SAIDA15%"
+type "%SAIDA15%" >>"%LOG%"
+del "%SAIDA15%" >nul 2>&1
+if not "%RCT%"=="0" goto :testes_falharam
+
+:sem_compat
 if not exist "testes\janela-atualizacao.js" goto :testes_ok
 echo.
 echo  Rodando o teste da janela de atualizacao. Leva uns 30 segundos...

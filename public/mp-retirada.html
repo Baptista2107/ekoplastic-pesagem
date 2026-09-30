@@ -658,7 +658,7 @@ header {
         🏷 BIPAGEM &nbsp;<span style="font-size:10px;opacity:0.7">GBD / POLI / CARBO</span>
       </button>
       <button class="subtab" data-tipo="sacos" onclick="setFluxo('sacos')">
-        📦 SACOS 25 KG &nbsp;<span style="font-size:10px;opacity:0.7">ADITIVOS</span>
+        📦 SACOS &nbsp;<span style="font-size:10px;opacity:0.7">ADITIVOS</span>
       </button>
     </div>
 
@@ -703,7 +703,7 @@ header {
       </div>
 
       <div class="bloco contador-bloco">
-        <div class="bloco-titulo">QUANTIDADE DE SACOS · 25 KG CADA</div>
+        <div class="bloco-titulo" id="sacos-titulo">QUANTIDADE DE SACOS · 25 KG CADA</div>
         <div class="contador-row">
           <button class="btn-cont" onclick="ajustarSacos(-1)">−</button>
           <input type="number" class="cont-input" id="sacos-input" value="0" min="0" oninput="ajustarSacos(0)">
@@ -853,6 +853,13 @@ const URL_ETIQ   = URL_BASE + '/etiquetas';
 const URL_ADITV  = URL_BASE + '/retirada/aditivo';
 
 const KG_SACO = 25;
+// Peso do saco DO material: 25 kg nos aditivos de sempre; material
+// cadastrado pela tela traz o dele (o Compatibilizante PA/PE é de 20 kg).
+function kgSacoDe(k) {
+  const ad = k && ADITIVOS[k];
+  return (ad && Number(ad.kgPorSaco) > 0) ? Number(ad.kgPorSaco) : KG_SACO;
+}
+const fmtKgSaco = n => String(n).replace('.', ',');
 
 // Catálogo de aditivos (matKey, cor opcional, fornecedores) — sincronizado com o cadastro Bling
 const ADITIVOS = {
@@ -1238,7 +1245,10 @@ function ajustarSacos(delta) {
   const av = document.getElementById('avulso-input');
   const avulso = av ? (parseFloat(String(av.value).replace(',', '.')) || 0) : 0;
   estado.pesoAvulso = avulso > 0 ? +avulso.toFixed(3) : 0;
-  const kg = +(v * KG_SACO + estado.pesoAvulso).toFixed(3);
+  const kgSaco = kgSacoDe(estado.tipo);
+  const kg = +(v * kgSaco + estado.pesoAvulso).toFixed(3);
+  const elTit = document.getElementById('sacos-titulo');
+  if (elTit) elTit.textContent = `QUANTIDADE DE SACOS · ${fmtKgSaco(kgSaco)} KG CADA`;
   const fmtK = n => String(n).replace('.', ',');
   document.getElementById('sacos-info').innerHTML =
     (v > 0 ? `<b>${v} ${v === 1 ? 'saco' : 'sacos'}</b>` : '<b>sem sacos fechados</b>')
@@ -1338,7 +1348,7 @@ function renderHistorico() {
     lista.innerHTML = estado.itens.map(it => {
       const corStr = it.cor ? ' · ' + it.cor : '';
       const sub    = it.tipo === 'aditivo'
-        ? `${it.fornecedor} · ${it.qtdSacos} × ${KG_SACO}kg`
+        ? `${it.fornecedor} · ${it.qtdSacos} × ${fmtKgSaco(kgSacoDe(it.materialKey))}kg`
         : `${it.fornecedor} · Lote ${it.lote}${it.origId ? ' · Orig ' + it.origId : ''}`;
       return `<div class="item ${it.tipo}">
         <div class="id-tag">${it.virtId}</div>
@@ -1588,7 +1598,8 @@ async function carregarCatalogoRetirada() {
     if (cat && cat.materiais) {
       for (const [k, m] of Object.entries(cat.materiais)) {
         if (!m || m.porSacos !== true || ADITIVOS[k] || k === 'CARBO') continue;
-        ADITIVOS[k] = { label: m.popular || k, cores: null, fornecedores: [] };
+        ADITIVOS[k] = { label: m.popular || k, cores: null, fornecedores: [],
+                        kgPorSaco: Number(m.kgPorSaco) > 0 ? Number(m.kgPorSaco) : null };
       }
     }
     if (cat && cat.fornecedores) {
@@ -1615,7 +1626,7 @@ renderFornecedores();
 renderCores();
 ajustarSacos(0);
 renderHistorico();
-carregarCatalogoRetirada().then(() => { renderTipos(); renderFornecedores(); renderCores(); });
+carregarCatalogoRetirada().then(() => { renderTipos(); renderFornecedores(); renderCores(); ajustarSacos(0); renderHistorico(); });
 restaurarSessaoAberta();
 
 </script>

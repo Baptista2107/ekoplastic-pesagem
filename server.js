@@ -2860,6 +2860,7 @@ function seedConfigsBling() {
     "Tupaciguara":    "17880604037",
     "Valgroup":       "17927393383",
     "WT dos Santos":  "18159304251",
+    "PARABOR":        "18422042805",   // Compatibilizante PA/PE (30/09/2026)
     "W R":            "18199057846",
     "Ycaro":          "17817641812"
   };
@@ -3441,6 +3442,70 @@ function aplicarPatchsCatalogoMP() {
   } catch (e) { logW('db', 'Falha no patch de códigos MP', { erro: e && e.message }); }
 }
 aplicarPatchsCatalogoMP();
+
+// ──────────────────────────────────────────────────────────────────
+// COMPATIBILIZANTE PA/PE (30/09/2026)
+// Foi criado pela tela Cadastros Bling como "Aditivo - Compatibilizante
+// PA/PE", por sacos de 25 kg e sem fornecedor. Ajustes pedidos pelo
+// Frederico: nome sem "Aditivo", saco de 20 kg (não 25) e o fornecedor
+// PARABOR (contato Bling 18422042805, produto 16713041492).
+// O material mora só no banco da estação, com a sigla digitada na tela —
+// por isso é achado pelo NOME (ou pelo apelido que a tela gravou). Não
+// existindo, é criado com a sigla COMPAT.
+// Roda UMA vez (marca em config): um ajuste feito depois, pela tela, não é
+// desfeito por reinício nenhum. Contato e produto do Bling só entram se
+// ainda não houver outro cadastrado.
+// ──────────────────────────────────────────────────────────────────
+const COMPAT_PAPE = {
+  popular: 'Compatibilizante PA/PE', nomeEtiqueta: 'COMPATIBILIZANTE PA/PE', kgPorSaco: 20,
+  fornecedor: 'PARABOR', contatoBling: '18422042805', produtoBling: '16713041492',
+};
+function ajustarCompatibilizantePaPe() {
+  const MARCA = 'patch_compatibilizante_pape';
+  try {
+    if (dbStmts.configGet.get(MARCA)) return;
+    const mats = JSON.parse(configGet('mp_materiais', '{}'));
+    const semAcento = t => String(t || '').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+    const ehCompat = m => !!m && (/COMPATIBILIZ/.test(semAcento(m.popular)) || /COMPATIBILIZ/.test(semAcento(m.nomeEtiqueta))
+                         || (Array.isArray(m.apelidos) && m.apelidos.some(a => /COMPATIBILIZ/.test(semAcento(a)))));
+    const achados = Object.keys(mats).filter(k => ehCompat(mats[k]));
+    let chave = achados[0] || null;
+    if (achados.length > 1) logW('db', `Compatibilizante: ${achados.length} materiais com esse nome (${achados.join(', ')}) — ajustando só ${chave}`);
+    const criado = !chave;
+    if (criado) {
+      chave = ['COMPAT', 'COMPATPAPE', 'COMPATPE'].find(k => !mats[k] && !MP_MATERIAIS_PADRAO[k]);
+      if (!chave) { logW('db', 'Compatibilizante: nenhuma sigla livre para criar o material — nada feito'); return; }
+      mats[chave] = { cores: [], corLabel: {}, apelidos: [], criadoEm: new Date().toISOString(), origem: 'atualizacao' };
+    }
+    const m = mats[chave];
+    const antes = { popular: m.popular, kgPorSaco: m.kgPorSaco };
+    m.popular      = COMPAT_PAPE.popular;
+    m.nomeEtiqueta = COMPAT_PAPE.nomeEtiqueta;
+    m.porSacos     = true;
+    m.kgPorSaco    = COMPAT_PAPE.kgPorSaco;
+    if (!Array.isArray(m.cores)) m.cores = [];
+    if (!m.corLabel || typeof m.corLabel !== 'object') m.corLabel = {};
+    m.apelidos = [...new Set([...(Array.isArray(m.apelidos) ? m.apelidos : []), 'COMPATIBILIZANTE'])];
+    configSet('mp_materiais', JSON.stringify(mats));
+
+    const forn = JSON.parse(configGet('mp_fornecedores', '{}'));
+    if (!Array.isArray(forn[chave])) forn[chave] = [];
+    if (!forn[chave].includes(COMPAT_PAPE.fornecedor)) forn[chave].push(COMPAT_PAPE.fornecedor);
+    configSet('mp_fornecedores', JSON.stringify(forn));
+
+    const mapaF = JSON.parse(configGet('mapa_fornecedor_bling', '{}'));
+    if (!mapaF[COMPAT_PAPE.fornecedor]) { mapaF[COMPAT_PAPE.fornecedor] = COMPAT_PAPE.contatoBling; configSet('mapa_fornecedor_bling', JSON.stringify(mapaF)); }
+    const mapaP = JSON.parse(configGet('mapa_produto_bling', '{}'));
+    const chaveProd = chaveProduto(chave, '', COMPAT_PAPE.fornecedor);
+    if (!mapaP[chaveProd]) { mapaP[chaveProd] = COMPAT_PAPE.produtoBling; configSet('mapa_produto_bling', JSON.stringify(mapaP)); }
+
+    configSet(MARCA, JSON.stringify({ em: new Date().toISOString(), material: chave, criado, antes }));
+    logI('db', `Compatibilizante PA/PE: material ${chave} ${criado ? 'criado' : 'ajustado'} — `
+      + `nome "${COMPAT_PAPE.popular}"${antes.popular && antes.popular !== COMPAT_PAPE.popular ? ` (era "${antes.popular}")` : ''}, `
+      + `saco de ${COMPAT_PAPE.kgPorSaco} kg, fornecedor ${COMPAT_PAPE.fornecedor} → produto Bling ${mapaP[chaveProd]}`);
+  } catch (e) { logW('db', 'Falha no ajuste do Compatibilizante PA/PE', { erro: e && e.message }); }
+}
+ajustarCompatibilizantePaPe();
 
 // ──────────────────────────────────────────────────────────────────
 // Catálogo de MP (fornecedores por material, códigos gravimétricos e
@@ -5053,11 +5118,14 @@ function montarPayloadBling(sessao, etiquetas, mapaForn, mapaSku, idEko) {
   // antes de o nome virar "Ecorafia") — assim o fallback do id nunca fica nulo.
   const mapaSkuCI = {};
   for (const k in mapaSku) mapaSkuCI[k.toLowerCase()] = mapaSku[k];
+  // Peso do saco de cada material (25 kg na maioria; o Compatibilizante
+  // PA/PE vem em sacos de 20 kg). Só entra no texto da descrição.
+  const kgSacoMat = materiaisPorSacos();
   const itens = etiquetasOrdenadas.map(e => {
     const chave = chaveProduto(e.material_key, e.cor, e.fornecedor);
     const material = e.material_nome || e.material_key;
     const isAditivoContado = e.sub_tipo === 'aditivo-saida' || e.sub_tipo === 'aditivo-fechados';
-    const sufixoSacos = (e.qtd_sacos && e.qtd_sacos > 0) ? ` · ${e.qtd_sacos} sacos × 25kg` : '';
+    const sufixoSacos = (e.qtd_sacos && e.qtd_sacos > 0) ? ` · ${e.qtd_sacos} sacos × ${kgSacoMat[e.material_key] || 25}kg` : '';
     const rotuloUnidade = isAditivoContado
       ? `Aditivo #${String(e.seq_sessao||'-').padStart(2,'0')}`
       : (sessao.tipo === 'recebimento'
@@ -7804,8 +7872,9 @@ const requestHandlerBase = async (req, res) => {
     // Produto do Bling que a busca não reconhece (material que o sistema
     // ainda não tem) pode virar material aqui, sem atualização de código.
     // Foi o que faltou com o AUXILIAR DE FLUXO em 28/09/2026.
-    //   { matKey, popular, unidade: 'sacos'|'bigbag', apelidos?: [] }
-    // 'sacos' = entra e sai por número de sacos de 25 kg (como os aditivos);
+    //   { matKey, popular, unidade: 'sacos'|'bigbag', kgPorSaco?: 25, apelidos?: [] }
+    // 'sacos' = entra e sai por número de sacos (como os aditivos). O peso do
+    // saco é do material: 25 kg na maioria, 20 kg no Compatibilizante PA/PE;
     // 'bigbag' = pesado na balança, com etiqueta (como grão e Polinylon).
     // Não sobrescreve material que já existe — a chave é a identidade dele
     // nas etiquetas e nos mapas do Bling.
@@ -7819,7 +7888,17 @@ const requestHandlerBase = async (req, res) => {
       if (popular.length < 2 || popular.length > 40)
         return jsonErr(res, 400, 'O nome do material deve ter de 2 a 40 caracteres.');
       if (!['sacos', 'bigbag'].includes(unidade))
-        return jsonErr(res, 400, 'Informe como o material entra: "sacos" (sacos de 25 kg) ou "bigbag" (pesado na balança).');
+        return jsonErr(res, 400, 'Informe como o material entra: "sacos" (contado em sacos) ou "bigbag" (pesado na balança).');
+      // Peso do saco: sem informar, 25 kg (o padrão da fábrica). Aceita uma
+      // casa decimal (ex.: 22,5) e fica entre 1 e 100 kg.
+      let kgSaco = null;
+      if (unidade === 'sacos') {
+        const bruto = body.kgPorSaco === undefined || body.kgPorSaco === null || body.kgPorSaco === '' ? 25
+                    : Number(String(body.kgPorSaco).replace(',', '.'));
+        if (!Number.isFinite(bruto) || bruto < 1 || bruto > 100)
+          return jsonErr(res, 400, 'O peso do saco deve ser de 1 a 100 kg.');
+        kgSaco = Math.round(bruto * 10) / 10;
+      }
       // Siglas que já são de outra coisa no sistema (produto acabado,
       // bobina, capa, resíduo) não podem virar matéria-prima.
       const reservadas = ['AM', 'BC', 'PT', 'REC', 'BOB', 'CAPA', 'RES', 'APARA', 'PA', 'MP'];
@@ -7831,13 +7910,13 @@ const requestHandlerBase = async (req, res) => {
         .map(a => String(a || '').trim().toUpperCase()).filter(a => a.length >= 3 && a.length <= 40))].slice(0, 6);
       mats[matKey] = {
         popular, nomeEtiqueta: popular.toUpperCase(), cores: [], corLabel: {},
-        porSacos: unidade === 'sacos', kgPorSaco: unidade === 'sacos' ? 25 : null,
+        porSacos: unidade === 'sacos', kgPorSaco: kgSaco,
         apelidos, criadoEm: new Date().toISOString(), origem: 'cadastros-bling',
       };
       configSet('mp_materiais', JSON.stringify(mats));
       const fornCatM = JSON.parse(configGet('mp_fornecedores', '{}'));
       if (!Array.isArray(fornCatM[matKey])) { fornCatM[matKey] = []; configSet('mp_fornecedores', JSON.stringify(fornCatM)); }
-      logI('sync', `Material novo criado pela tela: ${matKey} — ${popular} (${unidade === 'sacos' ? 'sacos de 25 kg' : 'big bag pesado'})`
+      logI('sync', `Material novo criado pela tela: ${matKey} — ${popular} (${unidade === 'sacos' ? `sacos de ${kgSaco} kg` : 'big bag pesado'})`
         + (apelidos.length ? ` · reconhecido também por ${apelidos.join(', ')}` : ''));
       return jsonOk(res, { criado: true, matKey, material: mats[matKey] });
     }

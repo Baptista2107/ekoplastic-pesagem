@@ -844,7 +844,9 @@ function addSobra(pref){
   const campo=document.getElementById(pref+'-sobra-kg');
   const v=parseFloat(String(campo.value).replace(',','.'));
   if(!isFinite(v) || v<=0){ toast('aviso','Informe o peso do saco aberto',2500); campo.focus(); return; }
-  if(v>25){ toast('aviso','Peso maior que um saco cheio (25 kg) — confira',3500); }
+  // Saco cheio do produto escolhido (25 kg na maioria; 20 kg no Compatibilizante PA/PE).
+  const cheio = pref==='sac' ? ((SAC_SEL && SAC_SEL.kgPorSaco) || 25) : ((typeof KG_POR_SACO!=='undefined' && KG_POR_SACO) || 25);
+  if(v>cheio){ toast('aviso','Peso maior que um saco cheio ('+String(cheio).replace('.',',')+' kg) — confira',3500); }
   SOBRAS[pref].push(+v.toFixed(3));
   campo.value='';
   renderSobras(pref);

@@ -1341,23 +1341,38 @@ function syncHtmlDesconhecidos(){
                    maxlength="10" style="width:130px; text-transform:uppercase">
             <input class="sync-in" data-m="nome" data-i="${i}" value="${escS(g.nome)}" placeholder="nome do material"
                    maxlength="40" style="width:210px">
-            <select class="sync-in" data-m="unidade" data-i="${i}">
+            <select class="sync-in" data-m="unidade" data-i="${i}" onchange="syncUnidade(${i})">
               <option value="">como entra e sai?</option>
-              <option value="sacos">por sacos de 25 kg</option>
+              <option value="sacos">por sacos</option>
               <option value="bigbag">big bag pesado</option>
             </select>
+            <label class="sync-kg" data-i="${i}" style="display:none; align-items:center; gap:6px; font-size:13px;">
+              <input class="sync-in" data-m="kg" data-i="${i}" value="25" inputmode="decimal" maxlength="5" style="width:70px"> kg por saco
+            </label>
             <button class="btn" onclick="syncCriarMaterial(${i})">＋ CADASTRAR MATERIAL</button>
           </div>
         </div>`).join('')
     + `</div>`;
+}
+// O peso do saco só aparece quando o material é "por sacos" — nem todo
+// saco é de 25 kg (o Compatibilizante PA/PE vem em sacos de 20 kg).
+function syncUnidade(i){
+  const sel=document.querySelector(`.sync-in[data-m="unidade"][data-i="${i}"]`);
+  const kg=document.querySelector(`.sync-kg[data-i="${i}"]`);
+  if(kg) kg.style.display = (sel && sel.value==='sacos') ? 'inline-flex' : 'none';
 }
 async function syncCriarMaterial(i){
   const g = SYNC_DESC[i]; if(!g) return;
   const v = c => { const e=document.querySelector(`.sync-in[data-m="${c}"][data-i="${i}"]`); return e ? e.value.trim() : ''; };
   const corpo = { matKey: v('chave').toUpperCase(), popular: v('nome'), unidade: v('unidade'), apelidos: [g.titulo] };
   if(!corpo.matKey || !corpo.popular){ alert('Preencha a sigla e o nome do material.'); return; }
-  if(!corpo.unidade){ alert('Escolha como o material entra e sai: por sacos de 25 kg ou big bag pesado.'); return; }
-  const comoEntra = corpo.unidade === 'sacos' ? 'por sacos de 25 kg' : 'big bag pesado na balança';
+  if(!corpo.unidade){ alert('Escolha como o material entra e sai: por sacos ou big bag pesado.'); return; }
+  if(corpo.unidade === 'sacos'){
+    const kg = Number(String(v('kg') || '25').replace(',', '.'));
+    if(!(kg >= 1 && kg <= 100)){ alert('Informe o peso do saco em kg (de 1 a 100).'); return; }
+    corpo.kgPorSaco = kg;
+  }
+  const comoEntra = corpo.unidade === 'sacos' ? `por sacos de ${String(corpo.kgPorSaco).replace('.', ',')} kg` : 'big bag pesado na balança';
   if(!confirm(`Cadastrar o material ${corpo.matKey} — ${corpo.popular} (${comoEntra})?\n\nA sigla não pode ser trocada depois: ela vai nas etiquetas e no Bling.`)) return;
   try{
     const r=await fetch('/sync/mp/material',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(corpo)});

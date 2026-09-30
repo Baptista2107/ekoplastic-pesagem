@@ -1325,7 +1325,7 @@ body.modo-retorno .menu-item.active { border-color: var(--devol); background: rg
       <div class="bloco-head">
         <div class="bloco-num">4</div>
         <div class="bloco-titulo">Quantidade de Sacos no Palete</div>
-        <span class="bal-status-mini" style="color:var(--muted)">25 KG / SACO</span>
+        <span class="bal-status-mini" id="qtd-kg-saco" style="color:var(--muted)">25 KG / SACO</span>
       </div>
       <div class="qtd-area">
         <button class="btn-qtd" onclick="ajustarQtd(-1)">−</button>
@@ -1466,7 +1466,7 @@ body.modo-retorno .menu-item.active { border-color: var(--devol); background: rg
       <div class="reto-flow" id="reto-aditivos-flow" style="display:none">
 
         <div class="reto-alerta info">
-          🧪 <b>Aditivos</b> · Escolha material, fornecedor e a quantidade de sacos (25 kg) e toque em <b>➕ Adicionar à lista</b>. Pode somar vários lotes (pigmento e dessecante). A lista aparece à direita.
+          🧪 <b>Aditivos</b> · Escolha material, fornecedor e a quantidade de sacos e toque em <b>➕ Adicionar à lista</b>. Pode somar vários lotes (pigmento e dessecante). A lista aparece à direita.
         </div>
 
         <div class="bloco">
@@ -1487,7 +1487,7 @@ body.modo-retorno .menu-item.active { border-color: var(--devol); background: rg
 
         <!-- Contador de sacos fechados -->
         <div class="reto-contador-bloco">
-          <div class="bloco-titulo">SACOS FECHADOS · 25 KG CADA</div>
+          <div class="bloco-titulo" id="reto-sacos-titulo">SACOS FECHADOS · 25 KG CADA</div>
           <div class="contador-row">
             <button class="btn-cont" onclick="ajustarRetoSacos(-1)">−</button>
             <input type="number" id="reto-sacos-input" class="cont-input" value="0" min="0" oninput="ajustarRetoSacos(0)">
@@ -1743,6 +1743,14 @@ function buscarCodigo(matKey, cor, fornecedor) {
 }
 
 const isComposto = mat => COMPOSTOS.includes(mat);
+// Peso do saco DO material. Os aditivos de sempre são de 25 kg; material
+// cadastrado pela tela traz o dele (o Compatibilizante PA/PE é de 20 kg).
+const COMPOSTOS_FIXOS = COMPOSTOS.slice();
+function kgSacoDe(mat) {
+  const m = mat && MATERIAIS[mat];
+  return (m && Number(m.kgPorSaco) > 0) ? Number(m.kgPorSaco) : KG_SACO;
+}
+const fmtKgSaco = n => String(n).replace('.', ',');
 
 // ─── ESTADO ───
 // Cada item tem: status = 'aguardando_bipe' | 'bipada'
@@ -2015,8 +2023,11 @@ function atualizarLiquido() {
 function atualizarQtd() {
   estado.qtdSacos = parseInt(document.getElementById('qtd-input').value || '0', 10);
   if (estado.qtdSacos < 0) { estado.qtdSacos = 0; document.getElementById('qtd-input').value = 0; }
-  const kg = estado.qtdSacos * KG_SACO;
-  document.getElementById('qtd-calc-lbl').textContent = `${estado.qtdSacos} SACOS × ${KG_SACO} KG`;
+  const kgSaco = kgSacoDe(estado.material);
+  const kg = estado.qtdSacos * kgSaco;
+  document.getElementById('qtd-calc-lbl').textContent = `${estado.qtdSacos} SACOS × ${fmtKgSaco(kgSaco)} KG`;
+  const elKgS = document.getElementById('qtd-kg-saco');
+  if (elKgS) elKgS.textContent = `${fmtKgSaco(kgSaco)} KG / SACO`;
   document.getElementById('qtd-calc-val').textContent = kg > 0 ? kg.toFixed(0) + ' kg' : '— kg';
   atualizarEstadoBlocos();
 }
@@ -2067,7 +2078,7 @@ function atualizarEtiqueta() {
   } else {
     const m = estado.material ? MATERIAIS[estado.material] : null;
     const comp = isComposto(estado.material);
-    const peso = comp ? estado.qtdSacos * KG_SACO : estado.pesoBruto;
+    const peso = comp ? estado.qtdSacos * kgSacoDe(estado.material) : estado.pesoBruto;
     dados = {
       materialKey: estado.material,
       cor: estado.cor,
@@ -2115,7 +2126,7 @@ function atualizarEtiqueta() {
     document.getElementById('et-lote').textContent = `LOTE ${dados.lote}`;
     document.getElementById('et-peso').textContent = `PESO ${dados.peso.toFixed(dados.comp ? 0 : 1)} KG`;
     document.getElementById('et-sacos-row').style.display = dados.comp ? 'block' : 'none';
-    if (dados.comp) document.getElementById('et-sacos').textContent = `${dados.qtdSacos} × ${KG_SACO} kg`;
+    if (dados.comp) document.getElementById('et-sacos').textContent = `${dados.qtdSacos} × ${fmtKgSaco(kgSacoDe(dados.materialKey))} kg`;
 
     // Código gravimétrico
     const codigo = buscarCodigo(dados.materialKey, dados.cor, dados.fornecedor);
@@ -2458,7 +2469,7 @@ async function imprimir() {
       cor: estado.cor,
       fornecedor: estado.fornecedor,
       lote: getLote(),
-      peso: comp ? estado.qtdSacos * KG_SACO : estado.pesoBruto,
+      peso: comp ? estado.qtdSacos * kgSacoDe(estado.material) : estado.pesoBruto,
       comp: comp,
       qtdSacos: comp ? estado.qtdSacos : null,
       subTipo: null,
@@ -3606,6 +3617,8 @@ function renderRetoAditivos() {
       return `<button class="${cls}" onclick="selRetoAditivoForn('${f}')">${f}</button>`;
     }).join('');
   }
+  const elTitSacos = document.getElementById('reto-sacos-titulo');
+  if (elTitSacos) elTitSacos.textContent = `SACOS FECHADOS · ${fmtKgSaco(kgSacoDe(mat))} KG CADA`;
   // Saco parcial pesado só faz sentido para pigmento
   const blocoParcial = document.getElementById('reto-parcial-bloco');
   if (blocoParcial) blocoParcial.style.display = (mat === 'PIG') ? '' : 'none';
@@ -3701,7 +3714,8 @@ function ajustarRetoSacos(delta) {
 
 function atualizarResumoAditivos() {
   const fechados = estado.retoSacosFechados;
-  const kgFechados = fechados * KG_SACO_PIGMENTO;
+  const kgSacoRet = kgSacoDe(estado.retoAditivoMat || 'PIG');
+  const kgFechados = +(fechados * kgSacoRet).toFixed(1);
   // Total da LISTA já adicionada (sacos fechados + parciais persistidos)
   const itens = estado.retItens.filter(it => it.subTipo === 'aditivo-fechado' || it.subTipo === 'aditivo-parcial');
   const totalLista = itens.reduce((s, it) => s + it.peso, 0);
@@ -3712,7 +3726,7 @@ function atualizarResumoAditivos() {
   if (elTot) elTot.textContent = `${totalLista.toFixed(1)} kg`;
   // Elementos antigos (podem não existir mais) — guardados por segurança
   const elF = document.getElementById('resumo-sacos-fechados');
-  if (elF) elF.textContent = `${fechados} × ${KG_SACO_PIGMENTO} kg = ${kgFechados} kg`;
+  if (elF) elF.textContent = `${fechados} × ${fmtKgSaco(kgSacoRet)} kg = ${kgFechados} kg`;
   const elP = document.getElementById('resumo-parciais');
   if (elP) {
     const parciais = itens.filter(it => it.subTipo === 'aditivo-parcial');
@@ -3976,6 +3990,9 @@ async function carregarCatalogoMP() {
         // Material cadastrado "por sacos" (Cadastros Bling) entra por número
         // de sacos, como os aditivos — sem precisar mexer neste HTML.
         if (m.porSacos === true && !COMPOSTOS.includes(k)) COMPOSTOS.push(k);
+        if (m.porSacos === true && !COMPOSTOS_FIXOS.includes(k) && Number(m.kgPorSaco) > 0) {
+          MATERIAIS[k].kgPorSaco = Number(m.kgPorSaco);
+        }
         if (Array.isArray(m.cores)) MATERIAIS[k].cores = m.cores.slice();
         // A abreviação da SKU vem junto. O que o banco traz tem prioridade;
         // o que não vier continua valendo do embutido, e cor sem abreviação
