@@ -9851,8 +9851,9 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
         let fardosTurno = 0;
         for (const b of bobinas) {
           const montada = !b.encerrada_em;
-          const parc = fardosParciaisDe(b.id).fardos;
-          const total = montada ? parc : (b.fardos != null ? b.fardos : null);
+          // Montada sem nenhum fim de turno ainda: não há total ("na máquina"), não 0.
+          const parc = fardosParciaisDe(b.id);
+          const total = montada ? (parc.partes ? parc.fardos : null) : (b.fardos != null ? b.fardos : null);
           const noTurno = t ? parteTurno.get(b.id, t.id) : { n: 0, c: 0 };
           // Sem turno registrado (janela de hoje): a bobina inteira conta aqui.
           b.fardos_turno = t ? (noTurno.c ? noTurno.n : null) : total;
