@@ -466,7 +466,7 @@ function perguntarFardos(bob, sac, modo){
       (fmt.sugerido?('<div class="fmt-dec" id="md-fmt-dec"><div class="fd-v" id="md-fmt-v"></div>'+
         '<button class="chip" id="md-outro">Outro</button></div>'):'')+
       '<div class="fmts'+(fmt.sugerido?' oculto':'')+'" id="md-fmts">'+chips+'</div>'+
-      (fmt.sugerido?'':('<div class="m-dica">'+esc(fmt.motivo||'Escolha o formato.')+'</div>'))+
+      (fmt.sugerido?'':('<div class="m-dica">'+esc(fmt.motivo||'sem formato decidido')+' — toque no formato se souber; dá para registrar sem.</div>'))+
       '<label>'+((turno||antes>0)?'FARDOS FECHADOS NESTE TURNO':'FARDOS FECHADOS')+'</label><input id="md-fardos" type="number" inputmode="numeric" min="0" max="999" step="1" autocomplete="off">'+
       (ini>0?('<div class="m-dica">Havia '+ini+' pacote'+(ini===1?'':'s')+' solto'+(ini===1?'':'s')+' no início — conte o fardo que ela completou.</div>'):'')+
       '<label>PACOTES SOLTOS AGORA</label><div class="fmts soltos">'+[0,1,2,3,4].map(n=>
@@ -517,7 +517,9 @@ function perguntarFardos(bob, sac, modo){
       const n=Number(inp.value);
       if(inp.value==='' || !Number.isInteger(n) || n<0 || n>999){ toast('erro','Digite o número de fardos (0 a 999)',3000); inp.focus(); return; }
       if(n*PC_FARDO+soltos-ini<0){ toast('erro','Havia '+ini+' pacote(s) solto(s) no início — confira fardos e soltos',4000); return; }
-      if(n*PC_FARDO+soltos-ini>0 && !escolhido){ toast('erro','Toque no formato que ela cortou',3000); return; }
+      // Formato NÃO trava o registro (01/10/2026, Gustavo: o encerrar turno
+      // "prendia" quando o sistema não sabia o formato). Sem formato, a parte
+      // vai sem ele — o fim de turno não pode depender disso.
       fim({ fardos:n, soltos, formato:escolhido, origem:(escolhido && escolhido===fmt.sugerido)?'sugerido':'escolhido' });
     };
     inp.addEventListener('keydown',e=>{ if(e.key==='Enter') fundo.querySelector('#md-ok').click(); });
