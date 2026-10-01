@@ -1006,12 +1006,13 @@ function sugerirFormato(maq, bobina, clp) {
     const dist = cabem.map(f => [f, Math.abs(comprimentoFormato(f) - out.comprimento_mm)])
                       .filter(([, d]) => d <= tol).sort((a, b) => a[1] - b[1]);
     if (dist.length) out.candidatos = dist.map(([f]) => f);
-    // Sugere só quando é claro: um candidato, ou o mais perto com folga de 5 mm.
-    if (dist.length === 1 || (dist.length > 1 && dist[1][1] - dist[0][1] >= 5)) {
+    // 01/10/2026 (Gustavo): o sistema DECIDE o formato — a máquina, a bobina e
+    // o comprimento acertam quase sempre, e o operador só troca no "Outro".
+    // Empate de comprimento fica com o mais perto.
+    if (dist.length) {
       out.sugerido = dist[0][0];
-      out.motivo = `comprimento ${out.comprimento_mm} mm`;
-    } else if (dist.length > 1) {
-      out.motivo = `comprimento ${out.comprimento_mm} mm serve para ${dist.map(d => d[0]).join(' ou ')}`;
+      out.motivo = `comprimento ${out.comprimento_mm} mm` + (dist.length > 1 && dist[1][1] - dist[0][1] < 5
+        ? ` (mais perto que ${dist.slice(1).map(d => d[0]).join(', ')})` : '');
     } else {
       out.motivo = `comprimento ${out.comprimento_mm} mm não bate com nenhum formato da ${maq}`;
     }
@@ -1019,7 +1020,27 @@ function sugerirFormato(maq, bobina, clp) {
     out.motivo = clp ? (out.clp_velho ? 'leitura da sacoleira atrasada' : 'sacoleira sem comprimento')
                      : 'sem leitura da sacoleira';
   }
+  // Sem comprimento que decida: a bobina sozinha (largura que só roda um
+  // formato nesta máquina) ou, por último, o que esta sacoleira cortou da
+  // última vez com uma bobina que permite o mesmo formato.
+  if (!out.sugerido && cabem.length === 1) {
+    out.sugerido = cabem[0];
+    out.motivo = `bobina ${bobina && bobina.largura} só roda ${cabem[0]} na ${maq}`;
+  }
+  if (!out.sugerido) {
+    const ult = ultimoFormatoNa(maq, cabem);
+    if (ult) { out.sugerido = ult; out.motivo = `último formato cortado na ${maq} (${out.motivo})`; }
+  }
   return out;
+}
+function ultimoFormatoNa(maq, permitidos) {
+  if (!permitidos || !permitidos.length) return null;
+  try {
+    const r = db.prepare(`SELECT formato FROM bobina_parciais WHERE maquina = ? AND formato IS NOT NULL
+                           AND formato IN (${permitidos.map(() => '?').join(',')})
+                          ORDER BY registrado_em DESC, id DESC LIMIT 1`).get(maq, ...permitidos);
+    return r ? r.formato : null;
+  } catch (e) { return null; }
 }
 function lerFormatoDaMaquina(maq, v) {
   const f = String(v || '').trim().toLowerCase().replace(/\s/g, '');
@@ -10290,9 +10311,15 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
       const agora = new Date().toISOString();
       const hoje0 = new Date(dataLocalISO() + 'T00:00:00-03:00').toISOString();
       const parteTurno = db.prepare(
-        `SELECT COALESCE(SUM(${SQL_PACOTES_PARTE}), 0) AS n, COUNT(*) AS c FROM bobina_parciais WHERE etiqueta_id = ? AND turno_corte_id = ?`);
+        `SELECT COALESCE(SUM(${SQL_PACOTES_PARTE}), 0) AS n, COUNT(*) AS c, MAX(formato) AS f
+           FROM bobina_parciais WHERE etiqueta_id = ? AND turno_corte_id = ?`);
+      // ?fechado=1 (01/10/2026): o último turno que FECHOU — é o resumo que a
+      // tela mostra logo depois de encerrar ou trocar o turno.
+      const soFechado = parsed.query.fechado === '1';
       const sacoleiras = ['P1', 'P2'].map(maq => {
-        const t = db.prepare(`SELECT * FROM turnos_corte WHERE maquina = ? ORDER BY (fim IS NULL) DESC, inicio DESC, id DESC LIMIT 1`).get(maq) || null;
+        const t = (soFechado
+          ? db.prepare(`SELECT * FROM turnos_corte WHERE maquina = ? AND fim IS NOT NULL ORDER BY fim DESC, id DESC LIMIT 1`).get(maq)
+          : db.prepare(`SELECT * FROM turnos_corte WHERE maquina = ? ORDER BY (fim IS NULL) DESC, inicio DESC, id DESC LIMIT 1`).get(maq)) || null;
         const ini = t ? t.inicio : hoje0, fim = (t && t.fim) || agora;
         const bobinas = db.prepare(
           `SELECT id, cor, tipo_bobina, largura, peso, baixa_em, baixa_operador AS operador, bling_pedido_id AS pedido,
@@ -10312,6 +10339,7 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
           const noTurno = t ? parteTurno.get(b.id, t.id) : { n: 0, c: 0 };
           // Sem turno registrado (janela de hoje): a bobina inteira conta aqui.
           b.pacotes_turno = t ? (noTurno.c ? noTurno.n : null) : total;
+          b.formato_turno = (noTurno && noTurno.f) || b.formato_cortado || null;
           b.pacotes_total = total;
           b.montada = montada;
           b.veio_de_antes = b.baixa_em < ini;

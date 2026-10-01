@@ -157,6 +157,19 @@
   .fmts .chip.cand{border-style:dashed; border-color:var(--ambar);}
   .fmts .chip.sel{background:rgba(0,255,157,.12);}
   .m-dica{font-size:12px; color:var(--muted); margin-top:6px;}
+  /* 01/10/2026 (Gustavo): o formato vem decidido; o operador só troca no "Outro". */
+  .fmt-dec{display:flex; align-items:center; gap:10px; margin-top:8px;}
+  .fmt-dec .fd-v{flex:1; font-size:26px; font-weight:900; color:var(--verde); line-height:1.1;}
+  .fmt-dec .fd-v small{display:block; font-size:12px; font-weight:700; color:var(--muted); margin-top:2px;}
+  .fmt-dec .chip{flex:0 0 auto;}
+  /* Resumo do turno que fechou */
+  .rs-sac{margin-top:14px; padding:12px; border-radius:12px; background:var(--panel-hi); border:1.5px solid var(--border);}
+  .rs-cab{display:flex; justify-content:space-between; align-items:baseline; gap:8px; font-weight:900; font-size:16px;}
+  .rs-cab small{font-size:12px; color:var(--muted); font-weight:700;}
+  .rs-tot{font-size:22px; font-weight:900; color:var(--verde); margin-top:4px;}
+  .rs-tot small{font-size:13px; color:var(--muted); font-weight:700;}
+  .rs-it{font-size:13px; color:var(--muted); font-weight:600; margin-top:6px; line-height:1.4;}
+  .rs-it b{color:var(--txt);}
   .nomes{display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; max-height:40dvh; overflow:auto;}
   .modal input.txt{font-size:20px; font-weight:800; text-align:left;}
   .h-item .h-dir b{font-size:17px;}
@@ -427,7 +440,7 @@ function perguntarFardos(bob, sac, modo){
     const antes = Number(bob.pacotes_parciais)||0;
     const ini = Number(bob.soltos_inicio)||0;
     let soltos = 0;
-    const tit = turno ? ('Fim do turno · Sacoleira '+sac) : modo==='troca' ? ('Troca na Sacoleira '+sac) : ('Finalizar Sacoleira '+sac);
+    const tit = turno ? ('Fim do turno · Sacoleira '+sac) : modo==='troca' ? ('Troca na Sacoleira '+sac) : ('Encerrar bobina · Sacoleira '+sac);
     const acao = turno ? 'Registrar fardos do turno' : modo==='troca' ? 'Confirmar troca' : 'Finalizar bobina';
     const chips=permitidos.map(f=>'<button class="chip'+(cands.includes(f)&&cands.length<permitidos.length?' cand':'')+
       (f===escolhido?' sel':'')+'" data-f="'+esc(f)+'">'+esc(f.replace('x',' × '))+'</button>').join('');
@@ -437,9 +450,12 @@ function perguntarFardos(bob, sac, modo){
         (bob.baixa_em?('<br>montada '+haQuanto(bob.baixa_em)):'')+
         (bob.baixa_operador?(' · bipada por <b>'+esc(bob.baixa_operador)+'</b>'):'')+'</div>'+
       '<label>FORMATO CORTADO · '+esc(corNome.toUpperCase())+'</label>'+
-      '<div class="fmts">'+chips+'</div>'+
-      '<div class="m-dica">'+(fmt.sugerido?('Sugerido pelo sistema ('+esc(fmt.motivo||'')+'). Confirme ou toque em outro.')
-        :esc(fmt.motivo||'Escolha o formato.'))+'</div>'+
+      // 01/10/2026 (Gustavo): o sistema decide (máquina + bobina + comprimento
+      // da sacoleira); "Outro" abre só os formatos que ESTA sacoleira corta.
+      (fmt.sugerido?('<div class="fmt-dec" id="md-fmt-dec"><div class="fd-v" id="md-fmt-v"></div>'+
+        '<button class="chip" id="md-outro">Outro</button></div>'):'')+
+      '<div class="fmts'+(fmt.sugerido?' oculto':'')+'" id="md-fmts">'+chips+'</div>'+
+      (fmt.sugerido?'':('<div class="m-dica">'+esc(fmt.motivo||'Escolha o formato.')+'</div>'))+
       '<label>'+((turno||antes>0)?'FARDOS FECHADOS NESTE TURNO':'FARDOS FECHADOS')+'</label><input id="md-fardos" type="number" inputmode="numeric" min="0" max="999" step="1" autocomplete="off">'+
       (ini>0?('<div class="m-dica">Havia '+ini+' pacote'+(ini===1?'':'s')+' solto'+(ini===1?'':'s')+' no início — conte o fardo que ela completou.</div>'):'')+
       '<label>PACOTES SOLTOS AGORA</label><div class="fmts soltos">'+[0,1,2,3,4].map(n=>
@@ -452,6 +468,9 @@ function perguntarFardos(bob, sac, modo){
     document.body.appendChild(fundo);
     const inp=fundo.querySelector('#md-fardos');
     const pintar=()=>{
+      const fv=fundo.querySelector('#md-fmt-v');
+      if(fv) fv.innerHTML=(escolhido?esc(escolhido.replace('x',' × ')):'?')+
+        '<small>'+(escolhido===fmt.sugerido?esc(fmt.motivo||'pelo sistema'):'escolhido no Outro')+'</small>';
       const n=Number(inp.value), temN=inp.value!=='' && Number.isInteger(n) && n>=0;
       // Produção desta parte em pacotes: fechados × 5 + soltos agora − soltos no início.
       const pc=temN?(n*PC_FARDO+soltos-ini):null;
@@ -466,11 +485,13 @@ function perguntarFardos(bob, sac, modo){
         (temN&&pc>=0?(' · <b>'+txtPc(pc)+'</b>'):'')+
         '<br>por <b>'+esc(bob.baixa_operador||'—')+'</b>';
     };
-    fundo.querySelectorAll('.fmts:not(.soltos) .chip').forEach(c=>c.onclick=()=>{
+    fundo.querySelectorAll('#md-fmts .chip').forEach(c=>c.onclick=()=>{
       escolhido=c.dataset.f;
-      fundo.querySelectorAll('.fmts:not(.soltos) .chip').forEach(x=>x.classList.toggle('sel',x===c));
+      fundo.querySelectorAll('#md-fmts .chip').forEach(x=>x.classList.toggle('sel',x===c));
       pintar();
     });
+    const outro=fundo.querySelector('#md-outro');
+    if(outro) outro.onclick=()=>{ const g=fundo.querySelector('#md-fmts'); g.classList.toggle('oculto'); outro.classList.toggle('sel',!g.classList.contains('oculto')); };
     fundo.querySelectorAll('.soltos .chip').forEach(c=>c.onclick=()=>{
       soltos=Number(c.dataset.s);
       fundo.querySelectorAll('.soltos .chip').forEach(x=>x.classList.toggle('sel',x===c));
@@ -549,7 +570,7 @@ async function finalizar(sac){
     const d=await r.json();
     if(!r.ok || !d.ok){ toast('erro',esc((d&&d.erro)||'Falha ao finalizar'),5000); return; }
     beep(1050,0.14); vibrar([60,50,60]);
-    toast('ok','✓ '+esc(bob.id)+' finalizada · bobina '+txtPc(d.pacotes_total||0),3000);
+    toast('ok','✓ '+esc(bob.id)+' encerrada · bobina '+txtPc(d.pacotes_total||0),3000);
     await atualizarTudo();
   }catch(e){ toast('erro','Erro: '+esc(e.message),5000); }
 }
@@ -579,7 +600,7 @@ async function carregarSacoleiras(){
       '<div class="s-kg">'+fmtKg(b.peso)+'</div>'+
       (b.baixa_operador?('<div class="s-quem">'+esc(b.baixa_operador)+'</div>'):'')+
       '<div class="s-info">'+esc(b.id)+' · '+haQuanto(b.baixa_em)+'</div>'+
-      '<button class="btn btn-cinza s-fim" onclick="finalizar(\''+a.sacoleira+'\')">Finalizar</button></div>';
+      '<button class="btn btn-cinza s-fim" onclick="finalizar(\''+a.sacoleira+'\')">Encerrar bobina</button></div>';
   }).join('');
 }
 
@@ -772,7 +793,8 @@ async function carregarTurnoCorte(){
 function turnoCorte(acao){
   const iniciar=acao==='iniciar';
   const abertas=TC.sacoleiras.filter(s=>s.turno).map(s=>s.sacoleira);
-  let turno=null, maqs=iniciar?['P1','P2']:abertas.slice();
+  // 01/10/2026 (Gustavo): turno sempre nas DUAS sacoleiras — sem escolher máquina.
+  let turno=null; const maqs=iniciar?['P1','P2']:abertas.slice();
   const parciais={};   // { P1: {fardos, formato, formato_origem} } — fardos do turno que fecha
   const fundo=document.createElement('div');
   fundo.className='modal-fundo';
@@ -783,8 +805,6 @@ function turnoCorte(acao){
     '<br>Com bobina montada, a seguir peço quantos fardos ela deu <b>neste turno</b>.</div>'+
     (iniciar?('<label>TURNO</label><div class="fmts" id="md-turnos">'+TC.turnos.map(t=>
       '<button class="chip" data-t="'+esc(t.codigo)+'">'+esc(t.label)+'</button>').join('')+'</div>'):'')+
-    '<label>SACOLEIRA</label><div class="fmts" id="md-maqs">'+['P1','P2'].map(p=>
-      '<button class="chip'+(maqs.includes(p)?' sel':'')+'" data-p="'+p+'"'+(!iniciar&&!abertas.includes(p)?' disabled':'')+'>'+p+'</button>').join('')+'</div>'+
     '<label>SENHA DO SUPERVISOR</label><input id="md-senha" class="senha" type="password" inputmode="numeric" autocomplete="off" maxlength="8">'+
     '<div class="m-resumo" id="md-resumo"></div>'+
     '<button class="btn '+(iniciar?'btn-verde':'btn-vermelho')+'" id="md-ok">'+(iniciar?'Iniciar':'Encerrar turno')+'</button>'+
@@ -793,7 +813,6 @@ function turnoCorte(acao){
   const lb=c=>(TC.turnos.find(t=>t.codigo===c)||{}).label||c;
   const pintar=()=>{
     fundo.querySelectorAll('#md-turnos .chip').forEach(c=>c.classList.toggle('sel',c.dataset.t===turno));
-    fundo.querySelectorAll('#md-maqs .chip').forEach(c=>c.classList.toggle('sel',maqs.includes(c.dataset.p)));
     const alvo=maqs.slice().sort().join(' e ')||'?';
     fundo.querySelector('#md-resumo').innerHTML=iniciar
       ? ('Começa <b>'+(turno?esc(lb(turno)):'?')+'</b> na <b>'+alvo+'</b>'+
@@ -801,8 +820,6 @@ function turnoCorte(acao){
       : ('Encerra o turno da <b>'+alvo+'</b>');
   };
   fundo.querySelectorAll('#md-turnos .chip').forEach(c=>c.onclick=()=>{ turno=c.dataset.t; pintar(); });
-  fundo.querySelectorAll('#md-maqs .chip').forEach(c=>c.onclick=()=>{
-    const p=c.dataset.p; maqs=maqs.includes(p)?maqs.filter(x=>x!==p):maqs.concat(p); pintar(); });
   pintar();
   const inp=fundo.querySelector('#md-senha');
   const fim=()=>fundo.remove();
@@ -810,7 +827,7 @@ function turnoCorte(acao){
   const ok=fundo.querySelector('#md-ok');
   ok.onclick=async()=>{
     if(iniciar && !turno){ toast('erro','Toque no turno',3000); return; }
-    if(!maqs.length){ toast('erro','Toque na sacoleira',3000); return; }
+    if(!maqs.length){ toast('erro','Nenhuma sacoleira com turno aberto',3000); return; }
     if(!inp.value){ toast('erro','Digite a senha do supervisor',3000); inp.focus(); return; }
     ok.disabled=true;
     try{
@@ -849,9 +866,45 @@ function turnoCorte(acao){
       const txtF=(d.parciais||[]).map(x=>' · '+x.sacoleira+' '+txtPc(x.pacotes)).join('');
       toast('ok', (iniciar?('✓ '+esc(lb(turno))+' iniciado · '+maqs.join(' e ')):'✓ Turno encerrado · '+maqs.join(' e '))+txtF,4000);
       fim(); atualizarTudo();
+      // Encerrar ou trocar fecha um turno: mostra o resumo dele (01/10/2026, Gustavo).
+      if(!iniciar || (d.encerrados||[]).length) mostrarResumoTurno();
     }catch(e){ toast('erro','Erro: '+esc(e.message),5000); ok.disabled=false; }
   };
   inp.addEventListener('keydown',e=>{ if(e.key==='Enter') ok.click(); });
+}
+
+// Resumo do turno que acabou de fechar: por sacoleira, as bobinas que
+// passaram nele, formato, fardos do turno e quem bipou.
+async function mostrarResumoTurno(){
+  let d;
+  try{ d=await (await fetch(URL_BASE+'/bobinas/do-turno?fechado=1')).json(); }catch(e){ return; }
+  const sacs=((d&&d.sacoleiras)||[]).filter(s=>s.turno);
+  if(!sacs.length) return;
+  const fundo=document.createElement('div');
+  fundo.className='modal-fundo';
+  const blocos=sacs.map(s=>{
+    const t=s.turno, bs=s.bobinas||[];
+    const saiu=bs.filter(b=>!b.montada).length, entrou=bs.filter(b=>!b.veio_de_antes).length;
+    const quem=[...new Set(bs.map(b=>b.operador).filter(Boolean))];
+    const kgBob=bs.filter(b=>!b.veio_de_antes).reduce((a,b)=>a+(Number(b.peso)||0),0);
+    const itens=bs.slice().reverse().map(b=>'<div class="rs-it"><b>'+esc(b.id)+'</b> · '+descCurta(b)+
+      (b.formato_turno?(' · <b>'+esc(b.formato_turno.replace('x',' × '))+'</b>'):'')+
+      ' · '+(b.pacotes_turno!=null?('<b>'+txtPc(b.pacotes_turno)+'</b>'):'sem fardos')+
+      (b.montada?' · continua na máquina':(b.rendimento_pct!=null?(' · rendeu '+b.rendimento_pct+'%'):''))+
+      (b.operador?(' · '+esc(b.operador)):'')+'</div>').join('');
+    return '<div class="rs-sac"><div class="rs-cab"><span>Sacoleira '+s.sacoleira+' · '+esc(t.label)+'</span>'+
+      '<small>'+hora(t.inicio)+' – '+hora(t.fim)+'</small></div>'+
+      '<div class="rs-tot">'+txtPc(s.pacotes_turno||0)+' <small>· '+fmtKg(s.kg_turno||0)+'</small></div>'+
+      '<div class="rs-it">'+entrou+' bobina'+(entrou===1?'':'s')+' montada'+(entrou===1?'':'s')+(kgBob?(' ('+fmtKg(kgBob)+')'):'')+
+        ' · '+saiu+' encerrada'+(saiu===1?'':'s')+(quem.length?(' · '+esc(quem.join(', '))):'')+'</div>'+
+      (itens||'<div class="rs-it">nenhuma bobina no turno</div>')+'</div>';
+  }).join('');
+  const totPc=sacs.reduce((a,s)=>a+(s.pacotes_turno||0),0);
+  fundo.innerHTML='<div class="modal"><h2>Resumo do turno</h2>'+
+    '<div class="m-sub">Total das sacoleiras: <b>'+txtPc(totPc)+'</b> · <b>'+fmtKg(totPc*KG_PC)+'</b></div>'+
+    blocos+'<button class="btn btn-verde" id="md-cancelar">OK</button></div>';
+  document.body.appendChild(fundo);
+  fundo.querySelector('#md-cancelar').onclick=()=>fundo.remove();
 }
 
 async function atualizarTudo(){ await Promise.all([carregarTurnoCorte(), carregarSacoleiras(), carregarHistorico()]); }
