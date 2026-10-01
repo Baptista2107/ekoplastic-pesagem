@@ -902,7 +902,7 @@ async function mostrarResumoTurno(senha, fundoAntigo){
       (b.operador?(' · '+esc(b.operador)):'')+
       (b.editado?(' · <span class="h-antes">corrigido'+(b.fardos_antes!=null?(' (era '+b.fardos_antes+')'):'')+'</span>'):'')+
       (b.parte_id?(' <button class="h-desf rs-edit" data-p="'+b.parte_id+'" data-f="'+(b.fechados_turno??'')+
-        '" data-id="'+esc(b.id)+'">corrigir</button>'):'')+'</div>').join('');
+        '" data-s="'+(b.soltos_turno??0)+'" data-id="'+esc(b.id)+'">corrigir</button>'):'')+'</div>').join('');
     return '<div class="rs-sac"><div class="rs-cab"><span>Sacoleira '+s.sacoleira+' · '+esc(t.label)+'</span>'+
       '<small>'+hora(t.inicio)+' – '+hora(t.fim)+'</small></div>'+
       '<div class="rs-tot">'+txtPc(s.pacotes_turno||0)+' <small>· '+fmtKg(s.kg_turno||0)+'</small></div>'+
@@ -917,21 +917,50 @@ async function mostrarResumoTurno(senha, fundoAntigo){
   document.body.appendChild(fundo);
   fundo.querySelector('#md-cancelar').onclick=()=>fundo.remove();
   fundo.querySelectorAll('.rs-edit').forEach(bt=>bt.onclick=async()=>{
-    const v=await ekoPerguntar({ titulo:'Corrigir fardos · '+bt.dataset.id,
-      texto:'Fardos FECHADOS desta bobina neste turno (os pacotes soltos não mudam). Lançado: '+bt.dataset.f,
-      placeholder:bt.dataset.f, valor:bt.dataset.f, numerico:true, ok:'Corrigir' });
-    if(v===null || v===undefined || String(v).trim()==='') return;
-    const n=Number(String(v).trim());
-    if(!Number.isInteger(n) || n<0 || n>999){ toast('erro','Digite um número de 0 a 999',3000); return; }
+    const v=await corrigirParte(bt.dataset.id, Number(bt.dataset.f)||0, Number(bt.dataset.s)||0);
+    if(!v) return;
     try{
       const r=await fetch(URL_BASE+'/bobinas/parcial/editar',{ method:'POST', headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({ senha, parte_id:Number(bt.dataset.p), fardos:n, operador:(window.EKO_RESPONSAVEL||null) }) });
+        body:JSON.stringify({ senha, parte_id:Number(bt.dataset.p), fardos:v.fardos, soltos:v.soltos,
+                              operador:(window.EKO_RESPONSAVEL||null) }) });
       const d2=await r.json();
       if(!r.ok||!d2.ok){ toast('erro',esc((d2&&d2.erro)||'Falha ao corrigir'),5000); return; }
-      toast('ok','✓ '+esc(bt.dataset.id)+': '+bt.dataset.f+' → '+n+' fardos',3000);
+      toast('ok','✓ '+esc(bt.dataset.id)+': '+v.fardos+' fardos +'+v.soltos+' pc'+
+        (d2.seguinte?('<br>ajustada também a '+esc(d2.seguinte.id)):''),3500);
       await mostrarResumoTurno(senha, fundo);
       atualizarTudo();
     }catch(e){ toast('erro','Erro: '+esc(e.message),5000); }
+  });
+}
+
+// Corrigir uma parte do turno: fardos FECHADOS e pacotes SOLTOS no fim dela,
+// como no fim de turno. Resolve {fardos, soltos} ou null.
+function corrigirParte(id, fardos, soltos){
+  return new Promise(resolve=>{
+    const fundo=document.createElement('div');
+    fundo.className='modal-fundo';
+    fundo.innerHTML='<div class="modal"><h2>Corrigir · '+esc(id)+'</h2>'+
+      '<div class="m-sub">Lançado: <b>'+fardos+' fardo'+(fardos===1?'':'s')+(soltos?(' +'+soltos+' pc'):'')+'</b>. '+
+        'Digite o que confere com o lançamento manual.</div>'+
+      '<label>FARDOS FECHADOS NESTE TURNO</label><input id="md-cf" type="number" inputmode="numeric" min="0" max="999" step="1" autocomplete="off" value="'+fardos+'">'+
+      '<label>PACOTES SOLTOS NO FIM</label><div class="fmts soltos">'+[0,1,2,3,4].map(n=>
+        '<button class="chip'+(n===soltos?' sel':'')+'" data-s="'+n+'">'+n+'</button>').join('')+'</div>'+
+      '<button class="btn btn-verde" id="md-ok">Corrigir</button>'+
+      '<button class="btn-link" id="md-cancelar">Cancelar</button></div>';
+    document.body.appendChild(fundo);
+    const inp=fundo.querySelector('#md-cf');
+    let s=soltos;
+    fundo.querySelectorAll('.soltos .chip').forEach(c=>c.onclick=()=>{
+      s=Number(c.dataset.s); fundo.querySelectorAll('.soltos .chip').forEach(x=>x.classList.toggle('sel',x===c)); });
+    const fim=v=>{ fundo.remove(); resolve(v); };
+    fundo.querySelector('#md-cancelar').onclick=()=>fim(null);
+    fundo.querySelector('#md-ok').onclick=()=>{
+      const n=Number(inp.value);
+      if(inp.value==='' || !Number.isInteger(n) || n<0 || n>999){ toast('erro','Digite os fardos (0 a 999)',3000); inp.focus(); return; }
+      fim({ fardos:n, soltos:s });
+    };
+    inp.addEventListener('keydown',e=>{ if(e.key==='Enter') fundo.querySelector('#md-ok').click(); });
+    setTimeout(()=>{ inp.focus(); inp.select(); },50);
   });
 }
 

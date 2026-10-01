@@ -10306,22 +10306,15 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
       return jsonOk(res, { finalizada: true, sacoleira: sac, id: a.id, pacotes: parte.pacotes, pacotes_total: total });
     }
 
-    // Histórico das baixas de hoje (a tela mostra o que já foi retirado).
-    // Lido da ETIQUETA, não da lista `baixas_bobinas_<dia>` do config: os
-    // fardos chegam depois da baixa (na troca ou no Finalizar), e a lista é
-    // um retrato do momento da baixa. baixa_em é UTC; o dia é o local (-03:00).
-    // Lista POR TURNO (30/09/2026, Gustavo): cada sacoleira mostra o turno
-    // do corte dela — o aberto, ou o último que fechou. Entra toda bobina que
-    // esteve na máquina em algum momento do turno: a que já estava montada
-    // quando o turno começou é do turno que entrou. Para cada uma: os fardos
-    // DESTE turno (partes amarradas a ele), o total e o rendimento da bobina
-    // (fardos × 25 kg ÷ peso). Rendimento só é final quando a bobina sai;
-    // montada, é "até agora". Sacoleira que nunca teve turno: janela de hoje.
-    // Corrigir os fardos FECHADOS de uma parte, no resumo do turno (01/10/2026,
-    // Gustavo: "vai que alguém digitou fardos a mais"). Senha do supervisor.
-    // Body { senha, parte_id, fardos, operador }. Os soltos não mudam (mudar
-    // desmontaria a conta da parte seguinte); a diferença vale fardos × 5
-    // pacotes. Bobina já encerrada: o total da etiqueta é refeito pela soma.
+    // Corrigir fardos FECHADOS e pacotes SOLTOS de uma parte, no resumo do
+    // turno (01/10/2026, Gustavo: "vai que alguém digitou fardos a mais").
+    // Senha do supervisor. Body { senha, parte_id, fardos, soltos, operador }.
+    // pacotes = fechados × 5 + soltos − soltos do início, então:
+    //   · Δfechados vale × 5 nesta parte;
+    //   · Δsoltos muda esta parte E a parte SEGUINTE da mesma máquina, que
+    //     começou contando com esses soltos (o "soltos do início" dela).
+    // Bobina já encerrada (esta ou a da parte seguinte): o total da etiqueta
+    // é refeito pela soma das partes.
     if (pathname === '/bobinas/parcial/editar' && req.method === 'POST') {
       let body; try { body = await lerBodyJson(req); } catch(e) { return jsonErr(res, 400, e.message); }
       const hashAtual = configGet('senha_saida_hash', hashSenha('1234'));
@@ -10333,39 +10326,69 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
       if (!parte) return jsonErr(res, 404, 'Parte não encontrada');
       const novos = lerFardos(body.fardos);
       if (novos === null) return jsonErr(res, 400, 'Fardos deve ser um número de 0 a 999');
+      const soltosAntes = Number(parte.soltos_fim) || 0;
+      const soltosNovo = (body.soltos === undefined || body.soltos === null || body.soltos === '') ? soltosAntes : lerSoltos(body.soltos);
+      if (soltosNovo === null) return jsonErr(res, 400, 'Pacotes soltos deve ser de 0 a 4');
       const antigos = Number(parte.fardos) || 0;
       const pacAntes = parte.pacotes != null ? Number(parte.pacotes) : antigos * PACOTES_POR_FARDO;
-      const pacNovo = pacAntes + (novos - antigos) * PACOTES_POR_FARDO;
-      if (pacNovo < 0) return jsonErr(res, 400, `Com ${novos} fardo(s) a parte ficaria negativa — confira`);
+      const dSoltos = soltosNovo - soltosAntes;
+      const pacNovo = pacAntes + (novos - antigos) * PACOTES_POR_FARDO + dSoltos;
+      if (pacNovo < 0) return jsonErr(res, 400, `Com ${novos} fardo(s) e ${soltosNovo} solto(s) a parte ficaria negativa — confira`);
+      const seguinte = dSoltos ? db.prepare(
+        `SELECT * FROM bobina_parciais WHERE maquina = ? AND id > ? ORDER BY id LIMIT 1`).get(parte.maquina, parte.id) : null;
+      const pacSeg = seguinte ? (seguinte.pacotes != null ? Number(seguinte.pacotes) : Number(seguinte.fardos) * PACOTES_POR_FARDO) - dSoltos : null;
+      if (seguinte && pacSeg < 0)
+        return jsonErr(res, 400, `Com ${soltosNovo} solto(s) a parte seguinte da ${parte.maquina} (${seguinte.etiqueta_id}) ficaria negativa — confira`);
       const operador = (body.operador ? String(body.operador).trim().slice(0, 80) : null) || null;
       const agora = new Date().toISOString();
+      const refazTotal = (etq) => {
+        const e = db.prepare(`SELECT encerrada_em FROM etiquetas WHERE id = ?`).get(etq);
+        if (e && e.encerrada_em) {
+          const t = db.prepare(`SELECT COALESCE(SUM(${SQL_PACOTES_PARTE}), 0) AS n FROM bobina_parciais WHERE etiqueta_id = ?`).get(etq).n;
+          db.prepare(`UPDATE etiquetas SET fardos = ?, pacotes = ?, alterado_em = ? WHERE id = ?`)
+            .run(Math.round(t / PACOTES_POR_FARDO), t, agora, etq);
+          return t;
+        }
+        db.prepare(`UPDATE etiquetas SET alterado_em = ? WHERE id = ?`).run(agora, etq);
+        return null;
+      };
       let total = null;
       makeTransaction(() => {
-        db.prepare(`UPDATE bobina_parciais SET fardos = ?, pacotes = ?, editado_em = ?, editado_por = ?,
+        db.prepare(`UPDATE bobina_parciais SET fardos = ?, pacotes = ?, soltos_fim = ?, editado_em = ?, editado_por = ?,
                            fardos_antes = COALESCE(fardos_antes, ?) WHERE id = ?`)
-          .run(novos, pacNovo, agora, operador, antigos, parte.id);
-        const e = db.prepare(`SELECT encerrada_em FROM etiquetas WHERE id = ?`).get(parte.etiqueta_id);
-        if (e && e.encerrada_em) {
-          total = db.prepare(`SELECT COALESCE(SUM(${SQL_PACOTES_PARTE}), 0) AS n FROM bobina_parciais WHERE etiqueta_id = ?`)
-                    .get(parte.etiqueta_id).n;
-          db.prepare(`UPDATE etiquetas SET fardos = ?, pacotes = ?, alterado_em = ? WHERE id = ?`)
-            .run(Math.round(total / PACOTES_POR_FARDO), total, agora, parte.etiqueta_id);
-        } else {
-          db.prepare(`UPDATE etiquetas SET alterado_em = ? WHERE id = ?`).run(agora, parte.etiqueta_id);
+          .run(novos, pacNovo, soltosNovo, agora, operador, antigos, parte.id);
+        if (seguinte) {
+          db.prepare(`UPDATE bobina_parciais SET pacotes = ?, editado_em = ?, editado_por = ? WHERE id = ?`)
+            .run(pacSeg, agora, operador, seguinte.id);
+          if (seguinte.etiqueta_id !== parte.etiqueta_id) refazTotal(seguinte.etiqueta_id);
         }
+        total = refazTotal(parte.etiqueta_id);
       })();
       logI('bobinas', `Fardos corrigidos no resumo: ${parte.etiqueta_id} (${parte.maquina}, turno ${parte.turno || '—'}) `
-        + `${antigos} → ${novos} fardo(s)` + (total != null ? ` · total da bobina ${txtPacotes(total)}` : '')
-        + (operador ? ` por ${operador}` : ''));
-      return jsonOk(res, { id: parte.etiqueta_id, parte_id: parte.id, fardos: novos, pacotes: pacNovo, pacotes_total: total });
+        + `${antigos} → ${novos} fardo(s), soltos ${soltosAntes} → ${soltosNovo}`
+        + (seguinte ? ` · parte seguinte ${seguinte.etiqueta_id} ajustada em ${-dSoltos} pc` : '')
+        + (total != null ? ` · total da bobina ${txtPacotes(total)}` : '') + (operador ? ` por ${operador}` : ''));
+      return jsonOk(res, { id: parte.etiqueta_id, parte_id: parte.id, fardos: novos, soltos: soltosNovo, pacotes: pacNovo,
+                           pacotes_total: total, seguinte: seguinte ? { id: seguinte.etiqueta_id, pacotes: pacSeg } : null });
     }
 
+    // Histórico das baixas de hoje (a tela mostra o que já foi retirado).
+    // Lido da ETIQUETA, não da lista `baixas_bobinas_<dia>` do config: os
+    // fardos chegam depois da baixa (na troca ou no Finalizar), e a lista é
+    // um retrato do momento da baixa. baixa_em é UTC; o dia é o local (-03:00).
+    // Lista POR TURNO (30/09/2026, Gustavo): cada sacoleira mostra o turno
+    // do corte dela — o aberto, ou o último que fechou. Entra toda bobina que
+    // esteve na máquina em algum momento do turno: a que já estava montada
+    // quando o turno começou é do turno que entrou. Para cada uma: os fardos
+    // DESTE turno (partes amarradas a ele), o total e o rendimento da bobina
+    // (fardos × 25 kg ÷ peso). Rendimento só é final quando a bobina sai;
+    // montada, é "até agora". Sacoleira que nunca teve turno: janela de hoje.
     if (pathname === '/bobinas/do-turno' && req.method === 'GET') {
       const agora = new Date().toISOString();
       const hoje0 = new Date(dataLocalISO() + 'T00:00:00-03:00').toISOString();
       const parteTurno = db.prepare(
         `SELECT COALESCE(SUM(${SQL_PACOTES_PARTE}), 0) AS n, COUNT(*) AS c, MAX(formato) AS f,
-                MAX(id) AS pid, MAX(fardos) AS fech, MAX(editado_em) AS ed, MAX(fardos_antes) AS antes
+                MAX(id) AS pid, MAX(fardos) AS fech, MAX(editado_em) AS ed, MAX(fardos_antes) AS antes, MAX(soltos_fim) AS sf
            FROM bobina_parciais WHERE etiqueta_id = ? AND turno_corte_id = ?`);
       // ?fechado=1 (01/10/2026): o último turno que FECHOU — é o resumo que a
       // tela mostra logo depois de encerrar ou trocar o turno.
@@ -10397,6 +10420,7 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
           // Editável no resumo só quando a bobina tem UMA parte neste turno.
           b.parte_id = (noTurno && noTurno.c === 1) ? noTurno.pid : null;
           b.fechados_turno = (noTurno && noTurno.c === 1) ? noTurno.fech : null;
+          b.soltos_turno = (noTurno && noTurno.c === 1) ? (noTurno.sf || 0) : null;
           b.editado = !!(noTurno && noTurno.ed);
           b.fardos_antes = (noTurno && noTurno.ed) ? noTurno.antes : null;
           b.pacotes_total = total;

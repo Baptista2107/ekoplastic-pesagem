@@ -138,6 +138,18 @@ function criarBobina(db, id, seq, peso, largura) {
     ok(r.body.sacoleiras.every(s => s.turno && s.turno.turno === 'C'), 'resumo depois da troca é do turno C que fechou', r.body.sacoleiras.map(s => s.turno));
     r = await req('GET', '/bobinas/do-turno');
     ok(r.body.sacoleiras.every(s => s.turno && s.turno.turno === 'EXTRA' && !s.turno.fim), 'sem ?fechado continua o turno aberto');
+
+    // corrigir os SOLTOS do turno A da P2 (0 → 2): a parte A ganha 2 pc e a
+    // parte seguinte da P2 (turno C, 3 fardos = 15 pc) perde os 2 que agora
+    // já estavam soltos no início dela
+    r = await req('POST', '/bobinas/parcial/editar', { senha: SENHA, parte_id: b2.parte_id, fardos: 6, soltos: 2 });
+    ok(r.status === 200 && r.body.pacotes === 32 && r.body.seguinte && r.body.seguinte.pacotes === 13,
+       'soltos 0 → 2: parte A = 32 pc e a parte seguinte da P2 = 13 pc', r.body);
+    const somaP2 = comBanco(db => db.prepare(
+      `SELECT SUM(pacotes) n FROM bobina_parciais WHERE etiqueta_id = 'E9910001'`).get().n);
+    ok(somaP2 === 45, 'a bobina da P2 continua somando o mesmo (30+15 = 32+13)', somaP2);
+    r = await req('POST', '/bobinas/parcial/editar', { senha: SENHA, parte_id: b2.parte_id, fardos: 6, soltos: 5 });
+    ok(r.status === 400, 'soltos fora de 0 a 4 é recusado');
   } catch (e) { falhou++; console.log('  erro:', e); }
   await derrubar();
   console.log(`\n${passou} ok, ${falhou} falha(s)\n`);
