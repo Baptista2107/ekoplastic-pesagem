@@ -76,7 +76,12 @@ function criarBobina(db, id, seq, peso, largura) {
       criarBobina(db, 'E9910002', 9910002, 500, '1,60');   // P1: 1,60 roda 40x50 e 50x60
       criarBobina(db, 'E9910003', 9910003, 500, '1,60');
     });
-    let r = await req('POST', '/bobinas/turno-corte/iniciar', { senha: SENHA, turno: 'A', maquinas: ['P1', 'P2'], operador: 'SUP' });
+    // sem turno aberto não monta bobina
+    let r = await req('POST', '/bobinas/baixa', { id: 'E9910001', destino: 'P2', operador: 'CARINE' });
+    ok(r.status === 409 && r.body.sem_turno, 'bipar sem turno aberto é recusado', r.body);
+    ok(comBanco(db => db.prepare('SELECT destino FROM etiquetas WHERE id = ?').get('E9910001')).destino == null,
+       'e a bobina continua no estoque');
+    r = await req('POST', '/bobinas/turno-corte/iniciar', { senha: SENHA, turno: 'A', maquinas: ['P1', 'P2'], operador: 'SUP' });
     ok(r.status === 200, 'turno A iniciado nas duas', r.body);
     await req('POST', '/bobinas/baixa', { id: 'E9910001', destino: 'P2', operador: 'CARINE' });
     await req('POST', '/bobinas/baixa', { id: 'E9910002', destino: 'P1', operador: 'ANDRE' });

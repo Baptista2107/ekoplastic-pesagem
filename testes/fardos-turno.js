@@ -166,6 +166,8 @@ function criarBobina(db, id, seq, peso) {
     //    fardo misto e fecha mais 4 (5 fechados), 1 solto → 5×5 + 1 − 2 = 24.
     comBanco(db => { criarBobina(db, 'E9900010', 9900010, 400); criarBobina(db, 'E9900011', 9900011, 400);
                      criarBobina(db, 'E9900012', 9900012, 400); });
+    // 01/10/2026: sem turno aberto não monta bobina — abre o turno da P2.
+    await req('POST', '/bobinas/turno-corte/iniciar', { senha: SENHA, turno: 'A', maquinas: ['P2'] });
     r = await req('POST', '/bobinas/baixa', { id: 'E9900010', destino: 'P2', operador: 'HOZANA' });
     r = await req('POST', '/bobinas/baixa', { id: 'E9900011', destino: 'P2', operador: 'HOZANA',
                                               fardos_anterior: 3, soltos_anterior: 2 });

@@ -9824,6 +9824,12 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
       // o resumo "quem cortou" fica vazio, então é obrigatório.
       const operador = (body.operador ? String(body.operador).trim().slice(0, 80) : null) || null;
       if (!operador) return jsonErr(res, 400, 'Informe o nome de quem está bipando');
+      // Sem turno do corte aberto não monta bobina (01/10/2026, Gustavo): a
+      // bobina e os fardos dela ficariam fora de turno, sem dono no resumo.
+      if (!turnoCorteAberto(destino)) {
+        return jsonErr(res, 409, `Sacoleira ${destino} sem turno aberto. O supervisor inicia o turno antes de bipar.`,
+                       { sem_turno: true });
+      }
 
       // Com o Bling desligado (padrão desde 28/09/2026 — decisão do Frederico:
       // "por ora nada no Bling"), a baixa só registra aqui. Nenhum pedido de

@@ -326,14 +326,19 @@ async function onLeu(codigo){
     }
     if(b.status==='cancelada'){ beep(320,0.2); vibrar(150); mostrarErro(id,'Etiqueta cancelada'); return; }
     if(d.bling && !b.produto_id){ beep(320,0.2); vibrar(150); mostrarErro(id,'Sem produto no Bling para '+esc(b.chave)); return; }
+    // Sem turno do corte aberto não monta bobina (01/10/2026, Gustavo).
+    await carregarTurnoCorte();
+    const comTurno=TC.sacoleiras.filter(s=>s.turno).map(s=>s.sacoleira);
+    if(!comTurno.length){ beep(320,0.2); vibrar(150); mostrarErro(id,'Sem turno aberto. O supervisor inicia o turno antes de bipar.'); return; }
 
     beep(880,0.1); vibrar(60);
     bobinaAtual=b;
     await carregarSacoleiras();
     const botao=p=>{
       const m=(ABERTAS.find(a=>a.sacoleira===p)||{}).bobina;
-      const sub=m?('troca '+esc(m.id)):'livre';
-      return '<button class="btn btn-verde btn-destino" data-destino="'+p+'" onclick="confirmarBaixa(\''+p+'\')"><b>'+p+'</b><span>'+sub+'</span></button>';
+      const sub=!comTurno.includes(p)?'sem turno':m?('troca '+esc(m.id)):'livre';
+      return '<button class="btn btn-verde btn-destino" data-destino="'+p+'" onclick="confirmarBaixa(\''+p+'\')"'+
+        (comTurno.includes(p)?'':' disabled data-semturno="1"')+'><b>'+p+'</b><span>'+sub+'</span></button>';
     };
     const orig=['Extrusora '+esc(b.maquina||'—'), esc(b.operador||''), b.hora_impressao?diaHora(b.hora_impressao):''].filter(Boolean).join(' · ');
     document.getElementById('area-bobina').innerHTML=
@@ -360,7 +365,7 @@ function cancelarLeitura(){ bobinaAtual=null; document.getElementById('area-bobi
 function travarDestinos(p){
   document.querySelectorAll('.btn-destino').forEach(b=>{ b.disabled=true; if(b.dataset.destino===p) b.querySelector('span').textContent=BLING?'enviando ao Bling…':'registrando…'; });
 }
-function soltarDestinos(){ document.querySelectorAll('.btn-destino').forEach(b=>{ b.disabled=false; }); }
+function soltarDestinos(){ document.querySelectorAll('.btn-destino').forEach(b=>{ b.disabled=!!b.dataset.semturno; }); }
 
 // ── BAIXA: a bobina entra na sacoleira. Se já havia uma, ela sai agora e a
 // tela pergunta quantos fardos ela deu.
