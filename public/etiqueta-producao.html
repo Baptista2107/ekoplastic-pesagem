@@ -159,9 +159,11 @@ header {
 }
 .touch-grid.cols-2 { grid-template-columns: repeat(2, 1fr); }
 .touch-grid.cols-3 { grid-template-columns: repeat(3, 1fr); }
-/* 01/10/2026 (Gustavo): emendas da bobina, 0 a 9 numa grade de 5. */
-.touch-grid.cols-5 { grid-template-columns: repeat(5, 1fr); }
-#grid-emendas .touch-btn { padding: 10px 4px; font-size: 18px; font-weight: 800; }
+/* 01/10/2026 (Gustavo): emendas da bobina, 0 a 9 numa fileira só. A tela
+   é de 15" sem rolagem: para caber, Tipo e Largura ficam lado a lado
+   (.row-2col) e a linha de emendas ocupa a altura que sobrou. */
+.touch-grid.cols-10 { grid-template-columns: repeat(10, 1fr); gap: 5px; }
+#grid-emendas .touch-btn { padding: 8px 2px; font-size: 15px; font-weight: 900; }
 
 .touch-btn {
   padding: 9px 6px;
@@ -635,6 +637,7 @@ header {
         </div>
       </div>
 
+      <div class="row-2col">
       <div>
         <div class="section-label">Tipo</div>
         <div class="touch-grid cols-2">
@@ -655,12 +658,13 @@ header {
           <div class="op-vazio">Selecione o tipo primeiro</div>
         </div>
       </div>
+      </div>
 
       <!-- 01/10/2026 (Gustavo): quantas emendas a bobina tem. Não sai na
            etiqueta: a VPS usa o número para achar onde elas aconteceram. -->
       <div>
         <div class="section-label">Emendas na bobina</div>
-        <div class="touch-grid cols-5" id="grid-emendas">
+        <div class="touch-grid cols-10" id="grid-emendas">
           <div class="touch-btn" data-emendas="0" onclick="selecionarEmendas(0)">0</div>
           <div class="touch-btn" data-emendas="1" onclick="selecionarEmendas(1)">1</div>
           <div class="touch-btn" data-emendas="2" onclick="selecionarEmendas(2)">2</div>
