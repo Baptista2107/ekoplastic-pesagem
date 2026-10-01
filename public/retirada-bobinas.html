@@ -170,6 +170,12 @@
   .rs-tot small{font-size:13px; color:var(--muted); font-weight:700;}
   .rs-it{font-size:13px; color:var(--muted); font-weight:600; margin-top:6px; line-height:1.4;}
   .rs-it b{color:var(--txt);}
+  .rs-bob{margin-top:8px; background:var(--panel);}
+  .rs-sac .rs-it + .rs-bob{margin-top:10px;}
+  .rs-fmt{white-space:nowrap;}
+  .rs-pe{display:flex; align-items:center; justify-content:space-between; gap:10px;}
+  .rs-pe .hb-l3{flex:1; min-width:0;}
+  .rs-pe .h-desf{margin:4px 0 0; flex:0 0 auto;}
   .nomes{display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; max-height:40dvh; overflow:auto;}
   .modal input.txt{font-size:20px; font-weight:800; text-align:left;}
   .h-item .h-dir b{font-size:17px;}
@@ -895,14 +901,25 @@ async function mostrarResumoTurno(senha, fundoAntigo){
     const saiu=bs.filter(b=>!b.montada).length, entrou=bs.filter(b=>!b.veio_de_antes).length;
     const quem=[...new Set(bs.map(b=>b.operador).filter(Boolean))];
     const kgBob=bs.filter(b=>!b.veio_de_antes).reduce((a,b)=>a+(Number(b.peso)||0),0);
-    const itens=bs.slice().reverse().map(b=>'<div class="rs-it"><b>'+esc(b.id)+'</b> · '+descCurta(b)+
-      (b.formato_turno?(' · <b>'+esc(b.formato_turno.replace('x',' × '))+'</b>'):'')+
-      ' · '+(b.pacotes_turno!=null?('<b>'+txtPc(b.pacotes_turno)+'</b>'):'sem fardos')+
-      (b.montada?' · continua na máquina':(b.rendimento_pct!=null?(' · rendeu '+b.rendimento_pct+'%'):''))+
-      (b.operador?(' · '+esc(b.operador)):'')+
-      (b.editado?(' · <span class="h-antes">corrigido'+(b.fardos_antes!=null?(' (era '+b.fardos_antes+')'):'')+'</span>'):'')+
-      (b.parte_id?(' <button class="h-desf rs-edit" data-p="'+b.parte_id+'" data-f="'+(b.fechados_turno??'')+
-        '" data-s="'+(b.soltos_turno??0)+'" data-id="'+esc(b.id)+'">corrigir</button>'):'')+'</div>').join('');
+    // Uma caixa por bobina, igual à lista "Neste turno" (01/10/2026, Gustavo:
+    // "não tem separação"): o que é a bobina à esquerda, fardos do turno à direita.
+    const itens=bs.slice().reverse().map(b=>{
+      const pct=b.rendimento_pct, alerta=pct!=null && pct>100;
+      const num=b.pacotes_turno!=null?(pcGrande(b.pacotes_turno,true)+'<small>neste turno</small>')
+                                     :'<b>—</b><small>sem fardos</small>';
+      const situ=b.montada?'continua na máquina':('encerrada'+(pct!=null?(' · rendeu <b class="'+(alerta?'h-alerta':'hb-pct')+'">'+pct+'%</b>'):''));
+      return '<div class="hb rs-bob'+(alerta?' alerta':'')+'">'+
+        '<div class="hb-l1"><span class="hb-mat">'+descCurta(b)+
+          (b.formato_turno?(' · <b class="rs-fmt">'+esc(b.formato_turno.replace('x',' × '))+'</b>'):'')+'</span>'+
+          '<span class="hb-num">'+num+'</span></div>'+
+        '<div class="hb-l2">'+esc(b.id)+' · '+fmtKg(b.peso)+(b.operador?(' · '+esc(b.operador)):'')+
+          (b.veio_de_antes?' <span class="h-antes">turno anterior</span>':'')+'</div>'+
+        '<div class="rs-pe"><div class="hb-l3">'+situ+
+          (b.editado?(' · <span class="h-antes">corrigido'+(b.fardos_antes!=null?(' (era '+b.fardos_antes+')'):'')+'</span>'):'')+'</div>'+
+        (b.parte_id?('<button class="h-desf rs-edit" data-p="'+b.parte_id+'" data-f="'+(b.fechados_turno??'')+
+          '" data-s="'+(b.soltos_turno??0)+'" data-id="'+esc(b.id)+'">corrigir</button>'):'')+
+      '</div></div>';
+    }).join('');
     return '<div class="rs-sac"><div class="rs-cab"><span>Sacoleira '+s.sacoleira+' · '+esc(t.label)+'</span>'+
       '<small>'+hora(t.inicio)+' – '+hora(t.fim)+'</small></div>'+
       '<div class="rs-tot">'+txtPc(s.pacotes_turno||0)+' <small>· '+fmtKg(s.kg_turno||0)+'</small></div>'+
