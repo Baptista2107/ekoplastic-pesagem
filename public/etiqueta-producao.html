@@ -159,6 +159,9 @@ header {
 }
 .touch-grid.cols-2 { grid-template-columns: repeat(2, 1fr); }
 .touch-grid.cols-3 { grid-template-columns: repeat(3, 1fr); }
+/* 01/10/2026 (Gustavo): emendas da bobina, 0 a 9 numa grade de 5. */
+.touch-grid.cols-5 { grid-template-columns: repeat(5, 1fr); }
+#grid-emendas .touch-btn { padding: 10px 4px; font-size: 18px; font-weight: 800; }
 
 .touch-btn {
   padding: 9px 6px;
@@ -653,6 +656,24 @@ header {
         </div>
       </div>
 
+      <!-- 01/10/2026 (Gustavo): quantas emendas a bobina tem. Não sai na
+           etiqueta: a VPS usa o número para achar onde elas aconteceram. -->
+      <div>
+        <div class="section-label">Emendas na bobina</div>
+        <div class="touch-grid cols-5" id="grid-emendas">
+          <div class="touch-btn" data-emendas="0" onclick="selecionarEmendas(0)">0</div>
+          <div class="touch-btn" data-emendas="1" onclick="selecionarEmendas(1)">1</div>
+          <div class="touch-btn" data-emendas="2" onclick="selecionarEmendas(2)">2</div>
+          <div class="touch-btn" data-emendas="3" onclick="selecionarEmendas(3)">3</div>
+          <div class="touch-btn" data-emendas="4" onclick="selecionarEmendas(4)">4</div>
+          <div class="touch-btn" data-emendas="5" onclick="selecionarEmendas(5)">5</div>
+          <div class="touch-btn" data-emendas="6" onclick="selecionarEmendas(6)">6</div>
+          <div class="touch-btn" data-emendas="7" onclick="selecionarEmendas(7)">7</div>
+          <div class="touch-btn" data-emendas="8" onclick="selecionarEmendas(8)">8</div>
+          <div class="touch-btn" data-emendas="9" onclick="selecionarEmendas(9)">9</div>
+        </div>
+      </div>
+
       <div class="balanca-card">
         <div class="balanca-top">
           <span class="balanca-label">Peso</span>
@@ -945,6 +966,7 @@ const state = {
   cor:          '',
   tipoBobina:   '',
   largura:      '',
+  emendas:      null,        // 01/10/2026: obrigatório; volta a null após cada impressão
   pesoAtual:    0,
   pesoBruto:    0,
   tara:         0,
@@ -1302,6 +1324,15 @@ function selecionarLargura(l) {
   recalcularPesoLiquido();   // aplica tara fixa do mapa TARAS
 }
 
+function selecionarEmendas(n) {
+  if (bloqueadoPorBipagem()) return;
+  state.emendas = n;
+  document.querySelectorAll('#grid-emendas .touch-btn').forEach(b => {
+    b.classList.toggle('selected', Number(b.dataset.emendas) === n);
+  });
+  atualizarBotaoImprimir();
+}
+
 function selecionarTipo(tipo) {
   if (bloqueadoPorBipagem()) return;
   state.tipoBobina = tipo;
@@ -1378,6 +1409,7 @@ function atualizarBotaoImprimir() {
                 && !!state.cor
                 && !!state.tipoBobina
                 && !!state.largura
+                && state.emendas !== null
                 && state.pesoAtual > 0;
 
   const pend = pendentesBipagem();
@@ -1389,6 +1421,10 @@ function atualizarBotaoImprimir() {
     btn.disabled = true;
   } else if (state.aguardandoZero) {
     btn.textContent = '⏳ RETIRE A BOBINA';
+    btn.disabled = true;
+  } else if (!camposOk && state.emendas === null && !!state.operador && !!state.maquina && !!state.cor
+             && !!state.tipoBobina && !!state.largura && state.pesoAtual > 0) {
+    btn.textContent = '↑ INFORME AS EMENDAS';
     btn.disabled = true;
   } else if (camposOk && !state.balancaEstavel) {
     btn.textContent = '⏳ AGUARDANDO ESTABILIDADE...';
@@ -1444,6 +1480,7 @@ async function imprimirEtiqueta(senhaSupervisor) {
         cor:         state.cor,
         tipo_bobina: state.tipoBobina,
         largura:     state.largura,
+        emendas:     state.emendas,
         operador:    state.operador,
         maquina:     state.maquina,
         turno_codigo: state.turno,
@@ -1505,7 +1542,10 @@ async function imprimirEtiqueta(senhaSupervisor) {
     // a bobina (peso cair abaixo de LIMIAR_ZERO_KG).
     state.aguardandoZero = true;
 
-    // Reseta seleções de produto + peso, mantém operador/máquina
+    // Reseta seleções de produto + peso, mantém operador/máquina.
+    // Emendas zera a cada bobina: cada uma tem a sua contagem.
+    state.emendas = null;
+    document.querySelectorAll('#grid-emendas .touch-btn').forEach(b => b.classList.remove('selected'));
     setTimeout(() => {
       state.pesoBruto = 0;
       state.tara      = 0;

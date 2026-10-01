@@ -808,6 +808,11 @@ function aplicarSchema() {
     ['etiquetas', 'formato_origem', 'TEXT'],
     // 30/09/2026: total exato da bobina em pacotes (fardo = 5). Ver lerParte.
     ['etiquetas', 'pacotes', 'INTEGER'],
+    // 01/10/2026 (Gustavo): quantas emendas a bobina tem, dito na pesagem da
+    // extrusão. A VPS usa o número para procurar ONDE elas aconteceram nos
+    // sinais da extrusora (o CLP não vê toda emenda: há emenda sem a máquina
+    // parar nem desacelerar). NULL = não informado (etiqueta antiga).
+    ['etiquetas', 'emendas', 'INTEGER'],
   ]) {
     const tem = db.prepare(`PRAGMA table_info(${tabela})`).all().some(c => c.name === coluna);
     if (!tem) db.exec(`ALTER TABLE ${tabela} ADD COLUMN ${coluna} ${tipo}`);
@@ -7403,6 +7408,12 @@ const requestHandlerBase = async (req, res) => {
         logW('extrusao', `Peso repetido LIBERADO por senha de supervisor na ${maqAtual}`, { gemea: gemea.id, peso: pLiq });
       }
 
+      // Emendas (01/10/2026): 0 a 99, obrigatório na tela; o servidor aceita
+      // ausente (tela antiga) e grava NULL.
+      const emendas = (body.emendas === undefined || body.emendas === null || body.emendas === '') ? null : Number(body.emendas);
+      if (emendas !== null && !(Number.isInteger(emendas) && emendas >= 0 && emendas <= 99))
+        return jsonErr(res, 400, 'Emendas deve ser um número de 0 a 99');
+
       // seq é reservado atomicamente dentro de imprimirEPersistirEtiqueta (C1)
       return imprimirEPersistirEtiqueta({
         tipo: 'extrusao',
@@ -7426,6 +7437,9 @@ const requestHandlerBase = async (req, res) => {
         sessao_id:      sessao.id,
         printerName:    body.printerName || null,
       }, resp => {
+        if (resp.ok && emendas !== null && !resp.idempotente) {
+          try { db.prepare(`UPDATE etiquetas SET emendas = ? WHERE id = ?`).run(emendas, resp.id); } catch (e) {}
+        }
         if (resp.ok) jsonOk(res, { ...resp, bobina });
         else jsonErr(res, 500, resp.erro, { printer: resp.printer });
       });
@@ -9357,7 +9371,7 @@ const requestHandlerBase = async (req, res) => {
                   e.sessao_id, e.operador, e.maquina, e.largura, e.tipo_bobina, e.turno_codigo, e.bling_pedido_id,
                   e.destino, e.baixa_em, e.baixa_turno, e.baixa_operador,
                   e.fardos, e.encerrada_em, e.encerrada_motivo, e.alterado_em,
-                  e.formato_cortado, e.formato_origem, e.pacotes,
+                  e.formato_cortado, e.formato_origem, e.pacotes, e.emendas,
                   s.bling_status, s.bling_id, s.bling_erro
              FROM etiquetas e LEFT JOIN sessoes s ON s.id = e.sessao_id
             WHERE date(e.hora_impressao) >= ?
@@ -9624,7 +9638,7 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
                   e.sessao_id, e.operador, e.maquina, e.largura, e.tipo_bobina, e.turno_codigo, e.bling_pedido_id,
                   e.destino, e.baixa_em, e.baixa_turno, e.baixa_operador,
                   e.fardos, e.encerrada_em, e.encerrada_motivo, e.alterado_em,
-                  e.formato_cortado, e.formato_origem, e.pacotes,
+                  e.formato_cortado, e.formato_origem, e.pacotes, e.emendas,
                   s.bling_status, s.bling_id, s.bling_erro
              FROM etiquetas e LEFT JOIN sessoes s ON s.id = e.sessao_id
              ${onde} ORDER BY e.hora_impressao DESC LIMIT ? OFFSET ?`
