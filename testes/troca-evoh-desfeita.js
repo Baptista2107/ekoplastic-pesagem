@@ -11,9 +11,15 @@
 //  instala a versão nova por cima. Confere:
 //    · a leitura volta a ser Polinylon, e o recebimento volta a aceitar;
 //    · o retorno convertido volta a ser Polinylon (ainda está em estoque);
-//    · o que já foi ao Bling e o recebido como EVOH NÃO são mexidos, mas
-//      vão para o relatório de acerto (arquivo + /healthcheck);
+//    · o recebido como EVOH de propósito NÃO é mexido; vai para o
+//      relatório de acerto (arquivo + /healthcheck);
 //    · roda uma vez só.
+//
+//  01/10/2026: a retirada que saiu como EVOH também volta a Polinylon. Na
+//  estação ela travou o Bling — o pedido apontava para EVOH.CRISTAL.TALL,
+//  sem saldo. Corrigida a etiqueta, a tela de Envios ao Bling guia: excluir
+//  o pedido antigo e REENVIAR (FORÇAR) — o pedido novo sai como Polinylon.
+//  A seção [8] reproduz a estação: a 1ª desfeita já rodou, esta não.
 // ════════════════════════════════════════════════════════════════════
 const { spawn } = require('node:child_process');
 const { DatabaseSync } = require('node:sqlite');
@@ -50,6 +56,7 @@ const cfg = k => comBanco(db => { const r = db.prepare('SELECT valor FROM config
 const etq = id => comBanco(db => db.prepare('SELECT * FROM etiquetas WHERE id = ?').get(id));
 
 const pedidos = [];
+let nPedido = 0;   // número do pedido no Bling falso — nunca se repete, mesmo zerando a lista
 function subirFake() {
   return new Promise(resolve => {
     fake = http.createServer((r, res) => {
@@ -63,7 +70,7 @@ function subirFake() {
         if (r.method === 'POST' && u.pathname.startsWith('/Api/v3/pedidos/')) {
           let b = {}; try { b = JSON.parse(corpo); } catch (e) {}
           pedidos.push({ rota: u.pathname, corpo: b });
-          return responder(201, { data: { id: 900000 + pedidos.length } });
+          return responder(201, { data: { id: 900000 + (++nPedido) } });
         }
         if (u.pathname === '/Api/v3/produtos' && u.searchParams.get('codigo')) {
           const mapa = { 'EVOH.CRISTAL.TALL': 16711891721, 'EVOH.LEI.TALL': 16711891722 };
@@ -141,7 +148,17 @@ function etiqueta(sessao_id, tipo, mat, nomeEt, cor, forn, peso, extra = {}) {
     ok(antes.S1 === 'EVOH' && antes.T1 === 'EVOH' && antes.R5 === 'EVOH' && fimRet.bling && fimRet.bling.ok,
        `cenário montado: retiradas ${S1}/${S2} e retorno ${T1} saíram como EVOH; ${R5} recebida como EVOH`, antes);
     await derrubar();
-    comBanco(db => db.prepare(`DELETE FROM config WHERE chave = 'patch_troca_evoh_desfeita'`).run());   // a estação ainda não tem a marca
+    comBanco(db => db.prepare(`DELETE FROM config WHERE chave IN ('patch_troca_evoh_desfeita','patch_troca_evoh_retiradas','patch_troca_evoh_conferencia')`).run());   // a estação ainda não tem as marcas
+    // Pior caso que a conferência precisa pegar: o mapa do Polinylon Tallpack
+    // Cristal apontando para a EVOH (produto e SKU da variação).
+    comBanco(db => {
+      const mp = JSON.parse(db.prepare(`SELECT valor FROM config WHERE chave = 'mapa_produto_bling'`).get().valor);
+      mp['POLI:Cristal:Tallpack'] = '16711891720';
+      db.prepare(`UPDATE config SET valor = ? WHERE chave = 'mapa_produto_bling'`).run(JSON.stringify(mp));
+      const ms = JSON.parse(db.prepare(`SELECT valor FROM config WHERE chave = 'mapa_sku_variacao_mp'`).get().valor);
+      ms['POLI:Cristal:Tallpack'] = 'EVOH.CRISTAL.TALL';
+      db.prepare(`UPDATE config SET valor = ? WHERE chave = 'mapa_sku_variacao_mp'`).run(JSON.stringify(ms));
+    });
     try { fs.rmSync(path.join(LOGS, 'troca-evoh-desfeita.txt'), { force: true }); } catch (e) {}
 
     // ── [1] INSTALAR A VERSÃO NOVA DESFAZ A TROCA ─────────────────
@@ -152,6 +169,18 @@ function etiqueta(sessao_id, tipo, mat, nomeEt, cor, forn, peso, extra = {}) {
     const cat = (await req('GET', '/catalogo-mp')).body;
     ok(cat.materiais && cat.materiais.EVOH && (cfg('mapa_produto_bling') || {})['EVOH:Cristal:Tallpack'] === '16711891720',
        'a Resina EVOH continua cadastrada (material e Bling)');
+
+    // ── [1B] CONFERÊNCIA DO MAPA DO POLINYLON TALLPACK ─────────────
+    console.log('\n[1B] Conferência: o mapa do Polinylon Tallpack não pode apontar para a EVOH');
+    ok((cfg('mapa_produto_bling') || {})['POLI:Cristal:Tallpack'] === '16586065201'
+       && !(cfg('mapa_sku_variacao_mp') || {})['POLI:Cristal:Tallpack'],
+       'o mapa que apontava para a EVOH voltou ao Polinylon Cristal Tallpack (16586065201), sem SKU da EVOH');
+    const conf = cfg('patch_troca_evoh_conferencia') || {};
+    ok((conf.corrigido || []).length === 2 && conf.mapa_antes['POLI:Cristal:Tallpack'].sku === 'EVOH.CRISTAL.TALL',
+       'a conferência registrou o que estava errado (produto e SKU)', conf.corrigido);
+    const lt = conf.retiradas || [];
+    ok(lt.some(r => r.etiqueta === S1 && r.saiu_como_evoh && r.pedido && r.retirada_em && r.sessao_fim),
+       'e a linha do tempo das retiradas de Tallpack, com hora, pedido e quem saiu como EVOH', lt);
 
     // ── [2] AS ETIQUETAS VOLTAM A SER LIDAS COMO POLINYLON ─────────
     console.log('\n[2] As etiquetas voltam a ser lidas como Polinylon');
@@ -169,9 +198,12 @@ function etiqueta(sessao_id, tipo, mat, nomeEt, cor, forn, peso, extra = {}) {
     ok(/^POLI\.CRIS\.TALLPA \|/.test(t1.sku) && t1.codigo === r2.codigo && !!t1.alterado_em,
        `SKU e código da origem (${t1.sku} · ${t1.codigo}), com alterado_em carimbado`, t1);
 
-    // ── [4] O QUE JÁ FOI AO BLING E O RECEBIDO COMO EVOH FICAM ─────
-    console.log('\n[4] O que já foi ao Bling e o que foi recebido como EVOH não são mexidos');
-    ok(etq(S1).material_key === 'EVOH' && etq(S2).material_key === 'EVOH', 'as retiradas continuam como foram enviadas (EVOH)');
+    // ── [4] AS RETIRADAS VOLTAM A POLINYLON; O RECEBIDO COMO EVOH FICA ──
+    console.log('\n[4] As retiradas que saíram como EVOH voltam a Polinylon; o recebido como EVOH fica');
+    const s1 = etq(S1), s2 = etq(S2), r1 = etq(R1);
+    ok(s1.material_key === 'POLI' && s2.material_key === 'POLI' && s1.material_nome === r1.material_nome,
+       `${S1} e ${S2} voltaram a POLINYLON (como as etiquetas de origem)`, [s1, s2]);
+    ok(s1.sku === r1.sku && s1.codigo === r1.codigo && !!s1.alterado_em, 'com SKU e código da origem, alterado_em carimbado', s1);
     ok(etq(R5).material_key === 'EVOH', `${R5}, recebida como EVOH de propósito, continua EVOH`);
 
     // ── [5] RELATÓRIO PARA O ACERTO NO BLING ───────────────────────
@@ -186,10 +218,35 @@ function etiqueta(sessao_id, tipo, mat, nomeEt, cor, forn, peso, extra = {}) {
     const txt = fs.existsSync(arq) ? fs.readFileSync(arq, 'utf8') : '';
     ok(txt.includes(T1) && txt.includes(S1) && txt.includes(R5) && /ACERTO NO BLING/.test(txt),
        'o arquivo logs/troca-evoh-desfeita.txt traz retornos, retiradas, estoque EVOH e o acerto', txt.slice(0, 400));
+    ok(/RETIRADAS CORRIGIDAS PARA POLINYLON/.test(txt) && /REENVIAR \(FORCAR\)/.test(txt),
+       'e a seção das retiradas corrigidas, com o passo a passo do reenvio', txt.slice(-500));
     const hc = (await req('GET', '/healthcheck')).body.troca_evoh_desfeita || {};
     ok((hc.trocas_desligadas || []).length === 2 && hc.retiradas_evoh && hc.retiradas_evoh.kg_por_cor.Cristal === 1810
        && (hc.retiradas_evoh.pedidos_bling || []).length === 1 && (hc.retornos_revertidos || []).includes(T1),
        'o /healthcheck (que a FASE 5 mostra) traz o resumo', hc);
+    ok((hc.retiradas_corrigidas || []).map(c => c.etiqueta).sort().join() === [S1, S2].sort().join()
+       && hc.retiradas_corrigidas.every(c => c.pedido_antigo === String(fimRet.bling.bling_id) && c.retirada_em && c.enviada_em),
+       `e as retiradas corrigidas, com o pedido antigo (${fimRet.bling.bling_id}) e os horários`, hc.retiradas_corrigidas);
+    ok(hc.conferencia && (hc.conferencia.retiradas || []).length >= 2 && hc.conferencia.mapa_agora['POLI:Cristal:Tallpack'].produto === '16586065201',
+       'e a conferência (mapa e linha do tempo) — dá para ler na saída do ENVIAR-ATUALIZACAO.bat', hc.conferencia);
+    ok(/CONFERENCIA POS-TROCA/.test(fs.readFileSync(path.join(LOGS, 'troca-evoh-desfeita.txt'), 'utf8')),
+       'o relatório também traz a conferência');
+
+    // ── [5B] ENVIOS AO BLING: EXCLUIR O PEDIDO ANTIGO E REENVIAR ────
+    console.log('\n[5B] Envios ao Bling guiam o reenvio — e o pedido novo sai como Polinylon');
+    const rec = ((await req('GET', '/sessoes/finalizadas-recentes?horas=48')).body.sessoes || []).find(x => x.id === sRet) || {};
+    const ct = rec.corrigida_troca_evoh || {};
+    ok(ct.pedido_antigo === String(fimRet.bling.bling_id) && (ct.etiquetas || []).length === 2 && ct.kg === 1810 && ct.reenviada === false,
+       'a sessão aparece marcada: pedido antigo, 2 etiquetas, 1810 kg, ainda não reenviada', ct);
+    pedidos.length = 0;
+    const rf = await req('POST', `/sessoes/${sRet}/reenviar-bling`, { forcar: true });
+    const vendaR = pedidos.find(x => x.rota.startsWith('/Api/v3/pedidos/vendas'));
+    const itR = (vendaR && vendaR.corpo.itens) || [];
+    ok(rf.body.bling && rf.body.bling.ok && itR.length === 2 && itR.every(i => i.produto.id === 16586065201 && !i.codigo)
+       && itR.every(i => /POLINYLON/i.test(i.descricao || '') && !/EVOH/i.test(i.descricao || '')),
+       'REENVIAR (FORÇAR): o pedido novo leva Polinylon Cristal Tallpack (16586065201), sem EVOH', itR);
+    const rec2 = ((await req('GET', '/sessoes/finalizadas-recentes?horas=48')).body.sessoes || []).find(x => x.id === sRet) || {};
+    ok(rec2.corrigida_troca_evoh && rec2.corrigida_troca_evoh.reenviada === true, 'e a tela passa a mostrar "já reenviada"', rec2.corrigida_troca_evoh);
 
     // ── [6] A OPERAÇÃO VOLTA AO ORIGINAL ───────────────────────────
     console.log('\n[6] A operação volta a ser como era antes da troca');
@@ -216,6 +273,26 @@ function etiqueta(sessao_id, tipo, mat, nomeEt, cor, forn, peso, extra = {}) {
     ok(((await req('GET', '/catalogo-mp')).body.substituicoes || []).length === 2,
        'uma troca ligada DEPOIS continua ligada após reiniciar');
     await req('POST', '/config', { mp_substituicoes: '{}' });
+
+    // ── [8] COMO NA ESTAÇÃO: A 1ª DESFEITA JÁ RODOU, ESTA AINDA NÃO ──
+    console.log('\n[8] Na estação (desfeita de 30/09 já instalada), a retirada EVOH é corrigida ao instalar');
+    const sRec3 = (await req('POST', '/sessoes', { tipo: 'recebimento', operador: 'Teste', fornecedor: 'Tallpack' })).body.sessao_id;
+    const R6 = (await etiqueta(sRec3, 'recebimento', 'POLI', 'POLINYLON', 'Cristal', 'Tallpack', 1007.5)).body.id;
+    await req('POST', `/etiquetas/${R6}/bipar`);
+    await req('POST', '/config', { mp_substituicoes: JSON.stringify(TROCAS) });     // a troca ligada
+    const sRet3 = (await req('POST', '/sessoes', { tipo: 'retirada', operador: 'Teste' })).body.sessao_id;
+    const S3 = (await req('POST', `/etiquetas/${R6}/consumir`, { sessao_id: sRet3 })).body.etiqueta_virtual.id;
+    const fim3 = (await req('POST', `/sessoes/${sRet3}/finalizar`)).body;
+    await req('POST', '/config', { mp_substituicoes: '{}' });                        // a 1ª desfeita
+    ok(etq(S3).material_key === 'EVOH' && fim3.bling && fim3.bling.ok, `cenário: ${S3} saiu como EVOH no pedido ${fim3.bling && fim3.bling.bling_id}`);
+    await derrubar();
+    comBanco(db => db.prepare(`DELETE FROM config WHERE chave = 'patch_troca_evoh_retiradas'`).run());
+    await subir();
+    ok(etq(S3).material_key === 'POLI' && etq(S3).material_nome === etq(R6).material_nome, `ao instalar, ${S3} volta a POLINYLON`, etq(S3));
+    const rec3 = ((await req('GET', '/sessoes/finalizadas-recentes?horas=48')).body.sessoes || []).find(x => x.id === sRet3) || {};
+    ok(rec3.corrigida_troca_evoh && rec3.corrigida_troca_evoh.pedido_antigo === String(fim3.bling.bling_id)
+       && rec3.corrigida_troca_evoh.reenviada === false,
+       'e a tela de Envios ao Bling pede para excluir o pedido antigo e reenviar', rec3.corrigida_troca_evoh);
 
   } catch (e) {
     falhou++;

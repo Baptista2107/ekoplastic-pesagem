@@ -3619,6 +3619,151 @@ function desfazerTrocaPoliEvoh() {
 }
 desfazerTrocaPoliEvoh();
 
+// ──────────────────────────────────────────────────────────────────
+// RETIRADAS QUE SAÍRAM COMO EVOH DURANTE A TROCA (01/10/2026)
+// A desfeita de 30/09 deixou de propósito as retiradas já enviadas como
+// estavam (EVOH). Na prática isso travou o Bling: o pedido ficou com a
+// variação EVOH.CRISTAL.TALL, que não tem saldo, e a retirada não tinha
+// como ser lançada. O Frederico quer a retirada como Polinylon.
+// Aqui a retirada volta a ser o que a etiqueta de origem é (Polinylon
+// Tallpack da mesma cor). O pedido antigo continua no Bling: o operador
+// exclui lá e usa REENVIAR (FORÇAR) em Manutenção › Envios ao Bling —
+// o pedido novo sai como Polinylon. Roda uma vez (marca em config).
+// ──────────────────────────────────────────────────────────────────
+function corrigirRetiradasDaTrocaEvoh() {
+  const MARCA = 'patch_troca_evoh_retiradas';
+  try {
+    if (dbStmts.configGet.get(MARCA)) return;
+    const agora = new Date().toISOString();
+    const origemDe = id => {
+      let et = id ? dbStmts.getEtiqueta.get(id) : null, passos = 0;
+      while (et && String(et.material_key || '').toUpperCase() === 'EVOH' && et.ref_id && passos < 10) { et = dbStmts.getEtiqueta.get(et.ref_id); passos++; }
+      return et;
+    };
+    const lista = db.prepare(`SELECT * FROM etiquetas WHERE tipo = 'retirada' AND UPPER(material_key) = 'EVOH'
+                              AND status != 'cancelada' AND ref_id IS NOT NULL`).all();
+    const upd = db.prepare(`UPDATE etiquetas SET material_key = ?, material_nome = ?, material_label = ?, fornecedor = ?,
+                            codigo = ?, sku = ?, alterado_em = ? WHERE id = ?`);
+    const corrigidas = [];
+    for (const v of lista) {
+      const o = origemDe(v.ref_id);
+      if (!o || String(o.material_key || '').toUpperCase() !== 'POLI') continue;
+      if (String(o.fornecedor || '').toLowerCase() !== 'tallpack') continue;
+      if (String(o.cor || '').toLowerCase() !== String(v.cor || '').toLowerCase()) continue;
+      upd.run(o.material_key, o.material_nome, o.material_label, o.fornecedor, o.codigo || v.codigo, o.sku || v.sku, agora, v.id);
+      const s = v.sessao_id ? db.prepare('SELECT id, bling_status, bling_id, fim, operador FROM sessoes WHERE id = ?').get(v.sessao_id) : null;
+      corrigidas.push({ id: v.id, origem: o.id, cor: v.cor, peso: v.peso, sessao_id: v.sessao_id || null,
+                        pedido_antigo: (s && s.bling_id) || null, bling_status: (s && s.bling_status) || null,
+                        retirada_em: v.hora_impressao || null, enviada_em: (s && s.fim) || null, operador: (s && s.operador) || null });
+      try { gravarLogProducaoBipagem(dbStmts.getEtiqueta.get(v.id), 'correcao'); } catch (e) {}
+    }
+    configSet(MARCA, JSON.stringify({ em: agora, corrigidas }));
+    if (!corrigidas.length) return;
+    logI('db', `Troca desfeita: ${corrigidas.length} retirada(s) que saíram como EVOH voltaram a Polinylon — `
+      + corrigidas.map(c => `${c.id} (sessão #${c.sessao_id}, pedido Bling ${c.pedido_antigo || '-'})`).join(', ')
+      + '. Exclua o pedido antigo no Bling e use REENVIAR (FORÇAR).');
+    const L = [''];
+    L.push(`RETIRADAS CORRIGIDAS PARA POLINYLON (${new Date(agora).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}):`);
+    const hBR = t => t ? new Date(t).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : '-';
+    for (const c of corrigidas) L.push(`  ${c.id}  ${c.cor || ''}  ${c.peso} kg  sessao #${c.sessao_id || '-'}  pedido Bling antigo ${c.pedido_antigo || '-'}`
+                                     + `  (retirada em ${hBR(c.retirada_em)}, sessao fechada em ${hBR(c.enviada_em)})`);
+    L.push('  -> No Bling, exclua o pedido antigo (ele aponta para a Resina EVOH, sem saldo).');
+    L.push('  -> Em Opcoes > Manutencao > Envios ao Bling, toque em REENVIAR (FORCAR) na sessao:');
+    L.push('     o pedido novo sai como Polinylon Tallpack, da mesma cor.');
+    try { fs.mkdirSync(LOG_DIR, { recursive: true }); fs.appendFileSync(path.join(LOG_DIR, 'troca-evoh-desfeita.txt'), L.join('\r\n') + '\r\n'); } catch (e) {}
+  } catch (e) { logW('db', 'Falha ao corrigir as retiradas da troca EVOH', { erro: e && e.message }); }
+}
+corrigirRetiradasDaTrocaEvoh();
+
+// ──────────────────────────────────────────────────────────────────
+// CONFERÊNCIA PÓS-TROCA (01/10/2026) — roda uma vez, na instalação.
+// O Frederico viu uma retirada de Polinylon Cristal Tallpack ir ao Bling
+// na variação EVOH.CRISTAL.TALL. Pela regra do código, uma retirada de
+// Polinylon só iria para a EVOH se o MAPA do Polinylon Tallpack apontasse
+// para ela. Esta conferência:
+//   1. olha o mapa do Polinylon Tallpack Cristal/Leitoso; apontando para
+//      um produto/SKU da EVOH, volta ao produto original do Polinylon;
+//   2. guarda a linha do tempo das retiradas de Tallpack desde 30/09
+//      (quando, com que produto foi, em que pedido do Bling).
+// Tudo vai para o /healthcheck (a FASE 5 mostra) e para o relatório.
+// ──────────────────────────────────────────────────────────────────
+function conferirPoliTallpackPosTroca() {
+  const MARCA = 'patch_troca_evoh_conferencia';
+  try {
+    if (dbStmts.configGet.get(MARCA)) return;
+    const agora = new Date().toISOString();
+    const ORIGINAL = { 'POLI:Cristal:Tallpack': '16586065201', 'POLI:Leitoso:Tallpack': '16586065240' };
+    const mapaP = JSON.parse(configGet('mapa_produto_bling', '{}'));
+    const mapaS = JSON.parse(configGet('mapa_sku_variacao_mp', '{}'));
+    let cache = {}; try { cache = JSON.parse(configGet('mapa_variacao_pa_bling', '{}')) || {}; } catch (e) {}
+    // Tudo que é EVOH: o pai, o que estiver mapeado como EVOH e as variações já resolvidas pela SKU.
+    const idsEvoh = new Set(['16711891720']);
+    for (const [k, v] of Object.entries(mapaP)) if (/^EVOH:/i.test(k) && v) idsEvoh.add(String(v));
+    for (const [sku, id] of Object.entries(cache)) if (/^EVOH\./i.test(sku) && id) idsEvoh.add(String(id));
+    const antes = {}, corrigido = [];
+    let mudouP = false, mudouS = false;
+    for (const [k, idOrig] of Object.entries(ORIGINAL)) {
+      const kP = Object.keys(mapaP).find(x => x.toLowerCase() === k.toLowerCase()) || k;
+      const kS = Object.keys(mapaS).find(x => x.toLowerCase() === k.toLowerCase());
+      antes[k] = { produto: mapaP[kP] || null, sku: kS ? mapaS[kS] : null };
+      if (!mapaP[kP] || idsEvoh.has(String(mapaP[kP]))) {
+        corrigido.push(`${k}: produto ${mapaP[kP] || '(vazio)'} -> ${idOrig}`);
+        mapaP[kP] = idOrig; mudouP = true;
+      }
+      if (kS && /^EVOH\./i.test(String(mapaS[kS] || ''))) {
+        corrigido.push(`${k}: SKU de variacao ${mapaS[kS]} removida`);
+        delete mapaS[kS]; mudouS = true;
+      }
+    }
+    if (mudouP) configSet('mapa_produto_bling', JSON.stringify(mapaP));
+    if (mudouS) configSet('mapa_sku_variacao_mp', JSON.stringify(mapaS));
+
+    // Linha do tempo: retiradas de Polinylon/EVOH Tallpack desde 30/09.
+    const saiuEvoh = new Set(retiradasCorrigidasDaTroca().map(c => c.id));
+    const linha = db.prepare(`SELECT e.id, e.hora_impressao, e.material_key, e.cor, e.peso, e.status, e.ref_id, e.sessao_id,
+                                     s.fim AS sessao_fim, s.bling_id, s.bling_status, s.operador
+                              FROM etiquetas e LEFT JOIN sessoes s ON s.id = e.sessao_id
+                              WHERE e.tipo = 'retirada' AND UPPER(e.material_key) IN ('POLI','EVOH')
+                                AND LOWER(e.fornecedor) = 'tallpack' AND e.hora_impressao >= '2026-09-30'
+                              ORDER BY e.id DESC LIMIT 12`).all()
+      .map(r => ({ etiqueta: r.id, retirada_em: r.hora_impressao, material: r.material_key, cor: r.cor, kg: r.peso,
+                   status: r.status, origem: r.ref_id, sessao_id: r.sessao_id, sessao_fim: r.sessao_fim,
+                   pedido: r.bling_id, envio: r.bling_status, operador: r.operador,
+                   ...(saiuEvoh.has(r.id) ? { saiu_como_evoh: true } : {}) }));
+    const depois = {};
+    for (const k of Object.keys(ORIGINAL)) {
+      const kP = Object.keys(mapaP).find(x => x.toLowerCase() === k.toLowerCase()) || k;
+      const kS = Object.keys(mapaS).find(x => x.toLowerCase() === k.toLowerCase());
+      depois[k] = { produto: mapaP[kP] || null, sku: kS ? mapaS[kS] : null };
+    }
+    configSet(MARCA, JSON.stringify({ em: agora, mapa_antes: antes, mapa_agora: depois, corrigido, retiradas: linha }));
+    if (corrigido.length) logW('db', `Conferência pós-troca: mapa do Polinylon Tallpack apontava para a EVOH — corrigido: ${corrigido.join('; ')}`);
+    else logI('db', 'Conferência pós-troca: mapa do Polinylon Tallpack Cristal/Leitoso está certo (produtos originais, sem SKU da EVOH)');
+    // Relatório (só se a troca deixou rastro nesta estação).
+    if (dbStmts.configGet.get('patch_troca_evoh_desfeita')) {
+      const hBR = t => t ? new Date(t).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : '-';
+      const L = ['', `CONFERENCIA POS-TROCA (${hBR(agora)}):`];
+      for (const k of Object.keys(ORIGINAL)) L.push(`  mapa ${k}: produto ${antes[k].produto || '-'}${antes[k].sku ? ' / SKU ' + antes[k].sku : ''}`
+                                                  + (corrigido.some(c => c.startsWith(k)) ? `  -> corrigido para ${depois[k].produto}` : '  (certo)'));
+      L.push('  Retiradas de Tallpack desde 30/09 (mais recentes primeiro):');
+      for (const r of linha) L.push(`    ${r.etiqueta}  ${hBR(r.retirada_em)}  ${r.material} ${r.cor || ''}  ${r.kg} kg  sessao #${r.sessao_id || '-'}`
+                                    + ` fechada ${hBR(r.sessao_fim)}  pedido ${r.pedido || '-'} (${r.envio || 'sem envio'})`
+                                    + (r.saiu_como_evoh ? '  <- saiu como EVOH; corrigida' : ''));
+      try { fs.appendFileSync(path.join(LOG_DIR, 'troca-evoh-desfeita.txt'), L.join('\r\n') + '\r\n'); } catch (e) {}
+    }
+  } catch (e) { logW('db', 'Falha na conferência pós-troca do Polinylon Tallpack', { erro: e && e.message }); }
+}
+conferirPoliTallpackPosTroca();
+
+// Sessões de retirada corrigidas (com o pedido antigo) — a tela de Envios ao
+// Bling usa para avisar "exclua o pedido X e reenvie".
+function retiradasCorrigidasDaTroca() {
+  try {
+    const r = dbStmts.configGet.get('patch_troca_evoh_retiradas');
+    return r ? (JSON.parse(r.valor || '{}').corrigidas || []) : [];
+  } catch (e) { return []; }
+}
+
 // Resumo para o /healthcheck (a FASE 5 do ENVIAR-ATUALIZACAO.bat mostra):
 // só quando a desfeita encontrou algo, e só nos 3 dias seguintes.
 function resumoTrocaEvohDesfeita() {
@@ -3640,6 +3785,9 @@ function resumoTrocaEvohDesfeita() {
         pedidos_bling: ((i.retiradas_evoh || {}).sessoes || []).map(g => g.bling_id).filter(Boolean),
       },
       evoh_em_estoque: (i.evoh_em_estoque || []).map(x => x.id),
+      retiradas_corrigidas: retiradasCorrigidasDaTroca().map(c => ({ etiqueta: c.id, sessao_id: c.sessao_id, pedido_antigo: c.pedido_antigo, kg: c.peso,
+                                                                     retirada_em: c.retirada_em || null, enviada_em: c.enviada_em || null })),
+      conferencia: (() => { try { const r = dbStmts.configGet.get('patch_troca_evoh_conferencia'); return r ? JSON.parse(r.valor) : null; } catch (e) { return null; } })(),
       relatorio: 'logs/troca-evoh-desfeita.txt',
     };
   } catch (e) { return null; }
@@ -7598,6 +7746,27 @@ const requestHandlerBase = async (req, res) => {
       if (tipo) { q += ' AND tipo = ?'; params.push(tipo); }
       q += ' ORDER BY fim DESC LIMIT 200';
       const sessoes = db.prepare(q).all(...params);
+      // Retirada que saiu como EVOH na troca e foi corrigida para Polinylon:
+      // aparece com o aviso de excluir o pedido antigo e reenviar — mesmo
+      // que já tenha passado da janela de horas.
+      try {
+        const corr = retiradasCorrigidasDaTroca();
+        const porSessao = new Map();
+        for (const c of corr) if (c.sessao_id) {
+          if (!porSessao.has(c.sessao_id)) porSessao.set(c.sessao_id, { pedido_antigo: c.pedido_antigo, etiquetas: [], kg: 0 });
+          const g = porSessao.get(c.sessao_id); g.etiquetas.push(c.id); g.kg = +(g.kg + Number(c.peso || 0)).toFixed(3);
+        }
+        for (const [sid, g] of porSessao) {
+          let s = sessoes.find(x => x.id === sid);
+          if (!s && (!tipo || tipo === 'retirada')) {
+            s = db.prepare(`SELECT id, tipo, fornecedor, turno_codigo, operador, maquina, inicio, fim,
+                                   total_kg, total_etiquetas, bling_status, bling_id, bling_erro
+                            FROM sessoes WHERE id = ? AND fim IS NOT NULL`).get(sid);
+            if (s) sessoes.unshift(s);
+          }
+          if (s) s.corrigida_troca_evoh = { ...g, reenviada: !!(s.bling_id && g.pedido_antigo && String(s.bling_id) !== String(g.pedido_antigo)) };
+        }
+      } catch (e) {}
       // Recalcula os totais AGORA, pela mesma regra do envio. O valor gravado na
       // sessão é a foto de quando ela foi fechada — se foi fechada por uma versão
       // antiga (antes do big bag retirado passar a contar na entrada), ele está

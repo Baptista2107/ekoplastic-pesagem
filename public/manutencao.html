@@ -800,6 +800,21 @@ async function carregarRecentesBling() {
              Reenviando (após excluir o pedido no Bling), o novo pedido sai com o valor de hoje.
            </div>`
         : '';
+      // Retirada que saiu como Resina EVOH durante a troca (30/09/2026) e já
+      // foi corrigida para Polinylon: o pedido antigo aponta para a EVOH, sem
+      // saldo. Guia o operador: excluir no Bling e reenviar.
+      const ct = s.corrigida_troca_evoh;
+      const avisoTroca = (ct && !ct.reenviada)
+        ? `<div style="font-size:12.5px; color:#9db8ff; background:rgba(120,160,255,0.10);
+                       border:1px solid rgba(120,160,255,0.45); border-radius:8px; padding:8px 10px; margin-top:2px; line-height:1.45;">
+             🔁 Esta retirada saiu como <b>Resina EVOH</b> durante a troca e já foi corrigida para <b>Polinylon Tallpack</b>
+             (${ct.etiquetas.join(', ')} · ${fmtKgBR(ct.kg)}).<br>
+             1) No Bling, exclua o pedido <b>${ct.pedido_antigo || s.bling_id || ''}</b> (ele aponta para a EVOH, sem saldo).<br>
+             2) Toque em <b>↻ REENVIAR (FORÇAR)</b> — o pedido novo sai como Polinylon.
+           </div>`
+        : (ct && ct.reenviada
+            ? `<div style="font-size:12px; color:#16a34a; margin-top:2px;">✓ Retirada da troca já reenviada como Polinylon (pedido novo ${s.bling_id}).</div>`
+            : '');
       const idTxt = s.bling_id ? ('pedido ' + s.bling_id) : '';
       return `<div class="diag-item" style="flex-direction:column; align-items:stretch; gap:8px;">
         <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
@@ -809,6 +824,7 @@ async function carregarRecentesBling() {
           </div>
           <button class="btn btn-primary" id="rf-${s.id}" onclick="reenviarBlingForcar(${s.id})">↻ REENVIAR (FORÇAR)</button>
         </div>
+        ${avisoTroca}
         ${avisoDif}
         <div id="rf-msg-${s.id}" style="font-size:12px; min-height:0;"></div>
       </div>`;

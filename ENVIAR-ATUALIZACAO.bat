@@ -394,8 +394,9 @@ if not "%RCT%"=="0" goto :testes_falharam
 :sem_compat
 REM  --- Teste 16: troca Polinylon -> EVOH desfeita ---
 REM  As etiquetas de Polinylon Cristal/Leitoso Tallpack voltam a ser lidas
-REM  como Polinylon. Retorno que a troca converteu volta a Polinylon; o que
-REM  ja foi ao Bling como EVOH nao e' mexido e vai para o relatorio de acerto.
+REM  como Polinylon. Retorno e retirada que a troca converteu voltam a
+REM  Polinylon; a retirada ja enviada fica marcada em Envios ao Bling para
+REM  excluir o pedido antigo (EVOH, sem saldo) e REENVIAR (FORCAR).
 if not exist "testes\troca-evoh-desfeita.js" goto :sem_desfeita
 echo.
 echo  Rodando o teste da troca desfeita. Leva uns 15 segundos...
