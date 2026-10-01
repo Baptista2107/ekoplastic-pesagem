@@ -1125,7 +1125,11 @@ db.exec(`
 // 30/09/2026 (pacotes soltos, ver lerParte): `fardos` passa a ser os fardos
 // FECHADOS informados; `pacotes` é a produção da parte; `soltos_fim` o que
 // ficou no fardo aberto. Partes antigas (sem pacotes) valem fardos × 5.
-for (const [col, tipo] of [['pacotes', 'INTEGER'], ['soltos_fim', 'INTEGER']]) {
+// 01/10/2026 (Gustavo): a parte pode ser corrigida no resumo do turno
+// (fardos digitados a mais). `fardos_antes` guarda o que foi digitado na
+// primeira vez; `editado_em` faz o exportador reenviar a parte para a VPS.
+for (const [col, tipo] of [['pacotes', 'INTEGER'], ['soltos_fim', 'INTEGER'],
+                           ['editado_em', 'TEXT'], ['editado_por', 'TEXT'], ['fardos_antes', 'INTEGER']]) {
   if (!db.prepare(`PRAGMA table_info(bobina_parciais)`).all().some(c => c.name === col))
     db.exec(`ALTER TABLE bobina_parciais ADD COLUMN ${col} ${tipo}`);
 }
@@ -9657,7 +9661,7 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
     if (pathname === '/dashboard/bobina-parciais' && req.method === 'GET') {
       const desde = String(parsed.query.desde || '1970-01-01').trim();
       const parciais = db.prepare(
-        `SELECT * FROM bobina_parciais WHERE registrado_em >= ? ORDER BY registrado_em, id`).all(desde);
+        `SELECT * FROM bobina_parciais WHERE registrado_em >= ? OR editado_em >= ? ORDER BY registrado_em, id`).all(desde, desde);
       return jsonOk(res, { filtro: 'bobina_parciais', parciais });
     }
 
@@ -10307,11 +10311,55 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
     // DESTE turno (partes amarradas a ele), o total e o rendimento da bobina
     // (fardos × 25 kg ÷ peso). Rendimento só é final quando a bobina sai;
     // montada, é "até agora". Sacoleira que nunca teve turno: janela de hoje.
+    // Corrigir os fardos FECHADOS de uma parte, no resumo do turno (01/10/2026,
+    // Gustavo: "vai que alguém digitou fardos a mais"). Senha do supervisor.
+    // Body { senha, parte_id, fardos, operador }. Os soltos não mudam (mudar
+    // desmontaria a conta da parte seguinte); a diferença vale fardos × 5
+    // pacotes. Bobina já encerrada: o total da etiqueta é refeito pela soma.
+    if (pathname === '/bobinas/parcial/editar' && req.method === 'POST') {
+      let body; try { body = await lerBodyJson(req); } catch(e) { return jsonErr(res, 400, e.message); }
+      const hashAtual = configGet('senha_saida_hash', hashSenha('1234'));
+      if (hashSenha(String((body && body.senha) || '')) !== hashAtual) {
+        logDesvio({ tipo: 'parcial_senha_incorreta', tela: 'bobinas', detalhe: 'senha incorreta ao corrigir fardos do turno' });
+        return jsonErr(res, 401, 'Senha de supervisor incorreta.');
+      }
+      const parte = db.prepare(`SELECT * FROM bobina_parciais WHERE id = ?`).get(Number(body.parte_id));
+      if (!parte) return jsonErr(res, 404, 'Parte não encontrada');
+      const novos = lerFardos(body.fardos);
+      if (novos === null) return jsonErr(res, 400, 'Fardos deve ser um número de 0 a 999');
+      const antigos = Number(parte.fardos) || 0;
+      const pacAntes = parte.pacotes != null ? Number(parte.pacotes) : antigos * PACOTES_POR_FARDO;
+      const pacNovo = pacAntes + (novos - antigos) * PACOTES_POR_FARDO;
+      if (pacNovo < 0) return jsonErr(res, 400, `Com ${novos} fardo(s) a parte ficaria negativa — confira`);
+      const operador = (body.operador ? String(body.operador).trim().slice(0, 80) : null) || null;
+      const agora = new Date().toISOString();
+      let total = null;
+      makeTransaction(() => {
+        db.prepare(`UPDATE bobina_parciais SET fardos = ?, pacotes = ?, editado_em = ?, editado_por = ?,
+                           fardos_antes = COALESCE(fardos_antes, ?) WHERE id = ?`)
+          .run(novos, pacNovo, agora, operador, antigos, parte.id);
+        const e = db.prepare(`SELECT encerrada_em FROM etiquetas WHERE id = ?`).get(parte.etiqueta_id);
+        if (e && e.encerrada_em) {
+          total = db.prepare(`SELECT COALESCE(SUM(${SQL_PACOTES_PARTE}), 0) AS n FROM bobina_parciais WHERE etiqueta_id = ?`)
+                    .get(parte.etiqueta_id).n;
+          db.prepare(`UPDATE etiquetas SET fardos = ?, pacotes = ?, alterado_em = ? WHERE id = ?`)
+            .run(Math.round(total / PACOTES_POR_FARDO), total, agora, parte.etiqueta_id);
+        } else {
+          db.prepare(`UPDATE etiquetas SET alterado_em = ? WHERE id = ?`).run(agora, parte.etiqueta_id);
+        }
+      })();
+      logI('bobinas', `Fardos corrigidos no resumo: ${parte.etiqueta_id} (${parte.maquina}, turno ${parte.turno || '—'}) `
+        + `${antigos} → ${novos} fardo(s)` + (total != null ? ` · total da bobina ${txtPacotes(total)}` : '')
+        + (operador ? ` por ${operador}` : ''));
+      return jsonOk(res, { id: parte.etiqueta_id, parte_id: parte.id, fardos: novos, pacotes: pacNovo, pacotes_total: total });
+    }
+
     if (pathname === '/bobinas/do-turno' && req.method === 'GET') {
       const agora = new Date().toISOString();
       const hoje0 = new Date(dataLocalISO() + 'T00:00:00-03:00').toISOString();
       const parteTurno = db.prepare(
-        `SELECT COALESCE(SUM(${SQL_PACOTES_PARTE}), 0) AS n, COUNT(*) AS c, MAX(formato) AS f
+        `SELECT COALESCE(SUM(${SQL_PACOTES_PARTE}), 0) AS n, COUNT(*) AS c, MAX(formato) AS f,
+                MAX(id) AS pid, MAX(fardos) AS fech, MAX(editado_em) AS ed, MAX(fardos_antes) AS antes
            FROM bobina_parciais WHERE etiqueta_id = ? AND turno_corte_id = ?`);
       // ?fechado=1 (01/10/2026): o último turno que FECHOU — é o resumo que a
       // tela mostra logo depois de encerrar ou trocar o turno.
@@ -10340,6 +10388,11 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
           // Sem turno registrado (janela de hoje): a bobina inteira conta aqui.
           b.pacotes_turno = t ? (noTurno.c ? noTurno.n : null) : total;
           b.formato_turno = (noTurno && noTurno.f) || b.formato_cortado || null;
+          // Editável no resumo só quando a bobina tem UMA parte neste turno.
+          b.parte_id = (noTurno && noTurno.c === 1) ? noTurno.pid : null;
+          b.fechados_turno = (noTurno && noTurno.c === 1) ? noTurno.fech : null;
+          b.editado = !!(noTurno && noTurno.ed);
+          b.fardos_antes = (noTurno && noTurno.ed) ? noTurno.antes : null;
           b.pacotes_total = total;
           b.montada = montada;
           b.veio_de_antes = b.baixa_em < ini;

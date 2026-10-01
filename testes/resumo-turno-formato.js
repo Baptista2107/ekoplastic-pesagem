@@ -104,6 +104,26 @@ function criarBobina(db, id, seq, peso, largura) {
     ok(s1.turno && s1.turno.fim && s1.pacotes_turno === 30, 'resumo P1: turno fechado com 6 fardos (4 da troca + 2)', s1);
     ok(s2.pacotes_turno === 35 && s2.bobinas[0].formato_turno === '35x45', 'resumo P2: 7 fardos de 35x45', s2);
 
+    // corrigir no resumo: P2 lançou 7, eram 6
+    const b2 = s2.bobinas.find(b => b.id === 'E9910001');
+    ok(b2.parte_id && b2.fechados_turno === 7, 'a bobina da P2 traz a parte editável (7 fardos)', b2);
+    r = await req('POST', '/bobinas/parcial/editar', { senha: 'x', parte_id: b2.parte_id, fardos: 6 });
+    ok(r.status === 401, 'corrigir com senha errada é recusado');
+    const antesEd = new Date().toISOString();
+    r = await req('POST', '/bobinas/parcial/editar', { senha: SENHA, parte_id: b2.parte_id, fardos: 6, operador: 'SUP' });
+    ok(r.status === 200 && r.body.pacotes === 30, 'corrige 7 → 6 fardos (30 pc)', r.body);
+    r = await req('GET', '/bobinas/do-turno?fechado=1');
+    const s2b = r.body.sacoleiras.find(s => s.sacoleira === 'P2'), b2b = s2b.bobinas[0];
+    ok(s2b.pacotes_turno === 30 && b2b.editado && b2b.fardos_antes === 7, 'resumo mostra 6 fardos, corrigido (era 7)', b2b);
+    r = await req('GET', '/dashboard/bobina-parciais?desde=' + encodeURIComponent(antesEd));
+    ok(r.body.parciais.some(p => p.id === b2.parte_id && p.fardos === 6), 'a parte corrigida volta no exportador (editado_em)', r.body);
+    // bobina já encerrada (troca na P1): o total da etiqueta é refeito
+    const b1 = s1.bobinas.find(b => b.id === 'E9910002');
+    r = await req('POST', '/bobinas/parcial/editar', { senha: SENHA, parte_id: b1.parte_id, fardos: 3 });
+    ok(r.status === 200 && r.body.pacotes_total === 15, 'corrige a bobina encerrada: total refeito para 3 fardos', r.body);
+    const e1 = comBanco(db => db.prepare('SELECT fardos, pacotes FROM etiquetas WHERE id = ?').get('E9910002'));
+    ok(e1.fardos === 3 && e1.pacotes === 15, 'etiquetas.fardos/pacotes da bobina encerrada acompanham', e1);
+
     // trocar o turno (iniciar por cima) também mostra o turno que fechou
     await req('POST', '/bobinas/turno-corte/iniciar', { senha: SENHA, turno: 'C', maquinas: ['P1', 'P2'] });
     r = await req('POST', '/bobinas/turno-corte/iniciar', { senha: SENHA, turno: 'EXTRA', maquinas: ['P1', 'P2'],

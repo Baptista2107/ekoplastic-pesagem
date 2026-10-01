@@ -867,19 +867,22 @@ function turnoCorte(acao){
       toast('ok', (iniciar?('✓ '+esc(lb(turno))+' iniciado · '+maqs.join(' e ')):'✓ Turno encerrado · '+maqs.join(' e '))+txtF,4000);
       fim(); atualizarTudo();
       // Encerrar ou trocar fecha um turno: mostra o resumo dele (01/10/2026, Gustavo).
-      if(!iniciar || (d.encerrados||[]).length) mostrarResumoTurno();
+      if(!iniciar || (d.encerrados||[]).length) mostrarResumoTurno(inp.value);
     }catch(e){ toast('erro','Erro: '+esc(e.message),5000); ok.disabled=false; }
   };
   inp.addEventListener('keydown',e=>{ if(e.key==='Enter') ok.click(); });
 }
 
 // Resumo do turno que acabou de fechar: por sacoleira, as bobinas que
-// passaram nele, formato, fardos do turno e quem bipou.
-async function mostrarResumoTurno(){
+// passaram nele, formato, fardos do turno e quem bipou. Cada bobina tem
+// "corrigir" para conferir com o lançamento manual (01/10/2026, Gustavo) —
+// usa a senha que o supervisor acabou de digitar para encerrar o turno.
+async function mostrarResumoTurno(senha, fundoAntigo){
   let d;
   try{ d=await (await fetch(URL_BASE+'/bobinas/do-turno?fechado=1')).json(); }catch(e){ return; }
   const sacs=((d&&d.sacoleiras)||[]).filter(s=>s.turno);
   if(!sacs.length) return;
+  if(fundoAntigo) fundoAntigo.remove();
   const fundo=document.createElement('div');
   fundo.className='modal-fundo';
   const blocos=sacs.map(s=>{
@@ -891,7 +894,10 @@ async function mostrarResumoTurno(){
       (b.formato_turno?(' · <b>'+esc(b.formato_turno.replace('x',' × '))+'</b>'):'')+
       ' · '+(b.pacotes_turno!=null?('<b>'+txtPc(b.pacotes_turno)+'</b>'):'sem fardos')+
       (b.montada?' · continua na máquina':(b.rendimento_pct!=null?(' · rendeu '+b.rendimento_pct+'%'):''))+
-      (b.operador?(' · '+esc(b.operador)):'')+'</div>').join('');
+      (b.operador?(' · '+esc(b.operador)):'')+
+      (b.editado?(' · <span class="h-antes">corrigido'+(b.fardos_antes!=null?(' (era '+b.fardos_antes+')'):'')+'</span>'):'')+
+      (b.parte_id?(' <button class="h-desf rs-edit" data-p="'+b.parte_id+'" data-f="'+(b.fechados_turno??'')+
+        '" data-id="'+esc(b.id)+'">corrigir</button>'):'')+'</div>').join('');
     return '<div class="rs-sac"><div class="rs-cab"><span>Sacoleira '+s.sacoleira+' · '+esc(t.label)+'</span>'+
       '<small>'+hora(t.inicio)+' – '+hora(t.fim)+'</small></div>'+
       '<div class="rs-tot">'+txtPc(s.pacotes_turno||0)+' <small>· '+fmtKg(s.kg_turno||0)+'</small></div>'+
@@ -905,6 +911,23 @@ async function mostrarResumoTurno(){
     blocos+'<button class="btn btn-verde" id="md-cancelar">OK</button></div>';
   document.body.appendChild(fundo);
   fundo.querySelector('#md-cancelar').onclick=()=>fundo.remove();
+  fundo.querySelectorAll('.rs-edit').forEach(bt=>bt.onclick=async()=>{
+    const v=await ekoPerguntar({ titulo:'Corrigir fardos · '+bt.dataset.id,
+      texto:'Fardos FECHADOS desta bobina neste turno (os pacotes soltos não mudam). Lançado: '+bt.dataset.f,
+      placeholder:bt.dataset.f, valor:bt.dataset.f, numerico:true, ok:'Corrigir' });
+    if(v===null || v===undefined || String(v).trim()==='') return;
+    const n=Number(String(v).trim());
+    if(!Number.isInteger(n) || n<0 || n>999){ toast('erro','Digite um número de 0 a 999',3000); return; }
+    try{
+      const r=await fetch(URL_BASE+'/bobinas/parcial/editar',{ method:'POST', headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({ senha, parte_id:Number(bt.dataset.p), fardos:n, operador:(window.EKO_RESPONSAVEL||null) }) });
+      const d2=await r.json();
+      if(!r.ok||!d2.ok){ toast('erro',esc((d2&&d2.erro)||'Falha ao corrigir'),5000); return; }
+      toast('ok','✓ '+esc(bt.dataset.id)+': '+bt.dataset.f+' → '+n+' fardos',3000);
+      await mostrarResumoTurno(senha, fundo);
+      atualizarTudo();
+    }catch(e){ toast('erro','Erro: '+esc(e.message),5000); }
+  });
 }
 
 async function atualizarTudo(){ await Promise.all([carregarTurnoCorte(), carregarSacoleiras(), carregarHistorico()]); }
