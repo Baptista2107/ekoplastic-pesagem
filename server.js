@@ -891,8 +891,11 @@ function lerSoltos(v) {
 }
 
 // Soltos que a última parte registrada na máquina deixou no fardo aberto.
+// Depois de uma TROCA DE FORMATO (parte 'setup') o fardo aberto era do formato
+// antigo e não se mistura com o novo (Gustavo, 02/10/2026): o novo começa do zero.
 function soltosNaMaquina(maq) {
-  const r = db.prepare(`SELECT soltos_fim FROM bobina_parciais WHERE maquina = ? ORDER BY id DESC LIMIT 1`).get(maq);
+  const r = db.prepare(`SELECT soltos_fim, momento FROM bobina_parciais WHERE maquina = ? ORDER BY id DESC LIMIT 1`).get(maq);
+  if (r && r.momento === 'setup') return 0;
   return (r && r.soltos_fim) || 0;
 }
 
@@ -974,7 +977,8 @@ function corPaDaBobina(cor) {
 }
 let _clpCache = { em: 0, dados: null, erro: null };
 async function clpSacoleiras() {
-  if (Date.now() - _clpCache.em < 60000) return _clpCache;
+  // EKO_CLP_CACHE_MS: só para teste (testes/troca-formato.js); padrão 60 s.
+  if (Date.now() - _clpCache.em < (Number(process.env.EKO_CLP_CACHE_MS) || 60000)) return _clpCache;
   const url = configGet('vps_sacoleiras_url', 'http://100.107.130.114:8765/api/sacoleiras/agora');
   try {
     const r = await fetch(url, { signal: AbortSignal.timeout(3000) });
@@ -1016,6 +1020,7 @@ function sugerirFormato(maq, bobina, clp) {
     // Empate de comprimento fica com o mais perto.
     if (dist.length) {
       out.sugerido = dist[0][0];
+      out.pelo_comprimento = true;
       out.motivo = `comprimento ${out.comprimento_mm} mm` + (dist.length > 1 && dist[1][1] - dist[0][1] < 5
         ? ` (mais perto que ${dist.slice(1).map(d => d[0]).join(', ')})` : '');
     } else {
@@ -1140,11 +1145,81 @@ for (const [col, tipo] of [['pacotes', 'INTEGER'], ['soltos_fim', 'INTEGER'],
 }
 const SQL_PACOTES_PARTE = `COALESCE(pacotes, fardos * 5)`;
 
-// Pacotes já informados de uma bobina nos fins de turno (partes 'turno').
+// Pacotes já informados de uma bobina montada: fins de turno (partes 'turno')
+// e trocas de formato (partes 'setup', 02/10/2026).
 function pacotesParciaisDe(etiquetaId) {
   const r = db.prepare(`SELECT COALESCE(SUM(${SQL_PACOTES_PARTE}), 0) AS n, COUNT(*) AS partes
-                          FROM bobina_parciais WHERE etiqueta_id = ? AND momento = 'turno'`).get(etiquetaId);
+                          FROM bobina_parciais WHERE etiqueta_id = ? AND momento IN ('turno', 'setup')`).get(etiquetaId);
   return { pacotes: (r && r.n) || 0, partes: (r && r.partes) || 0 };
+}
+
+// ── TROCA DE FORMATO COM A BOBINA MONTADA (02/10/2026, pedido do Gustavo) ─
+// Mudar o formato da sacola no meio de uma bobina: o operador toca "Trocar
+// formato" e informa os fardos fechados + soltos do formato QUE ESTAVA rodando
+// (parte 'setup', com esse formato). Ele NÃO escolhe o novo: o sistema espera
+// o comprimento do CLP da sacoleira mudar (ex.: 505 → 455 mm) e decide pela
+// regra de sempre (máquina → largura da bobina → comprimento). Até lá a bobina
+// fica "aguardando". Os soltos do formato antigo não se misturam com o novo
+// (soltosNaMaquina). Sem senha. A leitura do CLP só define o novo quando DUAS
+// leituras seguidas (carimbos diferentes) dão o mesmo formato diferente do
+// antigo — o comprimento passa por valores no meio do ajuste.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS bobina_setups (
+    id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+    etiqueta_id          TEXT NOT NULL,
+    maquina              TEXT NOT NULL,
+    parte_id             INTEGER,        -- a parte 'setup' com os fardos do formato antigo
+    formato_antes        TEXT,
+    comprimento_antes_mm REAL,           -- o que o CLP mostrava ao tocar (só para mostrar)
+    pedido_em            TEXT NOT NULL,
+    operador             TEXT,
+    candidato            TEXT,           -- formato novo visto numa leitura, esperando confirmar
+    candidato_tempo      TEXT,           -- carimbo do CLP dessa leitura
+    formato_novo         TEXT,
+    comprimento_novo_mm  REAL,
+    definido_em          TEXT
+  );
+  CREATE INDEX IF NOT EXISTS ix_bobina_setups_etq ON bobina_setups (etiqueta_id);
+`);
+function setupDaBobina(etiquetaId) {
+  return db.prepare(`SELECT * FROM bobina_setups WHERE etiqueta_id = ? ORDER BY id DESC LIMIT 1`).get(etiquetaId) || null;
+}
+// O formato da bobina montada AGORA: a regra de sempre (sugerirFormato) com a
+// troca de formato por cima. Pode gravar (define o formato novo da troca).
+function formatoDaBobina(maq, bobina, clp) {
+  const out = sugerirFormato(maq, bobina, clp);
+  const st = bobina ? setupDaBobina(bobina.id) : null;
+  if (!st) return out;
+  out.setup = { formato_antes: st.formato_antes, comprimento_antes_mm: st.comprimento_antes_mm,
+                pedido_em: st.pedido_em, formato_novo: st.formato_novo, definido_em: st.definido_em };
+  if (!st.definido_em) {
+    const visto = out.pelo_comprimento && out.sugerido && out.sugerido !== st.formato_antes ? out.sugerido : null;
+    const tempo = out.clp_tempo || null;
+    if (visto && st.candidato === visto && st.candidato_tempo && tempo && tempo !== st.candidato_tempo) {
+      const agora = new Date().toISOString();
+      db.prepare(`UPDATE bobina_setups SET formato_novo = ?, comprimento_novo_mm = ?, definido_em = ? WHERE id = ?`)
+        .run(visto, out.comprimento_mm, agora, st.id);
+      logI('bobinas', `Sacoleira ${maq}: troca de formato da ${bobina.id} definida — ${st.formato_antes || '?'} → ${visto}`
+        + ` (comprimento ${out.comprimento_mm} mm)`);
+      out.setup.formato_novo = visto; out.setup.definido_em = agora;
+      out.motivo = `formato novo da troca (${out.motivo})`;
+      return out;
+    }
+    if (visto !== st.candidato)
+      db.prepare(`UPDATE bobina_setups SET candidato = ?, candidato_tempo = ? WHERE id = ?`)
+        .run(visto, visto ? tempo : null, st.id);
+    const antes = st.comprimento_antes_mm != null ? `${Math.round(st.comprimento_antes_mm)} mm` : (st.formato_antes || '?');
+    return { ...out, sugerido: null, aguardando_setup: true,
+             motivo: `troca de formato: aguardando a ${maq} mudar o comprimento (estava ${antes}`
+               + (st.formato_antes ? ` · ${st.formato_antes}` : '') + ')' };
+  }
+  // Troca já definida: sem comprimento que decida agora, vale o formato da
+  // troca — o "último cortado na máquina" seria o antigo (a parte 'setup').
+  if (!out.pelo_comprimento && st.formato_novo) {
+    out.sugerido = st.formato_novo;
+    out.motivo = `formato definido na troca (${st.formato_novo})`;
+  }
+  return out;
 }
 
 // Grava uma parte, amarrada ao turno do corte aberto AGORA na máquina.
@@ -10026,7 +10101,11 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
           pacotes_parciais: pacotesParciaisDe(a.id).pacotes,
           // Pacotes que ficaram soltos no fardo aberto quando esta parte começou.
           soltos_inicio: soltosNaMaquina(p),
-          cor_pa: corPaDaBobina(a.cor), formato: sugerirFormato(p, a, leitura),
+          cor_pa: corPaDaBobina(a.cor), formato: formatoDaBobina(p, a, leitura),
+          // A última coisa registrada nesta bobina foi uma troca de formato:
+          // a próxima contagem é "desde a troca".
+          desde_troca: (db.prepare(`SELECT momento FROM bobina_parciais WHERE etiqueta_id = ? ORDER BY id DESC LIMIT 1`)
+                          .get(a.id) || {}).momento === 'setup',
         } : null, permitidos: PA_FORMATOS_POR_MAQUINA[p] || [],
           clp: leitura ? { comprimento_mm: leitura.comprimento_mm, operando: leitura.operando,
                            tempo: leitura.tempo } : null };
@@ -10320,6 +10399,43 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
       return jsonOk(res, { finalizada: true, sacoleira: sac, id: a.id, pacotes: parte.pacotes, pacotes_total: total });
     }
 
+    // Troca de formato com a bobina montada (02/10/2026, Gustavo — ver
+    // bobina_setups). Body { sacoleira, fardos, soltos, formato, formato_origem,
+    // operador }: fardos/soltos/formato são do formato QUE ESTAVA rodando. O
+    // novo é decidido depois, pelo comprimento do CLP (formatoDaBobina). Sem senha.
+    if (pathname === '/bobinas/trocar-formato' && req.method === 'POST') {
+      let body; try { body = await lerBodyJson(req); } catch(e) { return jsonErr(res, 400, e.message); }
+      const sac = normalizarDestinoBobina(body.sacoleira);
+      if (!sac) return jsonErr(res, 400, 'Sacoleira inválida (P1 ou P2)');
+      const a = bobinaAbertaNa(sac);
+      if (!a) return jsonErr(res, 409, `A Sacoleira ${sac} não tem bobina montada`);
+      const pend = setupDaBobina(a.id);
+      if (pend && !pend.definido_em)
+        return jsonErr(res, 409, `Já há uma troca de formato na ${sac} aguardando a sacoleira mudar o comprimento`);
+      if (lerFardos(body.fardos) === null) return jsonErr(res, 400, 'Informe quantos fardos fecharam no formato que estava rodando');
+      const parte = lerParte(sac, body.fardos, body.soltos);
+      if (parte.erro) return jsonErr(res, 400, parte.erro);
+      const formatoAntes = lerFormatoDaMaquina(sac, body.formato);
+      const operador = (body.operador ? String(body.operador).trim().slice(0, 80) : null) || null;
+      const clp = await clpSacoleiras();
+      const sug = sugerirFormato(sac, a, clp.dados ? clp.dados[sac] : null);
+      const agora = new Date().toISOString();
+      makeTransaction(() => {
+        registrarParcial(a.id, sac, parte, 'setup', agora, operador, formatoAntes,
+                         body.formato_origem === 'sugerido' ? 'sugerido' : 'escolhido');
+        const pid = db.prepare(`SELECT last_insert_rowid() AS id`).get().id;
+        db.prepare(`INSERT INTO bobina_setups (etiqueta_id, maquina, parte_id, formato_antes, comprimento_antes_mm, pedido_em, operador)
+                    VALUES (?,?,?,?,?,?,?)`).run(a.id, sac, pid, formatoAntes, sug.comprimento_mm, agora, operador);
+        db.prepare(`UPDATE etiquetas SET alterado_em = ? WHERE id = ?`).run(agora, a.id);
+      })();
+      const total = pacotesParciaisDe(a.id).pacotes;
+      logI('bobinas', `Sacoleira ${sac}: troca de formato na ${a.id} — ${formatoAntes || '?'} rendeu ${txtPacotes(parte.pacotes)}`
+        + ` (${parte.fechados} fechado(s), ${parte.soltos} solto(s)) · aguardando o comprimento mudar`
+        + (sug.comprimento_mm ? ` (agora ${sug.comprimento_mm} mm)` : '') + (operador ? ` · ${operador}` : ''));
+      return jsonOk(res, { setup: true, sacoleira: sac, id: a.id, formato_antes: formatoAntes,
+                           pacotes: parte.pacotes, pacotes_bobina: total, aguardando: true });
+    }
+
     // Corrigir fardos FECHADOS e pacotes SOLTOS de uma parte, no resumo do
     // turno (01/10/2026, Gustavo: "vai que alguém digitou fardos a mais").
     // Senha do supervisor. Body { senha, parte_id, fardos, soltos, operador }.
@@ -10348,7 +10464,9 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
       const dSoltos = soltosNovo - soltosAntes;
       const pacNovo = pacAntes + (novos - antigos) * PACOTES_POR_FARDO + dSoltos;
       if (pacNovo < 0) return jsonErr(res, 400, `Com ${novos} fardo(s) e ${soltosNovo} solto(s) a parte ficaria negativa — confira`);
-      const seguinte = dSoltos ? db.prepare(
+      // Parte de troca de formato: a seguinte começou do zero (o fardo aberto
+      // era do formato antigo), então mudar os soltos dela não mexe na seguinte.
+      const seguinte = (dSoltos && parte.momento !== 'setup') ? db.prepare(
         `SELECT * FROM bobina_parciais WHERE maquina = ? AND id > ? ORDER BY id LIMIT 1`).get(parte.maquina, parte.id) : null;
       const pacSeg = seguinte ? (seguinte.pacotes != null ? Number(seguinte.pacotes) : Number(seguinte.fardos) * PACOTES_POR_FARDO) - dSoltos : null;
       if (seguinte && pacSeg < 0)
@@ -10404,6 +10522,10 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
         `SELECT COALESCE(SUM(${SQL_PACOTES_PARTE}), 0) AS n, COUNT(*) AS c, MAX(formato) AS f,
                 MAX(id) AS pid, MAX(fardos) AS fech, MAX(editado_em) AS ed, MAX(fardos_antes) AS antes, MAX(soltos_fim) AS sf
            FROM bobina_parciais WHERE etiqueta_id = ? AND turno_corte_id = ?`);
+      const porFormatoTurno = db.prepare(
+        `SELECT formato, COALESCE(SUM(${SQL_PACOTES_PARTE}), 0) AS pacotes
+           FROM bobina_parciais WHERE etiqueta_id = ? AND turno_corte_id = ?
+          GROUP BY formato ORDER BY MIN(id)`);
       // ?fechado=1 (01/10/2026): o último turno que FECHOU — é o resumo que a
       // tela mostra logo depois de encerrar ou trocar o turno.
       const soFechado = parsed.query.fechado === '1';
@@ -10431,6 +10553,9 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
           // Sem turno registrado (janela de hoje): a bobina inteira conta aqui.
           b.pacotes_turno = t ? (noTurno.c ? noTurno.n : null) : total;
           b.formato_turno = (noTurno && noTurno.f) || b.formato_cortado || null;
+          // Troca de formato no turno (02/10/2026): os pacotes de CADA formato,
+          // na ordem em que rodaram. Uma entrada só = sem troca.
+          b.formatos_turno = t ? porFormatoTurno.all(b.id, t.id) : [];
           // Editável no resumo só quando a bobina tem UMA parte neste turno.
           b.parte_id = (noTurno && noTurno.c === 1) ? noTurno.pid : null;
           b.fechados_turno = (noTurno && noTurno.c === 1) ? noTurno.fech : null;

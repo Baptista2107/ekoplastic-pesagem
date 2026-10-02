@@ -446,32 +446,37 @@ function perguntarFardos(bob, sac, modo){
     // se já houve fim de turno com ela montada, também se pede só a parte
     // deste turno — o total da bobina é a soma, feita pelo servidor.
     const turno = modo==='turno';
+    // modo 'setup' (02/10/2026): troca de formato com a bobina montada — os
+    // fardos e o formato são os do formato QUE ESTAVA rodando; o novo o
+    // sistema pega sozinho quando o comprimento da sacoleira mudar.
+    const setup = modo==='setup';
     // Em pacotes (30/09/2026): o que já foi informado em fim de turno e os
     // soltos que havia no fardo aberto quando esta parte começou.
     const antes = Number(bob.pacotes_parciais)||0;
     const ini = Number(bob.soltos_inicio)||0;
     let soltos = 0;
-    const tit = turno ? ('Fim do turno · Sacoleira '+sac) : modo==='troca' ? ('Troca na Sacoleira '+sac) : ('Encerrar bobina · Sacoleira '+sac);
-    const acao = turno ? 'Registrar fardos do turno' : modo==='troca' ? 'Confirmar troca' : 'Finalizar bobina';
+    const tit = setup ? ('Troca de formato · Sacoleira '+sac) : turno ? ('Fim do turno · Sacoleira '+sac) : modo==='troca' ? ('Troca na Sacoleira '+sac) : ('Encerrar bobina · Sacoleira '+sac);
+    const acao = setup ? 'Registrar e aguardar o formato novo' : turno ? 'Registrar fardos do turno' : modo==='troca' ? 'Confirmar troca' : 'Finalizar bobina';
     const chips=permitidos.map(f=>'<button class="chip'+(cands.includes(f)&&cands.length<permitidos.length?' cand':'')+
       (f===escolhido?' sel':'')+'" data-f="'+esc(f)+'">'+esc(f.replace('x',' × '))+'</button>').join('');
     fundo.innerHTML='<div class="modal">'+
       '<h2>'+tit+'</h2>'+
-      '<div class="m-sub">'+(turno?'Continua na máquina a <b>':'Sai a <b>')+esc(bob.id)+'</b> · '+descBob(bob)+' · <b>'+fmtKg(bob.peso)+'</b>'+
+      '<div class="m-sub">'+((turno||setup)?'Continua na máquina a <b>':'Sai a <b>')+esc(bob.id)+'</b> · '+descBob(bob)+' · <b>'+fmtKg(bob.peso)+'</b>'+
         (bob.baixa_em?('<br>montada '+haQuanto(bob.baixa_em)):'')+
         (bob.baixa_operador?(' · bipada por <b>'+esc(bob.baixa_operador)+'</b>'):'')+'</div>'+
-      '<label>FORMATO CORTADO · '+esc(corNome.toUpperCase())+'</label>'+
+      '<label>'+(setup?'FORMATO QUE ESTAVA RODANDO':'FORMATO CORTADO')+' · '+esc(corNome.toUpperCase())+'</label>'+
       // 01/10/2026 (Gustavo): o sistema decide (máquina + bobina + comprimento
       // da sacoleira); "Outro" abre só os formatos que ESTA sacoleira corta.
       (fmt.sugerido?('<div class="fmt-dec" id="md-fmt-dec"><div class="fd-v" id="md-fmt-v"></div>'+
         '<button class="chip" id="md-outro">Outro</button></div>'):'')+
       '<div class="fmts'+(fmt.sugerido?' oculto':'')+'" id="md-fmts">'+chips+'</div>'+
       (fmt.sugerido?'':('<div class="m-dica">'+esc(fmt.motivo||'sem formato decidido')+' — toque no formato se souber; dá para registrar sem.</div>'))+
-      '<label>'+((turno||antes>0)?'FARDOS FECHADOS NESTE TURNO':'FARDOS FECHADOS')+'</label><input id="md-fardos" type="number" inputmode="numeric" min="0" max="999" step="1" autocomplete="off">'+
+      '<label>'+(setup?'FARDOS FECHADOS NESTE FORMATO':bob.desde_troca?'FARDOS FECHADOS DESDE A TROCA DE FORMATO':(turno||antes>0)?'FARDOS FECHADOS NESTE TURNO':'FARDOS FECHADOS')+'</label><input id="md-fardos" type="number" inputmode="numeric" min="0" max="999" step="1" autocomplete="off">'+
       (ini>0?('<div class="m-dica">Havia '+ini+' pacote'+(ini===1?'':'s')+' solto'+(ini===1?'':'s')+' no início — conte o fardo que ela completou.</div>'):'')+
       '<label>PACOTES SOLTOS AGORA</label><div class="fmts soltos">'+[0,1,2,3,4].map(n=>
         '<button class="chip'+(n===0?' sel':'')+'" data-s="'+n+'">'+n+'</button>').join('')+'</div>'+
       '<div class="m-kg" id="md-kg"></div>'+
+      (setup?'<div class="m-dica">O formato novo o sistema pega sozinho quando a sacoleira mudar o comprimento. Os pacotes soltos ficam neste formato — o novo começa do zero.</div>':'')+
       '<div id="md-alerta"></div>'+
       '<div class="m-resumo" id="md-resumo"></div>'+
       '<button class="btn btn-verde" id="md-ok">'+acao+'</button>'+
@@ -568,6 +573,26 @@ async function perguntarNome(sac){
 }
 
 // Finalizar: a bobina saiu SEM outra no lugar (máquina parou, acabou o pedido).
+// Troca de formato com a bobina montada (02/10/2026, Gustavo).
+async function trocarFormato(sac){
+  const bob=(ABERTAS.find(a=>a.sacoleira===sac)||{}).bobina;
+  if(!bob) return;
+  const saida=await perguntarFardos(bob, sac, 'setup');
+  if(saida===null) return;
+  try{
+    const r=await fetch(URL_BASE+'/bobinas/trocar-formato',{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ sacoleira:sac, fardos:saida.fardos, soltos:saida.soltos, formato:saida.formato,
+                            formato_origem:saida.origem, operador:(window.EKO_RESPONSAVEL||null) })
+    });
+    const d=await r.json();
+    if(!r.ok || !d.ok){ toast('erro',esc((d&&d.erro)||'Falha ao registrar a troca'),5000); return; }
+    beep(1050,0.14); vibrar([60,50,60]);
+    toast('ok','✓ '+(d.formato_antes?esc(d.formato_antes.replace('x',' × '))+': ':'')+txtPc(d.pacotes||0)+' · aguardando a sacoleira mudar o comprimento',4500);
+    await atualizarTudo();
+  }catch(e){ toast('erro','Erro: '+esc(e.message),5000); }
+}
+
 async function finalizar(sac){
   const bob=(ABERTAS.find(a=>a.sacoleira===sac)||{}).bobina;
   if(!bob) return;
@@ -603,7 +628,9 @@ async function carregarSacoleiras(){
     // Formato que está sendo cortado agora (sugestão pelo CLP da sacoleira).
     const f=b.formato||{}, cor=(b.cor_pa&&b.cor_pa.nome)||b.cor||'';
     let corte;
-    if(f.sugerido) corte='<div class="s-corte">'+esc(f.sugerido.replace('x',' × '))+'<small>cortando · '+esc(cor)+'</small></div>';
+    // Troca de formato (02/10/2026): esperando a sacoleira mudar o comprimento.
+    if(f.aguardando_setup) corte='<div class="s-corte duvida">trocando formato…<small>'+esc(f.motivo||'')+'</small></div>';
+    else if(f.sugerido) corte='<div class="s-corte">'+esc(f.sugerido.replace('x',' × '))+'<small>cortando · '+esc(cor)+'</small></div>';
     else if((f.candidatos||[]).length && (f.candidatos||[]).length<(a.permitidos||[]).length)
       corte='<div class="s-corte duvida">'+esc(f.candidatos.map(x=>x.replace('x','×')).join(' ou '))+'<small>'+esc(f.motivo||'')+'</small></div>';
     else corte='<div class="s-corte sem">formato ?<small>'+esc(f.motivo||'sem leitura da sacoleira')+'</small></div>';
@@ -613,12 +640,19 @@ async function carregarSacoleiras(){
       '<div class="s-kg">'+fmtKg(b.peso)+'</div>'+
       (b.baixa_operador?('<div class="s-quem">'+esc(b.baixa_operador)+'</div>'):'')+
       '<div class="s-info">'+esc(b.id)+' · '+haQuanto(b.baixa_em)+'</div>'+
+      '<button class="btn btn-cinza s-fim" onclick="trocarFormato(\''+a.sacoleira+'\')"'+(f.aguardando_setup?' disabled':'')+'>Trocar formato</button>'+
       '<button class="btn btn-cinza s-fim" onclick="finalizar(\''+a.sacoleira+'\')">Encerrar bobina</button></div>';
   }).join('');
 }
 
 // ── HOJE: o que entrou nas sacoleiras hoje, com os fardos de quem já saiu.
 // Número grande de fardos com os pacotes soltos pequenos ao lado ("12 +2 pc").
+// Troca de formato no turno: "40 × 50: 8 fardos · 30 × 45: 3 fardos +2 pc".
+function linhaFormatos(x){
+  const fs=x.formatos_turno||[];
+  if(fs.length<2) return '';
+  return '<div class="hb-l3">'+fs.map(f=>'<b>'+esc((f.formato||'?').replace('x',' × '))+'</b>: '+txtPc(f.pacotes||0)).join(' · ')+'</div>';
+}
 function pcGrande(p, soNumero){
   const f=Math.floor(p/PC_FARDO), s=p%PC_FARDO;
   return '<b>'+f+'</b>'+(soNumero?'':(' fardo'+(f===1?'':'s')))+(s?('<span class="pc"> +'+s+' pc</span>'):'');
@@ -668,6 +702,7 @@ async function carregarHistorico(){
         '<div class="hb-l2">'+esc(x.id)+' · '+fmtKg(x.peso)+(x.operador?(' · '+esc(x.operador)):'')+
           ' · entrou '+quando(x.baixa_em)+(x.veio_de_antes?' <span class="h-antes">turno anterior</span>':'')+
           (x.pedido?(' · pedido '+esc(x.pedido)):'')+'</div>'+
+        linhaFormatos(x)+
         rend+
         (ultima?('<button class="h-desf" onclick="desfazer(\''+esc(x.id)+'\',\''+s.sacoleira+'\')">desfazer</button>'):'')+
       '</div>';
@@ -916,6 +951,7 @@ async function mostrarResumoTurno(senha, fundoAntigo){
           '<span class="hb-num">'+num+'</span></div>'+
         '<div class="hb-l2">'+esc(b.id)+' · '+fmtKg(b.peso)+(b.operador?(' · '+esc(b.operador)):'')+
           (b.veio_de_antes?' <span class="h-antes">turno anterior</span>':'')+'</div>'+
+        linhaFormatos(b)+
         '<div class="rs-pe"><div class="hb-l3">'+situ+
           (b.editado?(' · <span class="h-antes">corrigido'+(b.fardos_antes!=null?(' (era '+b.fardos_antes+')'):'')+'</span>'):'')+'</div>'+
         (b.parte_id?('<button class="h-desf rs-edit" data-p="'+b.parte_id+'" data-f="'+(b.fechados_turno??'')+
