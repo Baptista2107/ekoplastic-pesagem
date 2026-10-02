@@ -325,13 +325,15 @@ async function onLeu(codigo){
     const d=await r.json();
     if(!r.ok || !d.ok){ beep(320,0.2); vibrar(150); mostrarErro(id,(d&&d.erro)||'Etiqueta não encontrada'); return; }
     const b=d.bobina;
-    if(b.status==='consumida'){
+    // Bobina de REFUGO (02/10/2026): saiu da sacoleira, foi pesada como refugo
+    // no Mini PC e pode montar de novo. Só ela passa com status consumida.
+    if(b.status==='consumida' && !b.refugo){
       beep(320,0.2); vibrar([80,60,80]);
       mostrarErro(id,'Já foi para a sacoleira'+(b.destino?(' '+esc(b.destino)):'')+(b.baixa_em?(' em '+diaHora(b.baixa_em)):''));
       return;
     }
     if(b.status==='cancelada'){ beep(320,0.2); vibrar(150); mostrarErro(id,'Etiqueta cancelada'); return; }
-    if(d.bling && !b.produto_id){ beep(320,0.2); vibrar(150); mostrarErro(id,'Sem produto no Bling para '+esc(b.chave)); return; }
+    if(d.bling && !b.refugo && !b.produto_id){ beep(320,0.2); vibrar(150); mostrarErro(id,'Sem produto no Bling para '+esc(b.chave)); return; }
     // Sem turno do corte aberto não monta bobina (01/10/2026, Gustavo).
     await carregarTurnoCorte();
     const comTurno=TC.sacoleiras.filter(s=>s.turno).map(s=>s.sacoleira);
@@ -352,6 +354,7 @@ async function onLeu(codigo){
         '<div class="l-id">'+esc(b.id)+'</div>'+
         '<div class="l-mat">'+descBob(b)+'</div>'+
         '<div class="l-kg">'+fmtKg(b.peso)+'</div>'+
+        (b.refugo?'<div class="l-orig" style="color:#ffaa00;font-weight:700;">REFUGO · '+fmtKg(b.refugo.peso)+' · veio da '+esc(b.refugo.destino_antes||'—')+'</div>':'')+
         '<div class="l-orig">'+orig+'</div>'+
         '<div class="l-per">MONTAR NA SACOLEIRA</div>'+
         '<div class="destinos">'+botao('P1')+botao('P2')+'</div>'+
@@ -732,7 +735,8 @@ async function desfazer(id, sac){
 
 // ── INVENTÁRIO ───────────────────────────────────────────────────────────
 const SIT={ estoque:['ok','em estoque'], na_sacoleira:['al','sistema: na sacoleira'],
-            usada:['al','sistema: já usada'], cancelada:['er','etiqueta cancelada'] };
+            usada:['al','sistema: já usada'], cancelada:['er','etiqueta cancelada'],
+            refugo:['ok','refugo em estoque'] };
 function tagSit(s,dest){ const t=SIT[s]||['al',s]; return '<span class="tag '+t[0]+'">'+t[1]+(s==='na_sacoleira'&&dest?(' '+esc(dest)):'')+'</span>'; }
 function mostrarTela(m){
   MODO=m;

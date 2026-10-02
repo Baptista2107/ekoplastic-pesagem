@@ -924,7 +924,7 @@ function txtPacotes(p) {
 // mesmo total arredondado em fardos, para quem já lia essa coluna.
 // Devolve o total em pacotes.
 function encerrarBobina(id, parte, motivo, quando, formato, formatoOrigem, maq, operador) {
-  const antes = pacotesParciaisDe(id).pacotes;
+  const antes = pacotesMontagensAnteriores(id) + pacotesParciaisDe(id).pacotes;
   if (maq) registrarParcial(id, maq, parte, 'final', quando, operador, formato, formatoOrigem);
   const total = antes + parte.pacotes;
   db.prepare(`UPDATE etiquetas SET fardos = ?, pacotes = ?, encerrada_em = ?, encerrada_motivo = ?, alterado_em = ?,
@@ -1075,7 +1075,7 @@ db.exec(`
     inventario_id INTEGER NOT NULL,
     etiqueta_id   TEXT NOT NULL,
     lido_em       TEXT NOT NULL,
-    situacao      TEXT,          -- estoque | na_sacoleira | usada | cancelada
+    situacao      TEXT,          -- estoque | na_sacoleira | usada | cancelada | refugo
     operador      TEXT,
     PRIMARY KEY (inventario_id, etiqueta_id)
   );
@@ -1146,10 +1146,15 @@ for (const [col, tipo] of [['pacotes', 'INTEGER'], ['soltos_fim', 'INTEGER'],
 const SQL_PACOTES_PARTE = `COALESCE(pacotes, fardos * 5)`;
 
 // Pacotes já informados de uma bobina montada: fins de turno (partes 'turno')
-// e trocas de formato (partes 'setup', 02/10/2026).
+// e trocas de formato (partes 'setup', 02/10/2026). Só da montagem ATUAL
+// (registradas depois da baixa): bobina de refugo reaproveitada começa do zero
+// aqui, e as montagens anteriores entram por pacotesMontagensAnteriores.
 function pacotesParciaisDe(etiquetaId) {
   const r = db.prepare(`SELECT COALESCE(SUM(${SQL_PACOTES_PARTE}), 0) AS n, COUNT(*) AS partes
-                          FROM bobina_parciais WHERE etiqueta_id = ? AND momento IN ('turno', 'setup')`).get(etiquetaId);
+                          FROM bobina_parciais
+                         WHERE etiqueta_id = ? AND momento IN ('turno', 'setup')
+                           AND registrado_em >= COALESCE((SELECT baixa_em FROM etiquetas WHERE id = ?), '')`)
+    .get(etiquetaId, etiquetaId);
   return { pacotes: (r && r.n) || 0, partes: (r && r.partes) || 0 };
 }
 
@@ -1181,8 +1186,56 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS ix_bobina_setups_etq ON bobina_setups (etiqueta_id);
 `);
+// Só o setup da montagem ATUAL (pedido depois da baixa): uma bobina de refugo
+// reaproveitada não herda a troca de formato da passagem anterior.
 function setupDaBobina(etiquetaId) {
-  return db.prepare(`SELECT * FROM bobina_setups WHERE etiqueta_id = ? ORDER BY id DESC LIMIT 1`).get(etiquetaId) || null;
+  return db.prepare(`SELECT s.* FROM bobina_setups s JOIN etiquetas e ON e.id = s.etiqueta_id
+                      WHERE s.etiqueta_id = ? AND s.pedido_em >= COALESCE(e.baixa_em, '')
+                      ORDER BY s.id DESC LIMIT 1`).get(etiquetaId) || null;
+}
+
+// ── REFUGO DE BOBINA (02/10/2026, Gustavo) ───────────────────────────────
+// Bobina que entrou na sacoleira, deu 1 ou 2 fardos e não serve para o
+// produto acabado. O operador FINALIZA no coletor (como sempre), leva ao Mini
+// PC, e em Outras pesagens → REFUGO bipa a ETIQUETA ANTIGA e pesa: ela volta
+// ao estoque como refugo. Não imprime etiqueta nova, não vai ao Bling.
+// O peso da etiqueta (o da extrusão) NÃO muda — é ele que mede o aproveitamento
+// e o comprimento da bobina; o peso do refugo fica aqui, à parte.
+// Ela PODE voltar à produção: bipada de novo em /bobinas/baixa, abre uma nova
+// montagem (reaproveitado_em). Os fardos das duas montagens somam na etiqueta;
+// estado_antes guarda a montagem anterior para o "desfazer" poder voltar atrás.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS bobina_refugos (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    etiqueta_id      TEXT NOT NULL,
+    peso             REAL NOT NULL,   -- líquido (bruto − eixo)
+    peso_bruto       REAL,
+    tara             REAL,
+    pesado_em        TEXT NOT NULL,
+    operador         TEXT,
+    destino_antes    TEXT,            -- sacoleira de onde saiu (P1/P2)
+    pacotes_antes    INTEGER,         -- pacotes da etiqueta ao virar refugo
+    reaproveitado_em TEXT,            -- NULL = está no estoque como refugo
+    reaproveitado_destino TEXT,
+    estado_antes     TEXT,            -- JSON da montagem anterior (para desfazer)
+    cancelado_em     TEXT,
+    alterado_em      TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS ix_bobina_refugos_etq ON bobina_refugos (etiqueta_id);
+`);
+// Peso do eixo/tubete por largura — o MESMO mapa TARAS da tela de extrusão
+// (public/etiqueta-producao.html). A bobina volta no eixo; o refugo é líquido.
+const TARAS_EIXO = { '80': 4, '1,20': 6, '1,60': 8, '1,68': 8, '1,75': 9 };
+function refugoAbertoDe(etiquetaId) {
+  return db.prepare(`SELECT * FROM bobina_refugos WHERE etiqueta_id = ? AND reaproveitado_em IS NULL
+                        AND cancelado_em IS NULL ORDER BY id DESC LIMIT 1`).get(etiquetaId) || null;
+}
+// Pacotes das montagens ANTERIORES (bobina de refugo reaproveitada): o que a
+// etiqueta tinha quando a montagem atual começou.
+function pacotesMontagensAnteriores(etiquetaId) {
+  const r = db.prepare(`SELECT pacotes_antes FROM bobina_refugos WHERE etiqueta_id = ? AND reaproveitado_em IS NOT NULL
+                           AND cancelado_em IS NULL ORDER BY reaproveitado_em DESC LIMIT 1`).get(etiquetaId);
+  return (r && Number(r.pacotes_antes)) || 0;
 }
 // O formato da bobina montada AGORA: a regra de sempre (sugerirFormato) com a
 // troca de formato por cima. Pode gravar (define o formato novo da troca).
@@ -1252,6 +1305,7 @@ function inventarioAberto() {
 function situacaoBobina(e) {
   if (e.status === 'cancelada') return 'cancelada';
   if (e.status === 'consumida' && e.destino && !e.encerrada_em) return 'na_sacoleira';
+  if (e.status === 'consumida' && e.id && refugoAbertoDe(e.id)) return 'refugo';   // voltou ao estoque
   if (e.status === 'consumida') return 'usada';
   return 'estoque';
 }
@@ -9714,8 +9768,13 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
                   e.destino, e.baixa_em, e.baixa_turno, e.baixa_operador,
                   e.fardos, e.encerrada_em, e.encerrada_motivo, e.alterado_em,
                   e.formato_cortado, e.formato_origem, e.pacotes, e.emendas,
+                  rf.peso AS refugo_kg, rf.pesado_em AS refugo_em,
                   s.bling_status, s.bling_id, s.bling_erro
              FROM etiquetas e LEFT JOIN sessoes s ON s.id = e.sessao_id
+             -- refugo EM ESTOQUE agora (02/10/2026): vai à VPS pelo exportador
+             -- que já existe; registrar/cancelar carimba etiquetas.alterado_em.
+             LEFT JOIN bobina_refugos rf ON rf.id = (SELECT MAX(x.id) FROM bobina_refugos x WHERE x.etiqueta_id = e.id
+                                                       AND x.reaproveitado_em IS NULL AND x.cancelado_em IS NULL)
              ${onde} ORDER BY e.hora_impressao DESC LIMIT ? OFFSET ?`
         ).all(...par, limite, desloc);
         return jsonOk(res, { total, linhas, limite, offset: desloc,
@@ -9752,6 +9811,14 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
       const parciais = db.prepare(
         `SELECT * FROM bobina_parciais WHERE registrado_em >= ? OR editado_em >= ? ORDER BY registrado_em, id`).all(desde, desde);
       return jsonOk(res, { filtro: 'bobina_parciais', parciais });
+    }
+
+    // Refugos de bobina (02/10/2026) para a VPS: incremental por alterado_em.
+    if (pathname === '/dashboard/bobina-refugos' && req.method === 'GET') {
+      const desde = String(parsed.query.desde || '1970-01-01').trim();
+      const refugos = db.prepare(
+        `SELECT * FROM bobina_refugos WHERE alterado_em >= ? ORDER BY alterado_em, id`).all(desde);
+      return jsonOk(res, { filtro: 'bobina_refugos', refugos });
     }
 
     // Sessões do período (com status de envio ao Bling e erros).
@@ -9885,6 +9952,8 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
         bling_pedido_id: e.bling_pedido_id,
         produto_id: prod.id || null, chave,
         destino: e.destino || null, baixa_em: e.baixa_em || null,
+        encerrada_em: e.encerrada_em || null, fardos: e.fardos, pacotes: e.pacotes,
+        refugo: refugoAbertoDe(e.id), tara_eixo: TARAS_EIXO[e.largura] || 0,
       }, bling: baixaBobinaNoBling() });
     }
 
@@ -9899,7 +9968,10 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
       if (!e) return jsonErr(res, 404, `Etiqueta ${bid} não encontrada`);
       if (e.tipo !== 'extrusao') return jsonErr(res, 400, `${bid} não é bobina de extrusão`);
       if (e.status === 'cancelada') return jsonErr(res, 400, `Bobina ${bid} está cancelada`);
-      if (e.status === 'consumida') {
+      // Bobina de REFUGO (02/10/2026): já teve baixa, saiu da sacoleira e voltou
+      // ao estoque pela pesagem de refugo — pode montar de novo (nova montagem).
+      const refugo = (e.status === 'consumida' && e.encerrada_em) ? refugoAbertoDe(bid) : null;
+      if (e.status === 'consumida' && !refugo) {
         return jsonErr(res, 409, `Bobina ${bid} JÁ teve baixa`, {
           ja_baixada: true, quando: e.hora_bipagem || null, pedido: e.bling_pedido_id || null,
         });
@@ -9923,7 +9995,9 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
       // Com o Bling desligado (padrão desde 28/09/2026 — decisão do Frederico:
       // "por ora nada no Bling"), a baixa só registra aqui. Nenhum pedido de
       // venda é criado e o mapa de produtos/contatos do Bling não é exigido.
-      const bling = baixaBobinaNoBling();
+      // Bobina de refugo reaproveitada nunca vai ao Bling: a 1ª baixa já levou
+      // o peso inteiro dela (Gustavo, 02/10/2026: refugo "só no sistema").
+      const bling = refugo ? false : baixaBobinaNoBling();
 
       // Turno: só existe para o Bling (é o cliente da venda). Sem Bling a tela
       // não pergunta, e a baixa vale igual sem ele.
@@ -10051,12 +10125,29 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
       // duas bobinas abertas, nem sem nenhuma por uma falha no meio.
       let totalAnterior = null;
       const trocar = makeTransaction(() => {
-        const upd = db.prepare(
-          `UPDATE etiquetas SET status='consumida', hora_bipagem=?, bling_pedido_id=?,
-                  destino=?, baixa_em=?, baixa_turno=?, baixa_operador=?, alterado_em=?
-            WHERE id=? AND status NOT IN ('consumida','cancelada')`)
-          .run(agora, blingId && !String(blingId).startsWith('SIM-') ? Number(blingId) : null,
-               destino, agora, turnoCod || null, operador, agora, bid);
+        let upd;
+        if (refugo) {
+          // Nova montagem da bobina de refugo: guarda a anterior (para o
+          // desfazer) e reabre. fardos/pacotes ficam: o encerramento soma.
+          const estadoAntes = JSON.stringify({ destino: e.destino, baixa_em: e.baixa_em, baixa_turno: e.baixa_turno,
+            baixa_operador: e.baixa_operador, encerrada_em: e.encerrada_em, encerrada_motivo: e.encerrada_motivo,
+            formato_cortado: e.formato_cortado, formato_origem: e.formato_origem });
+          upd = db.prepare(
+            `UPDATE etiquetas SET destino=?, baixa_em=?, baixa_turno=?, baixa_operador=?, encerrada_em=NULL,
+                    encerrada_motivo=NULL, formato_cortado=NULL, formato_origem=NULL, alterado_em=?
+              WHERE id=? AND status='consumida' AND encerrada_em IS NOT NULL`)
+            .run(destino, agora, turnoCod || null, operador, agora, bid);
+          if (upd.changes) db.prepare(
+            `UPDATE bobina_refugos SET reaproveitado_em=?, reaproveitado_destino=?, estado_antes=?, alterado_em=?
+              WHERE id=? AND reaproveitado_em IS NULL`).run(agora, destino, estadoAntes, agora, refugo.id);
+        } else {
+          upd = db.prepare(
+            `UPDATE etiquetas SET status='consumida', hora_bipagem=?, bling_pedido_id=?,
+                    destino=?, baixa_em=?, baixa_turno=?, baixa_operador=?, alterado_em=?
+              WHERE id=? AND status NOT IN ('consumida','cancelada')`)
+            .run(agora, blingId && !String(blingId).startsWith('SIM-') ? Number(blingId) : null,
+                 destino, agora, turnoCod || null, operador, agora, bid);
+        }
         if (!upd.changes) return false;
         if (pedeFardos) totalAnterior = encerrarBobina(aberta.id, parteAnterior, 'troca', agora, formatoAnterior,
                                                        origemAnterior, destino, operador);
@@ -10078,7 +10169,8 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
         configSet(ch, JSON.stringify(lista.slice(0, 500)));
       } catch(err) {}
 
-      return jsonOk(res, { baixada: true, id: bid, pedido: blingId, destino, bling,
+      if (refugo) logI('bobinas', `${bid} (refugo de ${refugo.pesado_em}) REAPROVEITADA na Sacoleira ${destino} por ${operador}`);
+      return jsonOk(res, { baixada: true, id: bid, pedido: blingId, destino, bling, reaproveitada: !!refugo,
                            modo: !bling ? 'sem_bling' : (simular ? 'simulacao' : 'real'),
                            turno: turnoCod, turno_label: turno.label || turnoCod,
                            bobina: { cor: e.cor, tipo_bobina: e.tipo_bobina, largura: e.largura, peso: e.peso } });
@@ -10345,6 +10437,85 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
       return jsonOk(res, { limpas: n, operador: nome, dia, ids: alvo.map(b => b.id) });
     }
 
+    // ── REFUGO DE BOBINA (02/10/2026, Gustavo — ver bobina_refugos) ──────
+    // POST /bobinas/refugo { id, peso_bruto, operador? }: a bobina já saiu da
+    // sacoleira (finalizada no coletor) e volta ao estoque como refugo. O peso
+    // vem com o eixo: desconta a tara da largura (mesmo mapa da extrusão).
+    if (pathname === '/bobinas/refugo' && req.method === 'POST') {
+      let body; try { body = await lerBodyJson(req); } catch(e) { return jsonErr(res, 400, e.message); }
+      let bid = String(body.id || '').trim().toUpperCase();
+      if (/^\d+$/.test(bid)) bid = 'E' + bid.padStart(7, '0');
+      const e = bid && dbStmts.getEtiqueta.get(bid);
+      if (!e) return jsonErr(res, 404, `Etiqueta ${bid || '—'} não encontrada`);
+      if (e.tipo !== 'extrusao') return jsonErr(res, 400, `${bid} não é bobina de extrusão`);
+      if (e.status === 'cancelada') return jsonErr(res, 400, `Bobina ${bid} está cancelada`);
+      if (e.status !== 'consumida' || !e.baixa_em)
+        return jsonErr(res, 409, `${bid} nunca foi montada numa sacoleira — não é refugo, está no estoque normal`);
+      if (!e.encerrada_em)
+        return jsonErr(res, 409, `${bid} ainda está montada na Sacoleira ${e.destino}. Finalize no coletor primeiro.`,
+                       { na_sacoleira: e.destino });
+      const ja = refugoAbertoDe(bid);
+      if (ja) return jsonErr(res, 409, `${bid} já está no estoque como refugo (${Number(ja.peso).toFixed(1)} kg)`,
+                             { ja_refugo: true });
+      const bruto = Number(body.peso_bruto);
+      if (!(bruto > 0) || bruto > 2000) return jsonErr(res, 400, 'Peso inválido');
+      const tara = TARAS_EIXO[e.largura] || 0;
+      const liq = Math.round(Math.max(0, bruto - tara) * 10) / 10;
+      if (!(liq > 0)) return jsonErr(res, 400, `Peso ${bruto} kg não passa do eixo (${tara} kg)`);
+      if (e.peso && liq > Number(e.peso) + 5)
+        return jsonErr(res, 400, `Refugo de ${liq.toFixed(1)} kg é maior que a bobina inteira (${Number(e.peso).toFixed(1)} kg). Confira a etiqueta.`);
+      const agora = new Date().toISOString();
+      const operador = (body.operador ? String(body.operador).trim().slice(0, 80) : null) || null;
+      let r;
+      makeTransaction(() => {
+        r = db.prepare(`INSERT INTO bobina_refugos (etiqueta_id, peso, peso_bruto, tara, pesado_em, operador,
+                                                    destino_antes, pacotes_antes, alterado_em)
+                        VALUES (?,?,?,?,?,?,?,?,?)`)
+          .run(bid, liq, bruto, tara, agora, operador, e.destino || null,
+               e.pacotes == null ? (e.fardos == null ? 0 : e.fardos * PACOTES_POR_FARDO) : e.pacotes, agora);
+        db.prepare(`UPDATE etiquetas SET alterado_em = ? WHERE id = ?`).run(agora, bid);   // reexporta à VPS
+      })();
+      logI('bobinas', `REFUGO: ${bid} (${e.cor} ${e.tipo_bobina} ${e.largura}, ${Number(e.peso).toFixed(1)} kg) voltou da `
+        + `Sacoleira ${e.destino} com ${liq.toFixed(1)} kg (bruto ${bruto} − eixo ${tara})${operador ? ' por ' + operador : ''}`);
+      return jsonOk(res, { refugo: { id: Number(r.lastInsertRowid), etiqueta_id: bid, peso: liq, peso_bruto: bruto, tara,
+                                     pesado_em: agora, destino_antes: e.destino,
+                                     bobina: { cor: e.cor, tipo_bobina: e.tipo_bobina, largura: e.largura, peso: e.peso,
+                                               fardos: e.fardos } } });
+    }
+
+    // GET /bobinas/refugos?dia=AAAA-MM-DD (padrão: hoje) — a lista da tela.
+    // ?estoque=1 → os que estão no estoque como refugo agora (qualquer dia).
+    if (pathname === '/bobinas/refugos' && req.method === 'GET') {
+      const SEL = `SELECT r.*, e.cor, e.tipo_bobina, e.largura, e.peso AS peso_bobina, e.fardos
+                     FROM bobina_refugos r LEFT JOIN etiquetas e ON e.id = r.etiqueta_id`;
+      if (String(parsed.query.estoque || '') === '1') {
+        const refugos = db.prepare(`${SEL} WHERE r.reaproveitado_em IS NULL AND r.cancelado_em IS NULL
+                                     ORDER BY r.pesado_em DESC`).all();
+        return jsonOk(res, { refugos, kg: refugos.reduce((a, x) => a + (Number(x.peso) || 0), 0) });
+      }
+      const dia = /^\d{4}-\d{2}-\d{2}$/.test(String(parsed.query.dia || '')) ? String(parsed.query.dia) : dataLocalISO();
+      const { ini, fim } = rangeUTCdoDiaLocal(dia);
+      const refugos = db.prepare(`${SEL} WHERE r.pesado_em >= ? AND r.pesado_em < ? AND r.cancelado_em IS NULL
+                                   ORDER BY r.pesado_em DESC`).all(ini, fim);
+      return jsonOk(res, { dia, refugos, kg: refugos.reduce((a, x) => a + (Number(x.peso) || 0), 0) });
+    }
+
+    // POST /bobinas/refugo/:id/cancelar — pesagem de refugo errada. Só antes
+    // de a bobina ser reaproveitada (aí é o desfazer da montagem).
+    if ((m = pathname.match(/^\/bobinas\/refugo\/(\d+)\/cancelar$/)) && req.method === 'POST') {
+      const rf = db.prepare(`SELECT * FROM bobina_refugos WHERE id = ?`).get(Number(m[1]));
+      if (!rf || rf.cancelado_em) return jsonErr(res, 404, 'Refugo não encontrado');
+      if (rf.reaproveitado_em)
+        return jsonErr(res, 409, `${rf.etiqueta_id} já voltou para a Sacoleira ${rf.reaproveitado_destino} — desfaça lá primeiro`);
+      const agora = new Date().toISOString();
+      makeTransaction(() => {
+        db.prepare(`UPDATE bobina_refugos SET cancelado_em = ?, alterado_em = ? WHERE id = ?`).run(agora, agora, rf.id);
+        db.prepare(`UPDATE etiquetas SET alterado_em = ? WHERE id = ?`).run(agora, rf.etiqueta_id);
+      })();
+      logW('bobinas', `REFUGO cancelado: ${rf.etiqueta_id} (${Number(rf.peso).toFixed(1)} kg)`);
+      return jsonOk(res, { cancelado: true, id: rf.id, etiqueta_id: rf.etiqueta_id });
+    }
+
     if (pathname === '/bobinas/desfazer' && req.method === 'POST') {
       let body; try { body = await lerBodyJson(req); } catch(e) { return jsonErr(res, 400, e.message); }
       const bid = String(body.id || '').trim().toUpperCase();
@@ -10352,6 +10523,32 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
       if (!e) return jsonErr(res, 404, `Etiqueta ${bid} não encontrada`);
       if (e.tipo !== 'extrusao' || e.status !== 'consumida' || !e.destino)
         return jsonErr(res, 400, `${bid} não está registrada numa sacoleira`);
+      // Bobina de REFUGO reaproveitada (02/10/2026): desfazer a montagem nova
+      // devolve ela ao estoque como refugo, com a montagem anterior intacta.
+      const reap = db.prepare(`SELECT * FROM bobina_refugos WHERE etiqueta_id = ? AND reaproveitado_em = ?
+                                  AND cancelado_em IS NULL`).get(bid, e.baixa_em || '');
+      if (reap) {
+        if (e.encerrada_em) return jsonErr(res, 409, `${bid} já saiu da Sacoleira ${e.destino} — não dá para desfazer`);
+        const parcR = pacotesParciaisDe(bid).pacotes;
+        if (parcR > 0)
+          return jsonErr(res, 409, `${bid} já tem ${txtPacotes(parcR)} informados nesta montagem — foi usada, não dá para desfazer`);
+        let ant = {}; try { ant = JSON.parse(reap.estado_antes || '{}'); } catch (err) {}
+        const agoraD = new Date().toISOString();
+        makeTransaction(() => {
+          db.prepare(`UPDATE etiquetas SET destino=?, baixa_em=?, baixa_turno=?, baixa_operador=?, encerrada_em=?,
+                             encerrada_motivo=?, formato_cortado=?, formato_origem=?, alterado_em=?
+                       WHERE id = ? AND status = 'consumida' AND encerrada_em IS NULL`)
+            .run(ant.destino || null, ant.baixa_em || null, ant.baixa_turno || null, ant.baixa_operador || null,
+                 ant.encerrada_em || agoraD, ant.encerrada_motivo || null, ant.formato_cortado || null,
+                 ant.formato_origem || null, agoraD, bid);
+          db.prepare(`UPDATE bobina_refugos SET reaproveitado_em=NULL, reaproveitado_destino=NULL, estado_antes=NULL,
+                             alterado_em=? WHERE id = ?`).run(agoraD, reap.id);
+        })();
+        const operadorD = (body.operador ? String(body.operador).trim().slice(0, 80) : null) || null;
+        logW('bobinas', `DESFEITA a montagem de ${bid} (refugo) na Sacoleira ${e.destino} — volta ao estoque como refugo`
+          + (operadorD ? ' por ' + operadorD : ''));
+        return jsonOk(res, { desfeita: true, id: bid, sacoleira: e.destino, refugo: true });
+      }
       if (e.bling_pedido_id)
         return jsonErr(res, 409, `${bid} já gerou o pedido ${e.bling_pedido_id} no Bling — cancele lá primeiro`);
       // Deu fardo → foi usada de verdade. 28/09/2026: depois de desfazer a

@@ -611,6 +611,14 @@ header {
         </div>
       </div>
 
+      <div>
+        <div class="section-label">Bobina que voltou da sacoleira (não vai ao Bling)</div>
+        <div class="touch-grid cols-2">
+          <div class="touch-btn" id="btn-refugo" onclick="abrirRefugo()" style="border-color:var(--warn); color:var(--warn);">REFUGO</div>
+          <div class="touch-btn" id="refugo-hoje-btn" onclick="abrirRefugo()" style="font-size:13px; line-height:1.3;"><span id="refugo-hoje">Refugo hoje: —</span></div>
+        </div>
+      </div>
+
       <div class="balanca-card">
         <div class="balanca-top">
           <span class="balanca-label">Peso</span>
@@ -664,6 +672,32 @@ header {
     <div id="lista-pendentes-modal" style="margin:12px 0;"></div>
     <div class="modal-acoes">
       <button class="btn-modal secundario" onclick="fecharModalBipagemPendente()">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Refugo de bobina (02/10/2026): bipa a etiqueta ANTIGA e pesa. Sem etiqueta nova. -->
+<div class="modal-overlay" id="modal-refugo">
+  <div class="modal" style="border-color: var(--warn); max-width: 560px;">
+    <div class="modal-titulo">♻ Refugo — bobina que voltou da sacoleira</div>
+    <div class="modal-corpo">
+      Finalize a bobina no coletor antes. Aqui: bipe a <b>etiqueta antiga</b> da bobina e ponha na balança.
+      Não sai etiqueta nova.
+    </div>
+    <div style="display:flex; gap:8px; margin:12px 0;">
+      <input type="text" id="refugo-etiqueta" class="peso-manual-input" placeholder="Bipe ou digite a etiqueta (E0001234)"
+             autocomplete="off" onkeydown="if(event.key==='Enter') consultarRefugo()" style="flex:1;">
+      <button class="btn-peso-ok" onclick="consultarRefugo()">OK</button>
+    </div>
+    <div id="refugo-bobina" style="font-family:'IBM Plex Mono',monospace; font-size:13px; margin-bottom:10px;"></div>
+    <div id="refugo-peso" style="font-family:'IBM Plex Mono',monospace; font-size:15px; margin-bottom:12px;"></div>
+    <div class="modal-acoes">
+      <button class="btn-modal secundario" onclick="fecharRefugo()">Fechar</button>
+      <button class="btn-modal" id="btn-registrar-refugo" onclick="registrarRefugo()" disabled>REGISTRAR REFUGO</button>
+    </div>
+    <div style="margin-top:14px; border-top:1px solid rgba(255,255,255,0.1); padding-top:10px;">
+      <div class="hist-titulo" style="margin-bottom:6px;">REFUGOS DE HOJE</div>
+      <div id="refugo-lista" class="hist-lista" style="max-height:200px;"></div>
     </div>
   </div>
 </div>
@@ -1076,6 +1110,116 @@ async function restaurarSessaoAberta() {
   } catch(e) { console.warn('Falha ao restaurar sessão de outras:', e.message); }
 }
 
+// ─── REFUGO DE BOBINA (02/10/2026, Gustavo) ───
+// A bobina já saiu da sacoleira (finalizada no coletor). Bipa a etiqueta
+// antiga, pesa (com o eixo — o servidor desconta a tara da largura) e ela
+// volta ao estoque como refugo. Pode ser montada de novo numa sacoleira.
+const refugo = { bobina: null };
+function abrirRefugo() {
+  refugo.bobina = null;
+  document.getElementById('refugo-etiqueta').value = '';
+  document.getElementById('refugo-bobina').innerHTML = '';
+  document.getElementById('modal-refugo').classList.add('on');
+  renderRefugoPeso(); carregarRefugosHoje();
+  setTimeout(() => document.getElementById('refugo-etiqueta').focus(), 50);
+}
+function fecharRefugo() { document.getElementById('modal-refugo').classList.remove('on'); }
+function refugoAberto() { return document.getElementById('modal-refugo').classList.contains('on'); }
+
+async function consultarRefugo() {
+  let id = document.getElementById('refugo-etiqueta').value.trim().toUpperCase();
+  if (/^\d+$/.test(id)) id = 'E' + id.padStart(7, '0');
+  const box = document.getElementById('refugo-bobina');
+  refugo.bobina = null; renderRefugoPeso();
+  if (!/^E\d+$/.test(id)) { box.innerHTML = `<span style="color:var(--danger);">Etiqueta inválida: ${id || '—'} (esperado E0001234)</span>`; return; }
+  try {
+    const r = await fetch(URL_BASE + '/bobinas/' + id);
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.erro || 'Erro');
+    const b = d.bobina;
+    let aviso = '';
+    if (b.status !== 'consumida' || !b.baixa_em) aviso = 'Nunca foi montada numa sacoleira — não é refugo.';
+    else if (!b.encerrada_em) aviso = `Ainda está montada na Sacoleira ${b.destino}. Finalize no coletor primeiro.`;
+    else if (b.refugo) aviso = `Já está no estoque como refugo (${Number(b.refugo.peso).toFixed(1)} kg).`;
+    box.innerHTML = `<b>${b.id}</b> · ${b.cor || ''} ${b.tipo_bobina || ''} ${b.largura || ''}<br>`
+      + `Peso na extrusão: ${Number(b.peso || 0).toFixed(1)} kg · saiu da Sacoleira ${b.destino || '—'}`
+      + ` · ${b.fardos == null ? '—' : b.fardos} fardo(s)`
+      + (aviso ? `<br><span style="color:var(--danger); font-weight:700;">${aviso}</span>` : '');
+    if (!aviso) refugo.bobina = b;
+  } catch(e) { box.innerHTML = `<span style="color:var(--danger);">${e.message}</span>`; }
+  renderRefugoPeso();
+}
+
+function renderRefugoPeso() {
+  const el = document.getElementById('refugo-peso');
+  const btn = document.getElementById('btn-registrar-refugo');
+  if (!el || !btn) return;
+  const b = refugo.bobina;
+  const bruto = state.pesoBruto || 0;
+  if (!b) { el.textContent = ''; btn.disabled = true; return; }
+  const tara = Number(b.tara_eixo) || 0;
+  const liq = Math.max(0, bruto - tara);
+  if (state.aguardandoZero) { el.innerHTML = '⚠ Retire o material da balança'; btn.disabled = true; return; }
+  el.innerHTML = bruto > 0
+    ? `Balança ${bruto.toFixed(1)} − eixo ${tara} = <b style="font-size:20px;">${liq.toFixed(1)} kg</b>`
+      + (state.balancaEstavel ? '' : ' <span style="color:var(--warn);">(instável)</span>')
+    : 'Ponha a bobina na balança (ou digite o peso manual).';
+  btn.disabled = !(liq > 0 && state.balancaEstavel);
+}
+setInterval(() => { if (refugoAberto()) renderRefugoPeso(); }, 500);
+
+async function registrarRefugo() {
+  const b = refugo.bobina;
+  if (!b) return;
+  const btn = document.getElementById('btn-registrar-refugo');
+  btn.disabled = true;
+  try {
+    const r = await fetch(URL_BASE + '/bobinas/refugo', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: b.id, peso_bruto: state.pesoBruto }),
+    });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.erro || 'Erro');
+    toast(`✓ ${b.id} no estoque como refugo · ${d.refugo.peso.toFixed(1)} kg`, 'success', 5000);
+    refugo.bobina = null;
+    document.getElementById('refugo-etiqueta').value = '';
+    document.getElementById('refugo-bobina').innerHTML = '';
+    state.aguardandoZero = true;
+    renderRefugoPeso(); carregarRefugosHoje();
+    document.getElementById('refugo-etiqueta').focus();
+  } catch(e) { toast('Erro: ' + e.message, 'error', 6000); renderRefugoPeso(); }
+}
+
+async function carregarRefugosHoje() {
+  try {
+    const r = await fetch(URL_BASE + '/bobinas/refugos');
+    const d = await r.json();
+    if (!d.ok) return;
+    document.getElementById('refugo-hoje').textContent =
+      `Refugo hoje: ${d.refugos.length} · ${d.kg.toFixed(1).replace('.', ',')} kg`;
+    const lista = document.getElementById('refugo-lista');
+    lista.innerHTML = d.refugos.length ? d.refugos.map(x => `
+      <div class="hist-item ${x.reaproveitado_em ? 'bipada' : 'pendente'}">
+        <span class="hist-id">${x.etiqueta_id}</span>
+        <span class="hist-desc">${x.cor || ''} ${x.largura || ''}<br><span class="hist-small">
+          ${new Date(x.pesado_em).toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' })}
+          · veio da ${x.destino_antes || '—'}${x.reaproveitado_em ? ' · voltou p/ ' + x.reaproveitado_destino : ''}</span></span>
+        <span class="hist-peso">${Number(x.peso).toFixed(1)} kg</span>
+        ${x.reaproveitado_em ? '' : `<button class="hist-del" title="Cancelar este refugo" onclick="cancelarRefugo(${x.id}, '${x.etiqueta_id}')">✕</button>`}
+      </div>`).join('') : '<div class="hist-vazio">Nenhum refugo hoje</div>';
+  } catch(e) { /* offline */ }
+}
+async function cancelarRefugo(id, etq) {
+  if (!confirm(`Cancelar o refugo da bobina ${etq}?`)) return;
+  try {
+    const r = await fetch(URL_BASE + `/bobinas/refugo/${id}/cancelar`, { method: 'POST' });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.erro || 'Erro');
+    toast(`Refugo de ${etq} cancelado`, 'info');
+    carregarRefugosHoje();
+  } catch(e) { toast('Erro: ' + e.message, 'error', 6000); }
+}
+
 // ─── TOAST ───
 function toast(msg, tipo = 'info', dur = 3500) {
   const wrap = document.getElementById('toast-area');
@@ -1092,6 +1236,7 @@ function init() {
   pingServidor();
   setInterval(pingServidor, 5000);
   restaurarSessaoAberta().then(() => { atualizarBotaoImprimir(); atualizarPreview(); });
+  carregarRefugosHoje();
 }
 init();
 </script>
