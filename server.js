@@ -10437,6 +10437,58 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
       return jsonOk(res, { limpas: n, operador: nome, dia, ids: alvo.map(b => b.id) });
     }
 
+    // ── ZERAR O COLETOR (02/10/2026, Gustavo: "limpar todas as bipagens do
+    // coletor" — eram TESTE, tudo inclusive inventários). Senha de supervisor.
+    // Sem "confirmar": true só conta (ensaio). Com ele, numa transação:
+    //   · bobinas montadas/encerradas voltam a 'bipada' (em estoque), como no
+    //     limpar-teste — MENOS as que geraram pedido no Bling (ficam e são
+    //     listadas: desfazer aqui deixaria o Bling com uma venda sem bobina);
+    //   · apaga fardos por turno, trocas de formato, refugos, turnos do corte,
+    //     inventários de bobinas e o histórico do dia (baixas_bobinas_<dia>).
+    // Não mexe em etiqueta de MP, PA, outras pesagens nem na impressão da bobina.
+    if (pathname === '/bobinas/zerar-coletor' && req.method === 'POST') {
+      let body; try { body = await lerBodyJson(req); } catch(e) { return jsonErr(res, 400, e.message); }
+      const hashAtual = configGet('senha_saida_hash', hashSenha('1234'));
+      if (hashSenha((body && body.senha) || '') !== hashAtual) return jsonErr(res, 401, 'Senha de supervisor incorreta.');
+      const n = sql => db.prepare(sql).get().n;
+      const bobinas = db.prepare(`SELECT id, destino, baixa_em, baixa_operador, fardos, bling_pedido_id FROM etiquetas
+                                   WHERE tipo = 'extrusao' AND status = 'consumida' ORDER BY baixa_em`).all();
+      const voltam = bobinas.filter(b => !b.bling_pedido_id);
+      const ficam  = bobinas.filter(b =>  b.bling_pedido_id);
+      const contagem = {
+        bobinas_voltam_ao_estoque: voltam.length,
+        bobinas_com_pedido_no_bling_ficam: ficam.map(b => ({ id: b.id, pedido: b.bling_pedido_id })),
+        fardos_por_turno: n(`SELECT COUNT(*) n FROM bobina_parciais`),
+        trocas_de_formato: n(`SELECT COUNT(*) n FROM bobina_setups`),
+        refugos: n(`SELECT COUNT(*) n FROM bobina_refugos`),
+        turnos_do_corte: n(`SELECT COUNT(*) n FROM turnos_corte`),
+        inventarios_de_bobinas: n(`SELECT COUNT(*) n FROM inventario_bobinas`),
+        historico_do_dia: n(`SELECT COUNT(*) n FROM config WHERE chave LIKE 'baixas_bobinas_%'`),
+      };
+      if (body.confirmar !== true)
+        return jsonOk(res, { ensaio: true, ...contagem, aviso: 'Nada foi alterado. Repita com "confirmar": true para zerar.' });
+      const agora = new Date().toISOString();
+      makeTransaction(() => {
+        const upd = db.prepare(
+          `UPDATE etiquetas SET status='bipada', destino=NULL, baixa_em=NULL, baixa_turno=NULL,
+                  baixa_operador=NULL, fardos=NULL, pacotes=NULL, encerrada_em=NULL, encerrada_motivo=NULL,
+                  formato_cortado=NULL, formato_origem=NULL, alterado_em=?
+            WHERE id = ? AND status = 'consumida' AND bling_pedido_id IS NULL`);
+        for (const b of voltam) upd.run(agora, b.id);
+        // As que ficam (pedido no Bling) não podem seguir "montadas": a
+        // sacoleira começa vazia. Encerra sem fardos, motivo 'zerado'.
+        const fecha = db.prepare(`UPDATE etiquetas SET encerrada_em=?, encerrada_motivo='zerado', alterado_em=?
+                                   WHERE id = ? AND encerrada_em IS NULL`);
+        for (const b of ficam) fecha.run(agora, agora, b.id);
+        db.exec(`DELETE FROM bobina_parciais; DELETE FROM bobina_setups; DELETE FROM bobina_refugos;
+                 DELETE FROM turnos_corte; DELETE FROM inventario_bobinas_itens; DELETE FROM inventario_bobinas;
+                 DELETE FROM config WHERE chave LIKE 'baixas_bobinas_%';`);
+      })();
+      logW('bobinas', `COLETOR ZERADO (${String(body.operador || '').trim() || 'sem nome'}): ` + JSON.stringify(contagem)
+        + ` · bobinas de volta ao estoque: ${voltam.map(b => b.id).join(', ') || '—'}`);
+      return jsonOk(res, { zerado: true, ...contagem });
+    }
+
     // ── REFUGO DE BOBINA (02/10/2026, Gustavo — ver bobina_refugos) ──────
     // POST /bobinas/refugo { id, peso_bruto, operador? }: a bobina já saiu da
     // sacoleira (finalizada no coletor) e volta ao estoque como refugo. O peso
