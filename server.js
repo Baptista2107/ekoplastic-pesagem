@@ -3407,8 +3407,18 @@ function configSet(k, v)   { dbStmts.configSet.run(k, String(v)); }
 // histórico coerente. Só atualiza se a sessão já tiver totais (foi fechada).
 // Totais da sessão pela MESMA regra do envio ao Bling.
 function totaisDaSessao(sessao, sessaoId) {
-  const ehEntrada = sessao && (sessao.tipo === 'recebimento' || sessao.tipo === 'retorno');
-  return ehEntrada ? dbStmts.totaisSessaoEntrada.get(sessaoId) : dbStmts.totaisSessao.get(sessaoId);
+  return sessaoContaConsumida(sessao && sessao.tipo)
+    ? dbStmts.totaisSessaoEntrada.get(sessaoId) : dbStmts.totaisSessao.get(sessaoId);
+}
+
+// Sessões de ENTRADA no estoque: a etiqueta 'consumida' continua sendo parte
+// dela (saiu DEPOIS de entrar). Recebimento/retorno: big bag retirado antes de
+// finalizar. Extrusão (03/10/2026, Gustavo): com o coletor, a bobina é montada
+// na sacoleira no mesmo turno em que foi pesada — a sessão C2 da C1 de 02/10
+// fechou com 2 de 4 bobinas (916,5 de 2.062,5 kg) no resumo E no pedido de
+// compra do Bling. Retirada/outras NÃO: lá vale a etiqueta virtual.
+function sessaoContaConsumida(tipo) {
+  return tipo === 'recebimento' || tipo === 'retorno' || tipo === 'extrusao';
 }
 
 function recalcularTotaisSessao(sessaoId) {
@@ -4858,7 +4868,7 @@ function imprimirResumoSessao(s, opts) {
       // retirado ('consumida') continua fazendo parte da ENTRADA — some do
       // resumo seria esconder do conferente algo que foi lançado.
       `SELECT * FROM etiquetas WHERE sessao_id = ? AND status IN ${
-        (s.tipo === 'recebimento' || s.tipo === 'retorno') ? `('bipada','consumida')` : `('bipada')`
+        sessaoContaConsumida(s.tipo) ? `('bipada','consumida')` : `('bipada')`
       } ORDER BY id`
     ).all(s.id);
     if (!itens.length) return { ok: false, motivo: 'sem_itens_bipados' };   // nada bipado → nada a imprimir
@@ -4868,9 +4878,12 @@ function imprimirResumoSessao(s, opts) {
 
     const fmtKg = kg => Number(kg || 0).toFixed(1).replace('.', ',') + ' kg';
     // Hora da bipagem (HH:MM, horário local) — em branco se a etiqueta não foi bipada.
-    const horaBip = it => it.hora_bipagem
-      ? new Date(it.hora_bipagem).toLocaleTimeString('pt-BR', { hour12: false }).slice(0, 5)
-      : '--:--';
+    // 'consumida': hora_bipagem passou a ser a da SAÍDA (retirada / sacoleira);
+    // a da entrada é a de impressão (mesma regra do resumo do dia).
+    const horaBip = it => {
+      const h = it.status === 'consumida' ? it.hora_impressao : it.hora_bipagem;
+      return h ? new Date(h).toLocaleTimeString('pt-BR', { hour12: false }).slice(0, 5) : '--:--';
+    };
 
     // PRODUTO ACABADO usa um resumo próprio (agrupado por MÁQUINA, consolidando
     // por formato+cor) para espelhar a mensagem do WhatsApp — tratado à parte.
@@ -4993,7 +5006,7 @@ function resumoAutomaticoAtivo(tipo) {
 // RETIRADA — usá-lo jogaria uma entrada antiga para o dia da saída.
 function coletarResumoDia(tipo, dia) {
   const { ini, fim } = rangeUTCdoDiaLocal(dia);
-  const statusOk = (tipo === 'recebimento' || tipo === 'retorno')
+  const statusOk = sessaoContaConsumida(tipo)
     ? `('bipada','consumida')`
     : `('bipada')`;
   const QUANDO = `CASE WHEN e.status = 'consumida' THEN e.hora_impressao
@@ -5790,7 +5803,7 @@ async function enviarSessaoBling(sessaoId, opts) {
   // já é lançada à parte, pela sessão de retirada.
   // Nas sessões de retirada/outras, 'consumida' NÃO entra: lá a etiqueta que
   // vale é a virtual (tipo='retirada'), que já nasce 'bipada'.
-  const statusValidos = (sessao.tipo === 'recebimento' || sessao.tipo === 'retorno')
+  const statusValidos = sessaoContaConsumida(sessao.tipo)
     ? `('bipada','consumida')`
     : `('bipada')`;
   const etiquetas = db.prepare(`SELECT * FROM etiquetas WHERE sessao_id = ? AND status IN ${statusValidos} ORDER BY id`).all(sessaoId);
@@ -6089,7 +6102,8 @@ async function autoFinalizarSessaoExtrusao(sessaoId, motivo) {
   // CANCELADA (com motivo) pra não ficar órfã — só as bipadas vão ao Bling,
   // mantendo coerência entre total registrado e total enviado.
   const validas    = db.prepare(`SELECT * FROM etiquetas WHERE sessao_id = ? AND status != 'cancelada'`).all(sessaoId);
-  const bipadas    = validas.filter(e => e.status === 'bipada');
+  // 'consumida' = já montada na sacoleira pelo coletor: foi pesada, entra.
+  const bipadas    = validas.filter(e => e.status === 'bipada' || e.status === 'consumida');
   const pendentes  = validas.filter(e => e.status === 'aguardando_bipe');
 
   const agoraISO = new Date().toISOString();
@@ -7812,7 +7826,8 @@ const requestHandlerBase = async (req, res) => {
         return jsonOk(res, { sessao: s, payload: JSON.parse(persistido), origem: 'persistido' });
       }
       // Senão, monta agora
-      const etiquetas = db.prepare(`SELECT * FROM etiquetas WHERE sessao_id = ? AND status = 'bipada'`).all(sessaoId);
+      const etiquetas = db.prepare(`SELECT * FROM etiquetas WHERE sessao_id = ? AND status IN ${
+        sessaoContaConsumida(s.tipo) ? `('bipada','consumida')` : `('bipada')`}`).all(sessaoId);
       const mapaForn  = JSON.parse(configGet('mapa_fornecedor_bling', '{}'));
       const mapaSku   = JSON.parse(configGet('mapa_produto_bling', '{}'));
       const idEko     = configGet('id_ekoplastic_bling', null);
