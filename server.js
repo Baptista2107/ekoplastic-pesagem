@@ -947,7 +947,8 @@ function encerrarBobina(id, parte, motivo, quando, formato, formatoOrigem, maq, 
 // atraso: serve para sugerir, nunca para decidir sozinho.
 const PESO_FARDO_KG = 25;
 // Operadores das sacoleiras (Gustavo, 29/09/2026) — a lista do "quem está bipando".
-const OPERADORES_SACOLEIRA = ['CARINE', 'GISLENE', 'HOZANA', 'ANDRE', 'ITALO', 'ESDRAS', 'HEIDIANE', 'ROMULO'];
+// CLAUDIO e GUERBY entraram em 05/10/2026 (Gustavo).
+const OPERADORES_SACOLEIRA = ['CARINE', 'GISLENE', 'HOZANA', 'ANDRE', 'ITALO', 'ESDRAS', 'HEIDIANE', 'ROMULO', 'CLAUDIO', 'GUERBY'];
 // Comprimento típico (mm) por formato: o 2º número × 10, menos os que a
 // fábrica mede diferente. 35x45 ≈ 460 mm (Gustavo, 29/09/2026). Ajustável sem
 // código pelo config `sac_comprimento_formato` (JSON {"30x45": 452, ...}).
