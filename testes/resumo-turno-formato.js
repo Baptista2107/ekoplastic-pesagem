@@ -112,10 +112,9 @@ function criarBobina(db, id, seq, peso, largura) {
     // corrigir no resumo: P2 lançou 7, eram 6
     const b2 = s2.bobinas.find(b => b.id === 'E9910001');
     ok(b2.parte_id && b2.fechados_turno === 7, 'a bobina da P2 traz a parte editável (7 fardos)', b2);
-    r = await req('POST', '/bobinas/parcial/editar', { senha: 'x', parte_id: b2.parte_id, fardos: 6 });
-    ok(r.status === 401, 'corrigir com senha errada é recusado');
     const antesEd = new Date().toISOString();
-    r = await req('POST', '/bobinas/parcial/editar', { senha: SENHA, parte_id: b2.parte_id, fardos: 6, operador: 'SUP' });
+    // sem senha (05/10/2026, Gustavo tirou a senha da correção de fardos)
+    r = await req('POST', '/bobinas/parcial/editar', { parte_id: b2.parte_id, fardos: 6, operador: 'SUP' });
     ok(r.status === 200 && r.body.pacotes === 30, 'corrige 7 → 6 fardos (30 pc)', r.body);
     r = await req('GET', '/bobinas/do-turno?fechado=1');
     const s2b = r.body.sacoleiras.find(s => s.sacoleira === 'P2'), b2b = s2b.bobinas[0];

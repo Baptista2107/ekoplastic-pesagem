@@ -227,7 +227,7 @@
   <div class="sec-tit"><span>Neste turno</span><span class="sub" id="hoje-resumo"></span></div>
   <div class="hist" id="lista-hist"><div class="carregando">Carregando…</div></div>
 
-  <!-- Turno do corte: marcado pelo supervisor (senha). O painel de operação
+  <!-- Turno do corte: marcado no coletor (sem senha desde 05/10/2026). O painel de operação
        das sacoleiras na VPS corta os turnos por estes registros. Fica embaixo,
        logo acima do inventário (Gustavo, 30/09/2026): é ação de supervisor,
        não do dia a dia do operador. -->
@@ -861,7 +861,6 @@ function turnoCorte(acao){
     '<br>Com bobina montada, a seguir peço quantos fardos ela deu <b>neste turno</b>.</div>'+
     (iniciar?('<label>TURNO</label><div class="fmts" id="md-turnos">'+TC.turnos.map(t=>
       '<button class="chip" data-t="'+esc(t.codigo)+'">'+esc(t.label)+'</button>').join('')+'</div>'):'')+
-    '<label>SENHA DO SUPERVISOR</label><input id="md-senha" class="senha" type="password" inputmode="numeric" autocomplete="off" maxlength="8">'+
     '<div class="m-resumo" id="md-resumo"></div>'+
     '<button class="btn '+(iniciar?'btn-verde':'btn-vermelho')+'" id="md-ok">'+(iniciar?'Iniciar':'Encerrar turno')+'</button>'+
     '<button class="btn-link" id="md-cancelar">Cancelar</button></div>';
@@ -877,14 +876,12 @@ function turnoCorte(acao){
   };
   fundo.querySelectorAll('#md-turnos .chip').forEach(c=>c.onclick=()=>{ turno=c.dataset.t; pintar(); });
   pintar();
-  const inp=fundo.querySelector('#md-senha');
   const fim=()=>fundo.remove();
   fundo.querySelector('#md-cancelar').onclick=fim;
   const ok=fundo.querySelector('#md-ok');
   ok.onclick=async()=>{
     if(iniciar && !turno){ toast('erro','Toque no turno',3000); return; }
     if(!maqs.length){ toast('erro','Nenhuma sacoleira com turno aberto',3000); return; }
-    if(!inp.value){ toast('erro','Digite a senha do supervisor',3000); inp.focus(); return; }
     ok.disabled=true;
     try{
       // Fardos do turno que fecha (30/09/2026): cada sacoleira cujo turno
@@ -903,7 +900,7 @@ function turnoCorte(acao){
       let r, d;
       for(let tentativa=0; tentativa<2; tentativa++){
         r=await fetch(URL_BASE+'/bobinas/turno-corte/'+acao,{ method:'POST', headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({ senha:inp.value, turno, maquinas:maqs, parciais, operador:(window.EKO_RESPONSAVEL||null) }) });
+          body:JSON.stringify({ turno, maquinas:maqs, parciais, operador:(window.EKO_RESPONSAVEL||null) }) });
         d=await r.json();
         // Bobina montada por outro aparelho no meio do caminho: pergunta a que faltou.
         if(r.status===409 && d && d.precisa_fardos && tentativa===0){
@@ -916,17 +913,15 @@ function turnoCorte(acao){
         }
         break;
       }
-      if(!r.ok||!d.ok){ beep(320,0.25); vibrar(200); toast('erro',esc((d&&d.erro)||'Falha'),5000); ok.disabled=false;
-        if(r.status===401){ inp.value=''; inp.focus(); } return; }
+      if(!r.ok||!d.ok){ beep(320,0.25); vibrar(200); toast('erro',esc((d&&d.erro)||'Falha'),5000); ok.disabled=false; return; }
       beep(1050,0.14); vibrar([60,50,60]);
       const txtF=(d.parciais||[]).map(x=>' · '+x.sacoleira+' '+txtPc(x.pacotes)).join('');
       toast('ok', (iniciar?('✓ '+esc(lb(turno))+' iniciado · '+maqs.join(' e ')):'✓ Turno encerrado · '+maqs.join(' e '))+txtF,4000);
       fim(); atualizarTudo();
       // Encerrar ou trocar fecha um turno: mostra o resumo dele (01/10/2026, Gustavo).
-      if(!iniciar || (d.encerrados||[]).length) mostrarResumoTurno(inp.value);
+      if(!iniciar || (d.encerrados||[]).length) mostrarResumoTurno();
     }catch(e){ toast('erro','Erro: '+esc(e.message),5000); ok.disabled=false; }
   };
-  inp.addEventListener('keydown',e=>{ if(e.key==='Enter') ok.click(); });
 }
 
 // Resumo do turno que acabou de fechar: por sacoleira, as bobinas que
@@ -984,13 +979,13 @@ async function mostrarResumoTurno(senha, fundoAntigo){
     if(!v) return;
     try{
       const r=await fetch(URL_BASE+'/bobinas/parcial/editar',{ method:'POST', headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({ senha, parte_id:Number(bt.dataset.p), fardos:v.fardos, soltos:v.soltos,
+        body:JSON.stringify({ parte_id:Number(bt.dataset.p), fardos:v.fardos, soltos:v.soltos,
                               operador:(window.EKO_RESPONSAVEL||null) }) });
       const d2=await r.json();
       if(!r.ok||!d2.ok){ toast('erro',esc((d2&&d2.erro)||'Falha ao corrigir'),5000); return; }
       toast('ok','✓ '+esc(bt.dataset.id)+': '+v.fardos+' fardos +'+v.soltos+' pc'+
         (d2.seguinte?('<br>ajustada também a '+esc(d2.seguinte.id)):''),3500);
-      await mostrarResumoTurno(senha, fundo);
+      await mostrarResumoTurno(null, fundo);
       atualizarTudo();
     }catch(e){ toast('erro','Erro: '+esc(e.message),5000); }
   });
@@ -1059,7 +1054,15 @@ function comAcesso(tela, aoEntrar) {
   console.warn('acesso-colaborador.js não carregou — abrindo a tela sem identificação');
   try { aoEntrar(); } catch (e) { console.error(e); }
 }
-comAcesso('bobinas', nome => {
+// 05/10/2026 (Gustavo: "tira qualquer tipo de senha do sistema de estoque de
+// bobina"): a tela abre direto, sem o PIN do colaborador. O responsável
+// (turno, inventário, desfazer) passa a ser o último nome escolhido em "Quem
+// está bipando?" neste aparelho; quem bipa cada bobina segue sendo perguntado.
+(function(iniciar){
+  let nome=null; try{ nome=localStorage.getItem('eko_bipador')||null; }catch(e){}
+  window.EKO_RESPONSAVEL=nome;
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',()=>iniciar(nome)); else iniciar(nome);
+})(nome => {
   if (nome) document.getElementById('quem').textContent = '👤 ' + nome;
   carregarModo();
   atualizarTudo();

@@ -93,13 +93,8 @@ function criarBobina(db, id, seq, peso) {
     r = await req('GET', '/bobinas/turno-corte');
     ok(r.body.sacoleiras.find(s => s.sacoleira === 'P1').turno, 'o turno A continua aberto após a recusa');
 
-    // senha errada não grava parte
-    r = await req('POST', '/bobinas/turno-corte/encerrar', { senha: 'x', maquinas: ['P1'], parciais: { P1: { fardos: 5 } } });
-    ok(r.status === 401, 'senha errada é recusada');
-    ok(comBanco(db => db.prepare('SELECT COUNT(*) n FROM bobina_parciais').get().n) === 0, 'e não grava parte nenhuma');
-
-    // 2. encerrar com 6 fardos
-    r = await req('POST', '/bobinas/turno-corte/encerrar', { senha: SENHA, maquinas: ['P1'], parciais: { P1: { fardos: 6 } } });
+    // 2. encerrar com 6 fardos — SEM senha (05/10/2026, Gustavo tirou a senha do turno do corte)
+    r = await req('POST', '/bobinas/turno-corte/encerrar', { maquinas: ['P1'], parciais: { P1: { fardos: 6 } } });
     ok(r.status === 200 && r.body.parciais && r.body.parciais[0].pacotes === 30, 'encerrar com 6 fardos fecha o turno', r.body);
     r = await req('GET', '/bobinas/abertas');
     let p1 = r.body.sacoleiras.find(s => s.sacoleira === 'P1');

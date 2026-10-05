@@ -10242,18 +10242,14 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
 
     // POST iniciar { senha, turno: 'A'|'C'|'EXTRA', maquinas: ['P1','P2'], operador }
     // POST encerrar { senha, maquinas, operador }
-    // Só o supervisor (a mesma senha da trava de saída). Iniciar numa sacoleira
+    // Sem senha desde 05/10/2026 (era a do supervisor). Iniciar numa sacoleira
     // com turno aberto encerra o aberto no mesmo instante (motivo 'troca').
     if ((pathname === '/bobinas/turno-corte/iniciar' || pathname === '/bobinas/turno-corte/encerrar')
         && req.method === 'POST') {
       let body; try { body = await lerBodyJson(req); } catch(e) { return jsonErr(res, 400, e.message); }
       const iniciar = pathname.endsWith('/iniciar');
-      const hashAtual = configGet('senha_saida_hash', hashSenha('1234'));
-      if (hashSenha(String((body && body.senha) || '')) !== hashAtual) {
-        logDesvio({ tipo: 'turno_corte_senha_incorreta', tela: 'bobinas',
-                    detalhe: `senha incorreta ao ${iniciar ? 'iniciar' : 'encerrar'} turno do corte` });
-        return jsonErr(res, 401, 'Senha de supervisor incorreta.');
-      }
+      // Sem senha desde 05/10/2026 (Gustavo: "tira qualquer tipo de senha do
+      // sistema de estoque de bobina"). Quem iniciou/encerrou fica no operador.
       const maqs = lerMaquinasCorte(body.maquinas);
       if (!maqs) return jsonErr(res, 400, 'Escolha a sacoleira (P1, P2 ou as duas)');
       const operador = (body.operador ? String(body.operador).trim().slice(0, 80) : null) || null;
@@ -10712,11 +10708,7 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
     // é refeito pela soma das partes.
     if (pathname === '/bobinas/parcial/editar' && req.method === 'POST') {
       let body; try { body = await lerBodyJson(req); } catch(e) { return jsonErr(res, 400, e.message); }
-      const hashAtual = configGet('senha_saida_hash', hashSenha('1234'));
-      if (hashSenha(String((body && body.senha) || '')) !== hashAtual) {
-        logDesvio({ tipo: 'parcial_senha_incorreta', tela: 'bobinas', detalhe: 'senha incorreta ao corrigir fardos do turno' });
-        return jsonErr(res, 401, 'Senha de supervisor incorreta.');
-      }
+      // Sem senha desde 05/10/2026 (Gustavo) — ver /bobinas/turno-corte.
       const parte = db.prepare(`SELECT * FROM bobina_parciais WHERE id = ?`).get(Number(body.parte_id));
       if (!parte) return jsonErr(res, 404, 'Parte não encontrada');
       const novos = lerFardos(body.fardos);
