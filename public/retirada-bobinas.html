@@ -644,7 +644,11 @@ async function carregarSacoleiras(){
       (b.baixa_operador?('<div class="s-quem">'+esc(b.baixa_operador)+'</div>'):'')+
       '<div class="s-info">'+esc(b.id)+' · '+haQuanto(b.baixa_em)+'</div>'+
       '<button class="btn btn-cinza s-fim" onclick="trocarFormato(\''+a.sacoleira+'\')"'+(f.aguardando_setup?' disabled':'')+'>Trocar formato</button>'+
-      '<button class="btn btn-cinza s-fim" onclick="finalizar(\''+a.sacoleira+'\')">Encerrar bobina</button></div>';
+      // "Encerrar bobina" SAIU (05/10/2026, Gustavo): em 03/10 a E0001779 e a
+      // E0001784 foram encerradas por engano no lugar do fim de turno, e a 1784
+      // seguiu rodando no turno seguinte. A bobina acaba pela TROCA (bipar a
+      // nova) ou no fim do turno. finalizar() fica no código, sem botão.
+      '</div>';
   }).join('');
 }
 
