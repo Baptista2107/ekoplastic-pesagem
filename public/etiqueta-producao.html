@@ -1574,7 +1574,10 @@ function renderHistorico() {
     lista.innerHTML = '<div class="hist-vazio">Nenhuma bobina emitida ainda</div>';
   } else {
     lista.innerHTML = bobinas.map(it => {
-      const cls   = it.status === 'bipada' ? 'bipada'
+      // 'consumida' = já montada na sacoleira pelo coletor (05/10/2026, Gustavo:
+      // aparecia com o ✕ de cancelada). Continua valendo na sessão, no resumo
+      // e no pedido do Bling — mostra ✓ e a sacoleira.
+      const cls   = (it.status === 'bipada' || it.status === 'consumida') ? 'bipada'
                   : it.status === 'cancelada' ? 'cancelada'
                   : 'pendente';
       const desc  = `${it.cor} · ${it.tipo_bobina} · ${it.largura}`;
@@ -1582,6 +1585,8 @@ function renderHistorico() {
                   ? `<button class="hist-acao" onclick="biparItem('${it.id}')">BIPAR</button>`
                   : it.status === 'bipada'
                   ? '<span class="hist-check" title="bipada">✓</span>'
+                  : it.status === 'consumida'
+                  ? `<span class="hist-check" title="bipada e já montada na sacoleira${it.destino ? ' ' + it.destino : ''}">✓<span class="hist-small"> ${it.destino || 'sacoleira'}</span></span>`
                   : '<span class="hist-check" style="color:var(--danger);" title="cancelada">✕</span>';
       return `<div class="hist-item ${cls}">
         <span class="hist-id">${it.id}</span>
@@ -1829,11 +1834,11 @@ function renderHistoricoCapa() {
     lista.innerHTML = '<div class="hist-vazio">Nenhuma capa emitida ainda</div>';
   } else {
     lista.innerHTML = capas.map(it => {
-      const cls = it.status === 'bipada' ? 'bipada' : it.status === 'cancelada' ? 'cancelada' : 'pendente';
+      const cls = (it.status === 'bipada' || it.status === 'consumida') ? 'bipada' : it.status === 'cancelada' ? 'cancelada' : 'pendente';
       const desc = `CAPA · ${it.capaDim || it.sku}`;
       const acao = it.status === 'aguardando_bipe'
         ? `<button class="hist-acao" onclick="biparItem('${it.id}')">BIPAR</button>`
-        : it.status === 'bipada'
+        : (it.status === 'bipada' || it.status === 'consumida')
         ? '<span class="hist-check" title="bipada">✓</span>'
         : '<span class="hist-check" style="color:var(--danger);" title="cancelada">✕</span>';
       return `<div class="hist-item ${cls}">
@@ -2199,6 +2204,7 @@ async function restaurarSessaoAberta() {
       peso:        e.peso || 0,
       sku:         e.sku || '',
       status:      e.status,
+      destino:     e.destino || '',
       hora:        e.hora_impressao ? new Date(e.hora_impressao).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '--:--',
     }));
     aplicarBannerTurno(true);
