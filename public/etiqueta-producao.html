@@ -536,9 +536,16 @@ header {
   padding: 26px 28px;
   max-width: 480px;
   width: 100%;
+  /* 06/10/2026: com muitas bobinas no resumo do turno o quadro passava da
+     tela e o "Confirmar e enviar" ficava fora do alcance. Agora o quadro cabe
+     na tela e só o corpo rola — título e botões sempre visíveis. */
+  max-height: calc(100vh - 40px);
+  display: flex; flex-direction: column;
 }
-.modal-titulo { font-size: 18px; font-weight: 900; margin-bottom: 12px; }
-.modal-corpo { font-size: 14px; color: var(--text); margin-bottom: 20px; line-height: 1.5; }
+.modal-titulo { font-size: 18px; font-weight: 900; margin-bottom: 12px; flex: none; }
+.modal-corpo { font-size: 14px; color: var(--text); margin-bottom: 20px; line-height: 1.5;
+  overflow-y: auto; -webkit-overflow-scrolling: touch; min-height: 0; flex: 1 1 auto; }
+.modal-acoes { flex: none; }
 .modal-acoes { display: flex; gap: 10px; justify-content: flex-end; }
 .btn-modal {
   padding: 10px 22px;
