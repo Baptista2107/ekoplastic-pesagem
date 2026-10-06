@@ -1227,6 +1227,19 @@ db.exec(`
 // Peso do eixo/tubete por largura — o MESMO mapa TARAS da tela de extrusão
 // (public/etiqueta-producao.html). A bobina volta no eixo; o refugo é líquido.
 const TARAS_EIXO = { '80': 4, '1,20': 6, '1,60': 8, '1,68': 8, '1,75': 9 };
+// Etiqueta do refugo: a da bobina (gerarEPLBobina) com o peso do refugo.
+function imprimirEtiquetaRefugo(etiquetaId, refugo, cb) {
+  const e = dbStmts.getEtiqueta.get(etiquetaId);
+  if (!e) return cb(false, 'etiqueta não encontrada');
+  const epl = gerarEPL({ tipo: 'extrusao', sub_tipo: e.sub_tipo, seq: e.seq, cor: e.cor, tipo_bobina: e.tipo_bobina,
+                         largura: e.largura, operador: e.operador, maquina: e.maquina, peso: refugo.peso,
+                         refugo: { peso_original: e.peso, pesado_em: refugo.pesado_em } });
+  imprimir(epl, null, (ok, out, err, printer) => {
+    if (ok) logI('print', `Etiqueta de REFUGO ${etiquetaId} (${Number(refugo.peso).toFixed(1)} kg) em "${printer}"`);
+    else logE('print', `Falha na etiqueta de REFUGO ${etiquetaId}`, { erro: err || out });
+    cb(ok, ok ? printer : (err || out || 'impressora'));
+  });
+}
 function refugoAbertoDe(etiquetaId) {
   return db.prepare(`SELECT * FROM bobina_refugos WHERE etiqueta_id = ? AND reaproveitado_em IS NULL
                         AND cancelado_em IS NULL ORDER BY id DESC LIMIT 1`).get(etiquetaId) || null;
@@ -4536,7 +4549,14 @@ function gerarEPLBobina(dados) {
   const tipoStr  = dados.sub_tipo === 'capa'
     ? `CAPA ${largura}`                                // capa: sem cor, ex "CAPA 70 x 90"
     : `${cor} ' ${tipoBobina} ' ${largura}`;
-  const dataHora = `${new Date().toLocaleDateString('pt-BR')}  ${new Date().toLocaleTimeString('pt-BR').substring(0,5)}`;
+  // REFUGO (06/10/2026, Gustavo: "preciso gerar a etiqueta desse refugo"):
+  // a MESMA etiqueta (mesmo número/código de barras, mesmos dados), com o
+  // peso NOVO da repesagem, tarja REFUGO e o peso original da extrusão.
+  const rf = dados.refugo || null;
+  const quando = rf && rf.pesado_em ? new Date(rf.pesado_em) : new Date();
+  const dataHora = `${quando.toLocaleDateString('pt-BR')}  ${quando.toLocaleTimeString('pt-BR').substring(0,5)}`
+    + (rf ? `  ORIG. ${Number(rf.peso_original || 0).toFixed(1).replace('.', ',')} KG` : '');
+  const tarjaRefugo = rf ? `A560,36,0,4,1,2,R," REFUGO "\n` : '';
 
   // Centralização (métricas das fontes EPL nativas, dots/char):
   // font 4 hmul1 ≈ 14 ; font 5 hmul2 ≈ 64
@@ -4555,7 +4575,7 @@ function gerarEPLBobina(dados) {
 q800
 Q1200,24
 
-A40,40,0,3,1,1,N,"TIPO DA BOBINA"
+${tarjaRefugo}A40,40,0,3,1,1,N,"TIPO DA BOBINA"
 A${tipoX},74,0,4,1,2,N,"${tipoStr}"
 LO30,148,740,2
 
@@ -4567,7 +4587,7 @@ A40,288,0,3,1,1,N,"MAQUINA"
 A40,322,0,4,1,2,N,"${maquina}"
 LO30,392,740,2
 
-A40,410,0,3,1,1,N,"DATA / HORA DA PESAGEM"
+A40,410,0,3,1,1,N,"${rf ? 'DATA / HORA DO REFUGO' : 'DATA / HORA DA PESAGEM'}"
 A40,444,0,4,1,2,N,"${dataHora}"
 LO30,514,740,2
 
@@ -10585,10 +10605,14 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
       })();
       logI('bobinas', `REFUGO: ${bid} (${e.cor} ${e.tipo_bobina} ${e.largura}, ${Number(e.peso).toFixed(1)} kg) voltou da `
         + `Sacoleira ${e.destino} com ${liq.toFixed(1)} kg (bruto ${bruto} − eixo ${tara})${operador ? ' por ' + operador : ''}`);
-      return jsonOk(res, { refugo: { id: Number(r.lastInsertRowid), etiqueta_id: bid, peso: liq, peso_bruto: bruto, tara,
-                                     pesado_em: agora, destino_antes: e.destino,
-                                     bobina: { cor: e.cor, tipo_bobina: e.tipo_bobina, largura: e.largura, peso: e.peso,
-                                               fardos: e.fardos } } });
+      const resp = { id: Number(r.lastInsertRowid), etiqueta_id: bid, peso: liq, peso_bruto: bruto, tara,
+                     pesado_em: agora, destino_antes: e.destino,
+                     bobina: { cor: e.cor, tipo_bobina: e.tipo_bobina, largura: e.largura, peso: e.peso, fardos: e.fardos } };
+      // 06/10/2026: sai a etiqueta do refugo. Falha de impressora NÃO desfaz o
+      // registro — a tela avisa e o botão 🖨 da lista reimprime.
+      imprimirEtiquetaRefugo(bid, resp, (ok, info) =>
+        jsonOk(res, { refugo: resp, etiqueta_impressa: ok, etiqueta_erro: ok ? null : info }));
+      return;
     }
 
     // GET /bobinas/refugos?dia=AAAA-MM-DD (padrão: hoje) — a lista da tela.
@@ -10616,6 +10640,18 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
       const refugos = db.prepare(`${SEL} WHERE r.pesado_em >= ? AND r.pesado_em < ? AND r.cancelado_em IS NULL
                                    ORDER BY r.pesado_em DESC`).all(ini, fim);
       return jsonOk(res, { dia, refugos, aguardando, kg: refugos.reduce((a, x) => a + (Number(x.peso) || 0), 0) });
+    }
+
+    // POST /bobinas/refugo/:id/etiqueta — (re)imprime a etiqueta do refugo
+    // (06/10/2026): mesmo número da bobina, peso do refugo, tarja REFUGO.
+    if ((m = pathname.match(/^\/bobinas\/refugo\/(\d+)\/etiqueta$/)) && req.method === 'POST') {
+      const rf = db.prepare(`SELECT * FROM bobina_refugos WHERE id = ?`).get(Number(m[1]));
+      if (!rf) return jsonErr(res, 404, 'Refugo não encontrado');
+      if (rf.cancelado_em) return jsonErr(res, 400, `Refugo de ${rf.etiqueta_id} foi cancelado`);
+      imprimirEtiquetaRefugo(rf.etiqueta_id, rf, (ok, info) =>
+        ok ? jsonOk(res, { impresso: true, etiqueta_id: rf.etiqueta_id, printer: info })
+           : jsonErr(res, 500, 'Falha na impressão: ' + info));
+      return;
     }
 
     // POST /bobinas/refugo/:id/cancelar — pesagem de refugo errada. Só antes

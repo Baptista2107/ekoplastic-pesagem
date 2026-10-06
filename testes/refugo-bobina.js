@@ -206,6 +206,12 @@ function criarBobina(db, id, seq, peso) {
     ok(r.status === 409, 'sem repesar não monta de novo', r.body);
     r = await req('POST', '/bobinas/refugo', { id: 'E9910004', peso_bruto: 308 });
     ok(r.status === 200 && r.body.refugo.peso === 300, 'repesada com a etiqueta antiga: 308 − eixo 8 = 300 kg', r.body);
+    ok(r.body.etiqueta_impressa === true, 'etiqueta do refugo sai ao registrar', r.body);
+    const rid4 = r.body.refugo.id;
+    r = await req('POST', `/bobinas/refugo/${rid4}/etiqueta`);
+    ok(r.status === 200 && r.body.impresso && r.body.etiqueta_id === 'E9910004', 'botão 🖨 reimprime a etiqueta do refugo', r.body);
+    r = await req('POST', '/bobinas/refugo/999999/etiqueta');
+    ok(r.status === 404, 'refugo inexistente: 404', r.body);
     r = await req('GET', '/bobinas/refugos');
     ok((r.body.aguardando || []).length === 0, 'saiu do AGUARDANDO depois de pesar', r.body.aguardando);
     r = await req('POST', '/bobinas/baixa', { id: 'E9910004', destino: 'P2', operador: 'CARINE' });

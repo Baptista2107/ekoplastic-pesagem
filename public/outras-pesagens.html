@@ -1183,7 +1183,10 @@ async function registrarRefugo() {
     });
     const d = await r.json();
     if (!d.ok) throw new Error(d.erro || 'Erro');
-    toast(`✓ ${b.id} no estoque como refugo · ${d.refugo.peso.toFixed(1)} kg`, 'success', 5000);
+    toast(`✓ ${b.id} no estoque como refugo · ${d.refugo.peso.toFixed(1)} kg`
+      + (d.etiqueta_impressa ? ' · etiqueta impressa' : ''), 'success', 5000);
+    if (d.etiqueta_impressa === false)
+      toast(`⚠ Etiqueta do refugo não saiu (${d.etiqueta_erro || 'impressora'}) — use 🖨 na lista`, 'error', 8000);
     refugo.bobina = null;
     document.getElementById('refugo-etiqueta').value = '';
     document.getElementById('refugo-bobina').innerHTML = '';
@@ -1223,9 +1226,18 @@ async function carregarRefugosHoje() {
           ${new Date(x.pesado_em).toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' })}
           · veio da ${x.destino_antes || '—'}${x.reaproveitado_em ? ' · voltou p/ ' + x.reaproveitado_destino : ''}</span></span>
         <span class="hist-peso">${Number(x.peso).toFixed(1)} kg</span>
+        <button class="hist-del" title="Imprimir a etiqueta do refugo" style="color:var(--accent,#ffc250);" onclick="etiquetaRefugo(${x.id}, '${x.etiqueta_id}')">🖨</button>
         ${x.reaproveitado_em ? '' : `<button class="hist-del" title="Cancelar este refugo" onclick="cancelarRefugo(${x.id}, '${x.etiqueta_id}')">✕</button>`}
       </div>`).join('') : '<div class="hist-vazio">Nenhum refugo hoje</div>';
   } catch(e) { /* offline */ }
+}
+async function etiquetaRefugo(id, etq) {
+  try {
+    const r = await fetch(URL_BASE + `/bobinas/refugo/${id}/etiqueta`, { method: 'POST' });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.erro || 'Erro');
+    toast(`🖨 Etiqueta do refugo ${etq} impressa`, 'success');
+  } catch(e) { toast('Erro: ' + e.message, 'error', 6000); }
 }
 function usarEtiquetaRefugo(id) {
   document.getElementById('refugo-etiqueta').value = id;
