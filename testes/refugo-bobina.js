@@ -187,6 +187,33 @@ function criarBobina(db, id, seq, peso) {
     // 8. VPS
     r = await req('GET', '/dashboard/bobina-refugos?desde=2000-01-01');
     ok(r.status === 200 && r.body.refugos.length === 3, '/dashboard/bobina-refugos devolve as 3 linhas', r.body);
+
+    // 9. REFUGO pelo coletor (06/10/2026): sai como 'refugo', fica aguardando
+    //    repesagem até pesar com a etiqueta antiga.
+    comBanco(db => criarBobina(db, 'E9910004', 9910004, 410));
+    r = await req('POST', '/bobinas/baixa', { id: 'E9910004', destino: 'P1', operador: 'CARINE' });
+    ok(r.status === 200, 'E9910004 montada na P1', r.body);
+    r = await req('POST', '/bobinas/finalizar', { sacoleira: 'P1', fardos: 1, refugo: true, operador: 'CARINE' });
+    ok(r.status === 200 && r.body.refugo === true && r.body.pacotes_total === 5, 'coletor: saiu como REFUGO com 1 fardo', r.body);
+    e = comBanco(db => db.prepare('SELECT encerrada_motivo, status, encerrada_em, peso FROM etiquetas WHERE id = ?').get('E9910004'));
+    ok(e.encerrada_motivo === 'refugo' && e.status === 'consumida' && e.encerrada_em && e.peso === 410,
+       'etiqueta: motivo refugo, peso 410 intacto', e);
+    r = await req('GET', '/bobinas/refugos');
+    ok((r.body.aguardando || []).map(x => x.id).join() === 'E9910004', 'aparece em AGUARDANDO REPESAGEM', r.body.aguardando);
+    r = await req('GET', '/bobinas/abertas');
+    ok(!r.body.sacoleiras.find(s => s.sacoleira === 'P1').bobina, 'P1 ficou sem bobina', r.body);
+    r = await req('POST', '/bobinas/baixa', { id: 'E9910004', destino: 'P2', operador: 'CARINE' });
+    ok(r.status === 409, 'sem repesar não monta de novo', r.body);
+    r = await req('POST', '/bobinas/refugo', { id: 'E9910004', peso_bruto: 308 });
+    ok(r.status === 200 && r.body.refugo.peso === 300, 'repesada com a etiqueta antiga: 308 − eixo 8 = 300 kg', r.body);
+    r = await req('GET', '/bobinas/refugos');
+    ok((r.body.aguardando || []).length === 0, 'saiu do AGUARDANDO depois de pesar', r.body.aguardando);
+    r = await req('POST', '/bobinas/baixa', { id: 'E9910004', destino: 'P2', operador: 'CARINE' });
+    ok(r.status === 200 && r.body.reaproveitada === true, 'depois de repesada, pode montar de novo', r.body);
+    r = await req('POST', '/bobinas/baixa', { id: 'E9910003', destino: 'P1', operador: 'CARINE' });
+    r = await req('POST', '/bobinas/finalizar', { sacoleira: 'P1', fardos: 2 });
+    e = comBanco(db => db.prepare('SELECT encerrada_motivo FROM etiquetas WHERE id = ?').get('E9910003'));
+    ok(r.status === 200 && !r.body.refugo && e.encerrada_motivo === 'finalizada', 'finalizar sem refugo segue "finalizada"', e);
   } catch (e) {
     ok(false, 'exceção no teste: ' + e.message);
   } finally {

@@ -10596,16 +10596,26 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
     if (pathname === '/bobinas/refugos' && req.method === 'GET') {
       const SEL = `SELECT r.*, e.cor, e.tipo_bobina, e.largura, e.peso AS peso_bobina, e.fardos
                      FROM bobina_refugos r LEFT JOIN etiquetas e ON e.id = r.etiqueta_id`;
+      // 06/10/2026: as que saíram como REFUGO no coletor e ainda não foram
+      // repesadas (sem refugo registrado depois do encerramento).
+      const aguardando = db.prepare(`SELECT e.id, e.cor, e.tipo_bobina, e.largura, e.peso, e.destino, e.fardos,
+                                            e.pacotes, e.encerrada_em
+                                       FROM etiquetas e
+                                      WHERE e.tipo = 'extrusao' AND e.encerrada_motivo = 'refugo'
+                                        AND e.status = 'consumida'
+                                        AND NOT EXISTS (SELECT 1 FROM bobina_refugos r WHERE r.etiqueta_id = e.id
+                                                          AND r.cancelado_em IS NULL AND r.pesado_em >= e.encerrada_em)
+                                      ORDER BY e.encerrada_em`).all();
       if (String(parsed.query.estoque || '') === '1') {
         const refugos = db.prepare(`${SEL} WHERE r.reaproveitado_em IS NULL AND r.cancelado_em IS NULL
                                      ORDER BY r.pesado_em DESC`).all();
-        return jsonOk(res, { refugos, kg: refugos.reduce((a, x) => a + (Number(x.peso) || 0), 0) });
+        return jsonOk(res, { refugos, aguardando, kg: refugos.reduce((a, x) => a + (Number(x.peso) || 0), 0) });
       }
       const dia = /^\d{4}-\d{2}-\d{2}$/.test(String(parsed.query.dia || '')) ? String(parsed.query.dia) : dataLocalISO();
       const { ini, fim } = rangeUTCdoDiaLocal(dia);
       const refugos = db.prepare(`${SEL} WHERE r.pesado_em >= ? AND r.pesado_em < ? AND r.cancelado_em IS NULL
                                    ORDER BY r.pesado_em DESC`).all(ini, fim);
-      return jsonOk(res, { dia, refugos, kg: refugos.reduce((a, x) => a + (Number(x.peso) || 0), 0) });
+      return jsonOk(res, { dia, refugos, aguardando, kg: refugos.reduce((a, x) => a + (Number(x.peso) || 0), 0) });
     }
 
     // POST /bobinas/refugo/:id/cancelar — pesagem de refugo errada. Só antes
@@ -10694,14 +10704,21 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
       if (parte.erro) return jsonErr(res, 400, parte.erro);
       const formatoFim = lerFormatoDaMaquina(sac, body.formato);
       const operador = (body.operador ? String(body.operador).trim().slice(0, 80) : null) || null;
+      // REFUGO pelo coletor (06/10/2026, Gustavo): mesma conta do encerrar,
+      // motivo 'refugo'. A bobina sai da máquina sem acabar e fica AGUARDANDO
+      // REPESAGEM (GET /bobinas/refugos → aguardando) até alguém bipar a
+      // etiqueta antiga em Outras pesagens → REFUGO e pesar. Fora do
+      // aproveitamento da VPS (lá só entram 'troca' e 'finalizada').
+      const motivo = body.refugo === true ? 'refugo' : 'finalizada';
       let total = parte.pacotes;
       makeTransaction(() => {
-        total = encerrarBobina(a.id, parte, 'finalizada', new Date().toISOString(), formatoFim,
+        total = encerrarBobina(a.id, parte, motivo, new Date().toISOString(), formatoFim,
                                body.formato_origem === 'sugerido' ? 'sugerido' : 'escolhido', sac, operador);
       })();
-      logI('bobinas', `Sacoleira ${sac}: ${a.id} finalizada com ${txtPacotes(parte.pacotes)} neste trecho`
+      logI('bobinas', `Sacoleira ${sac}: ${a.id} ${motivo === 'refugo' ? 'saiu como REFUGO' : 'finalizada'} com ${txtPacotes(parte.pacotes)} neste trecho`
         + ` (${parte.fechados} fechado(s), ${parte.soltos} solto(s)) · total ${txtPacotes(total)}${operador ? ' por ' + operador : ''}`);
-      return jsonOk(res, { finalizada: true, sacoleira: sac, id: a.id, pacotes: parte.pacotes, pacotes_total: total });
+      return jsonOk(res, { finalizada: true, refugo: motivo === 'refugo', sacoleira: sac, id: a.id,
+                           pacotes: parte.pacotes, pacotes_total: total });
     }
 
     // Troca de formato com a bobina montada (02/10/2026, Gustavo — ver

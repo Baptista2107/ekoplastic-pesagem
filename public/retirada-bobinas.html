@@ -456,17 +456,24 @@ function perguntarFardos(bob, sac, modo){
     // fardos e o formato são os do formato QUE ESTAVA rodando; o novo o
     // sistema pega sozinho quando o comprimento da sacoleira mudar.
     const setup = modo==='setup';
+    // modo 'refugo' (06/10/2026, Gustavo): a bobina sai da máquina SEM acabar
+    // e vira refugo — mesma conta do encerrar, texto e botão próprios, e o
+    // aviso do que fazer depois (repesar no Mini PC com a etiqueta antiga).
+    const refugoM = modo==='refugo';
     // Em pacotes (30/09/2026): o que já foi informado em fim de turno e os
     // soltos que havia no fardo aberto quando esta parte começou.
     const antes = Number(bob.pacotes_parciais)||0;
     const ini = Number(bob.soltos_inicio)||0;
     let soltos = 0;
-    const tit = setup ? ('Troca de formato · Sacoleira '+sac) : turno ? ('Fim do turno · Sacoleira '+sac) : modo==='troca' ? ('Troca na Sacoleira '+sac) : ('Encerrar bobina · Sacoleira '+sac);
-    const acao = setup ? 'Registrar e aguardar o formato novo' : turno ? 'Registrar fardos do turno' : modo==='troca' ? 'Confirmar troca' : 'Finalizar bobina';
+    const tit = refugoM ? ('♻ REFUGO · Sacoleira '+sac) : setup ? ('Troca de formato · Sacoleira '+sac) : turno ? ('Fim do turno · Sacoleira '+sac) : modo==='troca' ? ('Troca na Sacoleira '+sac) : ('Encerrar bobina · Sacoleira '+sac);
+    const acao = refugoM ? '♻ Mandar para REFUGO' : setup ? 'Registrar e aguardar o formato novo' : turno ? 'Registrar fardos do turno' : modo==='troca' ? 'Confirmar troca' : 'Finalizar bobina';
     const chips=permitidos.map(f=>'<button class="chip'+(cands.includes(f)&&cands.length<permitidos.length?' cand':'')+
       (f===escolhido?' sel':'')+'" data-f="'+esc(f)+'">'+esc(f.replace('x',' × '))+'</button>').join('');
     fundo.innerHTML='<div class="modal">'+
-      '<h2>'+tit+'</h2>'+
+      '<h2'+(refugoM?' style="color:var(--vermelho)"':'')+'>'+tit+'</h2>'+
+      (refugoM?('<div class="m-alerta" style="font-size:15px;line-height:1.45">A <b>'+esc(bob.id)+'</b> sai da Sacoleira '+esc(sac)+
+        ' <b>sem acabar</b> e vira <b>REFUGO</b>.<br>Depois: leve ao Mini PC → <b>Outras pesagens → REFUGO</b>, bipe a '+
+        '<b>etiqueta antiga</b> e pese de novo. Não sai etiqueta nova.</div>'):'')+
       '<div class="m-sub">'+((turno||setup)?'Continua na máquina a <b>':'Sai a <b>')+esc(bob.id)+'</b> · '+descBob(bob)+' · <b>'+fmtKg(bob.peso)+'</b>'+
         (bob.baixa_em?('<br>montada '+haQuanto(bob.baixa_em)):'')+
         (bob.baixa_operador?(' · bipada por <b>'+esc(bob.baixa_operador)+'</b>'):'')+'</div>'+
@@ -485,7 +492,7 @@ function perguntarFardos(bob, sac, modo){
       (setup?'<div class="m-dica">O formato novo o sistema pega sozinho quando a sacoleira mudar o comprimento. Os pacotes soltos ficam neste formato — o novo começa do zero.</div>':'')+
       '<div id="md-alerta"></div>'+
       '<div class="m-resumo" id="md-resumo"></div>'+
-      '<button class="btn btn-verde" id="md-ok">'+acao+'</button>'+
+      '<button class="btn '+(refugoM?'btn-vermelho':'btn-verde')+'" id="md-ok">'+acao+'</button>'+
       '<button class="btn-link" id="md-cancelar">Cancelar</button></div>';
     document.body.appendChild(fundo);
     const inp=fundo.querySelector('#md-fardos');
@@ -619,6 +626,29 @@ async function finalizar(sac){
   }catch(e){ toast('erro','Erro: '+esc(e.message),5000); }
 }
 
+// REFUGO (06/10/2026): mesma conta do finalizar, motivo 'refugo'. Confirma
+// duas vezes (o quadro dos fardos + a pergunta final): o Encerrar saiu em
+// 05/10 justamente por ser tocado por engano.
+async function mandarRefugo(sac){
+  const bob=(ABERTAS.find(a=>a.sacoleira===sac)||{}).bobina;
+  if(!bob) return;
+  const saida=await perguntarFardos(bob, sac, 'refugo');
+  if(saida===null) return;
+  if(!confirm('Confirmar: a '+bob.id+' sai da Sacoleira '+sac+' como REFUGO?\n\nEla vai ter de ser repesada no Mini PC (Outras pesagens → REFUGO) com a etiqueta antiga.')) return;
+  try{
+    const r=await fetch(URL_BASE+'/bobinas/finalizar',{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ sacoleira:sac, fardos:saida.fardos, soltos:saida.soltos, formato:saida.formato, formato_origem:saida.origem,
+                            refugo:true, operador:(window.EKO_RESPONSAVEL||null) })
+    });
+    const d=await r.json();
+    if(!r.ok || !d.ok){ toast('erro',esc((d&&d.erro)||'Falha ao mandar para refugo'),5000); return; }
+    beep(700,0.18); vibrar([80,60,80]);
+    toast('ok','♻ '+esc(bob.id)+' foi para REFUGO · '+txtPc(d.pacotes_total||0)+' · repesar no Mini PC',6000);
+    await atualizarTudo();
+  }catch(e){ toast('erro','Erro: '+esc(e.message),5000); }
+}
+
 // ── SACOLEIRAS AGORA
 const SETUP_AVISADO={};
 async function carregarSacoleiras(){
@@ -668,6 +698,9 @@ async function carregarSacoleiras(){
       // E0001784 foram encerradas por engano no lugar do fim de turno, e a 1784
       // seguiu rodando no turno seguinte. A bobina acaba pela TROCA (bipar a
       // nova) ou no fim do turno. finalizar() fica no código, sem botão.
+      // REFUGO (06/10/2026, Gustavo): a mesma saída, só para bobina que sai sem
+      // acabar — vermelho, com confirmação, e fica aguardando repesagem.
+      '<button class="btn btn-vermelho s-fim" onclick="mandarRefugo(\''+a.sacoleira+'\')">♻ REFUGO</button>'+
       '</div>';
   }).join('');
 }

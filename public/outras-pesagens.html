@@ -617,6 +617,8 @@ header {
           <div class="touch-btn" id="btn-refugo" onclick="abrirRefugo()" style="border-color:var(--warn); color:var(--warn);">REFUGO</div>
           <div class="touch-btn" id="refugo-hoje-btn" onclick="abrirRefugo()" style="font-size:13px; line-height:1.3;"><span id="refugo-hoje">Refugo hoje: —</span></div>
         </div>
+        <!-- 06/10/2026: bobinas que saíram como REFUGO no coletor e esperam repesagem -->
+        <div id="refugo-aguardando-aviso" onclick="abrirRefugo()" style="display:none; margin-top:8px; padding:10px 12px; border:2px solid var(--danger); border-radius:10px; color:var(--danger); font-weight:800; cursor:pointer;"></div>
       </div>
 
       <div class="balanca-card">
@@ -681,9 +683,10 @@ header {
   <div class="modal" style="border-color: var(--warn); max-width: 560px;">
     <div class="modal-titulo">♻ Refugo — bobina que voltou da sacoleira</div>
     <div class="modal-corpo">
-      Finalize a bobina no coletor antes. Aqui: bipe a <b>etiqueta antiga</b> da bobina e ponha na balança.
+      No coletor, toque em <b>♻ REFUGO</b> na sacoleira. Aqui: bipe a <b>etiqueta antiga</b> da bobina e ponha na balança.
       Não sai etiqueta nova.
     </div>
+    <div id="refugo-aguardando" style="margin-bottom:10px;"></div>
     <div style="display:flex; gap:8px; margin:12px 0;">
       <input type="text" id="refugo-etiqueta" class="peso-manual-input" placeholder="Bipe ou digite a etiqueta (E0001234)"
              autocomplete="off" onkeydown="if(event.key==='Enter') consultarRefugo()" style="flex:1;">
@@ -1197,6 +1200,21 @@ async function carregarRefugosHoje() {
     if (!d.ok) return;
     document.getElementById('refugo-hoje').textContent =
       `Refugo hoje: ${d.refugos.length} · ${d.kg.toFixed(1).replace('.', ',')} kg`;
+    // 06/10/2026: as que saíram como REFUGO no coletor e ainda não foram pesadas.
+    const ag = d.aguardando || [];
+    const av = document.getElementById('refugo-aguardando-aviso');
+    av.style.display = ag.length ? '' : 'none';
+    av.textContent = ag.length ? `⚠ ${ag.length} bobina(s) viraram REFUGO e precisam ser REPESADAS: ${ag.map(x => x.id).join(', ')}` : '';
+    document.getElementById('refugo-aguardando').innerHTML = ag.length
+      ? `<div style="color:var(--danger); font-weight:800; margin-bottom:6px;">AGUARDANDO REPESAGEM — pese com a etiqueta antiga</div>` +
+        ag.map(x => `<div class="hist-item pendente">
+            <span class="hist-id">${x.id}</span>
+            <span class="hist-desc">${x.cor || ''} ${x.tipo_bobina || ''} ${x.largura || ''}<br><span class="hist-small">
+              saiu da ${x.destino || '—'} às ${new Date(x.encerrada_em).toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' })}
+              · ${Number(x.peso || 0).toFixed(1)} kg na extrusão</span></span>
+            <button class="btn-peso-ok" onclick="usarEtiquetaRefugo('${x.id}')">Pesar</button>
+          </div>`).join('')
+      : '';
     const lista = document.getElementById('refugo-lista');
     lista.innerHTML = d.refugos.length ? d.refugos.map(x => `
       <div class="hist-item ${x.reaproveitado_em ? 'bipada' : 'pendente'}">
@@ -1208,6 +1226,10 @@ async function carregarRefugosHoje() {
         ${x.reaproveitado_em ? '' : `<button class="hist-del" title="Cancelar este refugo" onclick="cancelarRefugo(${x.id}, '${x.etiqueta_id}')">✕</button>`}
       </div>`).join('') : '<div class="hist-vazio">Nenhum refugo hoje</div>';
   } catch(e) { /* offline */ }
+}
+function usarEtiquetaRefugo(id) {
+  document.getElementById('refugo-etiqueta').value = id;
+  consultarRefugo();
 }
 async function cancelarRefugo(id, etq) {
   if (!confirm(`Cancelar o refugo da bobina ${etq}?`)) return;
@@ -1237,6 +1259,7 @@ function init() {
   setInterval(pingServidor, 5000);
   restaurarSessaoAberta().then(() => { atualizarBotaoImprimir(); atualizarPreview(); });
   carregarRefugosHoje();
+  setInterval(() => { if (!refugoAberto()) carregarRefugosHoje(); }, 30000);   // aviso de repesagem
 }
 init();
 </script>
