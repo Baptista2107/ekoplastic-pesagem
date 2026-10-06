@@ -1243,7 +1243,7 @@ function pacotesMontagensAnteriores(etiquetaId) {
 function formatoDaBobina(maq, bobina, clp) {
   const out = sugerirFormato(maq, bobina, clp);
   const st = bobina ? setupDaBobina(bobina.id) : null;
-  if (!st) return out;
+  if (!st) return detectarSetupSemAviso(maq, bobina, out);
   out.setup = { formato_antes: st.formato_antes, comprimento_antes_mm: st.comprimento_antes_mm,
                 pedido_em: st.pedido_em, formato_novo: st.formato_novo, definido_em: st.definido_em };
   if (!st.definido_em) {
@@ -1273,7 +1273,51 @@ function formatoDaBobina(maq, bobina, clp) {
     out.sugerido = st.formato_novo;
     out.motivo = `formato definido na troca (${st.formato_novo})`;
   }
-  return out;
+  return detectarSetupSemAviso(maq, bobina, out);
+}
+
+// SETUP MUDOU SEM NINGUÉM AVISAR (06/10/2026, Gustavo: "quero um alerta na
+// tela pra quando houver mudança de setup pro operador marcar quanto rendeu
+// de cada formato"). Caso real: P2, E0001823 — o comprimento foi de 451 para
+// 500 mm às 09:47 e a bobina foi encerrada às 09:52 como 40x50, mas tinha
+// cortado tudo a 451 (30x45). Guarda o formato que a bobina montada está
+// cortando (config formato_vigente_<máquina>); quando o CLP mostra outro
+// formato em 2 leituras seguidas (carimbos diferentes, como na troca), marca
+// `setup_detectado` e segue SUGERINDO O FORMATO ANTIGO — é o que rodou até
+// ali, então um encerramento antes de a operadora informar grava o certo. A
+// tela mostra o alerta com o botão da troca de formato; registrar a troca
+// (/bobinas/trocar-formato) limpa o vigente.
+function detectarSetupSemAviso(maq, bobina, out) {
+  if (!bobina || !out.pelo_comprimento || !out.sugerido) return out;
+  const k = 'formato_vigente_' + maq;
+  let v = null; try { v = JSON.parse(configGet(k, 'null')); } catch (e) {}
+  if (!v || v.etq !== bobina.id || v.montagem !== (bobina.baixa_em || null)) {
+    configSet(k, JSON.stringify({ etq: bobina.id, montagem: bobina.baixa_em || null,
+                                  formato: out.sugerido, mm: out.comprimento_mm }));
+    return out;
+  }
+  if (!v.detectado) {
+    if (out.sugerido === v.formato) {
+      if (v.candidato || v.mm !== out.comprimento_mm) {
+        delete v.candidato; delete v.candidato_tempo; v.mm = out.comprimento_mm;
+        configSet(k, JSON.stringify(v));
+      }
+      return out;
+    }
+    const tempo = out.clp_tempo || null;
+    if (v.candidato === out.sugerido && v.candidato_tempo && tempo && tempo !== v.candidato_tempo) {
+      v.detectado = { de: v.formato, para: out.sugerido, mm_antes: v.mm, mm_agora: out.comprimento_mm,
+                      em: new Date().toISOString() };
+      logW('bobinas', `Sacoleira ${maq}: SETUP MUDOU sem registro na ${bobina.id} — ${v.formato} → ${out.sugerido}`
+        + ` (${v.mm || '?'} → ${out.comprimento_mm} mm) · alerta na tela`);
+    } else if (v.candidato !== out.sugerido) {
+      v.candidato = out.sugerido; v.candidato_tempo = tempo;
+    }
+    configSet(k, JSON.stringify(v));
+    if (!v.detectado) return { ...out, sugerido: v.formato, motivo: `conferindo o comprimento (${out.motivo})` };
+  }
+  return { ...out, sugerido: v.formato, setup_detectado: v.detectado,
+           motivo: `setup mudou: ${v.detectado.de} → ${v.detectado.para} — informe quanto rendeu o ${v.detectado.de}` };
 }
 
 // Grava uma parte, amarrada ao turno do corte aberto AGORA na máquina.
@@ -10680,13 +10724,18 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
       const operador = (body.operador ? String(body.operador).trim().slice(0, 80) : null) || null;
       const clp = await clpSacoleiras();
       const sug = sugerirFormato(sac, a, clp.dados ? clp.dados[sac] : null);
+      // Setup que mudou sem aviso (detectarSetupSemAviso): o comprimento de
+      // ANTES é o que estava quando a bobina cortava o formato antigo.
+      let vig = null; try { vig = JSON.parse(configGet('formato_vigente_' + sac, 'null')); } catch (e) {}
+      const mmAntes = (vig && vig.etq === a.id && vig.detectado && vig.detectado.mm_antes) || sug.comprimento_mm;
       const agora = new Date().toISOString();
       makeTransaction(() => {
         registrarParcial(a.id, sac, parte, 'setup', agora, operador, formatoAntes,
                          body.formato_origem === 'sugerido' ? 'sugerido' : 'escolhido');
         const pid = db.prepare(`SELECT last_insert_rowid() AS id`).get().id;
         db.prepare(`INSERT INTO bobina_setups (etiqueta_id, maquina, parte_id, formato_antes, comprimento_antes_mm, pedido_em, operador)
-                    VALUES (?,?,?,?,?,?,?)`).run(a.id, sac, pid, formatoAntes, sug.comprimento_mm, agora, operador);
+                    VALUES (?,?,?,?,?,?,?)`).run(a.id, sac, pid, formatoAntes, mmAntes, agora, operador);
+        configSet('formato_vigente_' + sac, 'null');   // a troca registrada assume daqui
         db.prepare(`UPDATE etiquetas SET alterado_em = ? WHERE id = ?`).run(agora, a.id);
       })();
       const total = pacotesParciaisDe(a.id).pacotes;
@@ -10711,8 +10760,20 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
       // Sem senha desde 05/10/2026 (Gustavo) — ver /bobinas/turno-corte.
       const parte = db.prepare(`SELECT * FROM bobina_parciais WHERE id = ?`).get(Number(body.parte_id));
       if (!parte) return jsonErr(res, 404, 'Parte não encontrada');
-      const novos = lerFardos(body.fardos);
+      // fardos opcional desde 06/10/2026 (dá para corrigir só o formato).
+      const novos = (body.fardos === undefined || body.fardos === null || body.fardos === '')
+        ? (Number(parte.fardos) || 0) : lerFardos(body.fardos);
       if (novos === null) return jsonErr(res, 400, 'Fardos deve ser um número de 0 a 999');
+      // FORMATO (06/10/2026, Gustavo — caso E0001823: setup trocado com a
+      // máquina parada, bobina encerrada em seguida e gravada no formato novo).
+      // Só os formatos da máquina; vira formato_origem 'corrigido', que a VPS
+      // respeita (não troca pelo CLP).
+      let formatoNovo = null;
+      if (body.formato !== undefined && body.formato !== null && body.formato !== '') {
+        formatoNovo = lerFormatoDaMaquina(parte.maquina, body.formato);
+        if (!formatoNovo) return jsonErr(res, 400, `Formato ${body.formato} não é da ${parte.maquina}`);
+        if (formatoNovo === parte.formato) formatoNovo = null;
+      }
       const soltosAntes = Number(parte.soltos_fim) || 0;
       const soltosNovo = (body.soltos === undefined || body.soltos === null || body.soltos === '') ? soltosAntes : lerSoltos(body.soltos);
       if (soltosNovo === null) return jsonErr(res, 400, 'Pacotes soltos deve ser de 0 a 4');
@@ -10746,6 +10807,16 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
         db.prepare(`UPDATE bobina_parciais SET fardos = ?, pacotes = ?, soltos_fim = ?, editado_em = ?, editado_por = ?,
                            fardos_antes = COALESCE(fardos_antes, ?) WHERE id = ?`)
           .run(novos, pacNovo, soltosNovo, agora, operador, antigos, parte.id);
+        if (formatoNovo) {
+          db.prepare(`UPDATE bobina_parciais SET formato = ?, formato_origem = 'corrigido' WHERE id = ?`)
+            .run(formatoNovo, parte.id);
+          // A etiqueta guarda o formato da ÚLTIMA parte: muda se for ela.
+          const ult = db.prepare(`SELECT id FROM bobina_parciais WHERE etiqueta_id = ? ORDER BY id DESC LIMIT 1`)
+                        .get(parte.etiqueta_id);
+          if (ult && ult.id === parte.id)
+            db.prepare(`UPDATE etiquetas SET formato_cortado = ?, formato_origem = 'corrigido', alterado_em = ?
+                         WHERE id = ? AND formato_cortado IS NOT NULL`).run(formatoNovo, agora, parte.etiqueta_id);
+        }
         if (seguinte) {
           db.prepare(`UPDATE bobina_parciais SET pacotes = ?, editado_em = ?, editado_por = ? WHERE id = ?`)
             .run(pacSeg, agora, operador, seguinte.id);
@@ -10756,8 +10827,10 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
       logI('bobinas', `Fardos corrigidos no resumo: ${parte.etiqueta_id} (${parte.maquina}, turno ${parte.turno || '—'}) `
         + `${antigos} → ${novos} fardo(s), soltos ${soltosAntes} → ${soltosNovo}`
         + (seguinte ? ` · parte seguinte ${seguinte.etiqueta_id} ajustada em ${-dSoltos} pc` : '')
+        + (formatoNovo ? ` · formato ${parte.formato || '?'} → ${formatoNovo}` : '')
         + (total != null ? ` · total da bobina ${txtPacotes(total)}` : '') + (operador ? ` por ${operador}` : ''));
       return jsonOk(res, { id: parte.etiqueta_id, parte_id: parte.id, fardos: novos, soltos: soltosNovo, pacotes: pacNovo,
+                           formato: formatoNovo || parte.formato,
                            pacotes_total: total, seguinte: seguinte ? { id: seguinte.etiqueta_id, pacotes: pacSeg } : null });
     }
 
