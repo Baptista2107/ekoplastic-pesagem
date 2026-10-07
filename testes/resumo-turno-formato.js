@@ -119,6 +119,13 @@ function criarBobina(db, id, seq, peso, largura) {
     r = await req('GET', '/bobinas/do-turno?fechado=1');
     const s2b = r.body.sacoleiras.find(s => s.sacoleira === 'P2'), b2b = s2b.bobinas[0];
     ok(s2b.pacotes_turno === 30 && b2b.editado && b2b.fardos_antes === 7, 'resumo mostra 6 fardos, corrigido (era 7)', b2b);
+    // 07/10/2026: tocar na bobina da lista abre a correção — a lista traz as
+    // partes (com os soltos do início) e só o sinal de que foi editada.
+    ok(b2b.editada === true && b2b.partes_turno.length === 1 && b2b.partes_turno[0].id === b2.parte_id
+       && b2b.partes_turno[0].fardos === 6 && b2b.partes_turno[0].soltos_inicio === 0 && b2b.partes_turno[0].formato === '35x45',
+       'lista: partes do turno para corrigir tocando e marca de editada', b2b);
+    const p1s = r.body.sacoleiras.find(s => s.sacoleira === 'P1').bobinas.find(b => b.id === 'E9910003');
+    ok(p1s && p1s.editada === false, 'bobina sem correção não aparece como editada', p1s);
     r = await req('GET', '/dashboard/bobina-parciais?desde=' + encodeURIComponent(antesEd));
     ok(r.body.parciais.some(p => p.id === b2.parte_id && p.fardos === 6), 'a parte corrigida volta no exportador (editado_em)', r.body);
     // bobina já encerrada (troca na P1): o total da etiqueta é refeito

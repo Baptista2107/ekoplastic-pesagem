@@ -102,6 +102,8 @@
   .hb-l3 b{color:var(--txt);}
   .hb-l3 b.hb-pct{color:var(--verde);}
   .hb .h-desf{margin-top:8px;}
+  .hb.toca{cursor:pointer;}
+  .hb.toca:active{border-color:var(--ambar);}
   .ht-cab .h-sac{font-size:13px; font-weight:900; background:var(--panel-hi); border-radius:8px; padding:3px 8px;}
   .ht-tit{flex:1; font-size:15px; font-weight:800;}
   .ht-tit small{font-size:12px; font-weight:700; color:var(--muted);}
@@ -460,13 +462,18 @@ function perguntarFardos(bob, sac, modo){
     // e vira refugo — mesma conta do encerrar, texto e botão próprios, e o
     // aviso do que fazer depois (repesar no Mini PC com a etiqueta antiga).
     const refugoM = modo==='refugo';
+    // modo 'editar' (07/10/2026, Gustavo): tocar na bobina da lista "Neste
+    // turno" reabre ESTA tela com o que foi lançado, para refazer o lançamento
+    // (formato e quantidade). bob.editar = { fardos, soltos } da parte.
+    const editarM = modo==='editar';
+    const ed = bob.editar||{};
     // Em pacotes (30/09/2026): o que já foi informado em fim de turno e os
     // soltos que havia no fardo aberto quando esta parte começou.
     const antes = Number(bob.pacotes_parciais)||0;
     const ini = Number(bob.soltos_inicio)||0;
-    let soltos = 0;
-    const tit = refugoM ? ('♻ REFUGO · Sacoleira '+sac) : setup ? ('Troca de formato · Sacoleira '+sac) : turno ? ('Fim do turno · Sacoleira '+sac) : modo==='troca' ? ('Troca na Sacoleira '+sac) : ('Encerrar bobina · Sacoleira '+sac);
-    const acao = refugoM ? '♻ Mandar para REFUGO' : setup ? 'Registrar e aguardar o formato novo' : turno ? 'Registrar fardos do turno' : modo==='troca' ? 'Confirmar troca' : 'Finalizar bobina';
+    let soltos = editarM ? (Number(ed.soltos)||0) : 0;
+    const tit = editarM ? ('✎ Corrigir lançamento · Sacoleira '+sac) : refugoM ? ('♻ REFUGO · Sacoleira '+sac) : setup ? ('Troca de formato · Sacoleira '+sac) : turno ? ('Fim do turno · Sacoleira '+sac) : modo==='troca' ? ('Troca na Sacoleira '+sac) : ('Encerrar bobina · Sacoleira '+sac);
+    const acao = editarM ? 'Salvar correção' : refugoM ? '♻ Mandar para REFUGO' : setup ? 'Registrar e aguardar o formato novo' : turno ? 'Registrar fardos do turno' : modo==='troca' ? 'Confirmar troca' : 'Finalizar bobina';
     const chips=permitidos.map(f=>'<button class="chip'+(cands.includes(f)&&cands.length<permitidos.length?' cand':'')+
       (f===escolhido?' sel':'')+'" data-f="'+esc(f)+'">'+esc(f.replace('x',' × '))+'</button>').join('');
     fundo.innerHTML='<div class="modal">'+
@@ -474,7 +481,8 @@ function perguntarFardos(bob, sac, modo){
       (refugoM?('<div class="m-alerta" style="font-size:15px;line-height:1.45">A <b>'+esc(bob.id)+'</b> sai da Sacoleira '+esc(sac)+
         ' <b>sem acabar</b> e vira <b>REFUGO</b>.<br>Depois: leve ao Mini PC → <b>Outras pesagens → REFUGO</b>, bipe a '+
         '<b>etiqueta antiga</b> e pese de novo. Não sai etiqueta nova.</div>'):'')+
-      '<div class="m-sub">'+((turno||setup)?'Continua na máquina a <b>':'Sai a <b>')+esc(bob.id)+'</b> · '+descBob(bob)+' · <b>'+fmtKg(bob.peso)+'</b>'+
+      (editarM?'<div class="m-dica">Refaça o lançamento: o que for salvo substitui o anterior e a bobina fica marcada como editada.</div>':'')+
+      '<div class="m-sub">'+(editarM?'Bobina <b>':(turno||setup)?'Continua na máquina a <b>':'Sai a <b>')+esc(bob.id)+'</b> · '+descBob(bob)+' · <b>'+fmtKg(bob.peso)+'</b>'+
         (bob.baixa_em?('<br>montada '+haQuanto(bob.baixa_em)):'')+
         (bob.baixa_operador?(' · bipada por <b>'+esc(bob.baixa_operador)+'</b>'):'')+'</div>'+
       '<label>'+(setup?'FORMATO QUE ESTAVA RODANDO':'FORMATO CORTADO')+' · '+esc(corNome.toUpperCase())+'</label>'+
@@ -484,10 +492,10 @@ function perguntarFardos(bob, sac, modo){
         '<button class="chip" id="md-outro">Outro</button></div>'):'')+
       '<div class="fmts'+(fmt.sugerido?' oculto':'')+'" id="md-fmts">'+chips+'</div>'+
       (fmt.sugerido?'':('<div class="m-dica">'+esc(fmt.motivo||'sem formato decidido')+' — toque no formato se souber; dá para registrar sem.</div>'))+
-      '<label>'+(setup?'FARDOS FECHADOS NESTE FORMATO':bob.desde_troca?'FARDOS FECHADOS DESDE A TROCA DE FORMATO':(turno||antes>0)?'FARDOS FECHADOS NESTE TURNO':'FARDOS FECHADOS')+'</label><input id="md-fardos" type="number" inputmode="numeric" min="0" max="999" step="1" autocomplete="off">'+
+      '<label>'+(editarM?'FARDOS FECHADOS':setup?'FARDOS FECHADOS NESTE FORMATO':bob.desde_troca?'FARDOS FECHADOS DESDE A TROCA DE FORMATO':(turno||antes>0)?'FARDOS FECHADOS NESTE TURNO':'FARDOS FECHADOS')+'</label><input id="md-fardos" type="number" inputmode="numeric" min="0" max="999" step="1" autocomplete="off">'+
       (ini>0?('<div class="m-dica">Havia '+ini+' pacote'+(ini===1?'':'s')+' solto'+(ini===1?'':'s')+' no início — conte o fardo que ela completou.</div>'):'')+
-      '<label>PACOTES SOLTOS AGORA</label><div class="fmts soltos">'+[0,1,2,3,4].map(n=>
-        '<button class="chip'+(n===0?' sel':'')+'" data-s="'+n+'">'+n+'</button>').join('')+'</div>'+
+      '<label>'+(editarM?'PACOTES SOLTOS NO FIM':'PACOTES SOLTOS AGORA')+'</label><div class="fmts soltos">'+[0,1,2,3,4].map(n=>
+        '<button class="chip'+(n===soltos?' sel':'')+'" data-s="'+n+'">'+n+'</button>').join('')+'</div>'+
       '<div class="m-kg" id="md-kg"></div>'+
       (setup?'<div class="m-dica">O formato novo o sistema pega sozinho quando a sacoleira mudar o comprimento. Os pacotes soltos ficam neste formato — o novo começa do zero.</div>':'')+
       '<div id="md-alerta"></div>'+
@@ -496,6 +504,7 @@ function perguntarFardos(bob, sac, modo){
       '<button class="btn-link" id="md-cancelar">Cancelar</button></div>';
     document.body.appendChild(fundo);
     const inp=fundo.querySelector('#md-fardos');
+    if(editarM && ed.fardos!=null) inp.value=ed.fardos;
     const pintar=()=>{
       const fv=fundo.querySelector('#md-fmt-v');
       if(fv) fv.innerHTML=(escolhido?esc(escolhido.replace('x',' × ')):'?')+
@@ -528,7 +537,7 @@ function perguntarFardos(bob, sac, modo){
     });
     inp.addEventListener('input',pintar);
     pintar();
-    setTimeout(()=>inp.focus(),50);
+    setTimeout(()=>{ inp.focus(); if(editarM) inp.select(); },50);
     const fim=v=>{ fundo.remove(); resolve(v); };
     fundo.querySelector('#md-cancelar').onclick=()=>fim(null);
     fundo.querySelector('#md-ok').onclick=()=>{
@@ -727,6 +736,8 @@ async function carregarHistorico(){
   try{ d=await (await fetch(URL_BASE+'/bobinas/do-turno')).json(); }
   catch(e){ el.innerHTML='<div class="vazio">Não consegui ler a lista do turno.</div>'; return; }
   const sacs=(d&&d.sacoleiras)||[];
+  HIST={};
+  sacs.forEach(s=>s.bobinas.forEach(x=>{ HIST[s.sacoleira+'|'+x.id]=x; }));
   document.getElementById('hoje-resumo').textContent='';
   const hojeStr=new Date().toDateString();
   const quando=iso=>{ try{ return new Date(iso).toDateString()===hojeStr?hora(iso):diaHora(iso); }catch(e){ return ''; } };
@@ -757,18 +768,73 @@ async function carregarHistorico(){
           '<div class="hb-l3">'+(x.montada?'Até agora: ':'Bobina: ')+conta+'<b>'+txtPc(x.pacotes_total)+'</b>'+
           (pct!=null?(' · <b class="'+(alerta?'h-alerta':'hb-pct')+'">'+pct+'%</b>'+(alerta?' ⚠ passa do peso':'')):'')+'</div>';
       }
-      return '<div class="hb'+(alerta?' alerta':'')+'">'+
+      const toca=(x.partes_turno||[]).length>0;
+      return '<div class="hb'+(alerta?' alerta':'')+(toca?' toca':'')+'"'+
+        (toca?(' onclick="editarBobina(\''+s.sacoleira+'\',\''+esc(x.id)+'\')"'):'')+'>'+
         '<div class="hb-l1"><span class="hb-mat">'+descCurta(x)+fmt+'</span><span class="hb-num">'+num+'</span></div>'+
         '<div class="hb-l2">'+esc(x.id)+' · '+fmtKg(x.peso)+(x.operador?(' · '+esc(x.operador)):'')+
           ' · entrou '+quando(x.baixa_em)+(x.veio_de_antes?' <span class="h-antes">turno anterior</span>':'')+
+          (x.editada?' <span class="h-antes">✎ editada</span>':'')+
           (x.pedido?(' · pedido '+esc(x.pedido)):'')+'</div>'+
         linhaFormatos(x)+
         rend+
-        (ultima?('<button class="h-desf" onclick="desfazer(\''+esc(x.id)+'\',\''+s.sacoleira+'\')">desfazer</button>'):'')+
+        (ultima?('<button class="h-desf" onclick="event.stopPropagation();desfazer(\''+esc(x.id)+'\',\''+s.sacoleira+'\')">desfazer</button>'):'')+
       '</div>';
     }).join('');
     return '<div class="ht">'+cab+itens+'</div>';
   }).join('');
+}
+
+// CORRIGIR TOCANDO NA BOBINA (07/10/2026, Gustavo: "ao clicar na bobina ela
+// abre uma tela de edição para alterar formato e quantidade como se tivesse
+// refazendo o lançamento, mesma tela"). Reabre o perguntarFardos no modo
+// 'editar' com o que foi lançado e salva em /bobinas/parcial/editar (a mesma
+// correção do resumo do turno). Bobina com mais de uma parte no turno (fim de
+// turno + final, troca de formato): pergunta antes qual lançamento corrigir.
+let HIST={};
+const MOMENTO_TXT={ turno:'fim de turno', setup:'troca de formato', final:'saiu da máquina' };
+function escolherParte(x){
+  return new Promise(resolve=>{
+    const fundo=document.createElement('div');
+    fundo.className='modal-fundo';
+    fundo.innerHTML='<div class="modal"><h2>Corrigir · '+esc(x.id)+'</h2>'+
+      '<div class="m-sub">Esta bobina tem '+x.partes_turno.length+' lançamentos neste turno. Qual corrigir?</div>'+
+      x.partes_turno.map((p,i)=>'<button class="btn btn-cinza" data-i="'+i+'">'+
+        esc((p.formato||'?').replace('x',' × '))+' · '+txtPc(p.pacotes||0)+
+        '<br><small>'+esc(MOMENTO_TXT[p.momento]||p.momento)+' · '+hora(p.registrado_em)+'</small></button>').join('')+
+      '<button class="btn-link" id="md-cancelar">Cancelar</button></div>';
+    document.body.appendChild(fundo);
+    const fim=v=>{ fundo.remove(); resolve(v); };
+    fundo.querySelector('#md-cancelar').onclick=()=>fim(null);
+    fundo.querySelectorAll('[data-i]').forEach(b=>b.onclick=()=>fim(x.partes_turno[Number(b.dataset.i)]));
+  });
+}
+async function editarBobina(sac, id){
+  const x=HIST[sac+'|'+id];
+  if(!x || !(x.partes_turno||[]).length) return;
+  const parte=x.partes_turno.length===1 ? x.partes_turno[0] : await escolherParte(x);
+  if(!parte) return;
+  const bob={ ...x, baixa_operador:x.operador,
+              formato:{ sugerido:parte.formato||null, candidatos:[], motivo:'como foi lançado' },
+              // o resto da bobina (outras partes), para o total e o alerta de peso
+              pacotes_parciais:Math.max(0,(x.pacotes_total||0)-(parte.pacotes||0)),
+              soltos_inicio:parte.soltos_inicio||0,
+              editar:{ fardos:parte.fardos, soltos:parte.soltos_fim } };
+  const v=await perguntarFardos(bob, sac, 'editar');
+  if(!v) return;
+  try{
+    const r=await fetch(URL_BASE+'/bobinas/parcial/editar',{ method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ parte_id:parte.id, fardos:v.fardos, soltos:v.soltos,
+                            formato:(v.formato && v.formato!==parte.formato)?v.formato:null,
+                            operador:(window.EKO_RESPONSAVEL||null) }) });
+    const d=await r.json();
+    if(!r.ok||!d.ok){ toast('erro',esc((d&&d.erro)||'Falha ao corrigir'),5000); return; }
+    beep(700,0.12); vibrar(80);
+    toast('ok','✎ '+esc(id)+' corrigida: '+v.fardos+' fardos'+(v.soltos?(' +'+v.soltos+' pc'):'')+
+      (v.formato?(' · '+esc(v.formato.replace('x',' × '))):'')+
+      (d.seguinte?('<br>ajustada também a '+esc(d.seguinte.id)):''),3500);
+    await atualizarTudo();
+  }catch(e){ toast('erro','Erro: '+esc(e.message),5000); }
 }
 
 // Leitura errada: a bobina registrada não é a que foi para a máquina. Volta

@@ -10909,6 +10909,15 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
         `SELECT formato, COALESCE(SUM(${SQL_PACOTES_PARTE}), 0) AS pacotes
            FROM bobina_parciais WHERE etiqueta_id = ? AND turno_corte_id = ?
           GROUP BY formato ORDER BY MIN(id)`);
+      // Corrigir tocando na bobina da lista (07/10/2026, Gustavo: "ao clicar na
+      // bobina ela abre uma tela de edição ... como se tivesse refazendo o
+      // lançamento"): cada parte com o que foi lançado e os soltos do início
+      // (pacotes = fechados × 5 + soltos − soltos do início), para a tela
+      // refazer a conta igual ao lançamento.
+      const partesDoTurno = db.prepare(
+        `SELECT id, formato, fardos, soltos_fim, ${SQL_PACOTES_PARTE} AS pacotes, momento, registrado_em
+           FROM bobina_parciais WHERE etiqueta_id = ? AND (? IS NULL OR turno_corte_id = ?) ORDER BY id`);
+      const foiEditada = db.prepare(`SELECT 1 FROM bobina_parciais WHERE etiqueta_id = ? AND editado_em IS NOT NULL LIMIT 1`);
       // ?fechado=1 (01/10/2026): o último turno que FECHOU — é o resumo que a
       // tela mostra logo depois de encerrar ou trocar o turno.
       const soFechado = parsed.query.fechado === '1';
@@ -10945,6 +10954,11 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
           b.soltos_turno = (noTurno && noTurno.c === 1) ? (noTurno.sf || 0) : null;
           b.editado = !!(noTurno && noTurno.ed);
           b.fardos_antes = (noTurno && noTurno.ed) ? noTurno.antes : null;
+          b.partes_turno = partesDoTurno.all(b.id, t ? t.id : null, t ? t.id : null).map(p => ({
+            ...p, soltos_fim: Number(p.soltos_fim) || 0,
+            soltos_inicio: Math.max(0, (Number(p.fardos) || 0) * PACOTES_POR_FARDO + (Number(p.soltos_fim) || 0) - Number(p.pacotes)) }));
+          // Só o sinal (Gustavo: "não precisa dizer o quê, só que foi editada").
+          b.editada = !!foiEditada.get(b.id);
           b.pacotes_total = total;
           b.montada = montada;
           b.veio_de_antes = b.baixa_em < ini;
