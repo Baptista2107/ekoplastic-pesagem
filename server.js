@@ -1251,6 +1251,25 @@ function pacotesMontagensAnteriores(etiquetaId) {
                            AND cancelado_em IS NULL ORDER BY reaproveitado_em DESC LIMIT 1`).get(etiquetaId);
   return (r && Number(r.pacotes_antes)) || 0;
 }
+// Todas as montagens da bobina (07/10/2026): as anteriores vêm do estado_antes
+// de cada refugo reaproveitado, com o refugo que a encerrou; a atual é a da
+// etiqueta (com o refugo aberto, se ela está no estoque como refugo agora).
+function montagensDaBobina(etiquetaId) {
+  const e = dbStmts.getEtiqueta.get(etiquetaId);
+  if (!e) return [];
+  const rs = db.prepare(`SELECT * FROM bobina_refugos WHERE etiqueta_id = ? AND cancelado_em IS NULL ORDER BY id`).all(etiquetaId);
+  const out = [];
+  for (const r of rs) {
+    if (!r.reaproveitado_em) continue;
+    let ant = null; try { ant = JSON.parse(r.estado_antes || 'null'); } catch (err) {}
+    if (ant) out.push({ ...ant, refugo: r });
+  }
+  const aberto = rs.filter(r => !r.reaproveitado_em).pop() || null;
+  out.push({ destino: e.destino, baixa_em: e.baixa_em, baixa_operador: e.baixa_operador,
+             encerrada_em: e.encerrada_em, encerrada_motivo: e.encerrada_motivo,
+             refugo: (aberto && e.encerrada_em && aberto.pesado_em >= e.encerrada_em) ? aberto : null });
+  return out;
+}
 // O formato da bobina montada AGORA: a regra de sempre (sugerirFormato) com a
 // troca de formato por cima. Pode gravar (define o formato novo da troca).
 function formatoDaBobina(maq, bobina, clp) {
@@ -9890,6 +9909,23 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
       const desde = String(parsed.query.desde || '1970-01-01').trim();
       const parciais = db.prepare(
         `SELECT * FROM bobina_parciais WHERE registrado_em >= ? OR editado_em >= ? ORDER BY registrado_em, id`).all(desde, desde);
+      // MONTAGEM e REFUGO de cada parte (07/10/2026, Gustavo — caso E0001797:
+      // saiu da P1 como refugo e voltou na P2; a etiqueta só guarda a ÚLTIMA
+      // montagem, e a VPS mostrava a parte da P1 como se fosse da P2 à 1h).
+      // Vai junto das partes porque o exportador do Mini PC (C:\eko-push) não
+      // vem com a atualização e já manda este arquivo.
+      const cache = {};
+      for (const p of parciais) {
+        const ms = cache[p.etiqueta_id] || (cache[p.etiqueta_id] = montagensDaBobina(p.etiqueta_id));
+        const m = ms.find(x => x.destino === p.maquina && x.baixa_em && x.baixa_em <= p.registrado_em
+                               && (!x.encerrada_em || p.registrado_em <= x.encerrada_em)) || null;
+        if (!m) continue;
+        p.montagem_baixa_em = m.baixa_em; p.montagem_operador = m.baixa_operador || null;
+        p.montagem_saida = m.encerrada_motivo || null;
+        p.refugo_kg = m.refugo ? m.refugo.peso : null;
+        p.refugo_em = m.refugo ? m.refugo.pesado_em : null;
+        p.refugo_operador = m.refugo ? (m.refugo.operador || null) : null;
+      }
       return jsonOk(res, { filtro: 'bobina_parciais', parciais });
     }
 
@@ -10932,6 +10968,25 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
              FROM etiquetas WHERE tipo = 'extrusao' AND destino = ? AND baixa_em IS NOT NULL
               AND baixa_em <= ? AND (encerrada_em IS NULL OR encerrada_em >= ?)
             ORDER BY baixa_em DESC`).all(maq, fim, ini);
+        // Bobina que saiu DESTA máquina como refugo e já voltou em outra
+        // (07/10/2026, caso E0001797): a etiqueta aponta a máquina nova, mas a
+        // parte dela neste turno continua daqui.
+        if (t) {
+          const ja = new Set(bobinas.map(b => b.id));
+          const outras = db.prepare(
+            `SELECT DISTINCT etiqueta_id AS id FROM bobina_parciais WHERE maquina = ? AND turno_corte_id = ?`).all(maq, t.id);
+          for (const o of outras) {
+            if (ja.has(o.id)) continue;
+            const e = db.prepare(`SELECT id, cor, tipo_bobina, largura, peso, baixa_em, baixa_operador AS operador,
+                                         bling_pedido_id AS pedido, fardos, pacotes, encerrada_em, encerrada_motivo, formato_cortado, destino
+                                    FROM etiquetas WHERE id = ?`).get(o.id);
+            const m = e && montagensDaBobina(e.id).find(x => x.destino === maq && x.encerrada_em && x.baixa_em <= fim && x.encerrada_em >= ini);
+            if (!m) continue;
+            bobinas.push({ ...e, baixa_em: m.baixa_em, operador: m.baixa_operador, encerrada_em: m.encerrada_em,
+                           encerrada_motivo: m.encerrada_motivo, voltou_em: e.destino });
+          }
+          bobinas.sort((a, b) => (b.baixa_em || '').localeCompare(a.baixa_em || ''));
+        }
         let pacotesTurno = 0;
         for (const b of bobinas) {
           const montada = !b.encerrada_em;
@@ -10965,6 +11020,7 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
           b.rendimento_pct = (total != null && Number(b.peso) > 0)
             ? Math.round(total * (PESO_FARDO_KG / PACOTES_POR_FARDO) / Number(b.peso) * 100) : null;
           b.rendimento_final = !montada;
+          b.refugo = b.encerrada_motivo === 'refugo';   // saiu daqui como refugo (07/10/2026)
           b.cor_pa = corPaDaBobina(b.cor);
           if (b.pacotes_turno) pacotesTurno += b.pacotes_turno;
         }

@@ -216,6 +216,22 @@ function criarBobina(db, id, seq, peso) {
     ok((r.body.aguardando || []).length === 0, 'saiu do AGUARDANDO depois de pesar', r.body.aguardando);
     r = await req('POST', '/bobinas/baixa', { id: 'E9910004', destino: 'P2', operador: 'CARINE' });
     ok(r.status === 200 && r.body.reaproveitada === true, 'depois de repesada, pode montar de novo', r.body);
+    // 10. rastreio para a VPS (07/10/2026, caso E0001797): cada parte leva a
+    //     montagem dela — a da P1 saiu como refugo (300 kg), a da P2 é a atual.
+    r = await req('POST', '/bobinas/finalizar', { sacoleira: 'P2', fardos: 3, operador: 'GISLENE' });
+    ok(r.status === 200 && r.body.pacotes_total === 20, 'E9910004 acaba na P2 com mais 3 fardos', r.body);
+    r = await req('GET', '/dashboard/bobina-parciais?desde=2000-01-01');
+    const ps4 = r.body.parciais.filter(p => p.etiqueta_id === 'E9910004');
+    const pP1 = ps4.find(p => p.maquina === 'P1'), pP2 = ps4.find(p => p.maquina === 'P2');
+    ok(pP1 && pP1.montagem_saida === 'refugo' && pP1.refugo_kg === 300 && pP1.refugo_em && pP1.montagem_operador === 'CARINE'
+       && pP2 && pP2.montagem_saida === 'finalizada' && pP2.refugo_kg === null && pP2.montagem_baixa_em > pP1.montagem_baixa_em,
+       'parte da P1: montagem própria, saiu como refugo de 300 kg; parte da P2: a montagem nova', ps4);
+    r = await req('GET', '/bobinas/do-turno');
+    const hP1 = r.body.sacoleiras.find(s => s.sacoleira === 'P1').bobinas.find(b => b.id === 'E9910004');
+    const hP2 = r.body.sacoleiras.find(s => s.sacoleira === 'P2').bobinas.find(b => b.id === 'E9910004');
+    ok(hP1 && hP1.refugo === true && hP1.voltou_em === 'P2' && hP1.pacotes_turno === 5 && hP1.operador === 'CARINE',
+       'lista do turno da P1 mantém a bobina que saiu como refugo (1 fardo, voltou na P2)', hP1);
+    ok(hP2 && !hP2.refugo && hP2.pacotes_turno === 15, 'e a P2 mostra só a montagem dela (3 fardos)', hP2);
     r = await req('POST', '/bobinas/baixa', { id: 'E9910003', destino: 'P1', operador: 'CARINE' });
     r = await req('POST', '/bobinas/finalizar', { sacoleira: 'P1', fardos: 2 });
     e = comBanco(db => db.prepare('SELECT encerrada_motivo FROM etiquetas WHERE id = ?').get('E9910003'));

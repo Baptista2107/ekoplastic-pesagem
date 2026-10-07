@@ -775,6 +775,8 @@ async function carregarHistorico(){
         '<div class="hb-l2">'+esc(x.id)+' · '+fmtKg(x.peso)+(x.operador?(' · '+esc(x.operador)):'')+
           ' · entrou '+quando(x.baixa_em)+(x.veio_de_antes?' <span class="h-antes">turno anterior</span>':'')+
           (x.editada?' <span class="h-antes">✎ editada</span>':'')+
+          (x.refugo?(' <span class="h-antes" style="color:var(--vermelho);border-color:var(--vermelho)">♻ saiu como refugo'+
+            (x.voltou_em?(' · voltou na '+esc(x.voltou_em)):'')+'</span>'):'')+
           (x.pedido?(' · pedido '+esc(x.pedido)):'')+'</div>'+
         linhaFormatos(x)+
         rend+
