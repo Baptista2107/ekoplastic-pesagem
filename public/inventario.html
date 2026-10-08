@@ -2302,6 +2302,13 @@ async function exportarPDF(compartilhar){
   const dt=new Date().toISOString().slice(0,10);
   const nome = (qPA===FINALIZADOS.length ? 'inventario-produto-acabado-' : 'inventario-') + dt + '.pdf';
 
+  // 'blob': o 🏁 Encerrar pede o PDF para mandar ao Telegram (08/10/2026)
+  if(compartilhar==='blob'){
+    return { blob: doc.output('blob'), nome, titulo,
+             resumo: FINALIZADOS.length + ' produtos' + (comDiv ? (' · ' + comDiv + ' com divergência') : ' · sem divergências')
+                     + (falhas ? (' · ' + falhas + ' sem saldo do Bling') : '') };
+  }
+
   if(compartilhar){
     // Compartilhamento nativo do celular: abre a lista de apps (WhatsApp,
     // e-mail, etc). Só existe em HTTPS e em navegador de celular — se não
@@ -2332,16 +2339,41 @@ async function exportarPDF(compartilhar){
 }
 
 // ─────────── finalizar inventário ───────────
+// 08/10/2026 (Gustavo): o Encerrar manda o PDF para o Bruno Augusto e o
+// Vinicius no Telegram (Mini PC → painel da VPS) e SÓ ZERA se o envio der
+// certo — antes o PDF dependia de alguém exportar e se perdia ao zerar.
+function blobBase64(blob){
+  return new Promise((ok, erro) => {
+    const fr = new FileReader();
+    fr.onload = () => ok(String(fr.result).split(',')[1] || '');
+    fr.onerror = () => erro(fr.error);
+    fr.readAsDataURL(blob);
+  });
+}
 async function finalizarInventario(){
   if(!FINALIZADOS.length){ toast('aviso','O inventário está vazio',2000); return; }
-  if(!(await ekoConfirmar({ titulo:'Finalizar e ZERAR o inventário?', perigo:true,
-      texto:'Recomendo exportar o PDF antes.', ok:'Finalizar e zerar', cancelar:'Manter' }))) return;
+  if(!(await ekoConfirmar({ titulo:'Encerrar o inventário?', perigo:true,
+      texto:'O PDF vai para o Bruno Augusto e o Vinicius no Telegram e a contagem é zerada.',
+      ok:'Enviar e zerar', cancelar:'Manter' }))) return;
   try{
+    const pdf = await exportarPDF('blob');
+    if(!pdf) return;
+    toast('ok','Enviando o PDF…',8000);
+    const r = await fetch(URL_BASE+'/inventario/enviar-pdf', { method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ pdf_b64: await blobBase64(pdf.blob), nome: pdf.nome,
+                             titulo: pdf.titulo, resumo: pdf.resumo }) });
+    const d = await r.json().catch(() => ({}));
+    if(!r.ok || !d.ok){
+      toast('erro','Não consegui enviar o PDF: '+(d.erro||('HTTP '+r.status))+' — o inventário NÃO foi zerado',7000);
+      return;
+    }
     await fetch(URL_BASE+'/inventario/limpar',{method:'POST'});
     FINALIZADOS=[]; CICLO={};
     renderFinalizados();
-    toast('ok','Inventário finalizado e zerado',2200);
-  }catch(e){ toast('erro','Erro ao finalizar: '+e.message,3000); }
+    toast('ok','PDF enviado para '+(d.enviados||[]).join(' e ')+' · inventário zerado'
+          +((d.falhas&&d.falhas.length)?(' · não foi para '+d.falhas.join(', ')):''),5000);
+  }catch(e){ toast('erro','Erro ao encerrar: '+e.message+' — o inventário NÃO foi zerado',6000); }
 }
 
 // init

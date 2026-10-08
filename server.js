@@ -11157,6 +11157,30 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
       return jsonOk(res, { salvo: true, inventario: inv });
     }
 
+    // PDF do inventário → Telegram (08/10/2026, Gustavo: "manda um PDF pro
+    // Bruno quando finalizar" — Bruno Augusto e Vinicius). A tela manda o PDF
+    // aqui no 🏁 Encerrar e só zera se a VPS responder ok. O corpo vai como
+    // veio para o painel da VPS (mesma origem do vps_sacoleiras_url, que o
+    // Mini PC já usa); quem decide os destinos e guarda a cópia é a VPS.
+    if (pathname === '/inventario/enviar-pdf' && req.method === 'POST') {
+      let corpo; try { corpo = await lerBodyBinario(req, 8 * 1024 * 1024); } catch(e) { return jsonErr(res, 413, e.message); }
+      let base;
+      try { base = new URL(configGet('vps_sacoleiras_url', 'http://100.107.130.114:8765/api/sacoleiras/agora')).origin; }
+      catch(e) { return jsonErr(res, 500, 'endereço da VPS inválido'); }
+      try {
+        const r = await fetch(base + '/api/coletor/inventario-pdf', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: corpo,
+          signal: AbortSignal.timeout(60000) });
+        const d = await r.json().catch(() => ({ ok: false, erro: 'resposta inválida da VPS (HTTP ' + r.status + ')' }));
+        logI('inventario', 'PDF enviado à VPS: ' + (d.ok ? ('ok → ' + (d.enviados || []).join(', ')) : ('FALHOU: ' + d.erro)));
+        if (!d.ok) return jsonErr(res, 502, d.erro || 'a VPS recusou');
+        return jsonOk(res, { enviados: d.enviados || [], falhas: d.falhas || [], guardado: d.guardado });
+      } catch(e) {
+        logI('inventario', 'PDF não chegou à VPS: ' + e.message);
+        return jsonErr(res, 502, 'sem conexão com a VPS: ' + e.message);
+      }
+    }
+
     // Zera o inventário (finalização geral / começar um novo).
     if (pathname === '/inventario/limpar' && req.method === 'POST') {
       configSet('inventario_atual', JSON.stringify({ itens: [] }));
