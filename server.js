@@ -890,23 +890,45 @@ function lerSoltos(v) {
   return (Number.isInteger(n) && n >= 0 && n < PACOTES_POR_FARDO) ? n : null;
 }
 
-// Soltos que a última parte registrada na máquina deixou no fardo aberto.
-// Depois de uma TROCA DE FORMATO (parte 'setup') o fardo aberto era do formato
-// antigo e não se mistura com o novo (Gustavo, 02/10/2026): o novo começa do zero.
-function soltosNaMaquina(maq) {
-  const r = db.prepare(`SELECT soltos_fim, momento FROM bobina_parciais WHERE maquina = ? ORDER BY id DESC LIMIT 1`).get(maq);
-  if (r && r.momento === 'setup') return 0;
-  return (r && r.soltos_fim) || 0;
+// Os soltos que uma parte deixou no fardo aberto passam para a parte seguinte
+// da mesma máquina SÓ se der para fechar o fardo com eles:
+//   · depois de uma TROCA DE FORMATO (parte 'setup') não (Gustavo, 02/10/2026);
+//   · bobina de OUTRA COR não (Gustavo, 09/10/2026: "não pode aproveitar
+//     pacotes de tamanhos diferentes e cores diferentes para a próxima
+//     bobina"; "só não pode aproveitar 30x45 no 50x60, não tem lógica");
+//   · OUTRO FORMATO não, quando os dois formatos são conhecidos.
+// Os soltos continuam na produção da bobina que os fez (vão para o estoque
+// sem rastreio — "isso não é problema"); só não são descontados da seguinte.
+// `ant` e `seg`: { momento, formato, cor } (cor da etiqueta da bobina).
+function herdaSoltos(ant, seg) {
+  if (!ant || ant.momento === 'setup') return false;
+  const nc = (c) => String(c || '').trim().toUpperCase();
+  if (nc(ant.cor) && nc(seg.cor) && nc(ant.cor) !== nc(seg.cor)) return false;
+  if (ant.formato && seg.formato && ant.formato !== seg.formato) return false;
+  return true;
+}
+
+// Soltos que a última parte registrada na máquina deixou no fardo aberto e
+// que a parte que está fechando agora (a da bobina montada, no `formato`
+// informado, se houver) aproveita — ver herdaSoltos.
+function soltosNaMaquina(maq, formato) {
+  const r = db.prepare(`SELECT p.soltos_fim, p.momento, p.formato, e.cor FROM bobina_parciais p
+                          LEFT JOIN etiquetas e ON e.id = p.etiqueta_id
+                         WHERE p.maquina = ? ORDER BY p.id DESC LIMIT 1`).get(maq);
+  if (!r || !r.soltos_fim) return 0;
+  const atual = bobinaAbertaNa(maq);
+  return herdaSoltos(r, { cor: atual ? atual.cor : null, formato: formato || null }) ? r.soltos_fim : 0;
 }
 
 // Lê fechados + soltos do corpo e calcula a produção da parte em pacotes.
+// `formato`: o formato desta parte, quando a tela o informa (herdaSoltos).
 // Devolve { fechados, soltos, pacotes } ou { erro }.
-function lerParte(maq, fechadosV, soltosV) {
+function lerParte(maq, fechadosV, soltosV, formato) {
   const fechados = lerFardos(fechadosV);
   if (fechados === null) return { erro: 'Informe quantos fardos fecharam' };
   const soltos = lerSoltos(soltosV);
   if (soltos === null) return { erro: 'Pacotes soltos deve ser de 0 a 4' };
-  const inicio = soltosNaMaquina(maq);
+  const inicio = soltosNaMaquina(maq, formato);
   const pacotes = fechados * PACOTES_POR_FARDO + soltos - inicio;
   if (pacotes < 0) return { erro: `Havia ${inicio} pacote(s) solto(s) no início; com ${fechados} fardo(s) fechado(s) e ${soltos} solto(s) não fecha a conta. Confira.` };
   return { fechados, soltos, pacotes };
@@ -1246,6 +1268,44 @@ function refugoAbertoDe(etiquetaId) {
 }
 // Pacotes das montagens ANTERIORES (bobina de refugo reaproveitada): o que a
 // etiqueta tinha quando a montagem atual começou.
+// ── HISTÓRICO: soltos descontados de bobina de outra cor/formato ──────────
+// (09/10/2026, Gustavo: "se der pra atualizar isso no histórico também").
+// Até a regra herdaSoltos, toda parte descontava os soltos da anterior da
+// mesma máquina (menos depois de 'setup'), mesmo com cor ou formato
+// diferentes — e aí a parte saiu MENOR pelo que não aproveitou. Aqui cada
+// parte assim recebe de volta esses soltos (e o total da bobina, se ela já
+// saiu). `editado_em` faz o exportador reenviar a parte e a etiqueta à VPS.
+// Roda uma vez (config soltos_cor_formato_v1). Devolve as correções feitas.
+function corrigirSoltosHistorico() {
+  if (configGet('soltos_cor_formato_v1', '') === 'feito') return [];
+  const partes = db.prepare(`SELECT p.*, e.cor FROM bobina_parciais p LEFT JOIN etiquetas e ON e.id = p.etiqueta_id
+                              ORDER BY p.maquina, p.id`).all();
+  const feitas = [];
+  for (let i = 1; i < partes.length; i++) {
+    const ant = partes[i - 1], seg = partes[i];
+    if (ant.maquina !== seg.maquina || !ant.soltos_fim || ant.momento === 'setup') continue;
+    if (herdaSoltos(ant, seg)) continue;
+    feitas.push({ id: seg.id, etiqueta_id: seg.etiqueta_id, maquina: seg.maquina, soltos: ant.soltos_fim,
+                  de: `${ant.etiqueta_id} ${ant.cor || '?'} ${ant.formato || '?'}`, para: `${seg.cor || '?'} ${seg.formato || '?'}` });
+  }
+  const agora = new Date().toISOString();
+  makeTransaction(() => {
+    for (const f of feitas) {
+      db.prepare(`UPDATE bobina_parciais SET pacotes = ${SQL_PACOTES_PARTE} + ?, editado_em = ?,
+                         editado_por = 'sistema: soltos de outra cor/formato devolvidos (09/10/2026)',
+                         fardos_antes = COALESCE(fardos_antes, fardos) WHERE id = ?`).run(f.soltos, agora, f.id);
+      db.prepare(`UPDATE etiquetas SET pacotes = pacotes + ?, fardos = CAST(ROUND((pacotes + ?) / 5.0) AS INTEGER),
+                         alterado_em = ? WHERE id = ? AND encerrada_em IS NOT NULL AND pacotes IS NOT NULL`)
+        .run(f.soltos, f.soltos, agora, f.etiqueta_id);
+    }
+    configSet('soltos_cor_formato_v1', 'feito');
+  })();
+  for (const f of feitas)
+    logI('bobinas', `Soltos não aproveitáveis devolvidos: ${f.etiqueta_id} (${f.maquina}, ${f.para}) +${f.soltos} pc`
+      + ` — vinham de ${f.de}`);
+  return feitas;
+}
+
 function pacotesMontagensAnteriores(etiquetaId) {
   const r = db.prepare(`SELECT pacotes_antes FROM bobina_refugos WHERE etiqueta_id = ? AND reaproveitado_em IS NOT NULL
                            AND cancelado_em IS NULL ORDER BY reaproveitado_em DESC LIMIT 1`).get(etiquetaId);
@@ -10151,7 +10211,8 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
                       soltos_inicio: soltosNaMaquina(destino) },
         });
       }
-      const parteAnterior = pedeFardos ? lerParte(destino, body.fardos_anterior, body.soltos_anterior) : null;
+      const parteAnterior = pedeFardos ? lerParte(destino, body.fardos_anterior, body.soltos_anterior,
+                                                    lerFormatoDaMaquina(destino, body.formato_anterior)) : null;
       if (parteAnterior && parteAnterior.erro) return jsonErr(res, 400, parteAnterior.erro);
 
       // Observação do pedido: traz os dados de PRODUÇÃO gravados na etiqueta
@@ -10302,14 +10363,16 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
       const sacoleiras = ['P1', 'P2'].map(p => {
         const a = bobinaAbertaNa(p);
         const leitura = clp.dados ? clp.dados[p] : null;
+        const fmt = a ? formatoDaBobina(p, a, leitura) : null;
         return { sacoleira: p, bobina: a ? {
           id: a.id, cor: a.cor, tipo_bobina: a.tipo_bobina, largura: a.largura, peso: a.peso,
           baixa_em: a.baixa_em, baixa_operador: a.baixa_operador,
           // Fardos já informados nos fins de turno anteriores (a bobina seguiu montada).
           pacotes_parciais: pacotesParciaisDe(a.id).pacotes,
           // Pacotes que ficaram soltos no fardo aberto quando esta parte começou.
-          soltos_inicio: soltosNaMaquina(p),
-          cor_pa: corPaDaBobina(a.cor), formato: formatoDaBobina(p, a, leitura),
+          // Só os que esta bobina aproveita (mesma cor e formato — herdaSoltos).
+          soltos_inicio: soltosNaMaquina(p, fmt && fmt.sugerido),
+          cor_pa: corPaDaBobina(a.cor), formato: fmt,
           // A última coisa registrada nesta bobina foi uma troca de formato:
           // a próxima contagem é "desde a troca".
           desde_troca: (db.prepare(`SELECT momento FROM bobina_parciais WHERE etiqueta_id = ? ORDER BY id DESC LIMIT 1`)
@@ -10378,7 +10441,7 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
                         pacotes_parciais: pacotesParciaisDe(b.id).pacotes, soltos_inicio: soltosNaMaquina(t.maquina) });
           continue;
         }
-        const parte = lerParte(t.maquina, dado.fardos, dado.soltos);
+        const parte = lerParte(t.maquina, dado.fardos, dado.soltos, lerFormatoDaMaquina(t.maquina, dado.formato));
         if (parte.erro) return jsonErr(res, 400, `${t.maquina}: ${parte.erro}`);
         partes.push({ maq: t.maquina, id: b.id, parte, formato: lerFormatoDaMaquina(t.maquina, dado.formato),
                       origem: dado.formato_origem === 'sugerido' ? 'sugerido' : 'escolhido' });
@@ -10772,7 +10835,7 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
       const a = bobinaAbertaNa(sac);
       if (!a) return jsonErr(res, 409, `A Sacoleira ${sac} não tem bobina aberta`);
       if (lerFardos(body.fardos) === null) return jsonErr(res, 400, `Informe quantos fardos a bobina ${a.id} deu`);
-      const parte = lerParte(sac, body.fardos, body.soltos);
+      const parte = lerParte(sac, body.fardos, body.soltos, lerFormatoDaMaquina(sac, body.formato));
       if (parte.erro) return jsonErr(res, 400, parte.erro);
       const formatoFim = lerFormatoDaMaquina(sac, body.formato);
       const operador = (body.operador ? String(body.operador).trim().slice(0, 80) : null) || null;
@@ -10807,7 +10870,7 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
       if (pend && !pend.definido_em)
         return jsonErr(res, 409, `Já há uma troca de formato na ${sac} aguardando a sacoleira mudar o comprimento`);
       if (lerFardos(body.fardos) === null) return jsonErr(res, 400, 'Informe quantos fardos fecharam no formato que estava rodando');
-      const parte = lerParte(sac, body.fardos, body.soltos);
+      const parte = lerParte(sac, body.fardos, body.soltos, lerFormatoDaMaquina(sac, body.formato));
       if (parte.erro) return jsonErr(res, 400, parte.erro);
       const formatoAntes = lerFormatoDaMaquina(sac, body.formato);
       const operador = (body.operador ? String(body.operador).trim().slice(0, 80) : null) || null;
@@ -10871,10 +10934,15 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
       const dSoltos = soltosNovo - soltosAntes;
       const pacNovo = pacAntes + (novos - antigos) * PACOTES_POR_FARDO + dSoltos;
       if (pacNovo < 0) return jsonErr(res, 400, `Com ${novos} fardo(s) e ${soltosNovo} solto(s) a parte ficaria negativa — confira`);
-      // Parte de troca de formato: a seguinte começou do zero (o fardo aberto
-      // era do formato antigo), então mudar os soltos dela não mexe na seguinte.
-      const seguinte = (dSoltos && parte.momento !== 'setup') ? db.prepare(
+      // A seguinte só começou contando com estes soltos se os aproveitou
+      // (herdaSoltos: não depois de troca de formato, nem com outra cor ou
+      // outro formato); se não aproveitou, mudar os soltos daqui não mexe nela.
+      const corDe = (etq) => (db.prepare(`SELECT cor FROM etiquetas WHERE id = ?`).get(etq) || {}).cor;
+      const seg0 = dSoltos ? db.prepare(
         `SELECT * FROM bobina_parciais WHERE maquina = ? AND id > ? ORDER BY id LIMIT 1`).get(parte.maquina, parte.id) : null;
+      const seguinte = (seg0 && herdaSoltos(
+        { momento: parte.momento, formato: formatoNovo || parte.formato, cor: corDe(parte.etiqueta_id) },
+        { formato: seg0.formato, cor: corDe(seg0.etiqueta_id) })) ? seg0 : null;
       const pacSeg = seguinte ? (seguinte.pacotes != null ? Number(seguinte.pacotes) : Number(seguinte.fardos) * PACOTES_POR_FARDO) - dSoltos : null;
       if (seguinte && pacSeg < 0)
         return jsonErr(res, 400, `Com ${soltosNovo} solto(s) a parte seguinte da ${parte.maquina} (${seguinte.etiqueta_id}) ficaria negativa — confira`);
@@ -11580,6 +11648,10 @@ const serverCb = http.createServer(async (req, res) => {
 // ════════════════════════════════════════════════════════════════════
 //  STARTUP
 // ════════════════════════════════════════════════════════════════════
+
+// Uma vez só: devolve os soltos descontados de bobina de outra cor/formato.
+// Falha aqui não pode impedir o coletor de subir.
+try { corrigirSoltosHistorico(); } catch (e) { logE('bobinas', `Correção dos soltos no histórico falhou: ${e.message}`); }
 
 serverCb.listen(PORT_CALLBACK, '127.0.0.1', () => {
   logI('http', `Callback OAuth escutando em http://localhost:${PORT_CALLBACK}/callback`);
