@@ -439,6 +439,35 @@ async function confirmarBaixa(sac){
 const KG_FARDO=25, PC_FARDO=5, KG_PC=KG_FARDO/PC_FARDO;
 // Pacotes → "17 fardos +2 pc" (fardo = 5 pacotes de 5 kg).
 function txtPc(p){ const f=Math.floor(p/PC_FARDO), s=p%PC_FARDO; return f+' fardo'+(f===1?'':'s')+(s?(' +'+s+' pc'):''); }
+// TRAVA DOS FARDOS (12/10/2026, Fred). E0001856/E0001931/E0001908 na P1: a
+// mesma contagem de 13 fardos lançada em bobinas diferentes — inclusive na
+// troca de formato 1-3 min depois de montar — e "corrigida" para cima; a
+// bobina chegou a 158% do peso. Nenhuma bobina real passou de ~95%. Barra:
+//  · fardos (kg) acima do PESO da bobina — saco não pesa mais que o filme;
+//  · mais kg do que a sacoleira consegue fazer desde que a bobina foi
+//    montada (TRAVA_KG_MIN, ~2x o ritmo normal de ~400 kg/h, + 1 fardo).
+// Devolve o texto do motivo, ou null se passa.
+const TRAVA_KG_MIN=15;
+// kgTempo: o que entra na conta do tempo — na correção, só a parte corrigida
+// (as outras partes podem ser DEPOIS dela); nos outros modos, o total.
+function travaFardos(bob, kgTotal, kgTempo){
+  if(kgTotal==null || !(kgTotal>0)) return null;
+  if(kgTempo==null) kgTempo=kgTotal;
+  const peso=Number(bob.peso)||0;
+  if(peso>0 && kgTotal>peso)
+    return fmtKg(kgTotal)+' de fardos para uma bobina de '+fmtKg(peso)+' — mais do que ela pesa. '+
+      'Lance só os fardos DESTA bobina, neste trecho (não o total do turno nem o do palete).';
+  const ini=Date.parse(bob.baixa_em||''), fimT=bob.parte_ate?Date.parse(bob.parte_ate):Date.now();
+  if(Number.isFinite(ini) && Number.isFinite(fimT)){
+    const min=Math.max(0,(fimT-ini)/60000);
+    const max=min*TRAVA_KG_MIN+KG_FARDO;
+    if(kgTempo>max)
+      return fmtKg(kgTempo)+' de fardos em '+Math.round(min)+' min de bobina montada — a sacoleira não faz isso '+
+        '(no máximo ~'+fmtKg(max)+'). Os fardos da bobina ANTERIOR vão na troca dela, não nesta.';
+  }
+  return null;
+}
+
 function perguntarFardos(bob, sac, modo){
   return new Promise(resolve=>{
     const ent=ABERTAS.find(a=>a.sacoleira===sac)||{};
@@ -516,9 +545,8 @@ function perguntarFardos(bob, sac, modo){
       const kgTotal=temN?(antes+pc)*KG_PC:null;
       fundo.querySelector('#md-kg').innerHTML=!temN?'':(pc<0?'<small>não fecha com os soltos do início — confira</small>':
         (fmtKg(kg)+'<small>'+txtPc(pc)+(antes>0?(' · bobina: '+txtPc(antes+pc)):'')+'</small>'));
-      const passa=temN && Number(bob.peso)>0 && kgTotal>Number(bob.peso);
-      fundo.querySelector('#md-alerta').innerHTML=passa?('<div class="m-alerta">⚠ '+fmtKg(kgTotal)+' de fardos para uma bobina de '+
-        fmtKg(bob.peso)+' — rendeu mais do que pesa. Confira os fardos antes de confirmar.</div>'):'';
+      const trava=travaFardos(bob, temN?kgTotal:null, (temN&&editarM)?kg:null);
+      fundo.querySelector('#md-alerta').innerHTML=trava?('<div class="m-alerta">⛔ '+trava+'</div>'):'';
       fundo.querySelector('#md-resumo').innerHTML='Cortou <b>'+(escolhido?esc(escolhido.replace('x',' × ')):'?')+'</b> · '+esc(corNome)+
         (temN&&pc>=0?(' · <b>'+txtPc(pc)+'</b>'):'')+
         '<br>por <b>'+esc(bob.baixa_operador||'—')+'</b>';
@@ -544,6 +572,8 @@ function perguntarFardos(bob, sac, modo){
       const n=Number(inp.value);
       if(inp.value==='' || !Number.isInteger(n) || n<0 || n>999){ toast('erro','Digite o número de fardos (0 a 999)',3000); inp.focus(); return; }
       if(n*PC_FARDO+soltos-ini<0){ toast('erro','Havia '+ini+' pacote(s) solto(s) no início — confira fardos e soltos',4000); return; }
+      const trava=travaFardos(bob, (antes+n*PC_FARDO+soltos-ini)*KG_PC, editarM?(n*PC_FARDO+soltos-ini)*KG_PC:null);
+      if(trava){ toast('erro','⛔ '+trava,6000); inp.focus(); inp.select(); return; }
       // Formato NÃO trava o registro (01/10/2026, Gustavo: o encerrar turno
       // "prendia" quando o sistema não sabia o formato). Sem formato, a parte
       // vai sem ele — o fim de turno não pode depender disso.
@@ -821,6 +851,7 @@ async function editarBobina(sac, id){
               // o resto da bobina (outras partes), para o total e o alerta de peso
               pacotes_parciais:Math.max(0,(x.pacotes_total||0)-(parte.pacotes||0)),
               soltos_inicio:parte.soltos_inicio||0,
+              parte_ate:parte.registrado_em,     // trava: o tempo conta até quando a parte foi lançada
               editar:{ fardos:parte.fardos, soltos:parte.soltos_fim } };
   const v=await perguntarFardos(bob, sac, 'editar');
   if(!v) return;
