@@ -1012,6 +1012,54 @@ async function clpSacoleiras() {
   }
   return _clpCache;
 }
+
+// BIPAGEM AO VIVO → VPS (14/10/2026, Gustavo: a troca da P1 das 07:26 não
+// aparecia no acompanhamento por turno do painel — "resolva pra jamais
+// acontecer de novo"). O exportador (C:\eko-push, tarefa de 2 em 2 min) manda
+// tudo em lote por SFTP, e a troca chegava à VPS 4 min depois. Agora, a cada
+// VIVO_CADA_MS, o servidor lê as MESMAS rotas que o exportador lê (mesmo
+// formato de linha), só o que mudou nos últimos VIVO_JANELA_MIN, e se mudou
+// algo desde o último envio manda ao painel da VPS (POST /api/coletor/vivo,
+// mesma origem do vps_sacoleiras_url). Lá vira arquivo na entrada do ingestor
+// e a ingestão roda na hora. O lote por SFTP continua igual: se este envio
+// falhar, nada se perde — só volta o atraso de antes.
+const VIVO_CADA_MS = 5000;
+const VIVO_JANELA_MIN = 15;     // reenvia a janela inteira: um envio perdido não perde a linha
+let _vivo = { rodando: false, ultimo: '', falhas: 0 };
+async function empurrarVivoVps() {
+  if (_vivo.rodando) return;
+  _vivo.rodando = true;
+  try {
+    const desde = new Date(Date.now() - VIVO_JANELA_MIN * 60000).toISOString();
+    const local = (rota, q) => fetch(`http://127.0.0.1:${PORT}${rota}?${new URLSearchParams(q)}`,
+                                     { signal: AbortSignal.timeout(10000) }).then(r => r.json());
+    const [mv, bp, tc] = await Promise.all([
+      local('/dashboard/movimentos', { alterados_desde: desde, limite: 1000 }),
+      local('/dashboard/bobina-parciais', { desde }),
+      local('/dashboard/turnos-corte', { desde }),
+    ]);
+    if (mv.filtro !== 'alterados_desde' || bp.filtro !== 'bobina_parciais' || tc.filtro !== 'turnos_corte') return;
+    const corpo = { etiquetas: mv.linhas || [], parciais: bp.parciais || [], turnos: tc.turnos || [] };
+    const assinatura = JSON.stringify(corpo);
+    if (assinatura === _vivo.ultimo) return;
+    const base = new URL(configGet('vps_sacoleiras_url', 'http://100.107.130.114:8765/api/sacoleiras/agora')).origin;
+    const r = await fetch(base + '/api/coletor/vivo', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ gerado_em: new Date().toISOString(), ...corpo }),
+      signal: AbortSignal.timeout(15000) });
+    const d = await r.json().catch(() => ({ ok: false, erro: 'HTTP ' + r.status }));
+    if (!d.ok) throw new Error(d.erro || 'a VPS recusou');
+    if (_vivo.falhas) logI('vivo', `envio ao vivo à VPS voltou depois de ${_vivo.falhas} falha(s)`);
+    _vivo.ultimo = assinatura;
+    _vivo.falhas = 0;
+  } catch (e) {
+    // 1 aviso na 1ª falha e depois a cada ~5 min, para não encher o log
+    if (_vivo.falhas++ % 60 === 0) logW('vivo', 'envio ao vivo à VPS falhou (o lote por SFTP segue)', { erro: e.message });
+  } finally {
+    _vivo.rodando = false;
+  }
+}
+
 function sugerirFormato(maq, bobina, clp) {
   const permitidos = PA_FORMATOS_POR_MAQUINA[maq] || [];
   const out = { permitidos, candidatos: permitidos, sugerido: null, motivo: '',
@@ -11766,6 +11814,10 @@ server.listen(PORT, '127.0.0.1', async () => {
   setTimeout(checarSessoesParaAutoFim, 5000);
   setInterval(checarSessoesParaAutoFim, 5 * 60 * 1000);
   logI('sessao', 'Auto-finalização de turnos de Extrusão ativada (verificação a cada 5min)');
+
+  // Bipagem ao vivo → VPS (14/10/2026): ver empurrarVivoVps.
+  setInterval(empurrarVivoVps, VIVO_CADA_MS);
+  logI('vivo', `Envio ao vivo das bipagens à VPS ativado (a cada ${VIVO_CADA_MS / 1000}s)`);
 });
 
 server.on('error', e => {
