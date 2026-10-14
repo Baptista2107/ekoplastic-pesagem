@@ -4689,6 +4689,9 @@ function gerarEPLBobina(dados) {
   // font 4 hmul1 ≈ 14 ; font 5 hmul2 ≈ 64
   const tipoX = Math.max(20, Math.floor((800 - tipoStr.length * 14) / 2));
   const pesoX = Math.max(20, Math.floor((800 - pesoStr.length * 64) / 2));
+  // Número escrito embaixo das barras, como na etiqueta da MP (14/10/2026,
+  // Gustavo): dá para achar/conferir a bobina sem leitor.
+  const idX   = Math.max(20, Math.floor((800 - `ETIQUETA ${id}`.length * 14) / 2));
 
   // Layout 100x100mm (800x800 dots). Margem superior de 40 dots evita o
   // corte do topo. Cada bloco: rótulo pequeno (font 3) + valor (font 4),
@@ -4721,7 +4724,8 @@ LO30,514,740,2
 A${pesoX},534,0,5,2,2,N,"${pesoStr}"
 LO30,652,740,2
 
-B210,668,0,1,3,8,70,N,"${id}"
+B210,666,0,1,3,8,60,N,"${id}"
+A${idX},736,0,4,1,1,N,"ETIQUETA ${id}"
 
 LO30,772,740,3
 
