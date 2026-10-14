@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+<meta charset="utf-8">
+<title>Manual do Coletor</title>
+<style>
+  @page { size: A4; margin: 14mm 14mm 16mm 14mm; }
+  * { box-sizing: border-box; }
+  body { font-family: "DejaVu Sans", Arial, sans-serif; font-size: 11.5pt; line-height: 1.38; color: #000; background: #fff; margin: 0; }
+  h1 { font-size: 22pt; margin: 0 0 2mm; }
+  h2 { font-size: 15pt; margin: 7mm 0 2.5mm; padding: 1.5mm 3mm; background: #000; color: #fff; break-after: avoid; }
+  h3 { font-size: 12.5pt; margin: 4mm 0 1.5mm; break-after: avoid; }
+  p { margin: 1.5mm 0; }
+  ol, ul { margin: 1mm 0 2mm; padding-left: 7mm; }
+  li { margin: 0.8mm 0; }
+  .sub { font-size: 11pt; color: #333; margin-bottom: 4mm; }
+  .btn { display: inline-block; border: 1.5px solid #000; border-radius: 2mm; padding: 0 2mm; font-weight: 700; white-space: nowrap; }
+  .msg { font-family: "DejaVu Sans", sans-serif; font-size: 10pt; background: #e6e6e6; font-style: italic; padding: 0 1mm; }
+  .caixa { border: 2px solid #000; padding: 2.5mm 3.5mm; margin: 3mm 0; break-inside: avoid; }
+  .atencao { border: 2.5px dashed #000; padding: 2.5mm 3.5mm; margin: 3mm 0; break-inside: avoid; }
+  .atencao b:first-child { font-size: 12pt; }
+  table { border-collapse: collapse; width: 100%; margin: 2mm 0 3mm; font-size: 10.5pt; }
+  tr { break-inside: avoid; }
+  th, td { border: 1px solid #000; padding: 1.2mm 2mm; text-align: left; vertical-align: top; }
+  th { background: #ddd; }
+  .indice { columns: 2; column-gap: 8mm; font-size: 11pt; }
+  .indice li { break-inside: avoid; }
+  .quebra { break-before: page; }
+  .rodape { margin-top: 8mm; font-size: 9pt; color: #444; border-top: 1px solid #000; padding-top: 2mm; }
+</style>
+</head>
+<body>
+
+<h1>Manual do Coletor</h1>
+<div class="sub"><b>Ekoplastic · Bobina na Sacoleira</b> · para operador da sacoleira e encarregado do corte · versão de 14/10/2026</div>
+
+<div class="caixa">
+<b>Em uma frase:</b> toda bobina que entra na sacoleira é <b>bipada</b> no coletor, e toda vez que ela sai (troca, fim de turno, troca de formato ou refugo) a pessoa <b>informa quantos fardos fechou</b>. É isso que vira a produção do turno, o rendimento da bobina e o estoque de bobinas.
+</div>
+
+<ol class="indice">
+  <li>Ligar e abrir o coletor</li>
+  <li>A tela principal</li>
+  <li>Iniciar o turno (encarregado)</li>
+  <li>Montar bobina (bipar)</li>
+  <li>Trocar a bobina</li>
+  <li>O quadro de fardos</li>
+  <li>Trocar o formato</li>
+  <li>Refugo (bobina sai sem acabar)</li>
+  <li>Encerrar o turno (encarregado)</li>
+  <li>Lista "Neste turno": corrigir e desfazer</li>
+  <li>Aviso "Mudou o setup"</li>
+  <li>Inventário de bobinas</li>
+  <li>Mensagens de erro e o que fazer</li>
+  <li>Problemas comuns</li>
+</ol>
+
+<h2>1. Ligar e abrir o coletor</h2>
+<ol>
+  <li>Ligue o coletor e abra o aplicativo <b>Ekoplastic Coletor</b>. Ele abre direto na tela <b>Bobina na Sacoleira</b>.</li>
+  <li>Para ler uma etiqueta, aponte para o código de barras e <b>puxe o gatilho</b> do coletor.</li>
+  <li>O coletor <b>não pede senha</b> (desde 05/10). Quando for lançar algo, ele pergunta <b>"Quem está bipando?"</b>: toque no seu nome. O aparelho lembra o último nome usado.</li>
+</ol>
+<p>Se aparecer <span class="msg">Confiar no Mini PC?</span>, toque em <span class="btn">Confiar</span>. Isso só acontece na primeira vez.</p>
+
+<h2>2. A tela principal</h2>
+<p>Ela tem quatro partes, de cima para baixo:</p>
+<table>
+  <tr><th style="width:32%">Parte</th><th>O que mostra</th></tr>
+  <tr><td><b>Sacoleiras agora</b></td><td>Um cartão para a <b>P1</b> e outro para a <b>P2</b>. Cada cartão mostra a bobina montada (cor, largura, formato que está cortando, peso, quem bipou e há quanto tempo) ou "Sem bobina". Os botões do cartão são <span class="btn">Trocar formato</span> e <span class="btn">♻ REFUGO</span>.</td></tr>
+  <tr><td><b>Montar bobina — bipar a etiqueta</b></td><td>Onde se bipa a bobina nova. Se a etiqueta estiver estragada, use <span class="btn">Digitar código da etiqueta</span>. Pode digitar só o número: <b>1669</b> vira <b>E0001669</b>.</td></tr>
+  <tr><td><b>Neste turno</b></td><td>As bobinas do turno de cada sacoleira, com os fardos e o rendimento. Tocar numa bobina abre a <b>correção</b> (item 10).</td></tr>
+  <tr><td><b>Turno do corte</b></td><td>Os botões do encarregado: <span class="btn">Iniciar turno</span> e <span class="btn">Encerrar turno</span>.</td></tr>
+</table>
+
+<h2>3. Iniciar o turno (encarregado)</h2>
+<div class="atencao"><b>Sem turno aberto não se bipa bobina.</b> O coletor avisa <span class="msg">Sem turno aberto. O supervisor inicia o turno antes de bipar.</span></div>
+<ol>
+  <li>Em <b>Turno do corte</b>, toque em <span class="btn">Iniciar turno</span> (ou <span class="btn">Iniciar / trocar</span>).</li>
+  <li>Escolha <span class="btn">Turno A</span>, <span class="btn">Turno C</span> ou <span class="btn">Extra</span>. O turno vale para as <b>duas sacoleiras</b>.</li>
+  <li>Toque em <span class="btn">Iniciar</span>.</li>
+  <li>Se a sacoleira já tinha um turno aberto, ele é <b>encerrado na mesma hora</b>. Por isso, para cada sacoleira que tem bobina montada, o coletor pergunta os fardos do turno que acabou (item 6).</li>
+</ol>
+<p>Pronto: aparece <span class="msg">✓ Turno A iniciado · P1 e P2</span>.</p>
+
+<h2>4. Montar bobina (bipar)</h2>
+<ol>
+  <li>Puxe o gatilho sobre a etiqueta <b>E…</b> da bobina.</li>
+  <li>Aparece o cartão da bobina (cor, largura, tipo, peso, extrusora). Confira se é a bobina certa.</li>
+  <li>Em <b>MONTAR NA SACOLEIRA</b>, toque em <span class="btn">P1</span> ou <span class="btn">P2</span>. Embaixo de cada botão está escrito <b>livre</b> (sacoleira vazia), <b>troca E000…</b> (vai trocar a bobina que está lá) ou <b>sem turno</b> (bloqueado).</li>
+  <li>Em <b>"Quem está bipando?"</b>, toque no seu nome, ou digite e toque em <span class="btn">Continuar</span>.</li>
+  <li>Se a sacoleira estava vazia, termina aqui: <span class="msg">✓ E0001669 na P1 · NOME</span>.</li>
+  <li>Se já tinha bobina na sacoleira, é uma <b>troca</b>: siga o item 5.</li>
+</ol>
+<p>Bipou a bobina errada? Veja <b>desfazer</b> no item 10.</p>
+
+<h2>5. Trocar a bobina</h2>
+<p>A troca é feita <b>bipando a bobina nova</b>. Não existe mais botão "Encerrar bobina": a bobina velha sai quando a nova entra.</p>
+<ol>
+  <li>Bipe a bobina nova e escolha a sacoleira. O botão mostra <b>troca E000…</b>.</li>
+  <li>Abre o quadro <b>"Troca na Sacoleira P1"</b>. Informe os <b>fardos que a bobina que está saindo</b> fechou (item 6).</li>
+  <li>Toque em <span class="btn">Confirmar troca</span>.</li>
+</ol>
+<div class="atencao"><b>Fardos da bobina velha vão na troca dela.</b> Não deixe para lançar na bobina seguinte. Se fizer isso, a conta fica errada nas duas: uma parece que rendeu pouco e a outra, que rendeu mais do que pesa. O coletor trava os casos impossíveis (item 13).</div>
+
+<h2>6. O quadro de fardos</h2>
+<p>É o mesmo quadro em todas as saídas: troca, fim de turno, troca de formato, refugo e correção. O título mostra qual é.</p>
+<table>
+  <tr><th style="width:34%">Campo</th><th>Como preencher</th></tr>
+  <tr><td><b>FORMATO CORTADO · COR</b></td><td>Já vem preenchido pelo sistema. Se estiver errado, toque em <span class="btn">Outro</span> e escolha. Se aparecer "…", toque no formato se souber. Dá para registrar sem formato.</td></tr>
+  <tr><td><b>FARDOS FECHADOS</b></td><td>Quantos fardos <b>completos</b> esta bobina fechou <b>neste trecho</b>: neste turno, desde a troca de formato ou neste formato (o texto do campo diz qual). Use o número só desta bobina, não o total do turno nem o do palete.</td></tr>
+  <tr><td><b>PACOTES SOLTOS AGORA</b></td><td>Toque de <b>0 a 4</b>: quantos pacotes estão no fardo que ainda não fechou.</td></tr>
+</table>
+<p>O quadro mostra a conta em kg: <b>1 fardo = 5 pacotes = 25 kg</b>.</p>
+<p>Se aparecer <span class="msg">Havia N pacotes soltos no início — conte o fardo que ela completou</span>, é porque a bobina anterior deixou pacotes soltos. O fardo que esta bobina completou conta para ela. Os soltos só passam de uma bobina para a outra quando a <b>cor e o formato são os mesmos</b>.</p>
+
+<h2>7. Trocar o formato</h2>
+<p>Use quando a sacoleira vai mudar de formato (por exemplo, de 40×50 para 30×45) com a <b>mesma bobina</b>.</p>
+<ol>
+  <li>No cartão da sacoleira, toque em <span class="btn">Trocar formato</span>.</li>
+  <li>Informe os fardos do formato que estava rodando e toque em <span class="btn">Registrar e aguardar o formato novo</span>.</li>
+  <li>O cartão passa a mostrar <b>trocando formato…</b> até a sacoleira mudar o comprimento. O sistema percebe a mudança sozinho.</li>
+</ol>
+<p>Só pode haver uma troca de formato pendente por sacoleira.</p>
+
+<h2>8. Refugo (bobina sai sem acabar)</h2>
+<p>Use quando a bobina sai da sacoleira <b>antes de acabar</b> (defeito, cor errada, problema de filme).</p>
+<ol>
+  <li>No cartão da sacoleira, toque em <span class="btn">♻ REFUGO</span>.</li>
+  <li>O quadro abre em vermelho. Informe os fardos que ela fechou até agora e toque em <span class="btn">♻ Mandar para REFUGO</span>. Depois confirme.</li>
+  <li>Aparece <span class="msg">♻ E… foi para REFUGO · repesar no Mini PC</span>.</li>
+  <li><b>Leve a bobina ao Mini PC</b> e vá em <b>Resíduos → REFUGO</b>. Bipe a etiqueta antiga, pese e toque em <span class="btn">REGISTRAR REFUGO</span>. O Mini PC imprime uma etiqueta com o peso novo.</li>
+</ol>
+<p>Depois de repesada, a bobina de refugo pode ser montada de novo numa sacoleira.</p>
+
+<h2>9. Encerrar o turno (encarregado)</h2>
+<ol>
+  <li>Em <b>Turno do corte</b>, toque em <span class="btn">Encerrar turno</span>.</li>
+  <li>Para cada sacoleira com bobina montada, abre o quadro <b>"Fim do turno"</b>: informe os fardos <b>deste turno</b> e toque em <span class="btn">Registrar fardos do turno</span>. A bobina continua montada na máquina para o próximo turno.</li>
+  <li>Abre o <b>Resumo do turno</b>, com o total de cada sacoleira e uma linha por bobina.</li>
+  <li><b>Confira com o lançamento manual.</b> Se alguma bobina não bater, toque em <span class="btn">corrigir</span> nela, digite o valor certo e toque em <span class="btn">Corrigir</span>.</li>
+  <li>Toque em <span class="btn">OK</span>.</li>
+</ol>
+<p>Com o turno encerrado, a sacoleira fica <b>fora de turno</b> até alguém iniciar o próximo. O fim do turno também dispara a mensagem do EkoBot para o encarregado.</p>
+
+<h2>10. Lista "Neste turno": corrigir e desfazer</h2>
+<h3>Corrigir um lançamento</h3>
+<ol>
+  <li>Toque na bobina na lista <b>Neste turno</b>.</li>
+  <li>Se a bobina tem mais de um lançamento no turno, escolha qual corrigir: fim de turno, troca de formato ou saída da máquina.</li>
+  <li>Refaça os fardos, os soltos e o formato e toque em <span class="btn">Salvar correção</span>. O valor novo <b>substitui</b> o anterior, e a bobina fica marcada <b>✎ editada</b>.</li>
+</ol>
+<h3>Desfazer uma bipagem errada</h3>
+<p>Serve para quando bipou a bobina errada. Só funciona na <b>última bobina</b> da sacoleira e só se ela ainda <b>não tem fardos</b> lançados.</p>
+<ol>
+  <li>Na lista, toque em <span class="btn">desfazer</span> na bobina e confirme com <span class="btn">Desfazer</span>.</li>
+  <li>A bobina volta para o estoque (<span class="msg">↩ E… voltou para o estoque</span>). Agora bipe a bobina certa.</li>
+</ol>
+<h3>O que a lista mostra</h3>
+<ul>
+  <li>A <b>barra de rendimento</b> de cada bobina (fardos × 25 kg ÷ peso da bobina). Acima de 100% fica marcada <b>⚠ passa do peso</b>, o que quase sempre é fardo lançado na bobina errada: corrija.</li>
+  <li>Os selos <b>turno anterior</b>, <b>✎ editada</b> e <b>♻ saiu como refugo</b>.</li>
+</ul>
+
+<h2>11. Aviso "Mudou o setup"</h2>
+<p>Se a sacoleira mudou de comprimento sem ninguém registrar a troca de formato, o cartão fica destacado, o coletor <b>apita e vibra</b> e mostra:</p>
+<p><span class="msg">⚠ MUDOU O SETUP 40 × 50 → 30 × 45 · Informe quanto rendeu o 40 × 50</span></p>
+<p>Toque em <span class="btn">Informar 40 × 50</span> e lance os fardos do formato antigo, como numa troca de formato.</p>
+
+<h2>12. Inventário de bobinas</h2>
+<ol>
+  <li>Toque em <span class="btn">Inventário de bobinas</span>.</li>
+  <li>Bipe <b>cada bobina do estoque</b> com o gatilho. Cada leitura ganha um selo: <b>em estoque</b>, <b>sistema: na sacoleira P1</b>, <b>sistema: já usada</b>, <b>etiqueta cancelada</b> ou <b>refugo em estoque</b>. O que não está "em estoque" aparece como divergência.</li>
+  <li>Bipou errado? Toque em <span class="btn">remover</span> no item.</li>
+  <li>Pode sair com <span class="btn">← Voltar às sacoleiras</span>: o inventário continua aberto.</li>
+  <li>No fim, toque em <span class="btn">✓ Concluir inventário</span> e confirme. Depois disso não entra mais nenhuma leitura. Use <span class="btn">Copiar lista</span> se precisar mandar a lista.</li>
+</ol>
+<p>O inventário só registra: não muda a situação de nenhuma etiqueta.</p>
+
+<h2>13. Mensagens de erro e o que fazer</h2>
+<table>
+  <tr><th style="width:47%">Mensagem</th><th>O que fazer</th></tr>
+  <tr><td><span class="msg">Sem turno aberto…</span></td><td>O encarregado inicia o turno (item 3).</td></tr>
+  <tr><td><span class="msg">Etiqueta não encontrada</span></td><td>Bipe de novo ou digite o número. Se continuar, a bobina não foi pesada no Mini PC: avise o encarregado.</td></tr>
+  <tr><td><span class="msg">Já foi para a sacoleira P1 em dd/mm hh:mm</span></td><td>Essa bobina já foi usada. Confira a etiqueta: pode ser a bobina errada.</td></tr>
+  <tr><td><span class="msg">Etiqueta cancelada</span></td><td>A etiqueta foi descartada no Mini PC. Peça a etiqueta certa.</td></tr>
+  <tr><td><span class="msg">X kg de fardos para uma bobina de Y kg — mais do que ela pesa</span></td><td>Lance só os fardos <b>desta</b> bobina, neste trecho, e não o total do turno nem o do palete.</td></tr>
+  <tr><td><span class="msg">X kg de fardos em N min de bobina montada — a sacoleira não faz isso</span></td><td>Os fardos são da bobina <b>anterior</b>. Lance-os na troca dela (corrija pela lista "Neste turno").</td></tr>
+  <tr><td><span class="msg">Digite o número de fardos (0 a 999)</span></td><td>O campo de fardos está vazio. Digite um número, nem que seja 0.</td></tr>
+  <tr><td><span class="msg">Havia N pacote(s) solto(s) no início — confira fardos e soltos</span></td><td>Confira a contagem: os soltos da bobina anterior entram no primeiro fardo desta.</td></tr>
+  <tr><td><span class="msg">Informe quantos fardos a bobina X deu antes de trocar</span></td><td>Outro aparelho mexeu na sacoleira no meio. Preencha os fardos que o coletor pedir.</td></tr>
+  <tr><td><span class="msg">Já há uma troca de formato na P1 aguardando…</span></td><td>Espere a sacoleira mudar o comprimento antes de outra troca de formato.</td></tr>
+  <tr><td><span class="msg">…já tem N fardo(s) informados — não dá para desfazer</span></td><td>A bobina já foi usada. Em vez de desfazer, <b>corrija</b> o lançamento (item 10).</td></tr>
+</table>
+
+<h2>14. Problemas comuns</h2>
+<ul>
+  <li><b>O gatilho não lê:</b> limpe a etiqueta, aproxime ou afaste um palmo e tente de novo. Se não der, use <span class="btn">Digitar código da etiqueta</span>.</li>
+  <li><b>A tela não atualiza ou o coletor não conecta:</b> confira o Wi-Fi do coletor e se o Mini PC está ligado. Feche e abra o aplicativo de novo.</li>
+  <li><b>Lançou fardos na bobina errada:</b> corrija as <b>duas</b> bobinas pela lista "Neste turno". O sistema também avisa o gestor no Telegram quando os fardos não batem com o filme cortado.</li>
+  <li><b>Esqueceu de lançar na troca:</b> toque na bobina que saiu, na lista "Neste turno", e corrija.</li>
+</ul>
+
+<div class="rodape">Manual montado a partir do sistema em uso em 14/10/2026 (versão do coletor de 12/10). Configurações do aparelho, senha do supervisor e funções do Mini PC (Extrusão, Matéria-prima, Produto acabado, Endereçamento) ficam fora deste manual. Dúvida ou tela diferente do que está aqui: fale com o Gustavo.</div>
+
+</body>
+</html>
