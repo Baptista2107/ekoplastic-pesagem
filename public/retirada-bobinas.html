@@ -144,6 +144,12 @@
   .sac .s-corte{margin-top:8px; font-size:22px; font-weight:900; line-height:1.1; color:var(--verde);}
   .sac .s-corte small{display:block; font-size:12px; font-weight:700; color:var(--muted); margin-top:2px;}
   .sac.setup-al{border-color:var(--ambar); box-shadow:0 0 0 2px rgba(255,194,80,.35);}
+  /* 15/10/2026 (Gustavo): setup mudou sem registro → a janela sobe sozinha e o fundo pisca */
+  @keyframes pisca-setup{0%,100%{background:rgba(0,0,0,0.72);}50%{background:rgba(200,20,20,0.85);}}
+  .modal-fundo.setup-pisca{animation:pisca-setup 0.9s steps(1) infinite;}
+  .modal-fundo.setup-pisca .modal{border-color:var(--vermelho);}
+  .modal .m-setup{margin:4px 0 8px; padding:10px 12px; border-radius:12px; background:#3b1414; color:#ffb4b4;
+                  font-size:17px; font-weight:900; text-align:center;}
   .sac .s-alerta{margin-top:8px; font-size:20px; font-weight:900; line-height:1.15; color:var(--ambar);}
   .sac .s-alerta small{display:block; font-size:13px; font-weight:700; color:var(--txt); margin-top:3px;}
   .sac .s-corte.duvida{color:var(--ambar); font-size:17px;}
@@ -478,6 +484,8 @@ function perguntarFardos(bob, sac, modo){
     const corNome=(bob.cor_pa&&bob.cor_pa.nome)||bob.cor||'';
     const fundo=document.createElement('div');
     fundo.className='modal-fundo';
+    const sdet = modo==='setup' ? fmt.setup_detectado : null;
+    if(sdet) fundo.classList.add('setup-pisca');
     // modo 'turno' (30/09/2026): fim do turno com a bobina montada. Ela NÃO
     // sai: o número é só o que ela deu neste turno. Na troca e no Finalizar,
     // se já houve fim de turno com ela montada, também se pede só a parte
@@ -507,6 +515,8 @@ function perguntarFardos(bob, sac, modo){
       (f===escolhido?' sel':'')+'" data-f="'+esc(f)+'">'+esc(f.replace('x',' × '))+'</button>').join('');
     fundo.innerHTML='<div class="modal">'+
       '<h2'+(refugoM?' style="color:var(--vermelho)"':'')+'>'+tit+'</h2>'+
+      (sdet?('<div class="m-setup">⚠ MUDOU O FORMATO: '+esc((sdet.de||'?').replace('x',' × '))+' → '+
+        esc((sdet.para||'?').replace('x',' × '))+'<br><small>Quantos fardos deu o '+esc((sdet.de||'?').replace('x',' × '))+'?</small></div>'):'')+
       (refugoM?('<div class="m-alerta" style="font-size:15px;line-height:1.45">A <b>'+esc(bob.id)+'</b> sai da Sacoleira '+esc(sac)+
         ' <b>sem acabar</b> e vira <b>REFUGO</b>.<br>Depois: leve ao Mini PC → <b>Outras pesagens → REFUGO</b>, bipe a '+
         '<b>etiqueta antiga</b> e pese de novo. Não sai etiqueta nova.</div>'):'')+
@@ -712,6 +722,12 @@ async function carregarSacoleiras(){
       const de=(sd.de||'?').replace('x',' × '), para=(sd.para||'?').replace('x',' × ');
       const chave=a.sacoleira+'|'+sd.em;
       if(!SETUP_AVISADO[chave]){ SETUP_AVISADO[chave]=1; beep(700,0.25); setTimeout(()=>beep(700,0.25),350); vibrar([200,100,200]); }
+      // 15/10/2026 (Gustavo: "quero que suba na hora o popup e o fundo fica
+      // piscando"): abre a janela dos fardos sozinha; se fecharem sem
+      // registrar, volta na próxima atualização (1 min) enquanto o alerta durar.
+      if(MODO==='sac' && !document.querySelector('.modal-fundo')) setTimeout(()=>{
+        if(!document.querySelector('.modal-fundo')) trocarFormato(a.sacoleira);
+      },0);
       return '<div class="sac ativa setup-al"><div class="s-top"><span class="dot"></span>SACOLEIRA '+a.sacoleira+'</div>'+
         '<div class="s-mat">'+descCurta(b)+'</div>'+
         '<div class="s-alerta">⚠ MUDOU O SETUP<small>'+esc(de)+' → '+esc(para)+
