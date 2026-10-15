@@ -3863,6 +3863,72 @@ function ajustarCompatibilizantePaPe() {
 ajustarCompatibilizantePaPe();
 
 // ──────────────────────────────────────────────────────────────────
+// PURGA (15/10/2026, Vinicius)
+// Criado pela tela Cadastros Bling ("Aditivo - Purga", sacos de 25 kg, sem
+// fornecedor). Pedido: entra e sai por KG INDICADO — o saco vem com 25 kg,
+// 20 kg... —, num contador de 5 em 5 kg até 25 kg (cada item = um saco).
+// Por dentro é um material "por sacos" de 5 kg (kgPorSaco 5) com kgIndicado:
+// qtd_sacos = porções de 5 kg e a conta peso = qtd × kgPorSaco não muda.
+// Fornecedor GILFLEX (contato Bling 18292263741, produto 16719768728),
+// sem cor, código gravimétrico PG1. Roda UMA vez (marca em config).
+// ──────────────────────────────────────────────────────────────────
+const PURGA = {
+  passoKg: 5, maxKg: 25, fornecedor: 'GILFLEX', contatoBling: '18292263741',
+  produtoBling: '16719768728', codigo: 'PG1',
+};
+function ajustarPurga() {
+  const MARCA = 'patch_purga_kg_indicado';
+  try {
+    if (dbStmts.configGet.get(MARCA)) return;
+    const mats = JSON.parse(configGet('mp_materiais', '{}'));
+    const semAcento = t => String(t || '').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+    const achados = Object.keys(mats).filter(k => k === 'PURGA' || /PURGA/.test(semAcento(mats[k] && mats[k].popular)));
+    const chave = achados.includes('PURGA') ? 'PURGA' : achados[0];
+    if (!chave) { logW('db', 'Purga: material não encontrado no banco — nada feito (cadastre pela tela)'); return; }
+    const m = mats[chave];
+    const antes = { porSacos: m.porSacos, kgPorSaco: m.kgPorSaco };
+    m.porSacos   = true;
+    m.kgPorSaco  = PURGA.passoKg;
+    m.kgIndicado = true;
+    m.kgMax      = PURGA.maxKg;
+    m.cores = []; m.corLabel = {};
+    configSet('mp_materiais', JSON.stringify(mats));
+
+    const forn = JSON.parse(configGet('mp_fornecedores', '{}'));
+    if (!Array.isArray(forn[chave])) forn[chave] = [];
+    if (!forn[chave].includes(PURGA.fornecedor)) forn[chave].push(PURGA.fornecedor);
+    configSet('mp_fornecedores', JSON.stringify(forn));
+
+    const mapaF = JSON.parse(configGet('mapa_fornecedor_bling', '{}'));
+    if (!mapaF[PURGA.fornecedor]) { mapaF[PURGA.fornecedor] = PURGA.contatoBling; configSet('mapa_fornecedor_bling', JSON.stringify(mapaF)); }
+    const mapaP = JSON.parse(configGet('mapa_produto_bling', '{}'));
+    const chaveProd = chaveProduto(chave, '', PURGA.fornecedor);
+    if (!mapaP[chaveProd]) { mapaP[chaveProd] = PURGA.produtoBling; configSet('mapa_produto_bling', JSON.stringify(mapaP)); }
+    const codigos = JSON.parse(configGet('mp_codigos_gravimetricos', '[]'));
+    if (!codigos.some(c => c.matKey === chave && !c.cor && c.forn === PURGA.fornecedor)) {
+      codigos.push({ matKey: chave, cor: null, forn: PURGA.fornecedor, codigo: PURGA.codigo });
+      configSet('mp_codigos_gravimetricos', JSON.stringify(codigos));
+    }
+
+    configSet(MARCA, JSON.stringify({ em: new Date().toISOString(), material: chave, antes }));
+    logI('db', `Purga: material ${chave} por kg indicado (de ${PURGA.passoKg} em ${PURGA.passoKg} kg até ${PURGA.maxKg}), `
+      + `fornecedor ${PURGA.fornecedor} → produto Bling ${mapaP[chaveProd]}`);
+  } catch (e) { logW('db', 'Falha no ajuste da Purga', { erro: e && e.message }); }
+}
+ajustarPurga();
+
+// Material de kg indicado: { passo, max } ou null. Um item = um saco de até
+// kgMax kg (Purga: até 25 kg). Usado para recusar o que passar do teto.
+function kgIndicadoDe(matKey) {
+  try {
+    const m = (lerCatalogoMP().materiais || {})[matKey];
+    if (!m || m.kgIndicado !== true) return null;
+    const passo = Number(m.kgPorSaco) > 0 ? Number(m.kgPorSaco) : 5;
+    return { passo, max: Number(m.kgMax) > 0 ? Number(m.kgMax) : passo * 5 };
+  } catch (e) { return null; }
+}
+
+// ──────────────────────────────────────────────────────────────────
 // DESFAZER A TROCA POLINYLON TALLPACK → RESINA EVOH (30/09/2026, noite)
 // Pedido do Frederico: as etiquetas voltam a ser lidas como POLINYLON
 // CRISTAL/LEITOSO TALLPACK, como eram no recebimento. Roda UMA vez (marca
@@ -5779,7 +5845,10 @@ function montarPayloadBling(sessao, etiquetas, mapaForn, mapaSku, idEko) {
     const chave = chaveProduto(e.material_key, e.cor, e.fornecedor);
     const material = e.material_nome || e.material_key;
     const isAditivoContado = e.sub_tipo === 'aditivo-saida' || e.sub_tipo === 'aditivo-fechados';
-    const sufixoSacos = (e.qtd_sacos && e.qtd_sacos > 0) ? ` · ${e.qtd_sacos} sacos × ${kgSacoMat[e.material_key] || 25}kg` : '';
+    // kg indicado (Purga): qtd_sacos são porções de 5 kg de UM saco
+    const sufixoSacos = !(e.qtd_sacos && e.qtd_sacos > 0) ? ''
+      : kgIndicadoDe(e.material_key) ? ` · 1 saco de ${Number(e.peso)}kg`
+      : ` · ${e.qtd_sacos} sacos × ${kgSacoMat[e.material_key] || 25}kg`;
     const rotuloUnidade = isAditivoContado
       ? `Aditivo #${String(e.seq_sessao||'-').padStart(2,'0')}`
       : (sessao.tipo === 'recebimento'
@@ -7393,6 +7462,9 @@ const requestHandlerBase = async (req, res) => {
       if (qtdSacos < 1 && pesoAvulso <= 0) {
         return jsonErr(res, 400, 'Informe a quantidade de sacos ou um peso avulso');
       }
+      const kiRet = kgIndicadoDe(matKey);
+      if (kiRet && (pesoAvulso > 0 || qtdSacos * KG_SACO > kiRet.max))
+        return jsonErr(res, 400, `${matKey}: um saco de ${kiRet.passo} em ${kiRet.passo} kg, até ${kiRet.max} kg por item`);
       const peso = Number((qtdSacos * KG_SACO + pesoAvulso).toFixed(3));
       // Cor só é exigida de quem TEM cor no catálogo — hoje só o pigmento.
       const materiaisCat = (() => { try { return lerCatalogoMP().materiais || {}; } catch(e) { return {}; } })();
@@ -7471,6 +7543,9 @@ const requestHandlerBase = async (req, res) => {
         `materialKey inválido para aditivo contado: ${matKeyRto} (use ${Object.keys(porSacosRto).join(', ')})`);
       const KG_SACO_RTO = porSacosRto[matKeyRto];
       const pesoRto = qtdSacosRto * KG_SACO_RTO;
+      const kiRto = kgIndicadoDe(matKeyRto);
+      if (kiRto && pesoRto > kiRto.max)
+        return jsonErr(res, 400, `${matKeyRto}: um saco de ${kiRto.passo} em ${kiRto.passo} kg, até ${kiRto.max} kg por item`);
       // Cor só para quem tem cor no catálogo (o Pigmento).
       const catMatRto = (() => { try { return (lerCatalogoMP().materiais || {})[matKeyRto] || MP_MATERIAIS_PADRAO[matKeyRto] || {}; } catch(e) { return MP_MATERIAIS_PADRAO[matKeyRto] || {}; } })();
       const temCorRto = Array.isArray(catMatRto.cores) && catMatRto.cores.length > 0;

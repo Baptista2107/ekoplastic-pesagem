@@ -710,7 +710,7 @@ header {
           <button class="btn-cont" onclick="ajustarSacos(1)">+</button>
         </div>
         <div class="contador-info" id="sacos-info"><b>0 sacos</b> · 0 kg</div>
-        <div class="quantidades-rapidas">
+        <div class="quantidades-rapidas" id="qtd-rapidas">
           <button class="btn-qtd-rapida" data-q="5"  onclick="setSacos(5)">5</button>
           <button class="btn-qtd-rapida" data-q="10" onclick="setSacos(10)">10</button>
           <button class="btn-qtd-rapida" data-q="20" onclick="setSacos(20)">20</button>
@@ -719,7 +719,7 @@ header {
           <button class="btn-qtd-rapida" data-q="50" onclick="setSacos(50)">50</button>
         </div>
 
-        <div class="avulso-sec">
+        <div class="avulso-sec" id="avulso-sec">
           <div class="avulso-lb">SACO ABERTO / FORA DO PADRÃO</div>
           <div class="avulso-row">
             <input type="text" inputmode="decimal" class="avulso-input" id="avulso-input"
@@ -860,6 +860,16 @@ function kgSacoDe(k) {
   return (ad && Number(ad.kgPorSaco) > 0) ? Number(ad.kgPorSaco) : KG_SACO;
 }
 const fmtKgSaco = n => String(n).replace('.', ',');
+// KG INDICADO (Purga, 15/10/2026 — Vinicius): sacos de peso variado. O
+// contador anda de kgPorSaco em kgPorSaco (5 kg) até kgMax (25 kg) e cada
+// item é UM saco do peso indicado; qtd_sacos segue = porções de 5 kg.
+function kgIndicadoDe(k) {
+  const ad = k && ADITIVOS[k];
+  if (!ad || !ad.kgIndicado) return null;
+  const passo = kgSacoDe(k);
+  const max = Number(ad.kgMax) > 0 ? Number(ad.kgMax) : passo * 5;
+  return { passo, max, maxQtd: Math.max(1, Math.floor(max / passo)) };
+}
 
 // Catálogo de aditivos (matKey, cor opcional, fornecedores) — sincronizado com o cadastro Bling
 const ADITIVOS = {
@@ -1198,6 +1208,9 @@ function selTipo(k) {
   estado.cor = null;
   estado.fornecedor = null;
   estado.sacos = 0;
+  document.getElementById('sacos-input').value = 0;
+  const avSel = document.getElementById('avulso-input');
+  if (avSel) avSel.value = '';
   renderTipos();
   renderCores();
   renderFornecedores();
@@ -1237,23 +1250,39 @@ function renderFornecedores() {
 
 function ajustarSacos(delta) {
   const inp = document.getElementById('sacos-input');
-  let v = parseInt(inp.value) || 0;
-  v = Math.max(0, v + delta);
-  inp.value = v;
+  const ki = kgIndicadoDe(estado.tipo);
+  let v;
+  if (ki) {
+    // kg indicado: só pelos botões − / +; o campo mostra kg
+    v = Math.min(Math.max(0, (estado.sacos || 0) + delta), ki.maxQtd);
+    inp.value = v * ki.passo;
+  } else {
+    v = parseInt(inp.value) || 0;
+    v = Math.max(0, v + delta);
+    inp.value = v;
+  }
+  inp.readOnly = !!ki;
   estado.sacos = v;
+  const elRap = document.getElementById('qtd-rapidas');
+  if (elRap) elRap.style.display = ki ? 'none' : '';
+  const elAv = document.getElementById('avulso-sec');
+  if (elAv) elAv.style.display = ki ? 'none' : '';
   // Peso avulso: saco aberto / fora do padrão, somado aos sacos fechados.
   const av = document.getElementById('avulso-input');
-  const avulso = av ? (parseFloat(String(av.value).replace(',', '.')) || 0) : 0;
+  const avulso = (av && !ki) ? (parseFloat(String(av.value).replace(',', '.')) || 0) : 0;
   estado.pesoAvulso = avulso > 0 ? +avulso.toFixed(3) : 0;
   const kgSaco = kgSacoDe(estado.tipo);
   const kg = +(v * kgSaco + estado.pesoAvulso).toFixed(3);
   const elTit = document.getElementById('sacos-titulo');
-  if (elTit) elTit.textContent = `QUANTIDADE DE SACOS · ${fmtKgSaco(kgSaco)} KG CADA`;
+  if (elTit) elTit.textContent = ki
+    ? `PESO DO SACO · DE ${fmtKgSaco(ki.passo)} EM ${fmtKgSaco(ki.passo)} KG ATÉ ${fmtKgSaco(ki.max)}`
+    : `QUANTIDADE DE SACOS · ${fmtKgSaco(kgSaco)} KG CADA`;
   const fmtK = n => String(n).replace('.', ',');
-  document.getElementById('sacos-info').innerHTML =
-    (v > 0 ? `<b>${v} ${v === 1 ? 'saco' : 'sacos'}</b>` : '<b>sem sacos fechados</b>')
-    + (estado.pesoAvulso ? ` + <b>${fmtK(estado.pesoAvulso)} kg avulso</b>` : '')
-    + ` · ${fmtK(kg)} kg`;
+  document.getElementById('sacos-info').innerHTML = ki
+    ? (v > 0 ? `<b>1 saco</b> · ${fmtK(kg)} kg` : '<b>indique o peso do saco</b>')
+    : (v > 0 ? `<b>${v} ${v === 1 ? 'saco' : 'sacos'}</b>` : '<b>sem sacos fechados</b>')
+      + (estado.pesoAvulso ? ` + <b>${fmtK(estado.pesoAvulso)} kg avulso</b>` : '')
+      + ` · ${fmtK(kg)} kg`;
   // Destaca o atalho que casa com o valor atual (5/10/20/30/40/50), se houver
   document.querySelectorAll('.btn-qtd-rapida').forEach(b => {
     b.classList.toggle('ativo', parseInt(b.dataset.q) === v);
@@ -1317,7 +1346,7 @@ async function adicionarAditivo() {
     renderHistorico();
     beepOk();
     showToast('sucesso', '✓', `${ADITIVOS[matKey].label}${cor ? ' ' + cor : ''} · `
-      + (qtd > 0 ? `${qtd} saco(s)` : '')
+      + (qtd > 0 ? (kgIndicadoDe(matKey) ? '1 saco' : `${qtd} saco(s)`) : '')
       + (qtd > 0 && avulso > 0 ? ' + ' : '')
       + (avulso > 0 ? `${String(avulso).replace('.', ',')} kg avulso` : '')
       + ` · ${String(ev.peso).replace('.', ',')} kg`);
@@ -1348,7 +1377,8 @@ function renderHistorico() {
     lista.innerHTML = estado.itens.map(it => {
       const corStr = it.cor ? ' · ' + it.cor : '';
       const sub    = it.tipo === 'aditivo'
-        ? `${it.fornecedor} · ${it.qtdSacos} × ${fmtKgSaco(kgSacoDe(it.materialKey))}kg`
+        ? (kgIndicadoDe(it.materialKey) ? `${it.fornecedor} · 1 saco`
+           : `${it.fornecedor} · ${it.qtdSacos} × ${fmtKgSaco(kgSacoDe(it.materialKey))}kg`)
         : `${it.fornecedor} · Lote ${it.lote}${it.origId ? ' · Orig ' + it.origId : ''}`;
       return `<div class="item ${it.tipo}">
         <div class="id-tag">${it.virtId}</div>
@@ -1599,7 +1629,8 @@ async function carregarCatalogoRetirada() {
       for (const [k, m] of Object.entries(cat.materiais)) {
         if (!m || m.porSacos !== true || ADITIVOS[k] || k === 'CARBO') continue;
         ADITIVOS[k] = { label: m.popular || k, cores: null, fornecedores: [],
-                        kgPorSaco: Number(m.kgPorSaco) > 0 ? Number(m.kgPorSaco) : null };
+                        kgPorSaco: Number(m.kgPorSaco) > 0 ? Number(m.kgPorSaco) : null,
+                        kgIndicado: m.kgIndicado === true, kgMax: Number(m.kgMax) > 0 ? Number(m.kgMax) : null };
       }
     }
     if (cat && cat.fornecedores) {
