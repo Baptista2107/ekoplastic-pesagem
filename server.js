@@ -10019,8 +10019,13 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
     // A soma das partes de uma bobina é o etiquetas.fardos dela.
     if (pathname === '/dashboard/bobina-parciais' && req.method === 'GET') {
       const desde = String(parsed.query.desde || '1970-01-01').trim();
+      // + as partes de bobina cujo REFUGO mudou desde ?desde= (15/10/2026: refugo
+      // de 84,5 kg pesado na E0001961, movido para a E0001951 e cancelado — a VPS
+      // seguia com o refugo velho nas partes, que não eram reenviadas).
       const parciais = db.prepare(
-        `SELECT * FROM bobina_parciais WHERE registrado_em >= ? OR editado_em >= ? ORDER BY registrado_em, id`).all(desde, desde);
+        `SELECT * FROM bobina_parciais WHERE registrado_em >= ? OR editado_em >= ?
+            OR etiqueta_id IN (SELECT etiqueta_id FROM bobina_refugos WHERE alterado_em >= ?)
+          ORDER BY registrado_em, id`).all(desde, desde, desde);
       // MONTAGEM e REFUGO de cada parte (07/10/2026, Gustavo — caso E0001797:
       // saiu da P1 como refugo e voltou na P2; a etiqueta só guarda a ÚLTIMA
       // montagem, e a VPS mostrava a parte da P1 como se fosse da P2 à 1h).
