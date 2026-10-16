@@ -157,9 +157,9 @@ async function p2() {
     ok(r.status === 200 && r.body.formato === '30x45', 'e dá para voltar ao 30x45', r.body);
 
     // 6.
-    r = await req('POST', '/bobinas/baixa', { id: 'E9920002', destino: 'P2', operador: 'CARINE',
-                                              fardos_anterior: 3, soltos_anterior: 0, formato_anterior: '40x50',
-                                              formato_anterior_origem: 'sugerido' });
+    r = await req('POST', '/bobinas/finalizar', { sacoleira: 'P2', fardos: 3, soltos: 0, formato: '40x50',
+                                                  formato_origem: 'sugerido', acabou: true });
+    r = await req('POST', '/bobinas/baixa', { id: 'E9920002', destino: 'P2', operador: 'CARINE' });
     ok(r.status === 200, 'bobina nova E9920002 na P2 (troca)', r.body);
     novaLeitura(500); await sleep(20);
     s = await p2();

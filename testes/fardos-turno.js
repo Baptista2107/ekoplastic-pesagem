@@ -129,11 +129,16 @@ function criarBobina(db, id, seq, peso) {
     ok(r.status === 200, 'troca EXTRA → A com 2 fardos da E9900002', r.body);
     r = await req('POST', '/bobinas/desfazer', { id: 'E9900002' });
     ok(r.status === 409, 'desfazer a E9900002 é bloqueado (já tem fardos de fim de turno)', r.body);
+    // 16/10/2026: a bipagem só inicia — com bobina aberta é recusada, mesmo com fardos.
     r = await req('POST', '/bobinas/baixa', { id: 'E9900003', destino: 'P1', operador: 'GISLENE' });
-    ok(r.status === 409 && r.body.precisa_fardos && r.body.anterior.pacotes_parciais === 10,
-       'trocar de bobina pede os fardos e mostra os 2 já informados', r.body);
+    ok(r.status === 409 && r.body.ocupada && r.body.anterior.id === 'E9900002',
+       'bipar a nova com a E9900002 aberta é recusado (ocupada)', r.body);
     r = await req('POST', '/bobinas/baixa', { id: 'E9900003', destino: 'P1', operador: 'GISLENE', fardos_anterior: 5 });
-    ok(r.status === 200, 'troca de bobina com 5 fardos neste turno', r.body);
+    ok(r.status === 409 && r.body.ocupada, 'tela antiga mandando fardos_anterior também é recusada', r.body);
+    r = await req('POST', '/bobinas/finalizar', { sacoleira: 'P1', fardos: 5, acabou: true });
+    ok(r.status === 200, 'Bobina finalizou com 5 fardos neste turno', r.body);
+    r = await req('POST', '/bobinas/baixa', { id: 'E9900003', destino: 'P1', operador: 'GISLENE' });
+    ok(r.status === 200, 'depois do finalizou, a bipagem inicia a E9900003', r.body);
     const e2 = comBanco(db => db.prepare('SELECT fardos, encerrada_motivo FROM etiquetas WHERE id = ?').get('E9900002'));
     ok(e2.fardos === 7 && e2.encerrada_motivo === 'troca', 'E9900002 fechou com 2 + 5 = 7 fardos', e2);
 
@@ -164,8 +169,8 @@ function criarBobina(db, id, seq, peso) {
     // 01/10/2026: sem turno aberto não monta bobina — abre o turno da P2.
     await req('POST', '/bobinas/turno-corte/iniciar', { senha: SENHA, turno: 'A', maquinas: ['P2'] });
     r = await req('POST', '/bobinas/baixa', { id: 'E9900010', destino: 'P2', operador: 'HOZANA' });
-    r = await req('POST', '/bobinas/baixa', { id: 'E9900011', destino: 'P2', operador: 'HOZANA',
-                                              fardos_anterior: 3, soltos_anterior: 2 });
+    r = await req('POST', '/bobinas/finalizar', { sacoleira: 'P2', fardos: 3, soltos: 2, acabou: true });
+    r = await req('POST', '/bobinas/baixa', { id: 'E9900011', destino: 'P2', operador: 'HOZANA' });
     ok(r.status === 200, 'A (E9900010) sai com 3 fechados e 2 soltos', r.body);
     let pa = comBanco(db => db.prepare('SELECT fardos, pacotes FROM etiquetas WHERE id = ?').get('E9900010'));
     ok(pa.pacotes === 17 && pa.fardos === 3, 'A fez 17 pacotes (3 fardos +2 pc)', pa);

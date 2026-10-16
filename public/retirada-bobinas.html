@@ -376,9 +376,12 @@ async function onLeu(codigo){
     await carregarSacoleiras();
     const botao=p=>{
       const m=(ABERTAS.find(a=>a.sacoleira===p)||{}).bobina;
-      const sub=!comTurno.includes(p)?'sem turno':m?('troca '+esc(m.id)):'livre';
-      return '<button class="btn btn-verde btn-destino" data-destino="'+p+'" onclick="confirmarBaixa(\''+p+'\')"'+
-        (comTurno.includes(p)?'':' disabled data-semturno="1"')+'><b>'+p+'</b><span>'+sub+'</span></button>';
+      // 16/10/2026 (Vinicius): a bipagem só INICIA bobina. Sacoleira com bobina
+      // montada fica bloqueada até alguém tocar "✓ Bobina finalizou" nela.
+      const sub=!comTurno.includes(p)?'sem turno':m?('ocupada · '+esc(m.id)):'livre';
+      const pode=comTurno.includes(p) && !m;
+      return '<button class="btn '+(m?'btn-cinza':'btn-verde')+' btn-destino" data-destino="'+p+'" onclick="confirmarBaixa(\''+p+'\')"'+
+        (pode?'':' disabled data-semturno="1"')+'><b>'+p+'</b><span>'+sub+'</span></button>';
     };
     const orig=['Extrusora '+esc(b.maquina||'—'), esc(b.operador||''), b.hora_impressao?diaHora(b.hora_impressao):''].filter(Boolean).join(' · ');
     document.getElementById('area-bobina').innerHTML=
@@ -390,6 +393,8 @@ async function onLeu(codigo){
         '<div class="l-orig">'+orig+'</div>'+
         '<div class="l-per">MONTAR NA SACOLEIRA</div>'+
         '<div class="destinos">'+botao('P1')+botao('P2')+'</div>'+
+        (comTurno.some(p=>(ABERTAS.find(a=>a.sacoleira===p)||{}).bobina)?
+          '<div class="l-orig" style="color:var(--ambar);font-weight:700;margin-top:10px">Sacoleira ocupada: antes de bipar a nova, toque em <b>✓ Bobina finalizou</b> no card dela.</div>':'')+
         '<button class="btn-link" onclick="cancelarLeitura()">Cancelar</button>'+
       '</div>';
     document.getElementById('area-bobina').scrollIntoView({behavior:'smooth', block:'center'});
@@ -416,12 +421,13 @@ async function confirmarBaixa(sac){
   // Quem está bipando é quem vai cortar esta bobina (29/09/2026).
   const nome=await perguntarNome(sac);
   if(!nome) return;
-  let fardosAnterior=null, saida=null;
+  // A bipagem só inicia (16/10/2026): sem troca aqui; o fim é o botão do card.
+  const fardosAnterior=null, saida=null;
   const montada=(ABERTAS.find(a=>a.sacoleira===sac)||{}).bobina;
   if(montada && montada.id!==bobinaAtual.id){
-    saida=await perguntarFardos(montada, sac, 'troca');
-    if(saida===null) return;                    // cancelou: nada é gravado
-    fardosAnterior=saida.fardos;
+    beep(320,0.25); vibrar(200);
+    toast('erro','A '+sac+' ainda está com a '+esc(montada.id)+'. Toque em ✓ Bobina finalizou antes.',6000);
+    return;
   }
   enviando=true; travarDestinos(sac);
   try{
@@ -436,16 +442,9 @@ async function confirmarBaixa(sac){
                               operador:nome })
       });
       d=await r.json();
-      // Outro celular montou bobina nesta sacoleira no meio do caminho: o
-      // servidor pede os fardos dela. Pergunta e tenta de novo, uma vez.
-      if(r.status===409 && d && d.precisa_fardos && tentativa===0){
-        await carregarSacoleiras();
-        const nova=(ABERTAS.find(a=>a.sacoleira===sac)||{}).bobina;
-        saida=await perguntarFardos((nova && nova.id===d.anterior.id)?nova:d.anterior, sac, 'troca');
-        if(saida===null){ soltarDestinos(); enviando=false; return; }
-        fardosAnterior=saida.fardos;
-        continue;
-      }
+      // Outro coletor montou bobina nesta sacoleira no meio do caminho: o
+      // servidor recusa (ocupada) e a mensagem dele diz o que fazer.
+      if(r.status===409 && d && d.ocupada) await carregarSacoleiras();
       break;
     }
     if(!r.ok || !d.ok){ beep(320,0.25); vibrar(200); toast('erro',esc((d&&d.erro)||'Falha ao registrar'),6000); soltarDestinos(); enviando=false; return; }
@@ -687,7 +686,7 @@ async function finalizar(sac){
     const r=await fetch(URL_BASE+'/bobinas/finalizar',{
       method:'POST', headers:{'Content-Type':'application/json'},
       body:JSON.stringify({ sacoleira:sac, fardos:n, soltos:saida.soltos, formato:saida.formato, formato_origem:saida.origem,
-                            operador:(window.EKO_RESPONSAVEL||null) })
+                            acabou:true, operador:(window.EKO_RESPONSAVEL||null) })
     });
     const d=await r.json();
     if(!r.ok || !d.ok){ toast('erro',esc((d&&d.erro)||'Falha ao finalizar'),5000); return; }

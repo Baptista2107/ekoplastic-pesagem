@@ -85,12 +85,12 @@ const pacotesDe = id => comBanco(db => db.prepare('SELECT pacotes FROM etiquetas
 
     // 1. BRANCO 50x60 → BRANCO 50x60: aproveita
     await req('POST', '/bobinas/baixa', { id: 'E9910001', destino: 'P1', operador: 'OP' });
-    r = await req('POST', '/bobinas/baixa', { id: 'E9910002', destino: 'P1', operador: 'OP',
-                                             fardos_anterior: 3, soltos_anterior: 2, formato_anterior: '50x60' });
+    await req('POST', '/bobinas/finalizar', { sacoleira: 'P1', fardos: 3, soltos: 2, formato: '50x60', acabou: true });
+    r = await req('POST', '/bobinas/baixa', { id: 'E9910002', destino: 'P1', operador: 'OP' });
     ok(r.status === 200 && pacotesDe('E9910001') === 17, '1ª bobina: 3 fardos + 2 soltos = 17 pc', pacotesDe('E9910001'));
     // 2ª fecha o fardo misto e mais 3 = 4 fechados, 1 solto, MESMO formato → 4×5 + 1 − 2 = 19
-    r = await req('POST', '/bobinas/baixa', { id: 'E9910003', destino: 'P1', operador: 'OP',
-                                             fardos_anterior: 4, soltos_anterior: 1, formato_anterior: '50x60' });
+    await req('POST', '/bobinas/finalizar', { sacoleira: 'P1', fardos: 4, soltos: 1, formato: '50x60', acabou: true });
+    r = await req('POST', '/bobinas/baixa', { id: 'E9910003', destino: 'P1', operador: 'OP' });
     ok(r.status === 200 && pacotesDe('E9910002') === 19, 'mesma cor e formato: desconta os 2 soltos (20 + 1 − 2 = 19)',
        pacotesDe('E9910002'));
 
@@ -101,8 +101,8 @@ const pacotesDe = id => comBanco(db => db.prepare('SELECT pacotes FROM etiquetas
        'a tela mostra 0 solto no início para a bobina de outra cor', p1.bobina);
 
     // 2. BRANCO → AZUL: não aproveita → 2 fechados + 4 soltos = 14
-    r = await req('POST', '/bobinas/baixa', { id: 'E9910004', destino: 'P1', operador: 'OP',
-                                             fardos_anterior: 2, soltos_anterior: 4, formato_anterior: '50x60' });
+    await req('POST', '/bobinas/finalizar', { sacoleira: 'P1', fardos: 2, soltos: 4, formato: '50x60', acabou: true });
+    r = await req('POST', '/bobinas/baixa', { id: 'E9910004', destino: 'P1', operador: 'OP' });
     ok(r.status === 200 && pacotesDe('E9910003') === 14, 'outra cor: não desconta o solto da branca (2×5 + 4 = 14)',
        pacotesDe('E9910003'));
 

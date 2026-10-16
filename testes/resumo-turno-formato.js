@@ -92,8 +92,8 @@ function criarBobina(db, id, seq, peso, largura) {
     ok(p1.formato.sugerido === null, 'P1 sem CLP, bobina 1,60 e sem histórico: não inventa', p1.formato);
 
     // troca de bobina na P1 informando 50x60 → vira o "último formato" da P1
-    r = await req('POST', '/bobinas/baixa', { id: 'E9910003', destino: 'P1', operador: 'ANDRE',
-                                              fardos_anterior: 4, formato_anterior: '50x60', formato_anterior_origem: 'escolhido' });
+    await req('POST', '/bobinas/finalizar', { sacoleira: 'P1', fardos: 4, formato: '50x60', formato_origem: 'escolhido', acabou: true });
+    r = await req('POST', '/bobinas/baixa', { id: 'E9910003', destino: 'P1', operador: 'ANDRE' });
     ok(r.status === 200, 'troca na P1 com 4 fardos de 50x60', r.body);
     r = await req('GET', '/bobinas/abertas');
     const p1b = r.body.sacoleiras.find(s => s.sacoleira === 'P1').bobina;

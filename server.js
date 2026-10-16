@@ -10332,6 +10332,17 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
       // precisa dos fardos que deu. Conferido ANTES do Bling, para não criar
       // pedido de uma baixa que vai ser recusada aqui.
       const aberta = bobinaAbertaNa(destino);
+      // A BIPAGEM SÓ INICIA BOBINA (16/10/2026, Vinicius): o fim é o botão
+      // "✓ Bobina finalizou". Encerrar a anterior pela bipagem da seguinte
+      // trocava as janelas de metros do CLP (E0001983 184% × E0001989 20%).
+      // Com bobina aberta na sacoleira a baixa é recusada — inclusive vinda de
+      // tela antiga (cache) que ainda manda fardos_anterior. O código da troca
+      // abaixo fica, mas não é mais alcançado.
+      if (aberta && aberta.id !== bid) {
+        return jsonErr(res, 409, `A Sacoleira ${destino} ainda está com a bobina ${aberta.id}. `
+          + `Toque em "✓ Bobina finalizou" na ${destino} antes de bipar a nova.`,
+          { ocupada: true, anterior: { id: aberta.id } });
+      }
       const pedeFardos = !!aberta && aberta.id !== bid;
       const fardosAnterior = lerFardos(body.fardos_anterior);
       if (pedeFardos && fardosAnterior === null) {
@@ -10976,7 +10987,12 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
       // REPESAGEM (GET /bobinas/refugos → aguardando) até alguém bipar a
       // etiqueta antiga em Outras pesagens → REFUGO e pesar. Fora do
       // aproveitamento da VPS (lá só entram 'troca' e 'finalizada').
-      const motivo = body.refugo === true ? 'refugo' : 'finalizada';
+      // "✓ Bobina finalizou" (16/10/2026, Vinicius) manda acabou:true = a
+      // bobina ACABOU na máquina → motivo 'troca', o mesmo de quando o fim
+      // vinha pela bipagem da seguinte. É o que a VPS conta como bobina
+      // completa (aproveitamento, m/kg, previsão); 'finalizada' lá é "saiu
+      // antes de acabar" e fica fora da média.
+      const motivo = body.refugo === true ? 'refugo' : body.acabou === true ? 'troca' : 'finalizada';
       let total = parte.pacotes;
       makeTransaction(() => {
         total = encerrarBobina(a.id, parte, motivo, new Date().toISOString(), formatoFim,
