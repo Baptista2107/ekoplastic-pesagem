@@ -46,6 +46,23 @@
   .sac .s-info{font-size:12px; color:var(--muted); margin-top:4px; font-family:ui-monospace,monospace; overflow-wrap:anywhere;}
   .sac .s-vazia{font-size:15px; color:var(--muted); margin-top:8px; font-weight:700; flex:1;}
   .sac .s-fim{margin-top:10px; min-height:40px; font-size:14px; padding:8px; border-radius:10px; width:100%;}
+  /* 16/10/2026 (Vinicius): "Sacoleiras agora" é o balizador e ocupa a maior
+     parte da tela; o operador informa no card que a bobina finalizou. */
+  .sacs-grande .sac{min-height:calc(100dvh - 150px); padding:12px;}
+  .sacs-grande .sac .s-top{font-size:15px;}
+  .sacs-grande .sac .dot{width:11px; height:11px;}
+  .sacs-grande .sac .s-mat{font-size:18px;}
+  .sacs-grande .sac .s-corte{font-size:28px; margin-top:10px;}
+  .sacs-grande .sac .s-corte small{font-size:14px;}
+  .sacs-grande .sac .s-kg{font-size:23px; margin-top:8px; white-space:nowrap;}
+  .sacs-grande .sac .s-quem{font-size:15px;}
+  .sacs-grande .sac .s-info{font-size:13px;}
+  .sacs-grande .sac .s-vazia{font-size:20px;}
+  .sacs-grande .sac .s-bts{margin-top:auto; padding-top:12px; display:flex; flex-direction:column;}
+  .sacs-grande .sac .s-fim{min-height:50px; font-size:15px; border-radius:12px; margin-top:8px;}
+  .sacs-grande .sac .s-acabou{min-height:62px; font-size:17px;}
+  .sec-tit.abre{cursor:pointer; padding:12px; margin:22px 0 10px; background:var(--panel); border:1.5px solid var(--border); border-radius:12px; align-items:center;}
+  .sec-tit.abre .seta{font-size:16px; letter-spacing:0; margin-left:8px;}
 
   /* Digitar */
   .digitar{width:100%; margin-top:16px;}
@@ -225,7 +242,7 @@
   <div class="turnos oculto" id="turnos"></div>
 
   <div class="sec-tit"><span>Sacoleiras agora</span></div>
-  <div class="sacs" id="sacs"><div class="carregando">Carregando…</div></div>
+  <div class="sacs sacs-grande" id="sacs"><div class="carregando">Carregando…</div></div>
 
   <!-- A leitura é do gatilho do coletor (app Ekoplastic Coletor). O botão
        de digitar fica para etiqueta rasurada. A câmera saiu em 28/09/2026
@@ -235,8 +252,9 @@
   <!-- bobina lida, aguardando a sacoleira -->
   <div id="area-bobina"></div>
 
-  <div class="sec-tit"><span>Neste turno</span><span class="sub" id="hoje-resumo"></span></div>
-  <div class="hist" id="lista-hist"><div class="carregando">Carregando…</div></div>
+  <!-- 16/10/2026 (Vinicius): "Neste turno" fica embaixo e abre ao tocar. -->
+  <div class="sec-tit abre" id="hist-tit" onclick="abrirHist()"><span>Neste turno</span><span class="sub"><span id="hoje-resumo"></span><span class="seta" id="hist-seta">▸</span></span></div>
+  <div class="hist oculto" id="lista-hist"><div class="carregando">Carregando…</div></div>
 
   <!-- Turno do corte: marcado no coletor (sem senha desde 05/10/2026). O painel de operação
        das sacoleiras na VPS corta os turnos por estes registros. Fica embaixo,
@@ -509,7 +527,7 @@ function perguntarFardos(bob, sac, modo){
     const antes = Number(bob.pacotes_parciais)||0;
     const ini = Number(bob.soltos_inicio)||0;
     let soltos = editarM ? (Number(ed.soltos)||0) : 0;
-    const tit = editarM ? ('✎ Corrigir lançamento · Sacoleira '+sac) : refugoM ? ('♻ REFUGO · Sacoleira '+sac) : setup ? ('Troca de formato · Sacoleira '+sac) : turno ? ('Fim do turno · Sacoleira '+sac) : modo==='troca' ? ('Troca na Sacoleira '+sac) : ('Encerrar bobina · Sacoleira '+sac);
+    const tit = editarM ? ('✎ Corrigir lançamento · Sacoleira '+sac) : refugoM ? ('♻ REFUGO · Sacoleira '+sac) : setup ? ('Troca de formato · Sacoleira '+sac) : turno ? ('Fim do turno · Sacoleira '+sac) : modo==='troca' ? ('Troca na Sacoleira '+sac) : ('Bobina finalizou · Sacoleira '+sac);
     const acao = editarM ? 'Salvar correção' : refugoM ? '♻ Mandar para REFUGO' : setup ? 'Registrar e aguardar o formato novo' : turno ? 'Registrar fardos do turno' : modo==='troca' ? 'Confirmar troca' : 'Finalizar bobina';
     const chips=permitidos.map(f=>'<button class="chip'+(cands.includes(f)&&cands.length<permitidos.length?' cand':'')+
       (f===escolhido?' sel':'')+'" data-f="'+esc(f)+'">'+esc(f.replace('x',' × '))+'</button>').join('');
@@ -660,6 +678,7 @@ async function finalizar(sac){
   if(!bob) return;
   const saida=await perguntarFardos(bob, sac, 'finalizar');
   if(saida===null) return;
+  if(!confirm('Confirmar: a '+bob.id+' ACABOU e saiu da Sacoleira '+sac+'?')) return;
   const n=saida.fardos;
   try{
     const r=await fetch(URL_BASE+'/bobinas/finalizar',{
@@ -748,6 +767,11 @@ async function carregarSacoleiras(){
       '<div class="s-kg">'+fmtKg(b.peso)+'</div>'+
       (b.baixa_operador?('<div class="s-quem">'+esc(b.baixa_operador)+'</div>'):'')+
       '<div class="s-info">'+esc(b.id)+' · '+haQuanto(b.baixa_em)+'</div>'+
+      // "Bobina finalizou" VOLTOU (16/10/2026, Vinicius): o fim pela bipagem da
+      // seguinte trocava as janelas de metros (E0001983 184% × E0001989 20%).
+      // O operador já vem ao coletor dar os fardos; confirma antes de gravar.
+      '<div class="s-bts">'+
+      '<button class="btn btn-verde s-fim s-acabou" onclick="finalizar(\''+a.sacoleira+'\')">✓ Bobina finalizou</button>'+
       '<button class="btn btn-cinza s-fim" onclick="trocarFormato(\''+a.sacoleira+'\')"'+(f.aguardando_setup?' disabled':'')+'>Trocar formato</button>'+
       // "Encerrar bobina" SAIU (05/10/2026, Gustavo): em 03/10 a E0001779 e a
       // E0001784 foram encerradas por engano no lugar do fim de turno, e a 1784
@@ -756,7 +780,7 @@ async function carregarSacoleiras(){
       // REFUGO (06/10/2026, Gustavo): a mesma saída, só para bobina que sai sem
       // acabar — vermelho, com confirmação, e fica aguardando repesagem.
       '<button class="btn btn-vermelho s-fim" onclick="mandarRefugo(\''+a.sacoleira+'\')">♻ REFUGO</button>'+
-      '</div>';
+      '</div></div>';
   }).join('');
 }
 
@@ -772,6 +796,14 @@ function pcGrande(p, soNumero){
   const f=Math.floor(p/PC_FARDO), s=p%PC_FARDO;
   return '<b>'+f+'</b>'+(soNumero?'':(' fardo'+(f===1?'':'s')))+(s?('<span class="pc"> +'+s+' pc</span>'):'');
 }
+// 16/10/2026 (Vinicius): "Neste turno" recolhido; lembra no aparelho.
+function abrirHist(forcar){
+  let ab;
+  try{ ab = forcar!=null ? forcar : localStorage.getItem('eko_hist_aberto')!=='1'; }catch(e){ ab = forcar!=null ? forcar : true; }
+  try{ localStorage.setItem('eko_hist_aberto', ab?'1':'0'); }catch(e){}
+  document.getElementById('lista-hist').classList.toggle('oculto', !ab);
+  document.getElementById('hist-seta').textContent = ab?'▾':'▸';
+}
 async function carregarHistorico(){
   // 30/09/2026: a lista é POR TURNO do corte, uma por sacoleira. A bobina que
   // já estava montada quando o turno começou é do turno que entrou. Fardos à
@@ -784,7 +816,8 @@ async function carregarHistorico(){
   const sacs=(d&&d.sacoleiras)||[];
   HIST={};
   sacs.forEach(s=>s.bobinas.forEach(x=>{ HIST[s.sacoleira+'|'+x.id]=x; }));
-  document.getElementById('hoje-resumo').textContent='';
+  // fechado, o cabeçalho já mostra os fardos do turno de cada sacoleira
+  document.getElementById('hoje-resumo').textContent=sacs.map(s=>s.sacoleira+': '+Math.floor((s.pacotes_turno||0)/PC_FARDO)+' f').join(' · ');
   const hojeStr=new Date().toDateString();
   const quando=iso=>{ try{ return new Date(iso).toDateString()===hojeStr?hora(iso):diaHora(iso); }catch(e){ return ''; } };
   el.innerHTML=sacs.map(s=>{
@@ -810,8 +843,8 @@ async function carregarHistorico(){
       if(x.pacotes_total!=null){
         const antes=(x.pacotes_turno!=null)?x.pacotes_total-x.pacotes_turno:0;
         const conta=(antes>0 && x.pacotes_turno!=null)?(txtPc(antes)+' antes + '):'';
-        rend='<div class="hb-bar'+(alerta?' alerta':'')+'"><i style="width:'+Math.min(100,pct||0)+'%"></i></div>'+
-          '<div class="hb-l3">'+(x.montada?'Até agora: ':'Bobina: ')+conta+'<b>'+txtPc(x.pacotes_total)+'</b>'+
+        // 16/10/2026 (Vinicius): sem a barra de aproveitamento — só o número.
+        rend='<div class="hb-l3">'+(x.montada?'Até agora: ':'Bobina: ')+conta+'<b>'+txtPc(x.pacotes_total)+'</b>'+
           (pct!=null?(' · <b class="'+(alerta?'h-alerta':'hb-pct')+'">'+pct+'%</b>'+(alerta?' ⚠ passa do peso':'')):'')+'</div>';
       }
       const toca=(x.partes_turno||[]).length>0;
@@ -1243,6 +1276,8 @@ function comAcesso(tela, aoEntrar) {
 })(nome => {
   if (nome) document.getElementById('quem').textContent = '👤 ' + nome;
   carregarModo();
+  let histAb=false; try{ histAb=localStorage.getItem('eko_hist_aberto')==='1'; }catch(e){}
+  abrirHist(histAb);
   atualizarTudo();
   retomarInventario();
   // Outro celular pode trocar bobina: atualiza as sacoleiras a cada minuto
