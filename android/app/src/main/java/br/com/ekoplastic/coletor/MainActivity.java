@@ -508,7 +508,7 @@ public class MainActivity extends Activity {
         ui.post(() -> web.evaluateJavascript("window.__ekoLimpa&&__ekoLimpa()", null));
         ui.post(() -> web.evaluateJavascript(
             "(function(c){try{if(typeof onLeu==='function'){onLeu(c);return 'ok';}return 'sem-tela';}catch(e){return 'erro';}})('" + cod + "')",
-            r -> { if (r != null && r.contains("sem-tela")) toast("Abra a tela Bobina na Sacoleira para ler " + cod); }));
+            r -> { if (r != null && r.contains("sem-tela")) toast("Abra a tela Operação Sacoleiras para ler " + cod); }));
     }
 
     /**
