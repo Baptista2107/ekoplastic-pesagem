@@ -93,8 +93,14 @@ function criarBobina(db, id, seq, peso) {
     r = await req('GET', '/bobinas/turno-corte');
     ok(r.body.sacoleiras.find(s => s.sacoleira === 'P1').turno, 'o turno A continua aberto após a recusa');
 
-    // 2. encerrar com 6 fardos — SEM senha (05/10/2026, Gustavo tirou a senha do turno do corte)
+    // 2. encerrar pede a senha do supervisor (de volta em 19/10/2026, Vinicius)
     r = await req('POST', '/bobinas/turno-corte/encerrar', { maquinas: ['P1'], parciais: { P1: { fardos: 6 } } });
+    ok(r.status === 401 && r.body.senha_incorreta, 'encerrar sem senha é recusado (401)', r.body);
+    r = await req('POST', '/bobinas/turno-corte/encerrar', { senha: '9999', maquinas: ['P1'], parciais: { P1: { fardos: 6 } } });
+    ok(r.status === 401, 'encerrar com senha errada é recusado (401)', r.body);
+    r = await req('GET', '/bobinas/turno-corte');
+    ok(r.body.sacoleiras.find(s => s.sacoleira === 'P1').turno, 'o turno A continua aberto após a senha errada');
+    r = await req('POST', '/bobinas/turno-corte/encerrar', { senha: SENHA, maquinas: ['P1'], parciais: { P1: { fardos: 6 } } });
     ok(r.status === 200 && r.body.parciais && r.body.parciais[0].pacotes === 30, 'encerrar com 6 fardos fecha o turno', r.body);
     r = await req('GET', '/bobinas/abertas');
     let p1 = r.body.sacoleiras.find(s => s.sacoleira === 'P1');
@@ -123,7 +129,8 @@ function criarBobina(db, id, seq, peso) {
        'cada parte ficou no turno certo (A 6, C 4, EXTRA 3 final)', partes);
 
     // 5. troca de bobina soma igual; desfazer bloqueado com parte > 0
-    r = await req('POST', '/bobinas/baixa', { id: 'E9900002', destino: 'P1', operador: 'GISLENE' });
+    // sem nome: desde 19/10/2026 o coletor não pergunta quem bipa
+    r = await req('POST', '/bobinas/baixa', { id: 'E9900002', destino: 'P1' });
     ok(r.status === 200, 'bobina E9900002 montada na P1', r.body);
     r = await req('POST', '/bobinas/turno-corte/iniciar', { senha: SENHA, turno: 'A', maquinas: ['P1'], parciais: { P1: { fardos: 2 } } });
     ok(r.status === 200, 'troca EXTRA → A com 2 fardos da E9900002', r.body);

@@ -23,6 +23,25 @@
   header h1 small{display:block; font-size:12px; color:var(--muted); font-weight:600; margin-top:2px;}
   .btn-sair{background:var(--panel-hi); border:1px solid var(--border); color:var(--muted); border-radius:12px; min-width:44px; height:44px; display:flex; align-items:center; justify-content:center; font-size:17px; font-weight:800; text-decoration:none;}
   .wrap{padding:14px 16px; max-width:560px; margin:0 auto;}
+  /* 19/10/2026 (Vinicius): a operação inteira cabe na tela sem rolar — turno
+     no topo, as sacoleiras esticam no meio, "Neste turno" por último. Só rola
+     quando "Neste turno" é aberto. */
+  body.op{display:flex; flex-direction:column; padding-bottom:0;}
+  #tela-sac{flex:1 1 auto; width:100%; display:flex; flex-direction:column; gap:8px;
+            padding:8px 12px calc(8px + env(safe-area-inset-bottom));}
+  #tela-sac .tc{padding:8px 12px;}
+  #tela-sac .sec-tit.abre{padding:10px 12px;}
+  #tela-sac > .sec-tit, #tela-sac > .hist{margin:0;}
+  #area-bobina:empty{display:none;}
+  .sacs-grande{flex:1 1 auto; gap:8px;}
+  .btn-opcoes{width:auto; padding:0 10px; font-size:14px; gap:6px; white-space:nowrap; font-family:inherit; cursor:pointer;}
+  body.op header{padding:calc(8px + env(safe-area-inset-top)) 12px 8px; gap:8px;}
+  body.op header .logo{height:32px;}
+  body.op header h1{font-size:15px; min-width:0;}
+  .btn-digitar{width:100%; min-height:44px; background:none; border:1.5px dashed var(--border); border-radius:12px;
+               color:var(--muted); font-family:inherit; font-size:14px; font-weight:700; cursor:pointer;}
+  .btn-digitar:active{border-color:var(--ambar);}
+  .opcoes .btn{width:100%; margin-top:10px; text-align:left;}
   .oculto{display:none !important;}
 
   .btn{border:none; border-radius:14px; font-family:inherit; font-weight:800; cursor:pointer; min-height:52px; font-size:17px; padding:12px 16px; transition:transform .05s;}
@@ -48,20 +67,21 @@
   .sac .s-vazia{font-size:15px; color:var(--muted); margin-top:8px; font-weight:700; flex:1;}
   .sac .s-fim{margin-top:10px; min-height:40px; font-size:14px; padding:8px; border-radius:10px; width:100%;}
   /* 16/10/2026 (Vinicius): "Sacoleiras agora" é o balizador e ocupa a maior
-     parte da tela; o operador informa no card que a bobina finalizou. */
-  .sacs-grande .sac{min-height:calc(100dvh - 150px); padding:12px;}
-  .sacs-grande .sac .s-top{font-size:15px;}
+     parte da tela; o operador informa no card que a bobina finalizou.
+     19/10/2026: compactado para caber inteiro em 360 × 640 sem rolar (a altura
+     vem do espaço que sobra na tela, não de um mínimo fixo). */
+  .sacs-grande .sac{padding:10px;}
+  .sacs-grande .sac .s-top{font-size:13px; letter-spacing:.4px; white-space:nowrap;}
   .sacs-grande .sac .dot{width:11px; height:11px;}
-  .sacs-grande .sac .s-mat{font-size:18px;}
-  .sacs-grande .sac .s-corte{font-size:28px; margin-top:10px;}
-  .sacs-grande .sac .s-corte small{font-size:14px;}
-  .sacs-grande .sac .s-kg{font-size:23px; margin-top:8px; white-space:nowrap;}
-  .sacs-grande .sac .s-quem{font-size:15px;}
-  .sacs-grande .sac .s-info{font-size:13px;}
+  .sacs-grande .sac .s-mat{font-size:16px; margin-top:6px;}
+  .sacs-grande .sac .s-corte{font-size:26px; margin-top:6px;}
+  .sacs-grande .sac .s-corte small{font-size:12px;}
+  .sacs-grande .sac .s-kg{font-size:21px; margin-top:4px; white-space:nowrap;}
+  .sacs-grande .sac .s-info{font-size:12px;}
   .sacs-grande .sac .s-vazia{font-size:20px;}
-  .sacs-grande .sac .s-bts{margin-top:auto; padding-top:12px; display:flex; flex-direction:column;}
-  .sacs-grande .sac .s-fim{min-height:50px; font-size:15px; border-radius:12px; margin-top:8px;}
-  .sacs-grande .sac .s-acabou{min-height:62px; font-size:17px;}
+  .sacs-grande .sac .s-bts{margin-top:auto; padding-top:6px; display:flex; flex-direction:column;}
+  .sacs-grande .sac .s-fim{min-height:44px; font-size:14px; padding:4px 6px; border-radius:12px; margin-top:6px; line-height:1.15;}
+  .sacs-grande .sac .s-acabou{min-height:52px; font-size:16px;}
   .sec-tit.abre{cursor:pointer; padding:12px; margin:22px 0 10px; background:var(--panel); border:1.5px solid var(--border); border-radius:12px; align-items:center;}
   .sec-tit.abre .seta{font-size:16px; letter-spacing:0; margin-left:8px;}
 
@@ -221,6 +241,14 @@
   .tc-maq small{display:block; font-size:12px; font-weight:700; letter-spacing:0; color:var(--muted);}
   .tc-bts{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:10px;}
   .tc-bts .btn{min-height:44px; font-size:14px; padding:8px;}
+  /* 19/10/2026 (Vinicius): um card só no topo — o turno é o mesmo nas duas
+     sacoleiras; sem "Trocar" (um turno começa quando o outro encerra). */
+  .tc-linha{display:flex; align-items:center; gap:12px;}
+  .tc-txt{flex:1; min-width:0; font-size:12px; font-weight:800; letter-spacing:.8px; color:var(--muted);}
+  .tc-txt b{display:block; font-size:19px; letter-spacing:0; color:var(--verde); margin-top:1px; line-height:1.2;}
+  .tc-txt b.sem{color:var(--ambar);}
+  .tc-txt small{font-size:13px; font-weight:700; letter-spacing:0; color:var(--muted);}
+  .tc-linha .btn{flex:0 0 auto; min-height:48px; font-size:15px; padding:8px 14px;}
   .btn-vermelho{background:var(--vermelho); color:#2a0707;}
   .modal input.senha{font-size:24px; letter-spacing:6px;}
 
@@ -231,11 +259,13 @@
 </style>
 <link rel="stylesheet" href="/celular.css">
 </head>
-<body>
+<body class="op">
 <header>
   <!-- 16/10/2026 (Vinicius): a logo no lugar do ícone (marca/ do bling-claude, versão fundo escuro) -->
   <img class="logo" src="/logo_ekoplastic_fundo_escuro.webp" alt="Ekoplastic">
-  <h1>Operação Sacoleiras<small id="quem"></small></h1>
+  <!-- 19/10/2026 (Vinicius): sem nome no topo; o inventário foi para Opções. -->
+  <h1>Operação Sacoleiras</h1>
+  <button class="btn-sair btn-opcoes" onclick="abrirOpcoes()">☰ Opções</button>
   <a class="btn-sair" href="/" title="Voltar ao sistema">✕</a>
 </header>
 <div class="toast" id="toast"></div>
@@ -244,13 +274,18 @@
   <!-- Turno: só com o Bling ligado (é o cliente da venda). -->
   <div class="turnos oculto" id="turnos"></div>
 
-  <div class="sec-tit"><span>Sacoleiras agora</span></div>
+  <!-- Turno do corte: marcado no coletor. O painel de operação das sacoleiras
+       na VPS corta os turnos por estes registros. Desde 19/10/2026 (Vinicius)
+       fica no TOPO, um card só para as duas sacoleiras; o Encerrar pede a
+       senha do supervisor. -->
+  <div class="tc" id="turno-corte"><div class="carregando">Carregando…</div></div>
+
   <div class="sacs sacs-grande" id="sacs"><div class="carregando">Carregando…</div></div>
 
   <!-- A leitura é do gatilho do coletor (app Ekoplastic Coletor). O botão
        de digitar fica para etiqueta rasurada. A câmera saiu em 28/09/2026
        (pedido do Frederico: "só o coletor faz a bipagem"). -->
-  <button class="btn btn-cinza digitar" onclick="digitarCodigo()">⌨️ Digitar código da etiqueta</button>
+  <button class="btn-digitar" onclick="digitarCodigo()">⌨️ Digitar código da etiqueta</button>
 
   <!-- bobina lida, aguardando a sacoleira -->
   <div id="area-bobina"></div>
@@ -258,15 +293,6 @@
   <!-- 16/10/2026 (Vinicius): "Neste turno" fica embaixo e abre ao tocar. -->
   <div class="sec-tit abre" id="hist-tit" onclick="abrirHist()"><span>Neste turno</span><span class="sub"><span id="hoje-resumo"></span><span class="seta" id="hist-seta">▸</span></span></div>
   <div class="hist oculto" id="lista-hist"><div class="carregando">Carregando…</div></div>
-
-  <!-- Turno do corte: marcado no coletor (sem senha desde 05/10/2026). O painel de operação
-       das sacoleiras na VPS corta os turnos por estes registros. Fica embaixo,
-       logo acima do inventário (Gustavo, 30/09/2026): é ação de supervisor,
-       não do dia a dia do operador. -->
-  <div class="sec-tit"><span>Turno do corte</span></div>
-  <div class="tc" id="turno-corte"><div class="carregando">Carregando…</div></div>
-
-  <button class="btn btn-cinza digitar" onclick="abrirInventario()">📋 Inventário de bobinas</button>
 </div>
 
 <!-- INVENTÁRIO: bipa toda bobina que está no estoque. Só registra; não muda
@@ -418,9 +444,8 @@ function soltarDestinos(){ document.querySelectorAll('.btn-destino').forEach(b=>
 async function confirmarBaixa(sac){
   if(!bobinaAtual || enviando) return;
   if(BLING && !TURNO){ toast('erro','Escolha o turno primeiro',3000); return; }
-  // Quem está bipando é quem vai cortar esta bobina (29/09/2026).
-  const nome=await perguntarNome(sac);
-  if(!nome) return;
+  // "Quem está bipando?" SAIU em 19/10/2026 (Vinicius: "retirar temporariamente
+  // a seleção de quem está operando ... esta informação ainda não faz sentido").
   // A bipagem só inicia (16/10/2026): sem troca aqui; o fim é o botão do card.
   const fardosAnterior=null, saida=null;
   const montada=(ABERTAS.find(a=>a.sacoleira===sac)||{}).bobina;
@@ -438,8 +463,7 @@ async function confirmarBaixa(sac){
         body:JSON.stringify({ id:bobinaAtual.id, destino:sac, turno:(BLING&&TURNO)?TURNO.codigo:null,
                               fardos_anterior:fardosAnterior, soltos_anterior:saida?saida.soltos:null,
                               formato_anterior:saida?saida.formato:null,
-                              formato_anterior_origem:saida?saida.origem:null,
-                              operador:nome })
+                              formato_anterior_origem:saida?saida.origem:null })
       });
       d=await r.json();
       // Outro coletor montou bobina nesta sacoleira no meio do caminho: o
@@ -450,7 +474,7 @@ async function confirmarBaixa(sac){
     if(!r.ok || !d.ok){ beep(320,0.25); vibrar(200); toast('erro',esc((d&&d.erro)||'Falha ao registrar'),6000); soltarDestinos(); enviando=false; return; }
     beep(1050,0.14); vibrar([60,50,60]);
     const ped = d.modo==='sem_bling' ? '' : ('<br>pedido '+esc(d.pedido)+(d.modo==='simulacao'?' (simulação)':''));
-    toast('ok','✓ '+esc(bobinaAtual.id)+' na '+sac+' · '+esc(nome)+ped,3000);
+    toast('ok','✓ '+esc(bobinaAtual.id)+' na '+sac+ped,3000);
     cancelarLeitura();
     await atualizarTudo();
   }catch(e){ toast('erro','Erro: '+esc(e.message),5000); soltarDestinos(); }
@@ -579,7 +603,7 @@ function perguntarFardos(bob, sac, modo){
       fundo.querySelector('#md-alerta').innerHTML=trava?('<div class="m-alerta">⛔ '+trava+'</div>'):'';
       fundo.querySelector('#md-resumo').innerHTML='Cortou <b>'+(escolhido?esc(escolhido.replace('x',' × ')):'?')+'</b> · '+esc(corNome)+
         (temN&&pc>=0?(' · <b>'+txtPc(pc)+'</b>'):'')+
-        '<br>por <b>'+esc(bob.baixa_operador||'—')+'</b>';
+        (bob.baixa_operador?('<br>por <b>'+esc(bob.baixa_operador)+'</b>'):'');
     };
     fundo.querySelectorAll('#md-fmts .chip').forEach(c=>c.onclick=()=>{
       escolhido=c.dataset.f;
@@ -613,46 +637,7 @@ function perguntarFardos(bob, sac, modo){
   });
 }
 
-// Quem está bipando (29/09/2026). Lista os nomes que a pesagem já conhece,
-// deixa digitar um novo e lembra o último neste aparelho. Resolve o nome ou null.
-let NOMES=null;
-async function perguntarNome(sac){
-  if(NOMES===null){
-    try{ const d=await (await fetch(URL_BASE+'/bobinas/operadores')).json(); NOMES=(d&&d.operadores)||[]; }
-    catch(e){ NOMES=[]; }
-  }
-  let ultimo=''; try{ ultimo=localStorage.getItem('eko_bipador')||''; }catch(e){}
-  return new Promise(resolve=>{
-    const fundo=document.createElement('div');
-    fundo.className='modal-fundo';
-    const logado=String(window.EKO_RESPONSAVEL||'').trim().toUpperCase();
-    const lista=[...new Set([ultimo, logado].concat(NOMES).filter(Boolean))];
-    fundo.innerHTML='<div class="modal">'+
-      '<h2>Quem está bipando?</h2>'+
-      '<div class="m-sub">A <b>'+esc(bobinaAtual.id)+'</b> vai para a Sacoleira <b>'+esc(sac)+'</b>. '+
-        'Quem bipa é quem corta esta bobina.</div>'+
-      '<div class="nomes">'+lista.map(n=>'<button class="chip'+(n===ultimo?' sel':'')+'" data-n="'+esc(n)+'">'+esc(n)+'</button>').join('')+'</div>'+
-      '<label>OU DIGITE O NOME</label><input id="md-nome" class="txt" type="text" autocomplete="off" autocapitalize="characters" maxlength="40" value="'+esc(ultimo)+'">'+
-      '<button class="btn btn-verde" id="md-ok">Continuar</button>'+
-      '<button class="btn-link" id="md-cancelar">Cancelar</button></div>';
-    document.body.appendChild(fundo);
-    const inp=fundo.querySelector('#md-nome');
-    fundo.querySelectorAll('.nomes .chip').forEach(c=>c.onclick=()=>{
-      inp.value=c.dataset.n;
-      fundo.querySelectorAll('.nomes .chip').forEach(x=>x.classList.toggle('sel',x===c));
-    });
-    const fim=v=>{ fundo.remove(); resolve(v); };
-    fundo.querySelector('#md-cancelar').onclick=()=>fim(null);
-    fundo.querySelector('#md-ok').onclick=()=>{
-      const n=inp.value.trim().toUpperCase();
-      if(n.length<2){ toast('erro','Toque no seu nome ou digite',3000); inp.focus(); return; }
-      try{ localStorage.setItem('eko_bipador',n); }catch(e){}
-      if(!NOMES.includes(n)) NOMES.unshift(n);
-      fim(n);
-    };
-    inp.addEventListener('keydown',e=>{ if(e.key==='Enter') fundo.querySelector('#md-ok').click(); });
-  });
-}
+// "Quem está bipando?" (perguntarNome, 29/09/2026) saiu em 19/10/2026 — está no git.
 
 // Finalizar: a bobina saiu SEM outra no lugar (máquina parou, acabou o pedido).
 // Troca de formato com a bobina montada (02/10/2026, Gustavo).
@@ -767,7 +752,6 @@ async function carregarSacoleiras(){
       '<div class="s-mat">'+descCurta(b)+'</div>'+
       corte+
       '<div class="s-kg">'+fmtKg(b.peso)+'</div>'+
-      (b.baixa_operador?('<div class="s-quem">'+esc(b.baixa_operador)+'</div>'):'')+
       '<div class="s-info">'+esc(b.id)+' · '+haQuanto(b.baixa_em)+'</div>'+
       // "Bobina finalizou" VOLTOU (16/10/2026, Vinicius): o fim pela bipagem da
       // seguinte trocava as janelas de metros (E0001983 184% × E0001989 20%).
@@ -1034,34 +1018,58 @@ async function copiarInventario(){
 }
 function voltarSacoleiras(){ mostrarTela('sac'); atualizarTudo(); }
 
-// ── TURNO DO CORTE (30/09/2026): só o supervisor inicia, troca e encerra.
+// OPÇÕES (19/10/2026, Vinicius): o que não é do dia a dia sai da tela da
+// operação e fica atrás deste botão do topo.
+function abrirOpcoes(){
+  if(document.querySelector('.modal-fundo')) return;
+  const fundo=document.createElement('div');
+  fundo.className='modal-fundo';
+  fundo.innerHTML='<div class="modal opcoes"><h2>Opções</h2>'+
+    '<button class="btn btn-cinza" id="op-inv">📋 Inventário de bobinas</button>'+
+    '<button class="btn-link" id="md-cancelar">Fechar</button></div>';
+  document.body.appendChild(fundo);
+  const fim=()=>fundo.remove();
+  fundo.onclick=e=>{ if(e.target===fundo) fim(); };
+  fundo.querySelector('#md-cancelar').onclick=fim;
+  fundo.querySelector('#op-inv').onclick=()=>{ fim(); if(MODO!=='inv') abrirInventario(); };
+}
+
+// ── TURNO DO CORTE (30/09/2026). 19/10/2026 (Vinicius): um card no topo para
+// as duas sacoleiras; sem "Trocar" — Iniciar só aparece onde não há turno
+// aberto, e o Encerrar pede a senha do supervisor.
 let TC={ sacoleiras:[], turnos:[] };
 async function carregarTurnoCorte(){
   const el=document.getElementById('turno-corte');
   try{ const d=await (await fetch(URL_BASE+'/bobinas/turno-corte')).json(); if(d&&d.ok) TC=d; }
   catch(e){ el.innerHTML='<div class="vazio">Não consegui ler o turno.</div>'; return; }
   const lb=c=>(TC.turnos.find(t=>t.codigo===c)||{}).label||c;
-  const algumSem=TC.sacoleiras.some(s=>!s.turno);
+  const abertos=TC.sacoleiras.filter(s=>s.turno), algumSem=abertos.length<TC.sacoleiras.length;
+  const desde=iso=>new Date(iso).toDateString()===new Date().toDateString()?hora(iso):diaHora(iso);
+  const t0=abertos[0]&&abertos[0].turno;
+  let txt;
+  if(!abertos.length) txt='<b class="sem">Sem turno aberto</b><small>inicie o turno para bipar</small>';
+  else if(!algumSem && abertos.every(s=>s.turno.turno===t0.turno))
+    txt='<b>'+esc(lb(t0.turno))+'</b><small>desde '+desde(abertos.map(s=>s.turno.inicio).sort()[0])+'</small>';
+  else txt='<b'+(algumSem?' class="sem"':'')+'>'+TC.sacoleiras.map(s=>s.sacoleira+' '+(s.turno?esc(lb(s.turno.turno)):'sem turno')).join(' · ')+'</b>';
   el.className='tc'+(algumSem?' sem':'');
-  el.innerHTML='<div class="tc-maqs">'+TC.sacoleiras.map(s=>'<div class="tc-maq">SACOLEIRA '+s.sacoleira+
-      (s.turno?('<b>'+esc(lb(s.turno.turno))+'</b><small>desde '+diaHora(s.turno.inicio)+'</small>')
-              :'<b class="sem">sem turno</b><small>fora de turno</small>')+'</div>').join('')+'</div>'+
-    '<div class="tc-bts"><button class="btn btn-verde" onclick="turnoCorte(\'iniciar\')">'+(algumSem&&TC.sacoleiras.every(s=>!s.turno)?'Iniciar turno':'Iniciar / trocar')+'</button>'+
-    '<button class="btn btn-vermelho" onclick="turnoCorte(\'encerrar\')"'+(TC.sacoleiras.some(s=>s.turno)?'':' disabled')+'>Encerrar turno</button></div>';
+  el.innerHTML='<div class="tc-linha"><div class="tc-txt">TURNO DO CORTE'+txt+'</div>'+
+    (algumSem?'<button class="btn btn-verde" onclick="turnoCorte(\'iniciar\')">Iniciar turno</button>':'')+
+    (abertos.length?'<button class="btn btn-vermelho" onclick="turnoCorte(\'encerrar\')">Encerrar turno</button>':'')+'</div>';
 }
 function turnoCorte(acao){
   const iniciar=acao==='iniciar';
   const abertas=TC.sacoleiras.filter(s=>s.turno).map(s=>s.sacoleira);
   // 01/10/2026 (Gustavo): turno sempre nas DUAS sacoleiras — sem escolher máquina.
-  let turno=null; const maqs=iniciar?['P1','P2']:abertas.slice();
+  // 19/10/2026: o Iniciar não troca turno aberto, só abre onde não há.
+  let turno=null; const maqs=iniciar?TC.sacoleiras.filter(s=>!s.turno).map(s=>s.sacoleira):abertas.slice();
   const parciais={};   // { P1: {fardos, formato, formato_origem} } — fardos do turno que fecha
   const fundo=document.createElement('div');
   fundo.className='modal-fundo';
   fundo.innerHTML='<div class="modal">'+
     '<h2>'+(iniciar?'Iniciar turno do corte':'Encerrar turno do corte')+'</h2>'+
-    '<div class="m-sub">'+(iniciar?'Se a sacoleira já tem turno aberto, ele é encerrado agora e o novo começa no mesmo instante.'
-      :'A sacoleira fica <b>fora de turno</b> até alguém iniciar o próximo. A bobina montada continua na máquina.')+
-    '<br>Com bobina montada, a seguir peço quantos fardos ela deu <b>neste turno</b>.</div>'+
+    (iniciar?'':('<div class="m-sub">Confira se está tudo certo antes de fechar: as sacoleiras ficam <b>fora de turno</b> até o próximo ser iniciado. '+
+      'A bobina montada continua na máquina; a seguir peço quantos fardos ela deu <b>neste turno</b>.</div>'+
+      '<label>SENHA DO SUPERVISOR</label><input id="md-senha" class="senha" type="password" inputmode="numeric" autocomplete="off" maxlength="12">'))+
     (iniciar?('<label>TURNO</label><div class="fmts" id="md-turnos">'+TC.turnos.map(t=>
       '<button class="chip" data-t="'+esc(t.codigo)+'">'+esc(t.label)+'</button>').join('')+'</div>'):'')+
     '<div class="m-resumo" id="md-resumo"></div>'+
@@ -1073,8 +1081,7 @@ function turnoCorte(acao){
     fundo.querySelectorAll('#md-turnos .chip').forEach(c=>c.classList.toggle('sel',c.dataset.t===turno));
     const alvo=maqs.slice().sort().join(' e ')||'?';
     fundo.querySelector('#md-resumo').innerHTML=iniciar
-      ? ('Começa <b>'+(turno?esc(lb(turno)):'?')+'</b> na <b>'+alvo+'</b>'+
-         maqs.map(p=>{ const s=TC.sacoleiras.find(x=>x.sacoleira===p); return s&&s.turno?('<br>encerra '+esc(lb(s.turno.turno))+' da '+p):''; }).join(''))
+      ? ('Começa <b>'+(turno?esc(lb(turno)):'?')+'</b> na <b>'+alvo+'</b>')
       : ('Encerra o turno da <b>'+alvo+'</b>');
   };
   fundo.querySelectorAll('#md-turnos .chip').forEach(c=>c.onclick=()=>{ turno=c.dataset.t; pintar(); });
@@ -1084,7 +1091,9 @@ function turnoCorte(acao){
   const ok=fundo.querySelector('#md-ok');
   ok.onclick=async()=>{
     if(iniciar && !turno){ toast('erro','Toque no turno',3000); return; }
-    if(!maqs.length){ toast('erro','Nenhuma sacoleira com turno aberto',3000); return; }
+    if(!maqs.length){ toast('erro',iniciar?'As duas sacoleiras já têm turno aberto':'Nenhuma sacoleira com turno aberto',3000); return; }
+    const senha=iniciar?null:fundo.querySelector('#md-senha').value.trim();
+    if(!iniciar && !senha){ toast('erro','Digite a senha do supervisor',3000); fundo.querySelector('#md-senha').focus(); return; }
     ok.disabled=true;
     try{
       // Fardos do turno que fecha (30/09/2026): cada sacoleira cujo turno
@@ -1103,7 +1112,7 @@ function turnoCorte(acao){
       let r, d;
       for(let tentativa=0; tentativa<2; tentativa++){
         r=await fetch(URL_BASE+'/bobinas/turno-corte/'+acao,{ method:'POST', headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({ turno, maquinas:maqs, parciais, operador:(window.EKO_RESPONSAVEL||null) }) });
+          body:JSON.stringify({ turno, senha, maquinas:maqs, parciais, operador:(window.EKO_RESPONSAVEL||null) }) });
         d=await r.json();
         // Bobina montada por outro aparelho no meio do caminho: pergunta a que faltou.
         if(r.status===409 && d && d.precisa_fardos && tentativa===0){
@@ -1116,7 +1125,12 @@ function turnoCorte(acao){
         }
         break;
       }
-      if(!r.ok||!d.ok){ beep(320,0.25); vibrar(200); toast('erro',esc((d&&d.erro)||'Falha'),5000); ok.disabled=false; return; }
+      if(!r.ok||!d.ok){
+        beep(320,0.25); vibrar(200); toast('erro',esc((d&&d.erro)||'Falha'),5000); ok.disabled=false;
+        // senha errada: os fardos já digitados ficam guardados em parciais
+        if(d&&d.senha_incorreta){ const i=fundo.querySelector('#md-senha'); i.value=''; i.focus(); }
+        return;
+      }
       beep(1050,0.14); vibrar([60,50,60]);
       const txtF=(d.parciais||[]).map(x=>' · '+x.sacoleira+' '+txtPc(x.pacotes)).join('');
       toast('ok', (iniciar?('✓ '+esc(lb(turno))+' iniciado · '+maqs.join(' e ')):'✓ Turno encerrado · '+maqs.join(' e '))+txtF,4000);
@@ -1268,15 +1282,13 @@ function comAcesso(tela, aoEntrar) {
   try { aoEntrar(); } catch (e) { console.error(e); }
 }
 // 05/10/2026 (Gustavo: "tira qualquer tipo de senha do sistema de estoque de
-// bobina"): a tela abre direto, sem o PIN do colaborador. O responsável
-// (turno, inventário, desfazer) passa a ser o último nome escolhido em "Quem
-// está bipando?" neste aparelho; quem bipa cada bobina segue sendo perguntado.
+// bobina"): a tela abre direto, sem o PIN do colaborador. Desde 19/10/2026
+// (Vinicius) também sem nome nenhum: o "Quem está bipando?" saiu, e o nome
+// guardado no aparelho (eko_bipador) não vai mais como responsável.
 (function(iniciar){
-  let nome=null; try{ nome=localStorage.getItem('eko_bipador')||null; }catch(e){}
-  window.EKO_RESPONSAVEL=nome;
-  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',()=>iniciar(nome)); else iniciar(nome);
-})(nome => {
-  if (nome) document.getElementById('quem').textContent = '👤 ' + nome;
+  window.EKO_RESPONSAVEL=null;
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',iniciar); else iniciar();
+})(() => {
   carregarModo();
   let histAb=false; try{ histAb=localStorage.getItem('eko_hist_aberto')==='1'; }catch(e){}
   abrirHist(histAb);

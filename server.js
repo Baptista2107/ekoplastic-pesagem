@@ -10289,10 +10289,9 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
       // bobina aos fardos daquela máquina (o fardo grava `maquina` P1/P2).
       const destino = normalizarDestinoBobina(body.destino);
       if (!destino) return jsonErr(res, 400, 'Escolha a sacoleira de destino (P1 ou P2)');
-      // Quem bipou é quem vai cortar a bobina (29/09/2026, Gustavo): sem nome
-      // o resumo "quem cortou" fica vazio, então é obrigatório.
+      // Quem bipou (29/09/2026, Gustavo) deixou de ser perguntado em 19/10/2026
+      // (Vinicius: "esta informação ainda não faz sentido"): vai quando vier.
       const operador = (body.operador ? String(body.operador).trim().slice(0, 80) : null) || null;
-      if (!operador) return jsonErr(res, 400, 'Informe o nome de quem está bipando');
       // Sem turno do corte aberto não monta bobina (01/10/2026, Gustavo): a
       // bobina e os fardos dela ficariam fora de turno, sem dono no resumo.
       if (!turnoCorteAberto(destino)) {
@@ -10555,7 +10554,17 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
       let body; try { body = await lerBodyJson(req); } catch(e) { return jsonErr(res, 400, e.message); }
       const iniciar = pathname.endsWith('/iniciar');
       // Sem senha desde 05/10/2026 (Gustavo: "tira qualquer tipo de senha do
-      // sistema de estoque de bobina"). Quem iniciou/encerrou fica no operador.
+      // sistema de estoque de bobina"). O ENCERRAR voltou a pedir a senha do
+      // supervisor em 19/10/2026 (Vinicius: quem encerra é o responsável por
+      // conferir que está tudo certo antes de fechar o turno). Iniciar segue livre.
+      if (!iniciar) {
+        const hashAtual = configGet('senha_saida_hash', hashSenha('1234'));
+        if (hashSenha(String((body && body.senha) || '')) !== hashAtual) {
+          logDesvio({ tipo: 'turno_corte_senha_incorreta', tela: 'bobinas',
+                      detalhe: 'senha incorreta ao encerrar turno do corte' });
+          return jsonErr(res, 401, 'Senha de supervisor incorreta.', { senha_incorreta: true });
+        }
+      }
       const maqs = lerMaquinasCorte(body.maquinas);
       if (!maqs) return jsonErr(res, 400, 'Escolha a sacoleira (P1, P2 ou as duas)');
       const operador = (body.operador ? String(body.operador).trim().slice(0, 80) : null) || null;
