@@ -1,7 +1,6 @@
-# Sistema Ekoplastic — Documentação Completa
+# Sistema Ekoplastic — como funciona por dentro
 
-> **Versão documentada:** v156
-> **Última atualização:** agosto/2026
+> Como instalar, rodar, atualizar e testar está no [README](../README.md).
 > **Propósito deste documento:** permitir que qualquer pessoa (ou outra IA) entenda o
 > sistema por inteiro — o que ele faz, por que foi feito assim, e quais armadilhas
 > já custaram caro — sem precisar do histórico das conversas que o originaram.
@@ -22,16 +21,6 @@ recebimento    →    bobinas de filme   →   sacolas em fardos  →  venda
 Cada movimentação gera **etiqueta térmica com código de barras** e é **enviada
 automaticamente ao Bling** (o ERP da empresa), sem digitação dupla.
 
-### Números do sistema
-| | |
-|---|---|
-| `server.js` | ~6.250 linhas (Node.js puro) |
-| Telas | 12 arquivos HTML |
-| Endpoints HTTP | ~70 |
-| Tabelas no banco | 4 (`etiquetas`, `sessoes`, `seqs`, `config`) |
-| Testes automatizados | 36 (piso mínimo) |
-| Dependências externas | 2 (`serialport`, `node-forge`) |
-
 ---
 
 ## 2. Arquitetura
@@ -46,27 +35,9 @@ automaticamente ao Bling** (o ERP da empresa), sem digitação dupla.
 4. **Conferência antes de enviar.** Todo envio ao Bling passa por uma tela de resumo.
 
 ### Como roda
-```
-Mini PC TANCA (Windows, touchscreen, sem teclado físico)
-└── Pasta: C:\Users\usuario\Desktop\PROJETO AUTOMAÇÃO\
-    ├── server.js              ← todo o backend
-    ├── public/                ← todas as telas
-    ├── etiquetas.db           ← banco (NUNCA vai no pacote de atualização)
-    ├── credenciais-bling.json ← tokens OAuth (NUNCA vai no pacote)
-    ├── cert/                  ← certificado HTTPS (gerado local)
-    ├── logs/ e backups/
-    └── *.bat                  ← utilitários
-```
-
-**Três portas:**
-| Porta | Escuta | Para quê |
-|---|---|---|
-| 3000 | `127.0.0.1` | HTTP local — as telas do Mini PC |
-| 3443 | `0.0.0.0` | HTTPS na rede — **celular** (câmera exige HTTPS) |
-| 8888 | `127.0.0.1` | Callback do OAuth do Bling |
-
-Variáveis de ambiente para testes: `EKO_PORT`, `EKO_PORT_HTTPS`, `EKO_PORT_CB`,
-`EKO_DB_FILE`, `EKO_LOG_DIR`, `EKO_SERIAL_PORT`.
+Um único processo Node (`server.js`) no Mini PC, em `C:\Ekoplastic\pesagem`, que é um
+clone do repositório. Estrutura de pastas, portas e variáveis de ambiente: ver o
+[README](../README.md).
 
 ### Hardware
 - **Balança Weightech** via serial (`COM1`, 9600 baud) — leitura contínua do peso.
@@ -300,13 +271,13 @@ os modais próprios de cada tela.
 ## 8. Testes e qualidade
 
 ```
-node testes/piso-testes.js     →  36 testes, devem passar 36/0
+node testes/rodar-todos.js     →  todos os arquivos de testes/ devem passar
 ```
 
 **Procedimento obrigatório antes de qualquer entrega:**
-1. `node --check server.js` — sintaxe do backend
+1. `node --check` nos arquivos alterados (`server.js`, `lib/`, `rotas/`)
 2. Validar o JavaScript de cada tela alterada
-3. Rodar o piso (36/0)
+3. Rodar todos os testes
 4. **Regressão**: comparar arquivo a arquivo com a versão anterior — só devem
    aparecer os arquivos que a mudança justifica
 5. Testar o comportamento no **navegador simulado** (jsdom), não só a sintaxe
@@ -343,31 +314,9 @@ Sempre verificar **visibilidade real** (o elemento ou algum ancestral tem `ocult
 
 ## 10. Instalação e atualização
 
-### Atualizar o sistema
-1. **Backup da pasta inteira** (copiar e colar ao lado, renomeando).
-2. Fechar o servidor (janela preta) e o Chrome.
-3. Extrair o zip, entrar na pasta `vXXX`, copiar **o conteúdo** para dentro de
-   `PROJETO AUTOMAÇÃO`, substituindo.
-4. Abrir `INICIAR.bat`.
-5. Conferir `/healthcheck` → campo `versao`.
-
-⚠️ O pacote **nunca** contém `etiquetas.db`, `credenciais-bling.json`, `logs/`,
-`backups/` ou `cert/` — por isso atualizar não apaga dados nem exige reautenticar.
-
-### Utilitários
-| Arquivo | Para quê |
-|---|---|
-| `INICIAR.bat` | Sobe o servidor e abre a tela |
-| `GERAR-DASHBOARD.bat` | Gera o dashboard autônomo |
-| `CALIBRAR-IMPRESSORA.bat` | Calibra ao trocar o tamanho da etiqueta |
-| `DIAGNOSTICO.bat` | Diagnóstico geral |
-| `RODAR-TESTES.bat` | Executa o piso de testes |
-| `ATIVAR-INICIO-AUTOMATICO.bat` | Sobe o sistema junto com o Windows |
-
-### Celular
-`https://<IP-do-MiniPC>:3443` no mesmo Wi-Fi. Aceitar o aviso de certificado
-(Safari: Mostrar detalhes → visitar este site). Liberar a porta no firewall se
-necessário.
+Ver o [README](../README.md): atualização remota pelo git (o banco, os tokens, os logs e
+o certificado não são versionados, por isso atualizar não apaga dados nem exige
+reautenticar), utilitários `.bat` e acesso pelo celular.
 
 ---
 
@@ -406,7 +355,7 @@ necessário.
 
 Se você é uma IA ou pessoa retomando este projeto:
 
-1. **Leia o código antes de mudar.** O `server.js` tem comentários explicando o
+1. **Leia o código antes de mudar.** O código (`lib/`, `rotas/`) tem comentários explicando o
    *porquê* das decisões não óbvias — especialmente onde já houve erro.
 2. **Nunca entregue sem regressão.** Comparar com a versão anterior e conferir que
    só mudou o que devia é o que impede estragos.
@@ -418,4 +367,5 @@ Se você é uma IA ou pessoa retomando este projeto:
 
 ---
 
-*Documento gerado a partir do código da versão v156.*
+*Escrito a partir da versão v156 (agosto/2026); estrutura e instalação atualizadas na
+refatoração de outubro/2026 (server.js dividido em `lib/` e `rotas/`).*

@@ -1,209 +1,128 @@
-# Ekoplastic — Sistema de Etiquetas (Servidor Unificado)
+# Ekoplastic — Estação de Pesagem
 
-Sistema único que combina:
-- Integração Bling API v3 (OAuth + auto-refresh + proxy)
-- Balança WT3000-iR (Serial COM3)
-- Impressão EPL2 raw (Win32 Spooler via PowerShell)
-- Banco SQLite (etiquetas, sessões, sequenciais, config)
-- Servidor de arquivos estáticos (HTMLs em `public/`)
+Sistema de chão de fábrica que roda no **Mini PC da pesagem** (Windows, tela de toque,
+`C:\Ekoplastic\pesagem`). Pesa e etiqueta matéria-prima, bobinas de extrusão e produto
+acabado, controla retirada de bobinas, inventário, endereçamento e separação, e lança
+tudo no **Bling**. O coletor **TC60** e os celulares usam as telas pela rede (HTTPS).
+
+Como o sistema funciona por dentro (telas, banco, Bling, impressão, regras de negócio
+que não são óbvias): **[docs/sistema.md](docs/sistema.md)**.
 
 ## Estrutura
 
 ```
-ekoplastic-etiquetas/
-├── server.js              ← Servidor unificado (porta 3000)
-├── enviar_raw.ps1         ← Script PowerShell (não mexer)
-├── INICIAR.bat            ← Único bat para iniciar tudo
-├── package.json
-├── bling_tokens.json      ← Tokens OAuth (você cria/cola aqui)
-├── etiquetas.db           ← Banco SQLite (criado automaticamente)
-├── public/
-│   ├── index.html         ← Menu principal
-│   └── mp-recebimento-retorno.html
-├── logs/                  ← Logs diários (criado automaticamente)
-└── backups/               ← Backups diários do .db (criado automaticamente)
+server.js        sobe o sistema: carrega lib/ em ordem, despacha para rotas/, serve public/
+lib/             config, log, banco (schema e migrações), balança, Bling (OAuth v3),
+                 impressão EPL2, endereçamento, separação, bobinas, turnos, atualização
+rotas/           as rotas HTTP, um arquivo por assunto (sistema, etiquetas, sessoes,
+                 catalogo-mp, produto-acabado, enderecamento, separacao, dashboard,
+                 bobinas, inventario)
+public/          as telas (HTML puro, sem build) e os scripts comuns
+testes/          testes automatizados; cada um sobe o server.js real em banco temporário
+android/         app do coletor TC60 (WebView que abre as telas pela rede)
+docs/            documentação; docs/historico/ guarda o que já foi feito e não muda mais
+node_modules/    VERSIONADO de propósito: o serialport é nativo e não pode depender de
+                 npm install no chão de fábrica
+*.bat / *.ps1    utilitários do Windows (tabela abaixo)
 ```
 
-## Pré-requisitos
+Gerados pela máquina e **fora do git** (ver `.gitignore`): `etiquetas.db` (o banco, dado
+real), `credenciais-bling.json` e `bling_tokens.json`, `cert/` (HTTPS, gerado no 1º boot),
+`logs/`, `backups/`, `guias/` (fotos das guias de separação), `eko-*.flag`, `estacao.txt`,
+`OUTPUT_*.TXT`.
 
-- **Node.js 22.5 ou superior** (você está no 24, ótimo) — usa o SQLite built-in (`node:sqlite`).
-- Windows (10/11) — testado.
+## Portas
 
-## Primeira execução
+| Porta | Escuta | Para quê |
+|---|---|---|
+| 3000 | `127.0.0.1` | HTTP local — as telas do Mini PC |
+| 3443 | rede | HTTPS — TC60 e celulares (câmera exige HTTPS) |
+| 8888 | `127.0.0.1` | callback do OAuth do Bling |
 
-**Requisito**: Node.js 22.5 ou superior (usa o módulo built-in `node:sqlite`, sem build nativo).
+Variáveis de ambiente (usadas pelos testes): `EKO_PORT`, `EKO_PORT_HTTPS`, `EKO_PORT_CB`,
+`EKO_DB_FILE`, `EKO_LOG_DIR`, `EKO_GUIAS_DIR`, `EKO_TOKEN_FILE`, `EKO_SERIAL_PORT`
+(a balança está na `COM1`, definida no `INICIAR.bat`), `EKO_PRINT_SIMULAR`.
 
-1. Coloque **todos os arquivos da pasta** em uma pasta no PC (sugestão: `C:\ekoplastic-etiquetas\`).
-2. Copie o `bling_tokens.json` antigo para essa pasta (se ainda for válido).
-3. Dê duplo-clique no `INICIAR.bat`.
-4. Na primeira vez, instala dependências automaticamente (`npm install` — apenas o `serialport`) — leva ~30 segundos.
-5. Quando o servidor subir, o navegador abre automaticamente em `http://localhost:3000`.
+## Rodar
 
-> **Se o `npm install` falhar no `serialport`**: o servidor sobe mesmo assim, mas a balança fica desativada (Bling + impressão continuam funcionando). Pra resolver: instale o **Visual Studio Build Tools** (opcional, somente se quiser balança serial).
+Pré-requisitos no Mini PC: **Node.js 22.5+** (usa o `node:sqlite` nativo; a estação está
+no 24), Google Chrome, impressora térmica EPL2 e balança na serial.
 
-## Operação diária
+- **`INICIAR.bat`** sobe o servidor num laço (caiu, volta em 5 s) e abre a tela em modo
+  quiosque. Rodar de novo com o sistema aberto só reabre a tela.
+- **`ABRIR-TELA.bat`** reabre só o navegador, sem mexer no servidor.
+- `/healthcheck` mostra versão (commit), impressora, balança, Bling e início automático.
 
-- Duplo-clique no `INICIAR.bat`.
-- Deixar a janela do servidor **aberta** enquanto usa o sistema.
-- Fechar a janela = encerra o servidor.
+### Início automático com o Windows
 
-## Endpoints expostos (HTTP `localhost:3000`)
+1. `ATIVAR-INICIO-AUTOMATICO.bat` (uma vez): cria um atalho do `INICIAR.bat` na pasta
+   *Inicializar*. Vale para atualizações futuras, porque aponta para a pasta.
+2. **Login automático** — sem ele o Mini PC (sem teclado) para na tela de senha:
+   `Windows + R` → `netplwiz` → desmarcar *"Os usuários devem digitar um nome e senha…"*
+   → OK e informar a senha da conta.
+3. Testar reiniciando o Mini PC. Para desligar: `DESATIVAR-INICIO-AUTOMATICO.bat`.
 
-### Sistema
-- `GET /healthcheck` — status geral (também aceita `/status`)
-- `GET /impressoras` — lista impressoras Windows + qual está ativa
-- `POST /impressora/redetectar` — re-busca impressora ativa
+O `conferir-inicio-automatico.ps1` confere e corrige o atalho a cada início e grava o
+resultado em `eko-autostart.json`, que aparece no `/healthcheck`.
 
-### Etiquetas
-- `GET  /proximo-seq?tipo=recebimento|retorno`
-- `GET  /etiqueta/:id` (alias: `/etiquetas/:id`)
-- `GET  /etiquetas?tipo=&status=&limit=`
-- `POST /print/etiqueta` (alias: `/etiquetas`) — imprime e persiste
-- `POST /etiqueta/:id/bipar`
-- `POST /etiqueta/:id/cancelar`
+## Atualizar a estação
 
-### Sessões
-- `POST /sessoes` `{tipo, fornecedor?}` — abre sessão
-- `GET  /sessoes/:id` — sessão + suas etiquetas
-- `GET  /sessoes?status=pendente|pendente_config|erro&tipo=`
-- `POST /sessoes/:id/finalizar` — fecha e envia ao Bling
-- `POST /sessoes/:id/reenviar-bling` — tenta reenviar em caso de erro
+O Mini PC é um clone deste repositório. A atualização só troca código: banco, tokens,
+logs e certificado não são versionados, então nada disso é tocado.
 
-### Bling
-- `GET  /bling/status` — autenticação atual
-- `GET  /bling/auth/start` — retorna URL de autorização
-- `GET  /bling/callback` — callback OAuth (também: `:8888/callback`)
-- `ALL  /bling/*` — proxy autenticado para `/Api/v3/*`
+- **Remota (jeito padrão):** `POST /sistema/atualizar` com a senha de supervisor. O
+  servidor só aceita se `GET /sistema/janela-atualizacao` disser que é seguro (nenhuma
+  sessão aberta, sem bipagem recente); grava `eko-atualizar.flag` e encerra; o
+  `INICIAR.bat` faz `git merge --ff-only` com o node parado e sobe de novo. O resultado
+  fica em `OUTPUT_ATUALIZACAO_REMOTA.TXT`. Se algo falhar, sobe o código que já estava.
+- **Do PC de quem desenvolve:** `ENVIAR-ATUALIZACAO.bat` roda todos os testes, faz commit
+  e push e dispara a atualização remota (`DESCOBRIR-MINIPC.bat` grava o endereço da
+  estação em `estacao.txt`). `SINCRONIZAR-COM-GITHUB.bat` só traz o que está no GitHub.
+- **No próprio Mini PC:** `ATUALIZAR.bat`.
 
-### Balança
-- `GET /balanca/raw` — leitura bruta + diagnóstico
-- `GET /balanca/peso` — peso parseado + estabilidade
+## Testes
 
-### Config
-- `GET  /config` — todos os valores
-- `POST /config` `{chave: valor, ...}` — atualiza chaves
+```
+node testes/rodar-todos.js      (ou npm test, ou RODAR-TESTES.bat)
+```
 
-## Banco de dados
+Roda todo `testes/*.js` (menos os `_auxiliares`), um por vez, cada um com o `server.js`
+real em portas de teste, banco temporário, Bling e impressão simulados. Não encosta em
+produção. Leva uns 2 minutos. É o portão do `ENVIAR-ATUALIZACAO.bat`: teste novo em
+`testes/` entra no portão sozinho.
 
-### Tabela `etiquetas`
-Toda etiqueta impressa fica aqui. Status: `aguardando_bipe` | `bipada` | `cancelada` | `consumida`.
+## Logs e backups
 
-### Tabela `sessoes`
-Cada "rodada" de Recebimento ou Retorno (do abrir até o FINALIZAR). Tem `bling_status`:
-- `pendente`         — fechada, aguarda envio
-- `pendente_config`  — fechada mas falta config (ex: ID do fornecedor no Bling)
-- `enviado`          — sucesso, com `bling_id`
-- `erro`             — falha no envio, com `bling_erro`
+- `logs/AAAA-MM-DD.log` — log geral do dia (impressão, bipagem, sessões, Bling, erros).
+- `logs/mp/movimentacao-*.jsonl`, `logs/extrusao/`, `logs/producao/` — movimentos por área.
+- `logs/desvios-AAAA-MM.jsonl` — desvios de segurança (saída do quiosque etc.).
+- `backups/etiquetas-AAAAMMDD.db` — cópia diária do banco (no início e a cada 6 h),
+  mantém as 7 mais recentes.
 
-### Tabela `seqs`
-Sequenciais separados por tipo (recebimento e retorno têm contadores independentes).
+## Utilitários
 
-### Tabela `config`
-Chave-valor. Usada para mapas como `mapa_fornecedor_bling`, `id_ekoplastic_bling`, etc.
+| Arquivo | Para quê |
+|---|---|
+| `CALIBRAR-IMPRESSORA.bat` | calibra a impressora ao trocar o tamanho da etiqueta |
+| `DIAGNOSTICO.bat` | diagnóstico da impressora |
+| `GERAR-DASHBOARD.bat` | gera o dashboard autônomo em `dashboard/` |
+| `LIBERAR-ACESSO-CELULAR.bat` | abre a porta 3443 no firewall (pede administrador) |
 
-## Dependências externas
+## Problemas comuns
 
-- **`serialport`** (NPM) — para a balança via COM3. Tem prebuilt binaries para Windows (não precisa de Visual Studio Build Tools).
-- **SQLite** — usa o módulo **built-in do Node.js** (`node:sqlite`). Sem instalação adicional.
-
-Se o `serialport` falhar na instalação, o servidor continua rodando — apenas a balança fica desativada.
-
-## Backups
-
-A cada inicialização (e a cada 6h enquanto rodando), faz cópia do `etiquetas.db` em `backups/`. Mantém os últimos 7.
-
-## Logs
-
-Arquivos diários em `logs/AAAA-MM-DD.log`. Conteúdo: cada operação relevante (impressão, bipagem, sessão, OAuth, erros).
-
-## Integração com Bling — pendente de configuração
-
-O envio real ao Bling no FINALIZAR está implementado mas comentado (esqueleto pronto). Precisa de:
-
-1. **Mapa fornecedor → ID Bling**:
-   ```
-   POST /config
-   { "mapa_fornecedor_bling": {"Cedro": "12345", "Ycaro": "67890", ...} }
-   ```
-2. **Mapa código gravimétrico → SKU/ID produto Bling**:
-   ```
-   POST /config
-   { "mapa_sku_bling": {"COL1": "PROD-123", "P2": "PROD-456", ...} }
-   ```
-3. **ID do contato Ekoplastic** (para retornos):
-   ```
-   POST /config
-   { "id_ekoplastic_bling": "98765" }
-   ```
-
-Sem essas configs, o `bling_status` da sessão fica `pendente_config` (sistema avisa qual config falta).
-
-## Troubleshooting
-
-### Impressora não imprime
-- Abre `http://localhost:3000/impressoras` no navegador
-- Vê qual está ATIVA e em que porta
-- Se a errada, edita `PRINTER_NAMES` no `server.js` reordenando
-
-### Balança não conecta
-- Confirma cabo USB-Serial em COM3 (Gerenciador de Dispositivos)
-- Verifica no menu da balança: `rS1-02 = n81`, `rS1-04 = StrEAn`
-- Servidor tenta reconectar a cada 10s
-
-### Bling diz "não autenticado"
-- Clica em "AUTENTICAR BLING" no menu inicial
-- Faz login no Bling, autoriza
-- A página de callback fecha sozinha em 2s
-
-### Token expirou e não renova
-- Verifica `bling_tokens.json` na pasta
-- Se sumiu ou está corrompido, reautentica via menu inicial
-
-## Decisão de design: por que tudo num arquivo só?
-
-Mantemos o `server.js` único (em vez de modularizar com `require('./balanca')` etc.) porque:
-- Facilita revisão (uma única busca cobre tudo)
-- Sem dependências internas pra confundir
-- ~1000 linhas é gerenciável
-- Logs e tratamento de erros consistentes
-- Quando precisar escalar, refatora-se em módulos
-
-A organização interna por **seções com cabeçalhos visuais** substitui módulos.
+- **Impressora não imprime:** ver `/healthcheck` (impressora ativa) e
+  `POST /impressora/redetectar`. A ordem de preferência é `PRINTER_NAMES` em
+  `lib/config.js`.
+- **Balança não conecta:** conferir a porta em `/balanca/portas` e o `EKO_SERIAL_PORT`
+  do `INICIAR.bat`; na balança, `rS1-02 = n81` e `rS1-04 = StrEAn`. O servidor tenta
+  reconectar sozinho.
+- **Bling "não autenticado":** Opções → Autenticar Bling. Os tokens ficam em
+  `bling_tokens.json` e são renovados sozinhos.
+- **Celular/TC60 não abre:** mesma rede, `https://<IP-do-Mini-PC>:3443`, aceitar o aviso
+  do certificado; se preciso, `LIBERAR-ACESSO-CELULAR.bat`.
 
 ## Modo simulação do Bling
 
-Por padrão, o servidor inicia em **modo simulação** (`bling_simular=1` na tabela config). Nesse modo:
-
-- O FINALIZAR monta o payload completo
-- Loga tudo nos logs (INFO resumido + DEBUG com payload inteiro)
-- Marca a sessão como `bling_status='enviado'` com `bling_id='SIM-<timestamp>'`
-- **NÃO chama** a API do Bling de verdade
-
-Útil pra testar o fluxo todo (UI + impressão + sessões + persistência) sem mexer no Bling real.
-
-### Ver o payload de uma sessão depois
-
-```
-GET /sessoes/:id/payload-bling
-```
-Retorna o JSON que foi enviado (ou seria, se a sessão ainda não finalizou).
-
-### Ativar modo REAL
-
-Quando você tiver os IDs prontos:
-
-```bash
-# Pelo curl ou pelo console do navegador (F12):
-fetch('/config', {
-  method: 'POST',
-  headers: {'Content-Type':'application/json'},
-  body: JSON.stringify({
-    bling_simular: "0",
-    mapa_fornecedor_bling: '{"Cedro":"12345","Ycaro":"67890"}',
-    mapa_sku_bling: '{"COL1":"PROD-123","NCRIS1":"PROD-456"}',
-    id_ekoplastic_bling: "98765"
-  })
-})
-```
-
-A partir daí, FINALIZAR chama o Bling de verdade (POST /Api/v3/pedidos/compras).
+Com `bling_simular = 1` na config (o padrão num banco novo) o sistema monta e registra
+no log o que enviaria, marca a sessão como enviada com `bling_id = SIM-<hora>` e **não
+chama** o Bling. Em produção é `0`. Os testes sempre rodam simulados.
