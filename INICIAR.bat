@@ -21,16 +21,16 @@ REM --- Evita duas instancias: se o servidor JA responde, so abre a tela ---
 curl -s -o nul http://localhost:3000/healthcheck >nul 2>&1
 if not errorlevel 1 (
   echo O servidor ja esta rodando. Abrindo apenas a tela...
-  start "" /min "%~f0" abrir
+  call :oculto abrir
   timeout /t 2 /nobreak >nul
   exit /b
 )
 
 title Ekoplastic - Servidor de Etiquetas
-start "Abrindo navegador" /min "%~f0" abrir
+call :oculto abrir
 REM  Confere o atalho de inicio automatico em segundo plano - nunca
 REM  atrasa a subida do servidor. Ver o bloco :autostart la embaixo.
-start "Conferindo inicio automatico" /min "%~f0" autostart
+call :oculto autostart
 
 :loop
 echo ============================================================
@@ -139,12 +139,12 @@ REM  Fecha o navegador para ele reabrir ja com a tela nova. Sem isto,
 REM  mudanca de HTML ou JS so' apareceria depois de um F5 manual.
 taskkill /IM chrome.exe /F >nul 2>&1
 taskkill /IM msedge.exe /F >nul 2>&1
-start "Abrindo navegador" /min "%~f0" abrir
+call :oculto abrir
 REM  Reconfere o atalho de inicializacao a CADA atualizacao remota. Sem
 REM  isto, o ramo :autostart so' rodaria quando alguem abrisse o
 REM  INICIAR.bat desta pasta - o que nao acontece justamente quando o
 REM  atalho aponta para a pasta errada. Era o circulo vicioso.
-start "Conferindo inicio automatico" /min "%~f0" autostart
+call :oculto autostart
 echo  Subindo o servidor...
 timeout /t 2 /nobreak >nul
 goto loop
@@ -173,6 +173,19 @@ set "PS=powershell"
 where powershell >nul 2>&1
 if errorlevel 1 set "PS=%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe"
 "%PS%" -NoProfile -ExecutionPolicy Bypass -File "%~dp0conferir-inicio-automatico.ps1" > "%~dp0OUTPUT_INICIO_AUTOMATICO.TXT" 2>&1
+exit /b
+
+REM ===================================================================
+REM  JANELAS DE APOIO SEM JANELA
+REM  "start /min arquivo.bat" abre cmd /K: a janela fica aberta depois
+REM  de terminar. E no Windows 11 quem abre e' o Windows Terminal, que
+REM  ignora o /min. Resultado: terminais sobrando na tela a cada subida
+REM  (20/10/2026). Aqui o ramo roda com cmd /c e janela oculta, e fecha
+REM  sozinho. Se o PowerShell falhar, cai no jeito antigo.
+REM ===================================================================
+:oculto
+"%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -Command "Start-Process cmd.exe -WindowStyle Hidden -ArgumentList '/c \"%~f0\" %~1'" >nul 2>&1
+if errorlevel 1 start "" /min cmd /c ""%~f0" %~1"
 exit /b
 
 :abrir
