@@ -247,6 +247,24 @@
   .toast.ok{background:#0d3b2a; color:var(--verde); border:1.5px solid var(--verde);}
   .toast.erro{background:#3b1414; color:var(--vermelho); border:1.5px solid var(--vermelho);}
   .toast.aviso{background:#3b2f0d; color:var(--ambar); border:1.5px solid var(--ambar);}
+
+  /* BIPE A PRÓXIMA BOBINA (20/10/2026, Gustavo): depois do ✓ Bobina finalizou
+     o card INTEIRO da sacoleira vira o aviso, piscando; só sai com o bipe.
+     Vermelho se a máquina voltou a cortar sem bobina bipada. */
+  .sac.bipe{background:var(--ambar); border-color:var(--ambar); color:#2a1c00; justify-content:center; text-align:center; gap:8px; padding:12px 8px;}
+  .sac.bipe .s-top{color:#2a1c00; justify-content:center;} .sac.bipe .dot{background:#2a1c00;}
+  .sac.bipe .bp-t{font-size:27px; overflow-wrap:anywhere; font-weight:900; line-height:1.02; letter-spacing:-.5px;}
+  .sac.bipe .bp-ic{font-size:44px; line-height:1;}
+  .sac.bipe .bp-f{font-size:13px; font-weight:800;} .sac.bipe .bp-f b{display:block; font-size:24px; font-weight:900;}
+  .sac.bipe .bp-d{font-size:12px; font-weight:700; opacity:.8;}
+  @keyframes pisca-bipe-am{0%,100%{background:var(--ambar); border-color:var(--ambar);}50%{background:#7a5600; border-color:#7a5600; color:#fff;}}
+  .sac.bipe{animation:pisca-bipe-am 1s steps(1) infinite;}
+  @keyframes pisca-bipe{0%,100%{background:var(--vermelho);}50%{background:#b81d1d;}}
+  .sac.bipe.perigo{animation:pisca-bipe .9s steps(1) infinite; border-color:var(--vermelho); color:#fff;}
+  .sac.bipe.perigo .bp-t{font-size:22px;}
+  .sac.bipe.perigo .s-top{color:#fff;} .sac.bipe.perigo .dot{background:#fff;}
+  @media (prefers-reduced-motion: reduce){ .sac.bipe{animation:none;} .sac.bipe.perigo{background:var(--vermelho);} }
+  .fmts.prox .chip{min-width:92px; font-size:18px; min-height:52px;}
 </style>
 <link rel="stylesheet" href="/celular.css">
 </head>
@@ -527,8 +545,8 @@ function perguntarFardos(bob, sac, modo){
     // deste turno — o total da bobina é a soma, feita pelo servidor.
     const turno = modo==='turno';
     // modo 'setup' (02/10/2026): troca de formato com a bobina montada — os
-    // fardos e o formato são os do formato QUE ESTAVA rodando; o novo o
-    // sistema pega sozinho quando o comprimento da sacoleira mudar.
+    // fardos e o formato são os do formato QUE ESTAVA rodando. O novo é
+    // escolhido logo depois, em escolherFormato (20/10/2026).
     const setup = modo==='setup';
     // modo 'refugo' (06/10/2026, Gustavo): a bobina sai da máquina SEM acabar
     // e vira refugo — mesma conta do encerrar, texto e botão próprios, e o
@@ -544,8 +562,8 @@ function perguntarFardos(bob, sac, modo){
     const antes = Number(bob.pacotes_parciais)||0;
     const ini = Number(bob.soltos_inicio)||0;
     let soltos = editarM ? (Number(ed.soltos)||0) : 0;
-    const tit = editarM ? ('✎ Corrigir lançamento · Sacoleira '+sac) : refugoM ? ('♻ REFUGO · Sacoleira '+sac) : setup ? ('Troca de formato · Sacoleira '+sac) : turno ? ('Fim do turno · Sacoleira '+sac) : modo==='troca' ? ('Troca na Sacoleira '+sac) : ('Bobina finalizou · Sacoleira '+sac);
-    const acao = editarM ? 'Salvar correção' : refugoM ? '♻ Mandar para REFUGO' : setup ? 'Registrar e aguardar o formato novo' : turno ? 'Registrar fardos do turno' : modo==='troca' ? 'Confirmar troca' : 'Finalizar bobina';
+    const tit = editarM ? ('✎ Corrigir lançamento · Sacoleira '+sac) : refugoM ? ('♻ REFUGO · Sacoleira '+sac) : setup ? ('Troca de formato na mesma bobina · '+sac) : turno ? ('Fim do turno · Sacoleira '+sac) : modo==='troca' ? ('Troca na Sacoleira '+sac) : ('Bobina finalizou · Sacoleira '+sac);
+    const acao = editarM ? 'Salvar correção' : refugoM ? '♻ Mandar para REFUGO' : setup ? 'Avançar: escolher o formato novo' : turno ? 'Registrar fardos do turno' : modo==='troca' ? 'Confirmar troca' : 'Finalizar bobina';
     const chips=permitidos.map(f=>'<button class="chip'+(cands.includes(f)&&cands.length<permitidos.length?' cand':'')+
       (f===escolhido?' sel':'')+'" data-f="'+esc(f)+'">'+esc(f.replace('x',' × '))+'</button>').join('');
     fundo.innerHTML='<div class="modal">'+
@@ -571,7 +589,7 @@ function perguntarFardos(bob, sac, modo){
       '<label>'+(editarM?'PACOTES SOLTOS NO FIM':'PACOTES SOLTOS AGORA')+'</label><div class="fmts soltos">'+[0,1,2,3,4].map(n=>
         '<button class="chip'+(n===soltos?' sel':'')+'" data-s="'+n+'">'+n+'</button>').join('')+'</div>'+
       '<div class="m-kg" id="md-kg"></div>'+
-      (setup?'<div class="m-dica">O formato novo o sistema pega sozinho quando a sacoleira mudar o comprimento. Os pacotes soltos ficam neste formato — o novo começa do zero.</div>':'')+
+      (setup?'<div class="m-dica">A bobina continua na máquina. Na próxima tela você escolhe o formato novo. Os pacotes soltos ficam neste formato — o novo começa do zero.</div>':'')+
       '<div id="md-alerta"></div>'+
       '<div class="m-resumo" id="md-resumo"></div>'+
       '<button class="btn '+(refugoM?'btn-vermelho':'btn-verde')+'" id="md-ok">'+acao+'</button>'+
@@ -630,44 +648,89 @@ function perguntarFardos(bob, sac, modo){
 
 // "Quem está bipando?" (perguntarNome, 29/09/2026) saiu em 19/10/2026 — está no git.
 
-// Finalizar: a bobina saiu SEM outra no lugar (máquina parou, acabou o pedido).
-// Troca de formato com a bobina montada (02/10/2026, Gustavo).
+// Escolha do formato em toque único (20/10/2026, Gustavo): o da PRÓXIMA bobina,
+// no ✓ Bobina finalizou, e o formato novo na troca da mesma bobina.
+// Resolve o formato ou null (Voltar).
+function escolherFormato(o){
+  return new Promise(resolve=>{
+    let sel=o.sel||null;
+    const fundo=document.createElement('div');
+    fundo.className='modal-fundo';
+    fundo.innerHTML='<div class="modal"><h2>'+o.titulo+'</h2><div class="m-sub">'+o.sub+'</div>'+
+      '<label>'+o.label+'</label><div class="fmts prox">'+o.opcoes.map(f=>
+        '<button class="chip'+(f===sel?' sel':'')+'" data-f="'+esc(f)+'">'+esc(f.replace('x',' × '))+'</button>').join('')+'</div>'+
+      (o.dica?'<div class="m-dica">'+o.dica+'</div>':'')+
+      '<div class="m-resumo" id="ef-res"></div>'+
+      '<button class="btn btn-verde" id="md-ok">'+o.ok+'</button><button class="btn-link" id="md-cancelar">Voltar</button></div>';
+    document.body.appendChild(fundo);
+    const pintar=()=>{ fundo.querySelectorAll('.prox .chip').forEach(c=>c.classList.toggle('sel',c.dataset.f===sel));
+      fundo.querySelector('#ef-res').innerHTML=o.resumo(sel); };
+    fundo.querySelectorAll('.prox .chip').forEach(c=>c.onclick=()=>{ sel=c.dataset.f; pintar(); });
+    pintar();
+    const fim=v=>{ fundo.remove(); resolve(v); };
+    fundo.querySelector('#md-cancelar').onclick=()=>fim(null);
+    fundo.querySelector('#md-ok').onclick=()=>{ if(!sel){ toast('erro','Toque no formato',3000); return; } fim(sel); };
+  });
+}
+
+// Troca de formato com a bobina montada (02/10/2026, Gustavo). Desde
+// 20/10/2026 é SÓ para a mesma bobina: fardos do formato que rodou e, na hora,
+// o formato novo. Troca com bobina nova se faz no ✓ Bobina finalizou.
 async function trocarFormato(sac){
-  const bob=(ABERTAS.find(a=>a.sacoleira===sac)||{}).bobina;
+  const ent=ABERTAS.find(a=>a.sacoleira===sac)||{};
+  const bob=ent.bobina;
   if(!bob) return;
   const saida=await perguntarFardos(bob, sac, 'setup');
   if(saida===null) return;
+  const sd=(bob.formato||{}).setup_detectado;
+  const antes=saida.formato||(bob.formato||{}).sugerido;
+  const novo=await escolherFormato({ titulo:'Formato novo · '+sac, ok:'Confirmar troca',
+    sub:'Guardado: <b>'+txtPc(saida.fardos*PC_FARDO+saida.soltos-(Number(bob.soltos_inicio)||0))+'</b> em '+esc((antes||'?').replace('x',' × '))+'. A <b>'+esc(bob.id)+'</b> continua na máquina.',
+    label:'A SACOLEIRA VAI CORTAR AGORA', opcoes:(ent.permitidos||[]).filter(f=>f!==antes), sel:sd?sd.para:null,
+    dica:sd?('Marcado pelo comprimento da máquina ('+Math.round(sd.mm_agora)+' mm).'):'',
+    resumo:f=>'Continua a <b>'+esc(bob.id)+'</b> · agora <b>'+(f?esc(f.replace('x',' × ')):'?')+'</b>' });
+  if(novo===null) return;
   try{
     const r=await fetch(URL_BASE+'/bobinas/trocar-formato',{
       method:'POST', headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({ sacoleira:sac, fardos:saida.fardos, soltos:saida.soltos, formato:saida.formato,
+      body:JSON.stringify({ sacoleira:sac, fardos:saida.fardos, soltos:saida.soltos, formato:saida.formato, formato_novo:novo,
                             formato_origem:saida.origem, operador:(window.EKO_RESPONSAVEL||null) })
     });
     const d=await r.json();
     if(!r.ok || !d.ok){ toast('erro',esc((d&&d.erro)||'Falha ao registrar a troca'),5000); return; }
     beep(1050,0.14); vibrar([60,50,60]);
-    toast('ok','✓ '+(d.formato_antes?esc(d.formato_antes.replace('x',' × '))+': ':'')+txtPc(d.pacotes||0)+' · aguardando a sacoleira mudar o comprimento',4500);
+    toast('ok','✓ '+(d.formato_antes?esc(d.formato_antes.replace('x',' × '))+': ':'')+txtPc(d.pacotes||0)+' · agora cortando '+esc(novo.replace('x',' × ')),4500);
     await atualizarTudo();
   }catch(e){ toast('erro','Erro: '+esc(e.message),5000); }
 }
 
+// ✓ Bobina finalizou: fardos (o ÚNICO lugar onde se informa a produção da
+// bobina) e o formato da PRÓXIMA — que substitui a confirmação. Depois o card
+// da sacoleira pede o bipe até a bobina nova entrar (20/10/2026, Gustavo).
 async function finalizar(sac){
-  const bob=(ABERTAS.find(a=>a.sacoleira===sac)||{}).bobina;
+  const ent=ABERTAS.find(a=>a.sacoleira===sac)||{};
+  const bob=ent.bobina;
   if(!bob) return;
   const saida=await perguntarFardos(bob, sac, 'finalizar');
   if(saida===null) return;
-  if(!confirm('Confirmar: a '+bob.id+' ACABOU e saiu da Sacoleira '+sac+'?')) return;
+  const atual=saida.formato||(bob.formato||{}).sugerido;
+  const prox=await escolherFormato({ titulo:'Próxima bobina · '+sac, ok:'Confirmar e bipar a próxima',
+    sub:'Sai a <b>'+esc(bob.id)+'</b> com <b>'+txtPc(saida.fardos*PC_FARDO+saida.soltos-(Number(bob.soltos_inicio)||0))+'</b> em '+esc((atual||'?').replace('x',' × '))+'.',
+    label:'A PRÓXIMA BOBINA VAI CORTAR', opcoes:ent.permitidos||[], sel:atual,
+    dica:'Vai trocar o formato? Toque no novo. Os fardos já foram informados acima.',
+    resumo:f=>(f===atual?'Mesmo formato: <b>'+esc((f||'?').replace('x',' × '))+'</b>':'Troca de formato: '+esc((atual||'?').replace('x',' × '))+' → <b>'+(f?esc(f.replace('x',' × ')):'?')+'</b>') });
+  if(prox===null) return;
   const n=saida.fardos;
   try{
     const r=await fetch(URL_BASE+'/bobinas/finalizar',{
       method:'POST', headers:{'Content-Type':'application/json'},
       body:JSON.stringify({ sacoleira:sac, fardos:n, soltos:saida.soltos, formato:saida.formato, formato_origem:saida.origem,
-                            acabou:true, operador:(window.EKO_RESPONSAVEL||null) })
+                            formato_proximo:prox, acabou:true, operador:(window.EKO_RESPONSAVEL||null) })
     });
     const d=await r.json();
     if(!r.ok || !d.ok){ toast('erro',esc((d&&d.erro)||'Falha ao finalizar'),5000); return; }
     beep(1050,0.14); vibrar([60,50,60]);
-    toast('ok','✓ '+esc(bob.id)+' encerrada · bobina '+txtPc(d.pacotes_total||0),3000);
+    toast('ok','✓ '+esc(bob.id)+' encerrada · bobina '+txtPc(d.pacotes_total||0)+' · bipe a próxima',3000);
     await atualizarTudo();
   }catch(e){ toast('erro','Erro: '+esc(e.message),5000); }
 }
@@ -706,6 +769,16 @@ async function carregarSacoleiras(){
   }catch(e){ g.innerHTML='<div class="vazio" style="grid-column:1/-1">Não consegui ler as sacoleiras.</div>'; return; }
   g.innerHTML=ABERTAS.map(a=>{
     const b=a.bobina;
+    // 20/10/2026 (Gustavo): depois do ✓ Bobina finalizou, o card inteiro pede o
+    // bipe da próxima (some só com o bipe); vermelho se a máquina voltou a cortar.
+    if(!b && a.aguardando_bipe){
+      if(a.cortando_sem_bobina){ beep(700,0.25); vibrar([200,100,200]); }
+      return '<div class="sac bipe'+(a.cortando_sem_bobina?' perigo':'')+'"><div class="s-top"><span class="dot"></span>SACOLEIRA '+a.sacoleira+'</div>'+
+        '<div class="bp-ic">'+(a.cortando_sem_bobina?'⚠':'▮▮▮')+'</div>'+
+        '<div class="bp-t">'+(a.cortando_sem_bobina?'CORTANDO SEM BOBINA BIPADA':'BIPE A PRÓXIMA BOBINA')+'</div>'+
+        '<div class="bp-f">vai cortar<b>'+esc((a.formato_proximo||'?').replace('x',' × '))+'</b></div>'+
+        '<div class="bp-d">use o gatilho do coletor</div></div>';
+    }
     if(!b) return '<div class="sac"><div class="s-top"><span class="dot"></span>SACOLEIRA '+a.sacoleira+'</div>'+
                   '<div class="s-vazia">Sem bobina</div></div>';
     // Formato que está sendo cortado agora (sugestão pelo CLP da sacoleira).

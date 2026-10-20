@@ -7,10 +7,12 @@ const { dataLocalISO, hashSenha, logDesvio, logI, logW, rangeUTCdoDiaLocal } = r
 const { configGet, configSet, db, dbStmts, makeTransaction } = require('../lib/db');
 const { getToken, proxyChamada } = require('../lib/bling');
 const {
-  baixaBobinaNoBling, bobinaAbertaNa, clpSacoleiras, corPaDaBobina, encerrarBobina,
+  assumirFormatoEscolhido, baixaBobinaNoBling, bobinaAbertaNa, clpSacoleiras, corPaDaBobina,
+  cortandoSemBobina, devolverProximaBobina, encerrarBobina,
   formatoDaBobina, herdaSoltos, imprimirEtiquetaRefugo, inventarioAberto, lerFardos,
-  lerFormatoDaMaquina, lerMaquinasCorte, lerParte, lerSoltos, montagensDaBobina,
-  normalizarDestinoBobina, PACOTES_POR_FARDO, pacotesParciaisDe, PESO_FARDO_KG, refugoAbertoDe,
+  lerFormatoDaMaquina, lerMaquinasCorte, lerParte, lerSoltos, marcarProximaBobina, montagensDaBobina,
+  montarProximaBobina, normalizarDestinoBobina, PACOTES_POR_FARDO, pacotesParciaisDe, PESO_FARDO_KG,
+  proximaBobinaNa, refugoAbertoDe,
   registrarParcial, resumoInventario, setupDaBobina, situacaoBobina, soltosNaMaquina,
   SQL_PACOTES_PARTE, sugerirFormato, TARAS_EIXO, turnoCorteAberto, TURNOS_CORTE,
   turnosBaixaBobina, txtPacotes,
@@ -216,6 +218,9 @@ async function rotasBobinas(req, res, parsed, pathname) {
       }
     }
 
+    // Formato escolhido no ✓ Bobina finalizou (20/10/2026): o comprimento do
+    // CLP na hora do bipe decide se a máquina já está no formato escolhido.
+    const clpBaixa = proximaBobinaNa(destino) ? await clpSacoleiras() : null;
     // Só marca como consumida DEPOIS que o Bling aceitou (ou direto, com o
     // Bling desligado). O WHERE status confere de novo: dois celulares
     // bipando a mesma bobina ao mesmo tempo não dão duas baixas.
@@ -257,6 +262,12 @@ async function rotasBobinas(req, res, parsed, pathname) {
       return true;
     });
     if (!trocar()) return jsonErr(res, 409, `Bobina ${bid} JÁ teve baixa`, { ja_baixada: true });
+    // O bipe tira o aviso "BIPE A PRÓXIMA BOBINA" e a bobina nova assume o
+    // formato escolhido no ✓ Bobina finalizou (montarProximaBobina).
+    const prox = clpBaixa ? montarProximaBobina(destino, { id: bid, baixa_em: agora },
+      sugerirFormato(destino, e, clpBaixa.dados ? clpBaixa.dados[destino] : null)) : null;
+    if (prox) logI('bobinas', `Sacoleira ${destino}: ${bid} entrou no pedido de bipe de ${prox.de || '?'}`
+      + ` · formato escolhido ${prox.formato || '?'}`);
     if (pedeFardos) logI('bobinas', `Sacoleira ${destino}: ${aberta.id} saiu com ${txtPacotes(parteAnterior.pacotes)} neste trecho`
       + ` (${parteAnterior.fechados} fechado(s), ${parteAnterior.soltos} solto(s)) · total da bobina ${txtPacotes(totalAnterior)}`
       + (formatoAnterior ? ` · ${formatoAnterior}` : '') + ` · entrou ${bid} por ${operador}`);
@@ -288,6 +299,7 @@ async function rotasBobinas(req, res, parsed, pathname) {
     const clp = await clpSacoleiras();
     const sacoleiras = ['P1', 'P2'].map(p => {
       const a = bobinaAbertaNa(p);
+      const px = a ? null : proximaBobinaNa(p);
       const leitura = clp.dados ? clp.dados[p] : null;
       const fmt = a ? formatoDaBobina(p, a, leitura) : null;
       return { sacoleira: p, bobina: a ? {
@@ -304,6 +316,10 @@ async function rotasBobinas(req, res, parsed, pathname) {
         desde_troca: (db.prepare(`SELECT momento FROM bobina_parciais WHERE etiqueta_id = ? ORDER BY id DESC LIMIT 1`)
                         .get(a.id) || {}).momento === 'setup',
       } : null, permitidos: PA_FORMATOS_POR_MAQUINA[p] || [],
+        // ✓ Bobina finalizou com a próxima por bipar (20/10/2026): a tela
+        // mostra o aviso grande; vermelho se a máquina voltou a cortar.
+        ...(!a && px ? { aguardando_bipe: true, formato_proximo: px.formato || null,
+                         cortando_sem_bobina: cortandoSemBobina(px, leitura) } : {}),
         clp: leitura ? { comprimento_mm: leitura.comprimento_mm, operando: leitura.operando,
                          tempo: leitura.tempo } : null };
     });
@@ -541,7 +557,8 @@ async function rotasBobinas(req, res, parsed, pathname) {
       for (const b of ficam) fecha.run(agora, agora, b.id);
       db.exec(`DELETE FROM bobina_parciais; DELETE FROM bobina_setups; DELETE FROM bobina_refugos;
                  DELETE FROM turnos_corte; DELETE FROM inventario_bobinas_itens; DELETE FROM inventario_bobinas;
-                 DELETE FROM config WHERE chave LIKE 'baixas_bobinas_%';`);
+                 DELETE FROM config WHERE chave LIKE 'baixas_bobinas_%';
+                 DELETE FROM config WHERE chave LIKE 'proxima_bobina_%';`);
     })();
     logW('bobinas', `COLETOR ZERADO (${String(body.operador || '').trim() || 'sem nome'}): ` + JSON.stringify(contagem)
       + ` · bobinas de volta ao estoque: ${voltam.map(b => b.id).join(', ') || '—'}`);
@@ -707,6 +724,7 @@ async function rotasBobinas(req, res, parsed, pathname) {
                          alterado_em=?
                    WHERE id = ? AND status = 'consumida'`).run(new Date().toISOString(), bid);
     const operador = (body.operador ? String(body.operador).trim().slice(0, 80) : null) || null;
+    devolverProximaBobina(e.destino, bid);   // volta o "BIPE A PRÓXIMA BOBINA", se veio de um
     logW('bobinas', `DESFEITA a entrada de ${bid} na Sacoleira ${e.destino} (era de ${e.baixa_em}, `
       + `fardos ${e.fardos == null ? '—' : e.fardos})${operador ? ' por ' + operador : ''}`);
     return jsonOk(res, { desfeita: true, id: bid, sacoleira: e.destino });
@@ -734,21 +752,34 @@ async function rotasBobinas(req, res, parsed, pathname) {
     // completa (aproveitamento, m/kg, previsão); 'finalizada' lá é "saiu
     // antes de acabar" e fica fora da média.
     const motivo = body.refugo === true ? 'refugo' : body.acabou === true ? 'troca' : 'finalizada';
+    // Formato da PRÓXIMA bobina (20/10/2026, Gustavo): escolhido no mesmo
+    // ✓ Bobina finalizou — a troca de formato com bobina nova não pede fardos
+    // de novo. Só com a bobina que acabou (não no refugo).
+    let formatoProx = null;
+    if (motivo === 'troca' && body.formato_proximo !== undefined && body.formato_proximo !== null) {
+      formatoProx = lerFormatoDaMaquina(sac, body.formato_proximo);
+      if (!formatoProx) return jsonErr(res, 400, `Formato ${body.formato_proximo} não é da ${sac}`);
+    }
     let total = parte.pacotes;
+    const quando = new Date().toISOString();
     makeTransaction(() => {
-      total = encerrarBobina(a.id, parte, motivo, new Date().toISOString(), formatoFim,
+      total = encerrarBobina(a.id, parte, motivo, quando, formatoFim,
                              body.formato_origem === 'sugerido' ? 'sugerido' : 'escolhido', sac, operador);
+      if (formatoProx) marcarProximaBobina(sac, formatoProx, a.id, quando);
     })();
     logI('bobinas', `Sacoleira ${sac}: ${a.id} ${motivo === 'refugo' ? 'saiu como REFUGO' : 'finalizada'} com ${txtPacotes(parte.pacotes)} neste trecho`
-      + ` (${parte.fechados} fechado(s), ${parte.soltos} solto(s)) · total ${txtPacotes(total)}${operador ? ' por ' + operador : ''}`);
+      + ` (${parte.fechados} fechado(s), ${parte.soltos} solto(s)) · total ${txtPacotes(total)}${operador ? ' por ' + operador : ''}`
+      + (formatoProx ? ` · próxima vai cortar ${formatoProx}` + (formatoFim && formatoFim !== formatoProx ? ` (troca de ${formatoFim})` : '') : ''));
     return jsonOk(res, { finalizada: true, refugo: motivo === 'refugo', sacoleira: sac, id: a.id,
-                         pacotes: parte.pacotes, pacotes_total: total });
+                         pacotes: parte.pacotes, pacotes_total: total, formato_proximo: formatoProx });
   }
 
   // Troca de formato com a bobina montada (02/10/2026, Gustavo — ver
   // bobina_setups). Body { sacoleira, fardos, soltos, formato, formato_origem,
-  // operador }: fardos/soltos/formato são do formato QUE ESTAVA rodando. O
-  // novo é decidido depois, pelo comprimento do CLP (formatoDaBobina). Sem senha.
+  // formato_novo, operador }: fardos/soltos/formato são do formato QUE ESTAVA
+  // rodando. formato_novo (20/10/2026): o operador escolhe na hora, e a troca
+  // já fica definida (assumirFormatoEscolhido). Sem ele (tela antiga), o novo
+  // é decidido depois, pelo comprimento do CLP (formatoDaBobina). Sem senha.
   if (pathname === '/bobinas/trocar-formato' && req.method === 'POST') {
     let body; try { body = await lerBodyJson(req); } catch(e) { return jsonErr(res, 400, e.message); }
     const sac = normalizarDestinoBobina(body.sacoleira);
@@ -762,6 +793,12 @@ async function rotasBobinas(req, res, parsed, pathname) {
     const parte = lerParte(sac, body.fardos, body.soltos, lerFormatoDaMaquina(sac, body.formato));
     if (parte.erro) return jsonErr(res, 400, parte.erro);
     const formatoAntes = lerFormatoDaMaquina(sac, body.formato);
+    let formatoNovo = null;
+    if (body.formato_novo !== undefined && body.formato_novo !== null && body.formato_novo !== '') {
+      formatoNovo = lerFormatoDaMaquina(sac, body.formato_novo);
+      if (!formatoNovo) return jsonErr(res, 400, `Formato ${body.formato_novo} não é da ${sac}`);
+      if (formatoNovo === formatoAntes) return jsonErr(res, 400, `O formato novo é o mesmo que estava rodando (${formatoAntes})`);
+    }
     const operador = (body.operador ? String(body.operador).trim().slice(0, 80) : null) || null;
     const clp = await clpSacoleiras();
     const sug = sugerirFormato(sac, a, clp.dados ? clp.dados[sac] : null);
@@ -774,17 +811,21 @@ async function rotasBobinas(req, res, parsed, pathname) {
       registrarParcial(a.id, sac, parte, 'setup', agora, operador, formatoAntes,
                        body.formato_origem === 'sugerido' ? 'sugerido' : 'escolhido');
       const pid = db.prepare(`SELECT last_insert_rowid() AS id`).get().id;
-      db.prepare(`INSERT INTO bobina_setups (etiqueta_id, maquina, parte_id, formato_antes, comprimento_antes_mm, pedido_em, operador)
-                    VALUES (?,?,?,?,?,?,?)`).run(a.id, sac, pid, formatoAntes, mmAntes, agora, operador);
-      configSet('formato_vigente_' + sac, 'null');   // a troca registrada assume daqui
+      db.prepare(`INSERT INTO bobina_setups (etiqueta_id, maquina, parte_id, formato_antes, comprimento_antes_mm, pedido_em, operador,
+                                             formato_novo, definido_em)
+                    VALUES (?,?,?,?,?,?,?,?,?)`).run(a.id, sac, pid, formatoAntes, mmAntes, agora, operador,
+                                                     formatoNovo, formatoNovo ? agora : null);
+      if (formatoNovo) assumirFormatoEscolhido(sac, a.id, a.baixa_em, formatoNovo, sug);
+      else configSet('formato_vigente_' + sac, 'null');   // a troca registrada assume daqui
       db.prepare(`UPDATE etiquetas SET alterado_em = ? WHERE id = ?`).run(agora, a.id);
     })();
     const total = pacotesParciaisDe(a.id).pacotes;
     logI('bobinas', `Sacoleira ${sac}: troca de formato na ${a.id} — ${formatoAntes || '?'} rendeu ${txtPacotes(parte.pacotes)}`
-      + ` (${parte.fechados} fechado(s), ${parte.soltos} solto(s)) · aguardando o comprimento mudar`
+      + ` (${parte.fechados} fechado(s), ${parte.soltos} solto(s)) · `
+      + (formatoNovo ? `formato novo ${formatoNovo}` : 'aguardando o comprimento mudar')
       + (sug.comprimento_mm ? ` (agora ${sug.comprimento_mm} mm)` : '') + (operador ? ` · ${operador}` : ''));
-    return jsonOk(res, { setup: true, sacoleira: sac, id: a.id, formato_antes: formatoAntes,
-                         pacotes: parte.pacotes, pacotes_bobina: total, aguardando: true });
+    return jsonOk(res, { setup: true, sacoleira: sac, id: a.id, formato_antes: formatoAntes, formato_novo: formatoNovo,
+                         pacotes: parte.pacotes, pacotes_bobina: total, aguardando: !formatoNovo });
   }
 
   // Corrigir fardos FECHADOS e pacotes SOLTOS de uma parte, no resumo do
