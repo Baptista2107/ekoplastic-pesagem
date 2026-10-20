@@ -1,10 +1,10 @@
 @echo off
 chcp 65001 >nul
-title Ekoplastic - Piso de Testes
+title Ekoplastic - Testes
 cd /d "%~dp0"
-echo Rodando piso de testes automatizados...
+echo Rodando todos os testes automatizados (uns 2 minutos)...
 echo (sobe um servidor temporario em porta isolada, nao mexe no banco de producao)
 echo.
-node testes\piso-testes.js
+node testes\rodar-todos.js
 echo.
 pause
