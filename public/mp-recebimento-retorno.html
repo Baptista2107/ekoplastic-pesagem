@@ -117,34 +117,6 @@ header {
   padding: 14px 12px;
   display: flex; flex-direction: column; gap: 8px;
 }
-.menu-titulo {
-  font-size: 10px; font-weight: 800; letter-spacing: 2px;
-  color: var(--muted); padding: 0 4px; margin-bottom: 4px;
-}
-.menu-item {
-  background: var(--panel);
-  border: 1.5px solid var(--border);
-  border-radius: 8px;
-  padding: 12px 10px;
-  cursor: pointer;
-  display: flex; align-items: center; gap: 10px;
-  transition: all 0.15s;
-}
-.menu-item .icone { font-size: 20px; width: 24px; text-align: center; }
-.menu-item .nome { font-size: 13px; font-weight: 800; letter-spacing: 0.3px; }
-.menu-item:hover { border-color: var(--panel-hi); background: var(--panel-hi); }
-.menu-item.active {
-  background: rgba(0, 212, 255, 0.10);
-  border-color: var(--entrada);
-}
-.menu-item.active .nome { color: var(--entrada); }
-.menu-rodape {
-  margin-top: auto; padding-top: 12px;
-  border-top: 1px solid var(--border);
-  font-size: 10px; color: var(--muted);
-  font-family: 'IBM Plex Mono', monospace;
-  letter-spacing: 1px; text-align: center;
-}
 
 /* ─── ÁREA CENTRAL ─── */
 .central {
@@ -831,8 +803,6 @@ body.modo-retorno #btn-corrigir { display: none; }
 }
 
 /* Quando aba Retorno está ativa, troca cor temática do sistema */
-body.modo-retorno .menu-item.active .nome { color: var(--devol); }
-body.modo-retorno .menu-item.active { border-color: var(--devol); background: rgba(0,255,157,0.10); }
 
 /* ═══════════════════════════════════════════════════
    CONTEÚDO DO MODO RETORNO
@@ -844,30 +814,7 @@ body.modo-retorno .menu-item.active { border-color: var(--devol); background: rg
   flex: 1;
   min-height: 0;
 }
-
-.ret-intro {
-  display: flex; gap: 14px; align-items: center;
-  padding: 14px 18px;
-  background: rgba(0,255,157,0.06);
-  border: 1.5px solid var(--devol);
-  border-radius: 10px;
-}
-.ret-intro .pulse {
-  width: 12px; height: 12px; border-radius: 50%;
-  background: var(--devol);
-  animation: pulse 1.5s infinite;
-  flex-shrink: 0;
-}
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
-.ret-titulo {
-  font-size: 14px; font-weight: 900;
-  letter-spacing: 1px;
-  color: var(--devol);
-}
-.ret-sub {
-  font-size: 11px; color: var(--muted);
-  margin-top: 2px;
-}
 
 .ret-bipa-display {
   background: var(--panel);
@@ -2396,21 +2343,6 @@ async function balancaZerar() {
   }
 }
 
-async function balancaTarar() {
-  try {
-    const r = await fetch(URL_BAL_TARAR, { method: 'POST' });
-    if (r.status === 404) {
-      showToast('warn', '⚠', 'Endpoint /balanca/tarar não existe no servidor (pedir para adicionar)');
-      return;
-    }
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    showToast('info', '⊟', 'Comando tarar enviado à balança');
-    beepCk();
-  } catch(e) {
-    showToast('erro', '✗', 'Erro ao tarar: ' + e.message);
-    beepErro();
-  }
-}
 
 // SIMULAR — mantido como fallback de teste (balança desligada)
 function simularPeso() {

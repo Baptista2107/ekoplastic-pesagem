@@ -2,7 +2,6 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<script src="/acesso-colaborador.js"></script>
 <script src="/eko-dialogo.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Operação Sacoleiras</title>
@@ -121,7 +120,6 @@
   .h-item .h-mat small{display:block; font-family:ui-monospace,monospace; font-size:12px; color:var(--muted); font-weight:600;}
   .h-item .h-dir{text-align:right; flex:0 0 auto; font-size:13px; font-weight:800; line-height:1.3;}
   .h-item .h-dir small{display:block; font-size:12px; font-weight:700; color:var(--muted);}
-  .h-item .h-pct{color:var(--verde);}
   .h-antes{display:inline-block; font-size:11px; font-weight:800; color:var(--ambar); border:1px solid var(--ambar); border-radius:6px; padding:0 5px; margin-left:4px;}
   .ht{display:flex; flex-direction:column; gap:6px; margin-bottom:12px;}
   .ht-cab{display:flex; align-items:center; gap:10px; padding:4px 2px;}
@@ -137,9 +135,6 @@
   .hb-num small{display:block; font-size:12px; font-weight:700; color:var(--muted);}
   .hb-num .na-maq{font-size:14px; font-weight:800;}
   .hb-l2{font-size:13px; color:var(--muted); font-weight:600; margin-top:4px;}
-  .hb-bar{height:6px; background:var(--panel-hi); border-radius:3px; margin-top:8px; overflow:hidden;}
-  .hb-bar i{display:block; height:100%; background:var(--verde); border-radius:3px;}
-  .hb-bar.alerta i{background:var(--vermelho);}
   .hb-l3{font-size:13px; color:var(--muted); font-weight:600; margin-top:4px;}
   .hb-l3 b{color:var(--txt);}
   .hb-l3 b.hb-pct{color:var(--verde);}
@@ -197,7 +192,6 @@
   .sac .s-corte.duvida{color:var(--ambar); font-size:17px;}
   .sac .s-corte.sem{color:var(--muted); font-size:15px;}
   .sac .s-kg{font-size:20px; font-weight:900; margin-top:6px;}
-  .sac .s-quem{font-size:13px; font-weight:800; margin-top:2px;}
   .modal .m-kg{font-size:26px; font-weight:900; text-align:center; margin-top:8px;}
   .modal .m-kg small{display:block; font-size:12px; font-weight:700; color:var(--muted);}
   .modal .m-alerta{margin-top:8px; padding:10px 12px; border-radius:12px; background:#3b1414;
@@ -238,13 +232,6 @@
   /* 30/09/2026 (Gustavo): turno do corte marcado pelo supervisor. */
   .tc{background:var(--panel); border:1.5px solid var(--border); border-radius:14px; padding:12px;}
   .tc.sem{border-color:var(--ambar);}
-  .tc-maqs{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
-  .tc-maq{font-size:12px; font-weight:800; letter-spacing:.8px; color:var(--muted);}
-  .tc-maq b{display:block; font-size:20px; letter-spacing:0; color:var(--verde); margin-top:2px;}
-  .tc-maq b.sem{color:var(--ambar); font-size:16px;}
-  .tc-maq small{display:block; font-size:12px; font-weight:700; letter-spacing:0; color:var(--muted);}
-  .tc-bts{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:10px;}
-  .tc-bts .btn{min-height:44px; font-size:14px; padding:8px;}
   /* 19/10/2026 (Vinicius): um card só no topo — o turno é o mesmo nas duas
      sacoleiras; sem "Trocar" (um turno começa quando o outro encerra). */
   .tc-linha{display:flex; align-items:center; gap:12px;}
@@ -1276,15 +1263,6 @@ function escolherTurno(codigo,label){
   carregarModo();
 }
 
-// Só inicia depois que o colaborador entrar com a senha dele.
-// Rede de segurança: se o componente de acesso não carregar por algum motivo,
-// a tela ABRE mesmo assim (sem identificação) em vez de ficar morta. Numa
-// fábrica, tela travada para a produção; falta de identificação, não.
-function comAcesso(tela, aoEntrar) {
-  if (window.EkoAcesso && typeof EkoAcesso.exigir === 'function') return EkoAcesso.exigir(tela, aoEntrar);
-  console.warn('acesso-colaborador.js não carregou — abrindo a tela sem identificação');
-  try { aoEntrar(); } catch (e) { console.error(e); }
-}
 // 05/10/2026 (Gustavo: "tira qualquer tipo de senha do sistema de estoque de
 // bobina"): a tela abre direto, sem o PIN do colaborador. Desde 19/10/2026
 // (Vinicius) também sem nome nenhum: o "Quem está bipando?" saiu, e o nome

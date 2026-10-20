@@ -93,55 +93,10 @@ header {
   padding: 14px 12px;
   display: flex; flex-direction: column; gap: 8px;
 }
-.menu-titulo {
-  font-size: 10px; font-weight: 800; letter-spacing: 2px;
-  color: var(--muted); padding: 0 4px; margin-bottom: 4px;
-}
-.menu-item {
-  background: var(--panel);
-  border: 1.5px solid var(--border);
-  border-radius: 8px;
-  padding: 12px 10px;
-  cursor: pointer;
-  display: flex; align-items: center; gap: 10px;
-  transition: all 0.15s;
-  position: relative;
-}
-.menu-item .icone { font-size: 18px; width: 22px; text-align: center; }
-.menu-item .nome { font-size: 12px; font-weight: 800; letter-spacing: 0.4px; }
-.menu-item:hover { background: var(--panel-hi); border-color: var(--panel-hi); }
-.menu-item.active.receb { background: rgba(0,212,255,0.10); border-color: var(--entrada); }
-.menu-item.active.receb .nome { color: var(--entrada); }
-.menu-item.active.retir { background: rgba(240,112,64,0.10); border-color: var(--saida); }
-.menu-item.active.retir .nome { color: var(--saida); }
-.menu-item.active.retor { background: rgba(0,255,157,0.10); border-color: var(--devol); }
-.menu-item.active.retor .nome { color: var(--devol); }
-
-.menu-item .badge {
-  position: absolute; top: 6px; right: 6px;
-  width: 8px; height: 8px; border-radius: 50%;
-  background: var(--warn);
-  box-shadow: 0 0 6px var(--warn);
-  opacity: 0; transition: opacity 0.2s;
-}
-.menu-item .badge.on { opacity: 1; animation: pulseBadge 1.8s ease-in-out infinite; }
 @keyframes pulseBadge {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.4; }
 }
-
-.menu-rodape {
-  margin-top: auto; padding-top: 12px;
-  border-top: 1px solid var(--border);
-  display: flex; flex-direction: column; gap: 6px;
-}
-.menu-item.voltar {
-  background: transparent;
-  border-color: var(--border);
-  color: var(--muted);
-}
-.menu-item.voltar:hover { background: var(--panel); color: var(--text); }
-.menu-item.voltar .nome { color: inherit; }
 
 /* ─── ÁREA CENTRAL ─── */
 .central {
