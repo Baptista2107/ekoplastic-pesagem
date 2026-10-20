@@ -15,7 +15,7 @@
 //  e que dá para desligar.
 //
 //  30/09/2026 (noite): a troca foi DESFEITA a pedido do Frederico — o
-//  padrão agora é SEM troca (ver troca-evoh-desfeita.js). O mecanismo
+//  padrão agora é SEM troca. O mecanismo
 //  continua no código; aqui ele é ligado pela configuração, como seria
 //  numa troca futura, para provar que segue funcionando.
 //

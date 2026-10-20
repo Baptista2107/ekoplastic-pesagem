@@ -392,24 +392,6 @@ del "%SAIDA15%" >nul 2>&1
 if not "%RCT%"=="0" goto :testes_falharam
 
 :sem_compat
-REM  --- Teste 16: troca Polinylon -> EVOH desfeita ---
-REM  As etiquetas de Polinylon Cristal/Leitoso Tallpack voltam a ser lidas
-REM  como Polinylon. Retorno e retirada que a troca converteu voltam a
-REM  Polinylon; a retirada ja enviada fica marcada em Envios ao Bling para
-REM  excluir o pedido antigo (EVOH, sem saldo) e REENVIAR (FORCAR).
-if not exist "testes\troca-evoh-desfeita.js" goto :sem_desfeita
-echo.
-echo  Rodando o teste da troca desfeita. Leva uns 15 segundos...
-echo.
-set "SAIDA16=%TEMP%\eko_testes16.tmp"
-node testes\troca-evoh-desfeita.js > "%SAIDA16%" 2>&1
-set "RCT=%ERRORLEVEL%"
-type "%SAIDA16%"
-type "%SAIDA16%" >>"%LOG%"
-del "%SAIDA16%" >nul 2>&1
-if not "%RCT%"=="0" goto :testes_falharam
-
-:sem_desfeita
 if not exist "testes\janela-atualizacao.js" goto :testes_ok
 echo.
 echo  Rodando o teste da janela de atualizacao. Leva uns 30 segundos...

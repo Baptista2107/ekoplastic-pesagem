@@ -8,9 +8,9 @@
 //    · saco de 20 kg — só deste material; os demais continuam com 25 kg.
 //
 //  O material mora no banco da estação, com a sigla que foi digitada na
-//  tela. O teste monta um banco IGUAL ao da estação (sigla PAPE, criada
-//  pela tela) e confere que a atualização acha o material pelo nome e
-//  ajusta — uma vez só. E que num banco sem ele, o material é criado.
+//  tela (PAPE). O ajuste único que o deixou assim já rodou na estação e
+//  saiu do código (20/10/2026); o teste monta o banco já ajustado e
+//  confere que o saco de 20 kg vale em todo lugar.
 // ════════════════════════════════════════════════════════════════════
 const { spawn } = require('node:child_process');
 const { DatabaseSync } = require('node:sqlite');
@@ -100,44 +100,26 @@ async function derrubar() {
     console.log('═══════════════════════════════════════════════════\n');
     await subirFake();
 
-    // ── Monta um banco como o da estação ANTES desta atualização ──────
-    // (material criado pela tela, sigla PAPE, 25 kg, sem fornecedor)
+    // ── Monta um banco como o da estação (o material como está cadastrado
+    // lá: sigla PAPE, sacos de 20 kg, fornecedor PARABOR e os mapas do Bling)
     await subir(DB1);
     await derrubar();
-    cfgDel(DB1, 'patch_compatibilizante_pape');
     const m0 = cfg(DB1, 'mp_materiais') || {};
-    for (const k of Object.keys(m0)) if (/COMPATIBILIZ/i.test(m0[k].popular || '')) delete m0[k];
-    m0.PAPE = { popular: 'Aditivo - Compatibilizante PA/PE', nomeEtiqueta: 'ADITIVO - COMPATIBILIZANTE PA/PE',
-                cores: [], corLabel: {}, porSacos: true, kgPorSaco: 25,
-                apelidos: ['ADITIVO - COMPATIBILIZANTE PA/PE'], criadoEm: '2026-09-30T13:00:00.000Z', origem: 'cadastros-bling' };
+    m0.PAPE = { popular: 'Compatibilizante PA/PE', nomeEtiqueta: 'COMPATIBILIZANTE PA/PE',
+                cores: [], corLabel: {}, porSacos: true, kgPorSaco: 20,
+                apelidos: ['ADITIVO - COMPATIBILIZANTE PA/PE', 'COMPATIBILIZANTE'],
+                criadoEm: '2026-09-30T13:00:00.000Z', origem: 'cadastros-bling' };
     cfgSet(DB1, 'mp_materiais', m0);
-    const f0 = cfg(DB1, 'mp_fornecedores') || {};
-    for (const k of Object.keys(f0)) if (!m0[k] && !['GBD','POLI','EVOH','CARBO','PIG','DESSEC','AUXFLUX'].includes(k)) delete f0[k];
-    f0.PAPE = [];
-    cfgSet(DB1, 'mp_fornecedores', f0);
-    const mf0 = cfg(DB1, 'mapa_fornecedor_bling') || {}; delete mf0.PARABOR; cfgSet(DB1, 'mapa_fornecedor_bling', mf0);
-    const mp0 = cfg(DB1, 'mapa_produto_bling') || {};
-    for (const k of Object.keys(mp0)) if (/PARABOR/.test(k)) delete mp0[k];
-    cfgSet(DB1, 'mapa_produto_bling', mp0);
+    const f0 = cfg(DB1, 'mp_fornecedores') || {}; f0.PAPE = ['PARABOR']; cfgSet(DB1, 'mp_fornecedores', f0);
+    const mf0 = cfg(DB1, 'mapa_fornecedor_bling') || {}; mf0.PARABOR = '18422042805'; cfgSet(DB1, 'mapa_fornecedor_bling', mf0);
+    const mp0 = cfg(DB1, 'mapa_produto_bling') || {}; mp0['PAPE::PARABOR'] = '16713041492'; cfgSet(DB1, 'mapa_produto_bling', mp0);
 
-    // ── [1] A ATUALIZAÇÃO ACHA O MATERIAL PELO NOME E AJUSTA ──────────
-    console.log('[1] Instalando a atualização num banco como o da estação');
     await subir(DB1);
     await req('POST', '/config', { bling_simular: '0', bling_host_api: 'localhost:' + portaFake,
                                    bling_host_oauth: 'localhost:' + portaFake });
-    const cat = (await req('GET', '/catalogo-mp')).body;
-    const pape = (cat.materiais || {}).PAPE || {};
-    ok(pape.popular === 'Compatibilizante PA/PE' && pape.nomeEtiqueta === 'COMPATIBILIZANTE PA/PE',
-       `nome sem "Aditivo": ${pape.popular} / etiqueta ${pape.nomeEtiqueta}`, pape);
-    ok(pape.porSacos === true && pape.kgPorSaco === 20, 'por sacos de 20 kg', pape);
-    ok(!Object.keys(cat.materiais || {}).some(k => k !== 'PAPE' && /COMPATIBILIZ/i.test(cat.materiais[k].popular || '')),
-       'não criou um segundo Compatibilizante — ajustou o que já existia (sigla PAPE)');
-    ok(JSON.stringify((cat.fornecedores || {}).PAPE) === '["PARABOR"]', 'fornecedor PARABOR no material', (cat.fornecedores || {}).PAPE);
-    ok((cfg(DB1, 'mapa_fornecedor_bling') || {}).PARABOR === '18422042805', 'contato do PARABOR no Bling: 18422042805');
-    ok((cfg(DB1, 'mapa_produto_bling') || {})['PAPE::PARABOR'] === '16713041492', 'produto no Bling: 16713041492');
 
-    // ── [2] O SACO DE 20 KG VALE EM TODO LUGAR ─────────────────────
-    console.log('\n[2] O saco de 20 kg vale na retirada, no retorno, no inventário e no Bling');
+    // ── [1] O SACO DE 20 KG VALE EM TODO LUGAR ─────────────────────
+    console.log('[1] O saco de 20 kg vale na retirada, no retorno, no inventário e no Bling');
     const inv = ((await req('GET', '/inventario/produtos')).body.produtos || []).find(p => p.chave === 'PAPE::PARABOR');
     ok(inv && inv.manual === true && inv.kgPorSaco === 20 && inv.materialNome === 'Compatibilizante PA/PE',
        'inventário: conta em sacos de 20 kg', inv);
@@ -162,32 +144,8 @@ async function derrubar() {
     ok(r3.status === 200 && r3.body.etiqueta.peso === 40 && r3.body.etiqueta.material_nome === 'Compatibilizante PA/PE',
        'retorno: 2 sacos × 20 kg = 40 kg', r3.body);
 
-    // ── [3] RODA UMA VEZ SÓ ────────────────────────────────────────
-    console.log('\n[3] O ajuste roda uma vez só — o que for mudado depois não é desfeito');
-    const m1 = cfg(DB1, 'mp_materiais'); m1.PAPE.popular = 'Compatibilizante PA/PE (Parabor)'; m1.PAPE.kgPorSaco = 22;
-    await req('POST', '/config', { mp_materiais: JSON.stringify(m1) });
-    await derrubar(); await subir(DB1);
-    const pape2 = ((await req('GET', '/catalogo-mp')).body.materiais || {}).PAPE || {};
-    ok(pape2.popular === 'Compatibilizante PA/PE (Parabor)' && pape2.kgPorSaco === 22,
-       'depois de reiniciar, a mudança feita depois continua lá', pape2);
-    const marca = cfg(DB1, 'patch_compatibilizante_pape');
-    ok(marca && marca.material === 'PAPE' && marca.criado === false && marca.antes && marca.antes.kgPorSaco === 25,
-       'a marca registra o que foi feito (material PAPE, ajustado, era 25 kg)', marca);
-    await derrubar();
-
-    // ── [4] BANCO SEM O MATERIAL: ELE É CRIADO ─────────────────────
-    console.log('\n[4] Num banco sem o Compatibilizante, ele é criado já certo');
-    await subir(DB2);
-    const cat3 = (await req('GET', '/catalogo-mp')).body;
-    const comp = (cat3.materiais || {}).COMPAT || {};
-    ok(comp.popular === 'Compatibilizante PA/PE' && comp.porSacos === true && comp.kgPorSaco === 20,
-       'material COMPAT: Compatibilizante PA/PE, sacos de 20 kg', comp);
-    ok(JSON.stringify((cat3.fornecedores || {}).COMPAT) === '["PARABOR"]'
-       && (cfg(DB2, 'mapa_produto_bling') || {})['COMPAT::PARABOR'] === '16713041492',
-       'com o PARABOR e o produto do Bling');
-
-    // ── [5] CRIAR MATERIAL PELA TELA JÁ COM O PESO DO SACO ─────────
-    console.log('\n[5] A tela de cadastro passa a pedir o peso do saco');
+    // ── [2] CRIAR MATERIAL PELA TELA JÁ COM O PESO DO SACO ─────────
+    console.log('\n[2] A tela de cadastro pede o peso do saco');
     const n1 = await req('POST', '/sync/mp/material', { matKey: 'SAC20', popular: 'Aditivo Vinte', unidade: 'sacos', kgPorSaco: 20 });
     ok(n1.status === 200 && n1.body.material.kgPorSaco === 20, 'material por sacos de 20 kg criado', n1.body);
     const n2 = await req('POST', '/sync/mp/material', { matKey: 'SAC225', popular: 'Aditivo Meio', unidade: 'sacos', kgPorSaco: '22,5' });

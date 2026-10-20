@@ -94,32 +94,26 @@ async function derrubar() {
     console.log('═══════════════════════════════════════════════════\n');
     await subirFake();
 
-    // banco como o da estação: PURGA criado pela tela, 25 kg, sem fornecedor
+    // banco como o da estação: PURGA por kg indicado (5 em 5 kg até 25),
+    // fornecedor GILFLEX, mapas do Bling e código PG1
     await subir(DB1);
     await derrubar();
-    cfgDel(DB1, 'patch_purga_kg_indicado');
     const m0 = cfg(DB1, 'mp_materiais') || {};
     m0.PURGA = { popular: 'Aditivo - Purga', nomeEtiqueta: 'ADITIVO - PURGA', cores: [], corLabel: {},
-                 porSacos: true, kgPorSaco: 25, apelidos: ['ADITIVO -  PURGA'],
+                 porSacos: true, kgPorSaco: 5, kgIndicado: true, kgMax: 25, apelidos: ['ADITIVO -  PURGA'],
                  criadoEm: '2026-10-15T17:37:23.069Z', origem: 'cadastros-bling' };
     cfgSet(DB1, 'mp_materiais', m0);
-    const f0 = cfg(DB1, 'mp_fornecedores') || {}; f0.PURGA = []; cfgSet(DB1, 'mp_fornecedores', f0);
+    const f0 = cfg(DB1, 'mp_fornecedores') || {}; f0.PURGA = ['GILFLEX']; cfgSet(DB1, 'mp_fornecedores', f0);
+    const mf0 = cfg(DB1, 'mapa_fornecedor_bling') || {}; mf0.GILFLEX = '18292263741'; cfgSet(DB1, 'mapa_fornecedor_bling', mf0);
+    const mp0 = cfg(DB1, 'mapa_produto_bling') || {}; mp0['PURGA::GILFLEX'] = '16719768728'; cfgSet(DB1, 'mapa_produto_bling', mp0);
+    const cg0 = cfg(DB1, 'mp_codigos_gravimetricos') || [];
+    cg0.push({ matKey: 'PURGA', cor: null, forn: 'GILFLEX', codigo: 'PG1' }); cfgSet(DB1, 'mp_codigos_gravimetricos', cg0);
 
-    console.log('[1] A atualização ajusta o material da tela');
     await subir(DB1);
     await req('POST', '/config', { bling_simular: '0', bling_host_api: 'localhost:' + portaFake,
                                    bling_host_oauth: 'localhost:' + portaFake });
-    const cat = (await req('GET', '/catalogo-mp')).body;
-    const pg = (cat.materiais || {}).PURGA || {};
-    ok(pg.porSacos === true && pg.kgPorSaco === 5 && pg.kgIndicado === true && pg.kgMax === 25,
-       'por kg indicado: de 5 em 5 kg até 25', pg);
-    ok(pg.popular === 'Aditivo - Purga' && Array.isArray(pg.cores) && pg.cores.length === 0, 'nome mantido, sem cor', pg);
-    ok(JSON.stringify((cat.fornecedores || {}).PURGA) === '["GILFLEX"]', 'fornecedor GILFLEX', (cat.fornecedores || {}).PURGA);
-    ok((cfg(DB1, 'mapa_fornecedor_bling') || {}).GILFLEX === '18292263741', 'contato GILFLEX no Bling: 18292263741');
-    ok((cfg(DB1, 'mapa_produto_bling') || {})['PURGA::GILFLEX'] === '16719768728', 'produto no Bling: 16719768728');
-    ok((cat.codigos || []).some(c => c.matKey === 'PURGA' && c.forn === 'GILFLEX' && c.codigo === 'PG1'), 'código PG1');
 
-    console.log('\n[2] Retirada e retorno por kg indicado');
+    console.log('[1] Retirada e retorno por kg indicado');
     const sRet = (await req('POST', '/sessoes', { tipo: 'retirada', operador: 'Teste' })).body.sessao_id;
     const r1 = await req('POST', '/retirada/aditivo', { sessao_id: sRet, materialKey: 'PURGA', fornecedor: 'GILFLEX', qtd_sacos: 3 });
     ok(r1.status === 200 && r1.body.etiqueta.peso === 15, 'retirada: saco de 15 kg', r1.body);
@@ -144,19 +138,6 @@ async function derrubar() {
     ok(r5.status === 200 && r5.body.etiqueta.peso === 20, 'retorno: saco de 20 kg', r5.body);
     const r6 = await req('POST', '/retorno/aditivo', { sessao_id: sRto, materialKey: 'PURGA', fornecedor: 'GILFLEX', qtd_sacos: 7 });
     ok(r6.status === 400, 'retorno: 35 kg recusado', r6.body);
-
-    console.log('\n[3] Roda uma vez só');
-    const m1 = cfg(DB1, 'mp_materiais'); m1.PURGA.kgMax = 30;
-    await req('POST', '/config', { mp_materiais: JSON.stringify(m1) });
-    await derrubar(); await subir(DB1);
-    const pg2 = ((await req('GET', '/catalogo-mp')).body.materiais || {}).PURGA || {};
-    ok(pg2.kgMax === 30, 'mudança feita depois continua lá', pg2);
-    await derrubar();
-
-    console.log('\n[4] Banco sem Purga: nada é criado');
-    await subir(DB2);
-    const cat3 = (await req('GET', '/catalogo-mp')).body;
-    ok(!(cat3.materiais || {}).PURGA, 'sem o material, o ajuste não inventa um', Object.keys(cat3.materiais || {}));
   } catch (e) {
     falhou++;
     console.error('\n\x1b[31mERRO NO TESTE:\x1b[0m', e.stack || e.message);
