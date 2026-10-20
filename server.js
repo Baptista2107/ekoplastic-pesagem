@@ -178,7 +178,7 @@ function carregarCredenciaisBling() {
   // 3) Sem credencial. O bloco de migração legada, que trazia client_id e
   //    client_secret escritos aqui dentro, foi REMOVIDO ao publicar este código
   //    no Git: segredo em arquivo versionado vai junto para o repositório.
-  //    Ver seção 9 do HANDOFF_MIGRACAO_PESAGEM.md.
+  //    Ver seção 9 do docs/historico/HANDOFF_MIGRACAO_PESAGEM.md.
   //
   //    O servidor sobe assim mesmo, de propósito. Pesar, imprimir etiqueta e
   //    bipar bobina não podem depender do Bling nem de rede. As sessões ficam
@@ -296,8 +296,8 @@ function gravarLogMP(obj) {
 // Log estruturado de EXTRUSÃO (CSV diário em logs/extrusao/).
 // Append-only, write-on-print: cada bobina gera 1 linha no momento
 // da impressão da etiqueta. Status/bipagem/bling_id NÃO são atualizados
-// nesse arquivo — pra ver dados frescos, use o endpoint /extrusao/dashboard
-// ou /extrusao/export.csv que consultam direto o SQLite.
+// nesse arquivo — pra ver dados frescos, use o endpoint /extrusao/dashboard,
+// que consulta direto o SQLite.
 //
 // Colunas (separador ; pra Excel BR):
 //   data, hora, id, turno, operador, maquina, cor, tipo, largura,
@@ -968,9 +968,6 @@ function encerrarBobina(id, parte, motivo, quando, formato, formatoOrigem, maq, 
 // O CLP chega pela VPS (EKOSERVER → SFTP → acumulador), com até ~15 min de
 // atraso: serve para sugerir, nunca para decidir sozinho.
 const PESO_FARDO_KG = 25;
-// Operadores das sacoleiras (Gustavo, 29/09/2026) — a lista do "quem está bipando".
-// CLAUDIO e GUERBY entraram em 05/10/2026 (Gustavo).
-const OPERADORES_SACOLEIRA = ['CARINE', 'GISLENE', 'HOZANA', 'ANDRE', 'ITALO', 'ESDRAS', 'HEIDIANE', 'ROMULO', 'CLAUDIO', 'GUERBY'];
 // Comprimento típico (mm) por formato: o 2º número × 10, menos os que a
 // fábrica mede diferente. 35x45 ≈ 460 mm (Gustavo, 29/09/2026). Ajustável sem
 // código pelo config `sac_comprimento_formato` (JSON {"30x45": 452, ...}).
@@ -4947,19 +4944,6 @@ function _grupoOutras(itens) {
   });
 }
 
-// Agrupa etiquetas de PRODUTO ACABADO por COR (material_key). Rótulo = nome da
-// cor. Cada item = um formato (lote) com fardos. Ordem alfabética por cor.
-function _grupoProdutoAcabado(itens) {
-  const mapa = new Map();
-  for (const it of itens) {
-    const chave = it.material_key || it.material_nome || '?';
-    if (!mapa.has(chave)) mapa.set(chave, { label: (it.material_nome || it.material_key || 'COR'), kg: 0, count: 0, itens: [] });
-    const g = mapa.get(chave);
-    g.kg += Number(it.peso || 0); g.count++; g.itens.push(it);
-  }
-  return [...mapa.values()].sort((a, b) => a.label.localeCompare(b.label, 'pt-BR'));
-}
-
 // ── Resumo de PRODUTO ACABADO no formato da mensagem do WhatsApp (v93) ──
 // Agrupa por MÁQUINA (P1, P2); dentro de cada máquina, consolida por
 // FORMATO + COR somando fardos e kg; imprime o subtotal por máquina e o
@@ -6121,7 +6105,7 @@ async function enviarSessaoBling(sessaoId, opts) {
   if (simular) {
     const blingIdSim = `SIM-${Date.now()}`;
     dbStmts.updSessaoBling.run('enviado', blingIdSim, null, sessaoId);
-    // Persiste o payload pra revisão posterior (pode ler via /sessoes/:id/payload-bling)
+    // Persiste o payload pra revisão posterior (config payload_sessao_<id>)
     configSet(`payload_sessao_${sessaoId}`, JSON.stringify(payload));
     logI('bling', `Sessão #${sessaoId} — SIMULADA com sucesso (bling_id=${blingIdSim})`);
     return { ok: true, modo: 'simulacao', bling_id: blingIdSim, payload };
@@ -6626,43 +6610,6 @@ const requestHandlerBase = async (req, res) => {
   if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
 
   try {
-    // ─── HEALTHCHECK / STATUS ───
-    // POST /log/producao  (compat com Extrusão antigo — grava CSV em logs/producao/)
-    // Body: { data, hora, operador, turno, maquina, cor, largura, espessura,
-    //         pesoBruto, tara, pesoLiq, sku, seq, blingPedido, status }
-    // Também é replicado no JSONL durável de MP via logI('print', ...).
-    if (pathname === '/log/producao' && req.method === 'POST') {
-      let body;
-      try { body = await lerBodyJson(req); } catch(e) { return jsonErr(res, 400, e.message); }
-      try {
-        const dir = path.join(LOG_DIR, 'producao');
-        ensureDir(dir);
-        const fpath = path.join(dir, `${dataLocalISO()}.csv`);
-        const novoArq = !fs.existsSync(fpath);
-        const cabecalho = 'data;hora;operador;turno;maquina;cor;largura;espessura;pesoBruto;tara;pesoLiq;sku;seq;blingPedido;status\n';
-        const linha = [
-          body.data, body.hora, body.operador, body.turno, body.maquina,
-          body.cor, body.largura, body.espessura,
-          body.pesoBruto, body.tara, body.pesoLiq,
-          body.sku, body.seq, body.blingPedido, body.status,
-        ].map(v => v == null ? '' : String(v).replace(/[;\r\n]/g, ' ')).join(';') + '\n';
-        const conteudo = (novoArq ? cabecalho : '') + linha;
-        // fsync explícito pra durabilidade (mesma técnica do log MP)
-        let fd = null;
-        try {
-          fd = fs.openSync(fpath, 'a');
-          fs.writeSync(fd, conteudo, null, 'utf8');
-          fs.fsyncSync(fd);
-        } finally {
-          if (fd !== null) { try { fs.closeSync(fd); } catch(e) {} }
-        }
-        // Log MP também (formato estruturado, durável)
-        logI('print', `Linha de produção registrada: ${body.sku || '—'} · ${body.pesoLiq || '?'} kg · turno ${body.turno || '—'}`, body);
-        return jsonOk(res, { gravado: true, arquivo: path.basename(fpath) });
-      } catch(e) {
-        return jsonErr(res, 500, 'Falha ao gravar log: ' + e.message);
-      }
-    }
 
     // ══════════════════════════════════════════════════════════════
     //  DASHBOARD DE EXTRUSÃO (acompanhamento em tempo real)
@@ -6772,44 +6719,6 @@ const requestHandlerBase = async (req, res) => {
       });
     }
 
-    // GET /extrusao/export.csv[?dia=YYYY-MM-DD]
-    // CSV completo on-the-fly com dados FRESCOS (status atual + bipagem + bling_id).
-    // Útil pra Excel/Power BI. Difere do CSV append-only de logs/extrusao/.
-    if (pathname === '/extrusao/export.csv' && req.method === 'GET') {
-      const dia = parsed.query.dia || dataLocalISO();
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(dia)) return jsonErr(res, 400, 'dia deve ser YYYY-MM-DD');
-
-      const { ini: _iniCsv, fim: _fimCsv } = rangeUTCdoDiaLocal(dia);
-      const etiquetas = db.prepare(
-        `SELECT * FROM etiquetas
-         WHERE tipo = 'extrusao' AND hora_impressao >= ? AND hora_impressao < ?
-         ORDER BY hora_impressao ASC`
-      ).all(_iniCsv, _fimCsv);
-
-      const safe = v => v == null ? '' : String(v).replace(/[;\r\n]/g, ' ');
-      const cabecalho = 'data;hora_imp;hora_bip;id;seq_sessao;turno;operador;maquina;cor;tipo;largura;sku;peso_liq;peso_bruto;tara;sessao_id;status;bling_pedido_id\n';
-      const linhas = etiquetas.map(e => {
-        const dt = new Date(e.hora_impressao);
-        const data = dt.toISOString().slice(0,10);
-        const hora = dt.toLocaleTimeString('pt-BR', { hour12: false });
-        const horaBip = e.hora_bipagem ? new Date(e.hora_bipagem).toLocaleTimeString('pt-BR', { hour12: false }) : '';
-        return [
-          data, hora, horaBip, e.id, e.seq_sessao,
-          e.turno_codigo, e.operador, e.maquina,
-          e.cor, e.tipo_bobina, e.largura, e.sku,
-          e.peso, e.peso_bruto, e.tara,
-          e.sessao_id, e.status, e.bling_pedido_id,
-        ].map(safe).join(';');
-      });
-
-      res.statusCode = 200;
-      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-      res.setHeader('Content-Disposition', `attachment; filename="extrusao_${dia}.csv"`);
-      // BOM UTF-8 pra Excel reconhecer acentos sem precisar mudar encoding
-      res.end('\uFEFF' + cabecalho + linhas.join('\n') + (linhas.length ? '\n' : ''));
-      return;
-    }
-
     if (pathname === '/healthcheck' || pathname === '/status') {
       const counts = {
         etiquetas: db.prepare('SELECT COUNT(*) AS n FROM etiquetas').get().n,
@@ -6862,24 +6771,6 @@ const requestHandlerBase = async (req, res) => {
       return jsonOk(res, { authUrl, state });
     }
 
-    // ─── BLING: callback (alternativa, se usar /bling/callback em vez de :8888) ───
-    if (pathname === '/bling/callback') {
-      const { code, error, state } = parsed.query;
-      const html = (ok, msg) => `<html><body style="font-family:sans-serif;padding:40px;background:#0d0f14;color:${ok?'#00ff9d':'#ff4466'}">
-        <h2>${ok ? '✓ Bling autenticado!' : '❌ Erro'}</h2><p>${msg}</p>
-        ${ok ? '<script>setTimeout(()=>window.close(),2000)</script>' : '<p><a href="/" style="color:#00d4ff">Voltar</a></p>'}
-        </body></html>`;
-      if (error || !code) { res.writeHead(200,{'Content-Type':'text/html;charset=utf-8'}); return res.end(html(false, error||'sem código')); }
-      const stateEsperado = configGet('oauth_state', null);
-      if (stateEsperado && state !== stateEsperado) {
-        logW('bling', `State inválido no callback`, { esperado: stateEsperado?.substring(0,8), recebido: state?.substring(0,8) });
-        res.writeHead(200,{'Content-Type':'text/html;charset=utf-8'});
-        return res.end(html(false, 'state inválido (possível CSRF ou sessão antiga)'));
-      }
-      try { await trocarCodigo(code); res.writeHead(200,{'Content-Type':'text/html;charset=utf-8'}); return res.end(html(true, 'Pode fechar.')); }
-      catch(e) { res.writeHead(200,{'Content-Type':'text/html;charset=utf-8'}); return res.end(html(false, e.message)); }
-    }
-
     // ─── BLING: status ───
     if (pathname === '/bling/status') {
       return jsonOk(res, {
@@ -6906,7 +6797,6 @@ const requestHandlerBase = async (req, res) => {
         try { fs.writeFileSync(path.join(__dirname, 'eko-encerrar.flag'), String(Date.now())); } catch (e) {}
         if (process.platform === 'win32') {
           try {
-            const { spawn } = require('child_process');
             // Fecha as janelas do navegador do quiosque (Chrome e o fallback Edge).
             spawn('taskkill', ['/IM', 'chrome.exe', '/F'], { detached: true, stdio: 'ignore' }).unref();
             spawn('taskkill', ['/IM', 'msedge.exe', '/F'], { detached: true, stdio: 'ignore' }).unref();
@@ -7055,19 +6945,6 @@ const requestHandlerBase = async (req, res) => {
       return jsonOk(res, { ok: true });
     }
 
-    // GET /seguranca/desvios[?mes=YYYY-MM] — lista tentativas registradas
-    if (pathname === '/seguranca/desvios' && req.method === 'GET') {
-      const mes = parsed.query.mes || (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; })();
-      const arq = path.join(LOG_DIR, `desvios-${mes}.jsonl`);
-      let registros = [];
-      try {
-        if (fs.existsSync(arq)) {
-          registros = fs.readFileSync(arq, 'utf8').trim().split('\n').filter(Boolean).map(l => { try { return JSON.parse(l); } catch(e) { return null; } }).filter(Boolean);
-        }
-      } catch(e) {}
-      return jsonOk(res, { mes, total: registros.length, registros });
-    }
-
     // ─── BALANÇA ───
     // GET /balanca/portas — lista as portas COM disponíveis no sistema.
     // Útil pra descobrir em qual porta a balança está ligada (ex: ao mudar
@@ -7101,12 +6978,6 @@ const requestHandlerBase = async (req, res) => {
       return jsonOk(res, { peso: balanca.ultimoPeso, estavel: balanca.pesoEstavel, portaAberta: balanca.portaAberta });
     }
 
-    // ─── IMPRESSORAS ───
-    if (pathname === '/impressoras' && req.method === 'GET') {
-      return detectarImpressora((match, installed) => {
-        jsonOk(res, { ativa: match || PRINTER_ATIVA, candidates: PRINTER_NAMES, installed });
-      });
-    }
     if (pathname === '/impressora/redetectar' && req.method === 'POST') {
       return detectarImpressora((match, installed) => {
         if (match) { PRINTER_ATIVA = match; PRINTER_DETECTADA = true; logI('print', `Re-detecção: ATIVA = ${PRINTER_ATIVA}`); jsonOk(res, { printer: PRINTER_ATIVA, installed }); }
@@ -8086,26 +7957,6 @@ const requestHandlerBase = async (req, res) => {
       return jsonOk(res, { bling: r });
     }
 
-    // GET /sessoes/:id/payload-bling  → payload que foi enviado (ou seria)
-    if ((m = pathname.match(/^\/sessoes\/(\d+)\/payload-bling$/)) && req.method === 'GET') {
-      const sessaoId = parseInt(m[1]);
-      const s = dbStmts.getSessao.get(sessaoId);
-      if (!s) return jsonErr(res, 404, 'Sessão não encontrada');
-      // Tenta pegar payload persistido (sessão simulada)
-      const persistido = configGet(`payload_sessao_${sessaoId}`, null);
-      if (persistido) {
-        return jsonOk(res, { sessao: s, payload: JSON.parse(persistido), origem: 'persistido' });
-      }
-      // Senão, monta agora
-      const etiquetas = db.prepare(`SELECT * FROM etiquetas WHERE sessao_id = ? AND status IN ${
-        sessaoContaConsumida(s.tipo) ? `('bipada','consumida')` : `('bipada')`}`).all(sessaoId);
-      const mapaForn  = JSON.parse(configGet('mapa_fornecedor_bling', '{}'));
-      const mapaSku   = JSON.parse(configGet('mapa_produto_bling', '{}'));
-      const idEko     = configGet('id_ekoplastic_bling', null);
-      const payload   = montarPayloadBling(s, etiquetas, mapaForn, mapaSku, idEko);
-      return jsonOk(res, { sessao: s, payload, origem: 'preview' });
-    }
-
     // POST /sessoes/:id/cancelar  → marca etiquetas como canceladas e sessão também
     if ((m = pathname.match(/^\/sessoes\/(\d+)\/cancelar$/)) && req.method === 'POST') {
       const id = parseInt(m[1]);
@@ -8235,36 +8086,6 @@ const requestHandlerBase = async (req, res) => {
         } catch(e) { s.total_atual_kg = null; s.total_atual_itens = null; s.divergente = false; }
       }
       return jsonOk(res, { sessoes, total: sessoes.length });
-    }
-
-    // POST /sessoes/abertas/cancelar-todas[?tipo=X]
-    // Cancela em lote todas as sessões com fim IS NULL.
-    // Útil pra limpar sessões de teste ou abandonadas.
-    // Sem parâmetro: cancela TODAS as abertas (qualquer tipo).
-    // Com ?tipo=retirada: cancela só as desse tipo.
-    if (pathname === '/sessoes/abertas/cancelar-todas' && req.method === 'POST') {
-      const { tipo } = parsed.query;
-      let q = 'SELECT id, tipo, fornecedor, inicio FROM sessoes WHERE fim IS NULL';
-      const params = [];
-      if (tipo) { q += ' AND tipo = ?'; params.push(tipo); }
-      q += ' ORDER BY id';
-      const sessoes = db.prepare(q).all(...params);
-      if (!sessoes.length) {
-        return jsonOk(res, { canceladas: 0, sessoes: [] });
-      }
-      const agora = new Date().toISOString();
-      const stmtEtiq = db.prepare(`UPDATE etiquetas SET status = 'cancelada' WHERE sessao_id = ? AND status IN ('aguardando_bipe','bipada')`);
-      const stmtSes  = db.prepare(`UPDATE sessoes SET fim = ?, bling_status = 'cancelada' WHERE id = ?`);
-      const tr = makeTransaction(() => {
-        for (const s of sessoes) {
-          stmtEtiq.run(s.id);
-          stmtSes.run(agora, s.id);
-        }
-      });
-      tr();
-      const ids = sessoes.map(s => s.id);
-      logI('sessao', `Cancelamento em lote: ${ids.length} sessão(ões) [#${ids.join(', #')}]${tipo ? ` tipo=${tipo}` : ''}`);
-      return jsonOk(res, { canceladas: sessoes.length, sessoes });
     }
 
     // GET /sessoes?status=pendente|pendente_config|erro
@@ -10526,16 +10347,6 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
       return jsonOk(res, { sacoleiras, clp_erro: clp.erro, peso_fardo_kg: PESO_FARDO_KG });
     }
 
-    // Nomes para o "quem está bipando": os operadores da SACOLEIRA (Gustavo,
-    // 29/09/2026). A 1ª versão listava os da extrusão, que não bipam aqui.
-    // Ajustável sem código pelo config `operadores_sacoleira` (JSON ["NOME",...]).
-    // Nome digitado na hora continua valendo (e o aparelho lembra o último).
-    if (pathname === '/bobinas/operadores' && req.method === 'GET') {
-      let nomes = OPERADORES_SACOLEIRA;
-      try { const c = JSON.parse(configGet('operadores_sacoleira', '[]')); if (Array.isArray(c) && c.length) nomes = c; } catch(e) {}
-      return jsonOk(res, { operadores: nomes.map(n => String(n).trim().toUpperCase()).filter(Boolean) });
-    }
-
     // ── Turno do corte (ver turnoCorteAberto, lá em cima) ──
     // GET: o turno aberto de cada sacoleira e os últimos registros.
     if (pathname === '/bobinas/turno-corte' && req.method === 'GET') {
@@ -10722,53 +10533,11 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
       return res.end(linhas.join('\n') + '\n');
     }
 
-    // Limpar entradas de TESTE (29/09/2026, Gustavo): devolve ao estoque as
-    // bobinas que um nome bipou na sacoleira num dia — para testar de novo com
-    // as mesmas bobinas. Diferente do Desfazer (só a última de cada sacoleira
-    // e só sem fardos), limpa todas daquele nome, com fardos ou não. Protegido
-    // pela senha de supervisor; SEM "confirmar": true só LISTA o que limparia.
-    // Body { senha, operador, dia?: 'AAAA-MM-DD' (padrão hoje), confirmar? }
-    if (pathname === '/bobinas/limpar-teste' && req.method === 'POST') {
-      let body; try { body = await lerBodyJson(req); } catch(e) { return jsonErr(res, 400, e.message); }
-      const hashAtual = configGet('senha_saida_hash', hashSenha('1234'));
-      if (hashSenha((body && body.senha) || '') !== hashAtual) return jsonErr(res, 401, 'Senha de supervisor incorreta.');
-      const nome = String(body.operador || '').trim().toUpperCase();
-      if (nome.length < 2) return jsonErr(res, 400, 'Informe o operador (nome de quem bipou)');
-      const dia = /^\d{4}-\d{2}-\d{2}$/.test(String(body.dia || '')) ? body.dia : dataLocalISO();
-      const ini = new Date(dia + 'T00:00:00-03:00').toISOString();
-      const fim = new Date(new Date(ini).getTime() + 86400000).toISOString();
-      const alvo = db.prepare(
-        `SELECT id, cor, largura, peso, destino, baixa_em, fardos, formato_cortado, encerrada_em
-           FROM etiquetas WHERE tipo = 'extrusao' AND status = 'consumida'
-            AND UPPER(TRIM(baixa_operador)) = ? AND baixa_em >= ? AND baixa_em < ?
-          ORDER BY baixa_em`).all(nome, ini, fim);
-      if (body.confirmar !== true) {
-        return jsonOk(res, { ensaio: true, operador: nome, dia, bobinas: alvo,
-          aviso: alvo.length ? 'Nada foi alterado. Repita com "confirmar": true para limpar.' : 'Nenhuma bobina desse nome nesse dia.' });
-      }
-      const agora = new Date().toISOString();
-      const limpar = makeTransaction(() => {
-        const upd = db.prepare(
-          `UPDATE etiquetas SET status='bipada', destino=NULL, baixa_em=NULL, baixa_turno=NULL,
-                  baixa_operador=NULL, fardos=NULL, pacotes=NULL, encerrada_em=NULL, encerrada_motivo=NULL,
-                  formato_cortado=NULL, formato_origem=NULL, alterado_em=?
-            WHERE id = ? AND status = 'consumida' AND bling_pedido_id IS NULL`);
-        const apagarPartes = db.prepare(`DELETE FROM bobina_parciais WHERE etiqueta_id = ?`);
-        let n = 0;
-        for (const b of alvo) { const c = upd.run(agora, b.id).changes; if (c) apagarPartes.run(b.id); n += c; }
-        return n;
-      });
-      const n = limpar();
-      logW('bobinas', `LIMPEZA DE TESTE: ${n} bobina(s) de ${nome} em ${dia} voltaram ao estoque: `
-        + alvo.map(b => b.id).join(', '));
-      return jsonOk(res, { limpas: n, operador: nome, dia, ids: alvo.map(b => b.id) });
-    }
-
     // ── ZERAR O COLETOR (02/10/2026, Gustavo: "limpar todas as bipagens do
     // coletor" — eram TESTE, tudo inclusive inventários). Senha de supervisor.
     // Sem "confirmar": true só conta (ensaio). Com ele, numa transação:
-    //   · bobinas montadas/encerradas voltam a 'bipada' (em estoque), como no
-    //     limpar-teste — MENOS as que geraram pedido no Bling (ficam e são
+    //   · bobinas montadas/encerradas voltam a 'bipada' (em estoque)
+    //     — MENOS as que geraram pedido no Bling (ficam e são
     //     listadas: desfazer aqui deixaria o Bling com uma venda sem bobina);
     //   · apaga fardos por turno, trocas de formato, refugos, turnos do corte,
     //     inventários de bobinas e o histórico do dia (baixas_bobinas_<dia>).
@@ -11256,27 +11025,6 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
       return jsonOk(res, { sacoleiras, peso_fardo_kg: PESO_FARDO_KG, pacotes_por_fardo: PACOTES_POR_FARDO });
     }
 
-    if (pathname === '/bobinas/baixas-hoje' && req.method === 'GET') {
-      const desde = new Date(dataLocalISO() + 'T00:00:00-03:00').toISOString();
-      const lista = db.prepare(
-        `SELECT id, cor, tipo_bobina, largura, peso, destino, baixa_em AS hora, baixa_operador AS operador,
-                baixa_turno AS turno, bling_pedido_id AS pedido, fardos, pacotes, encerrada_em, encerrada_motivo,
-                formato_cortado, formato_origem
-           FROM etiquetas WHERE tipo = 'extrusao' AND baixa_em >= ? ORDER BY baixa_em DESC`).all(desde);
-      // Peso dos fardos (nominal: 25 kg cada) e o alerta de bobina que "rendeu
-      // mais do que pesa" — quase sempre fardo contado errado ou bobina trocada.
-      for (const b of lista) {
-        // Bobina ainda montada: os fardos já informados em fim de turno.
-        if (!b.encerrada_em) b.pacotes_parciais = pacotesParciaisDe(b.id).pacotes;
-        b.peso_fardos = b.pacotes != null ? b.pacotes * (PESO_FARDO_KG / PACOTES_POR_FARDO)
-                      : (b.fardos != null ? b.fardos * PESO_FARDO_KG : null);
-        b.alerta_peso = b.peso_fardos != null && Number(b.peso) > 0 && b.peso_fardos > Number(b.peso);
-        b.cor_pa = corPaDaBobina(b.cor);
-      }
-      const total = lista.reduce((a, b) => a + (Number(b.peso) || 0), 0);
-      return jsonOk(res, { baixas: lista, qtd: lista.length, total_kg: +total.toFixed(3) });
-    }
-
     if (pathname === '/inventario/produtos' && req.method === 'GET') {
       const cat = lerCatalogoMP();
       let mapaProd = {};
@@ -11615,24 +11363,6 @@ window.EKO_OFFLINE = ${JSON.stringify(dados).replace(/</g, '\\u003c')};
       for (const [k,v] of Object.entries(body)) configSet(k, typeof v === 'string' ? v : JSON.stringify(v));
       logI('config', `Atualizado: ${Object.keys(body).join(', ')}`);
       return jsonOk(res, {});
-    }
-
-    // ─── PROXY /bling/* ───
-    if (pathname.startsWith('/bling/') && pathname !== '/bling/status' && pathname !== '/bling/auth/start' && pathname !== '/bling/callback') {
-      let token;
-      try { token = await getToken(); } catch(e) { return jsonErr(res, 401, e.message); }
-      const blingPath = pathname.replace('/bling', '/Api/v3');
-      const body = await lerBody(req);
-      try {
-        let r = await proxyChamada(token, req.method, blingPath, parsed.search, body || null);
-        if (r.status === 401 && tk.refreshToken) {
-          await renovarToken();
-          r = await proxyChamada(tk.accessToken, req.method, blingPath, parsed.search, body || null);
-        }
-        res.writeHead(r.status, { 'Content-Type': 'application/json; charset=utf-8' });
-        res.end(r.body);
-      } catch(e) { jsonErr(res, 502, 'Falha ao conectar com Bling', { detalhe: e.message }); }
-      return;
     }
 
     // ─── ARQUIVOS ESTÁTICOS ───
