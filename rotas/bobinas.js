@@ -90,7 +90,8 @@ async function rotasBobinas(req, res, parsed, pathname) {
     // venda é criado e o mapa de produtos/contatos do Bling não é exigido.
     // Bobina de refugo reaproveitada nunca vai ao Bling: a 1ª baixa já levou
     // o peso inteiro dela (Gustavo, 02/10/2026: refugo "só no sistema").
-    const bling = refugo ? false : baixaBobinaNoBling();
+    // Recuperada (21/10/2026) também não: nasceu sem produção no Bling.
+    const bling = (refugo || e.sub_tipo === 'recuperada') ? false : baixaBobinaNoBling();
 
     // Turno: só existe para o Bling (é o cliente da venda). Sem Bling a tela
     // não pergunta, e a baixa vale igual sem ele.

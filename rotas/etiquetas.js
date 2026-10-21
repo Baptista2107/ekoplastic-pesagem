@@ -235,6 +235,7 @@ async function rotasEtiquetas(req, res, parsed, pathname) {
     // Reconstrói os dados a partir do que foi salvo, para gerar o MESMO EPL.
     const dadosRe = {
       tipo:           et.tipo,
+      sub_tipo:       et.sub_tipo,                   // capa/recuperada saem com o mesmo layout
       material_nome:  et.material_nome,
       materialNomeEt: et.material_nome,
       cor:            et.cor,
@@ -804,6 +805,60 @@ async function rotasEtiquetas(req, res, parsed, pathname) {
     }, resp => {
       if (resp.ok) jsonOk(res, { ...resp, capa });
       else jsonErr(res, 500, resp.erro, { printer: resp.printer });
+    });
+  }
+
+  // POST /etiquetas/bobina-recuperada  { cor, tipo_bobina, largura, peso, senha_supervisor, clientToken? }
+  // BOBINA RECUPERADA (21/10/2026, Vinicius): bobina achada SEM etiqueta, de
+  // origem que não dá para provar (3 verdes, uma só com "WA" do operador).
+  // Ganha um número E novo só para voltar ao estoque e poder ser montada numa
+  // sacoleira. Sem operador, máquina, turno nem sessão de extrusão — não é
+  // produção: não entra em sessão (o Bling da extrusão sai pela sessão) e a
+  // VPS tira sub_tipo='recuperada' de toda conta de produção. Nasce 'bipada'
+  // (já está no estoque físico). Senha de supervisor: cria estoque do nada.
+  if (pathname === '/etiquetas/bobina-recuperada' && req.method === 'POST') {
+    let body;
+    try { body = await lerBodyJson(req); } catch(e) { return jsonErr(res, 400, e.message); }
+    try { exigeCampos(body, ['cor','tipo_bobina','largura','peso']); }
+    catch(e) { return jsonErr(res, 400, e.message); }
+    const jaProcessado = !!idempotenciaGet(body.clientToken);
+    if (!jaProcessado) {
+      const hashSup = configGet('senha_saida_hash', hashSenha('1234'));
+      if (!body.senha_supervisor || hashSenha(String(body.senha_supervisor)) !== hashSup) {
+        if (body.senha_supervisor) logDesvio({ tipo: 'bobina_recuperada_senha_incorreta', tela: 'outras' });
+        return jsonErr(res, 403, 'Senha de supervisor incorreta', { exige_senha_supervisor: true });
+      }
+    }
+    const mapaBobinas = JSON.parse(configGet('mapa_bobina_bling', '{}'));
+    const chave = `${String(body.cor).toUpperCase()}|${String(body.tipo_bobina).toUpperCase()}|${body.largura}`;
+    const bobina = mapaBobinas[chave];
+    if (!bobina) return jsonErr(res, 400, `Bobina "${chave}" não existe no cadastro de bobinas`);
+    const peso = Math.round(Number(body.peso) * 10) / 10;
+    if (!(peso >= 20 && peso <= 1500)) return jsonErr(res, 400, 'Peso líquido deve ficar entre 20 e 1.500 kg');
+    return imprimirEPersistirEtiqueta({
+      tipo: 'extrusao',
+      sub_tipo:       'recuperada',
+      clientToken:    body.clientToken || null,
+      material_key:   'BOBINA',
+      material_nome:  `${body.cor} · ${body.tipo_bobina} · ${body.largura}`,
+      material_label: bobina.sku,
+      cor:            body.cor,
+      tipo_bobina:    body.tipo_bobina,
+      largura:        body.largura,
+      fornecedor:     'RECUPERADA',
+      lote:           'RECUPERADA',
+      peso,
+      codigo:         bobina.sku,
+      sku:            bobina.sku,
+      printerName:    body.printerName || null,
+    }, resp => {
+      if (!resp.ok) return jsonErr(res, 500, resp.erro, { printer: resp.printer });
+      if (!resp.idempotente) {
+        const agora = new Date().toISOString();
+        db.prepare(`UPDATE etiquetas SET status = 'bipada', hora_bipagem = ? WHERE id = ?`).run(agora, resp.id);
+        logI('extrusao', `BOBINA RECUPERADA ${resp.id}: ${chave} ${peso.toFixed(1)} kg (sem origem, fora da produção)`);
+      }
+      jsonOk(res, { ...resp, bobina });
     });
   }
 

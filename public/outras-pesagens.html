@@ -533,6 +533,10 @@ header {
         </div>
         <!-- 06/10/2026: bobinas que saíram como REFUGO no coletor e esperam repesagem -->
         <div id="refugo-aguardando-aviso" onclick="abrirRefugo()" style="display:none; margin-top:8px; padding:10px 12px; border:2px solid var(--danger); border-radius:10px; color:var(--danger); font-weight:800; cursor:pointer;"></div>
+        <!-- 21/10/2026 (Vinicius): bobina achada sem etiqueta, origem desconhecida -->
+        <div class="touch-grid cols-2" style="margin-top:8px;">
+          <div class="touch-btn" id="btn-recuperada" onclick="abrirRecuperada()">BOBINA SEM ETIQUETA</div>
+        </div>
       </div>
 
       <div class="balanca-card">
@@ -615,6 +619,36 @@ header {
     <div style="margin-top:14px; border-top:1px solid rgba(255,255,255,0.1); padding-top:10px;">
       <div class="hist-titulo" style="margin-bottom:6px;">REFUGOS DE HOJE</div>
       <div id="refugo-lista" class="hist-lista" style="max-height:200px;"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Bobina recuperada (21/10/2026, Vinicius): achada sem etiqueta e sem como
+     saber a origem. Ganha número E novo, sem operador/máquina, só para voltar
+     ao estoque de bobinas. Não é produção e não vai ao Bling. -->
+<div class="modal-overlay" id="modal-recuperada">
+  <div class="modal" style="max-width: 560px;">
+    <div class="modal-titulo">Bobina sem etiqueta</div>
+    <div class="modal-corpo">
+      Para bobina achada <b>sem etiqueta</b>, de origem desconhecida. Sai uma etiqueta nova
+      marcada <b>RECUPERADA</b>, sem operador e sem máquina. Ela volta ao estoque de bobinas
+      e pode ser bipada na sacoleira. <b>Não conta como produção</b> e não vai ao Bling.
+    </div>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin:12px 0;">
+      <label>Cor<select id="rec-cor" class="peso-manual-input" style="width:100%;">
+        <option value="Colorida">Colorida (verde)</option><option value="Branca">Branca</option>
+        <option value="Preta">Preta</option><option value="Amarela">Amarela</option></select></label>
+      <label>Espessura<select id="rec-tipo" class="peso-manual-input" style="width:100%;" onchange="recLarguras()">
+        <option value="LEVE">LEVE</option><option value="REFORCADA">REFORÇADA</option></select></label>
+      <label>Largura<select id="rec-largura" class="peso-manual-input" style="width:100%;"></select></label>
+      <label>Peso líquido (sem eixo), kg<input id="rec-peso" class="peso-manual-input" type="text"
+        inputmode="decimal" placeholder="0,0" autocomplete="off" style="width:100%;"></label>
+      <label style="grid-column:1 / span 2;">Senha do supervisor<input id="rec-senha" class="peso-manual-input"
+        type="password" autocomplete="off" style="width:100%;"></label>
+    </div>
+    <div class="modal-acoes">
+      <button class="btn-modal secundario" onclick="fecharRecuperada()">Fechar</button>
+      <button class="btn-modal" id="btn-gerar-recuperada" onclick="gerarRecuperada()">GERAR ETIQUETA</button>
     </div>
   </div>
 </div>
@@ -1025,6 +1059,50 @@ async function restaurarSessaoAberta() {
     renderHistorico();
     toast(`↩ Retomando pesagem · ${state.itens.length} ${state.itens.length===1?'item':'itens'}`, 'success');
   } catch(e) { console.warn('Falha ao restaurar sessão de outras:', e.message); }
+}
+
+// ─── BOBINA RECUPERADA (21/10/2026, Vinicius) ───
+// Bobina achada sem etiqueta: número E novo, sem origem, só para o estoque.
+const REC_LARGURAS = { LEVE: ['1,60', '1,68', '1,75'], REFORCADA: ['80', '1,20', '1,60'] };
+let recToken = null;
+function recLarguras() {
+  const sel = document.getElementById('rec-largura');
+  const ls = REC_LARGURAS[document.getElementById('rec-tipo').value] || [];
+  sel.innerHTML = ls.map(l => `<option value="${l}"${l === '1,60' ? ' selected' : ''}>${l}</option>`).join('');
+}
+function abrirRecuperada() {
+  recLarguras();
+  document.getElementById('rec-peso').value = '';
+  document.getElementById('rec-senha').value = '';
+  recToken = null;
+  document.getElementById('modal-recuperada').classList.add('on');
+  setTimeout(() => document.getElementById('rec-peso').focus(), 50);
+}
+function fecharRecuperada() { document.getElementById('modal-recuperada').classList.remove('on'); }
+async function gerarRecuperada() {
+  const cor = document.getElementById('rec-cor').value;
+  const tipo = document.getElementById('rec-tipo').value;
+  const largura = document.getElementById('rec-largura').value;
+  const peso = Number(String(document.getElementById('rec-peso').value).replace(',', '.'));
+  const senha = document.getElementById('rec-senha').value;
+  if (!(peso >= 20 && peso <= 1500)) return toast('Peso líquido entre 20 e 1.500 kg', 'error');
+  if (!senha) return toast('Digite a senha do supervisor', 'error');
+  // o mesmo token enquanto a janela não fecha: clicar de novo não gera 2 etiquetas
+  recToken = recToken || ('rec-' + Date.now() + '-' + Math.random().toString(36).slice(2));
+  const btn = document.getElementById('btn-gerar-recuperada');
+  btn.disabled = true;
+  try {
+    const r = await fetch(URL_BASE + '/etiquetas/bobina-recuperada', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cor, tipo_bobina: tipo, largura, peso, senha_supervisor: senha, clientToken: recToken }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || d.ok === false) throw new Error(d.erro || ('HTTP ' + r.status));
+    toast(`✓ ${d.id} — ${cor} ${tipo} ${largura} · ${peso.toFixed(1).replace('.', ',')} kg no estoque`, 'success', 7000);
+    fecharRecuperada();
+  } catch (e) {
+    toast('Erro: ' + e.message, 'error', 6000);
+  } finally { btn.disabled = false; }
 }
 
 // ─── REFUGO DE BOBINA (02/10/2026, Gustavo) ───
