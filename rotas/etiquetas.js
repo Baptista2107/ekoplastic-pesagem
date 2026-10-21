@@ -20,6 +20,7 @@ const {
   materiaisPorSacos, mensagemProdutoTrocado, paSku, proximoSeqSessao, substituicaoAtiva,
 } = require('../lib/negocio');
 const { enviarBlingIndividualExtrusao } = require('../lib/turnos');
+const { TARAS_EIXO } = require('../lib/bobinas');
 
 // Devolve NAO_TRATADA quando nenhuma rota daqui atende o pedido.
 async function rotasEtiquetas(req, res, parsed, pathname) {
@@ -816,11 +817,20 @@ async function rotasEtiquetas(req, res, parsed, pathname) {
   // produção: não entra em sessão (o Bling da extrusão sai pela sessão) e a
   // VPS tira sub_tipo='recuperada' de toda conta de produção. Nasce 'bipada'
   // (já está no estoque físico). Senha de supervisor: cria estoque do nada.
+  // O Mini PC é só touch (21/10/2026): a tela manda o peso_bruto da BALANÇA e
+  // aqui sai o eixo pela largura, como no refugo. `peso` (líquido) segue aceito.
   if (pathname === '/etiquetas/bobina-recuperada' && req.method === 'POST') {
     let body;
     try { body = await lerBodyJson(req); } catch(e) { return jsonErr(res, 400, e.message); }
-    try { exigeCampos(body, ['cor','tipo_bobina','largura','peso']); }
+    try { exigeCampos(body, ['cor','tipo_bobina','largura']); }
     catch(e) { return jsonErr(res, 400, e.message); }
+    let bruto = null, tara = null;
+    if (body.peso_bruto != null) {
+      bruto = Number(body.peso_bruto);
+      tara = TARAS_EIXO[body.largura] || 0;
+      body.peso = bruto - tara;
+    }
+    if (body.peso == null) return jsonErr(res, 400, 'Campo obrigatório ausente: peso');
     const jaProcessado = !!idempotenciaGet(body.clientToken);
     if (!jaProcessado) {
       const hashSup = configGet('senha_saida_hash', hashSenha('1234'));
@@ -848,6 +858,8 @@ async function rotasEtiquetas(req, res, parsed, pathname) {
       fornecedor:     'RECUPERADA',
       lote:           'RECUPERADA',
       peso,
+      peso_bruto:     bruto,
+      tara,
       codigo:         bobina.sku,
       sku:            bobina.sku,
       printerName:    body.printerName || null,

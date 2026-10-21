@@ -630,22 +630,22 @@ header {
   <div class="modal" style="max-width: 560px;">
     <div class="modal-titulo">Bobina sem etiqueta</div>
     <div class="modal-corpo">
-      Para bobina achada <b>sem etiqueta</b>, de origem desconhecida. Sai uma etiqueta nova
-      marcada <b>RECUPERADA</b>, sem operador e sem máquina. Ela volta ao estoque de bobinas
-      e pode ser bipada na sacoleira. <b>Não conta como produção</b> e não vai ao Bling.
+      Para bobina achada <b>sem etiqueta</b>, de origem desconhecida: ponha na balança, escolha
+      cor, espessura e largura e digite a senha. Sai uma etiqueta nova marcada <b>RECUPERADA</b>,
+      sem operador e sem máquina, que volta ao estoque e pode ser bipada na sacoleira.
+      <b>Não conta como produção</b> e não vai ao Bling.
     </div>
-    <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin:12px 0;">
-      <label>Cor<select id="rec-cor" class="peso-manual-input" style="width:100%;">
-        <option value="Colorida">Colorida (verde)</option><option value="Branca">Branca</option>
-        <option value="Preta">Preta</option><option value="Amarela">Amarela</option></select></label>
-      <label>Espessura<select id="rec-tipo" class="peso-manual-input" style="width:100%;" onchange="recLarguras()">
-        <option value="LEVE">LEVE</option><option value="REFORCADA">REFORÇADA</option></select></label>
-      <label>Largura<select id="rec-largura" class="peso-manual-input" style="width:100%;"></select></label>
-      <label>Peso líquido (sem eixo), kg<input id="rec-peso" class="peso-manual-input" type="text"
-        inputmode="decimal" placeholder="0,0" autocomplete="off" style="width:100%;"></label>
-      <label style="grid-column:1 / span 2;">Senha do supervisor<input id="rec-senha" class="peso-manual-input"
-        type="password" autocomplete="off" style="width:100%;"></label>
-    </div>
+    <!-- Mini PC só touch: tudo em botão, peso da balança, senha no teclado da tela -->
+    <div class="section-label" style="margin-top:10px;">Cor</div>
+    <div class="touch-grid" id="rec-cores" style="grid-template-columns:repeat(4,1fr);"></div>
+    <div class="section-label" style="margin-top:10px;">Espessura</div>
+    <div class="touch-grid cols-2" id="rec-tipos"></div>
+    <div class="section-label" style="margin-top:10px;">Largura</div>
+    <div class="touch-grid" id="rec-larguras" style="grid-template-columns:repeat(3,1fr);"></div>
+    <div id="rec-peso" style="font-family:'IBM Plex Mono',monospace; font-size:15px; margin:12px 0;"></div>
+    <div class="section-label">Senha do supervisor</div>
+    <div id="rec-pin" style="display:flex; gap:10px; justify-content:center; height:22px; margin:6px 0;"></div>
+    <div id="rec-teclado" style="display:grid; grid-template-columns:repeat(3,1fr); gap:8px; max-width:320px; margin:0 auto 12px;"></div>
     <div class="modal-acoes">
       <button class="btn-modal secundario" onclick="fecharRecuperada()">Fechar</button>
       <button class="btn-modal" id="btn-gerar-recuperada" onclick="gerarRecuperada()">GERAR ETIQUETA</button>
@@ -1063,46 +1063,97 @@ async function restaurarSessaoAberta() {
 
 // ─── BOBINA RECUPERADA (21/10/2026, Vinicius) ───
 // Bobina achada sem etiqueta: número E novo, sem origem, só para o estoque.
+// O Mini PC é só touch: cor/espessura/largura em botões, o peso vem da
+// BALANÇA (o servidor tira o eixo pela largura, como no refugo) e a senha
+// num teclado numérico da própria janela.
+const REC_CORES = [['Colorida', 'Verde'], ['Branca', 'Branca'], ['Preta', 'Preta'], ['Amarela', 'Amarela']];
+const REC_TIPOS = [['LEVE', 'LEVE'], ['REFORCADA', 'REFORÇADA']];
 const REC_LARGURAS = { LEVE: ['1,60', '1,68', '1,75'], REFORCADA: ['80', '1,20', '1,60'] };
-let recToken = null;
-function recLarguras() {
-  const sel = document.getElementById('rec-largura');
-  const ls = REC_LARGURAS[document.getElementById('rec-tipo').value] || [];
-  sel.innerHTML = ls.map(l => `<option value="${l}"${l === '1,60' ? ' selected' : ''}>${l}</option>`).join('');
+const REC_EIXO = { '80': 4, '1,20': 6, '1,60': 8, '1,68': 8, '1,75': 9 };   // = TARAS_EIXO do servidor
+const rec = { cor: 'Colorida', tipo: 'LEVE', largura: '1,60', pin: '', token: null };
+function recBotoes(alvo, opcoes, atual, fn) {
+  const el = document.getElementById(alvo);
+  el.innerHTML = '';
+  opcoes.forEach(([v, rot]) => {
+    const b = document.createElement('div');
+    b.className = 'touch-btn' + (v === atual ? ' selected' : '');
+    b.textContent = rot;
+    b.onclick = () => fn(v);
+    el.appendChild(b);
+  });
+}
+function recRender() {
+  if (!REC_LARGURAS[rec.tipo].includes(rec.largura)) rec.largura = '1,60';
+  recBotoes('rec-cores', REC_CORES, rec.cor, v => { rec.cor = v; recRender(); });
+  recBotoes('rec-tipos', REC_TIPOS, rec.tipo, v => { rec.tipo = v; recRender(); });
+  recBotoes('rec-larguras', REC_LARGURAS[rec.tipo].map(l => [l, l]), rec.largura, v => { rec.largura = v; recRender(); });
+  const pin = document.getElementById('rec-pin');
+  pin.innerHTML = Array.from({ length: Math.max(rec.pin.length, 4) }, (_, i) =>
+    `<div style="width:14px;height:14px;border-radius:50%;border:2px solid ${i < rec.pin.length ? '#3b82f6' : '#3a4660'};`
+    + `background:${i < rec.pin.length ? '#3b82f6' : 'transparent'};"></div>`).join('');
+  recPeso();
+}
+function recLiquido() { return Math.round(((state.pesoBruto || 0) - (REC_EIXO[rec.largura] || 0)) * 10) / 10; }
+function recPeso() {
+  const el = document.getElementById('rec-peso');
+  const btn = document.getElementById('btn-gerar-recuperada');
+  if (!el || !btn) return;
+  const bruto = state.pesoBruto || 0, liq = recLiquido();
+  let pronto = false;
+  if (state.aguardandoZero) el.innerHTML = '⚠ Retire o material da balança';
+  else if (!(bruto > 0)) el.innerHTML = 'Ponha a bobina na balança.';
+  else {
+    const br = v => v.toFixed(1).replace('.', ',');
+    el.innerHTML = `Balança ${br(bruto)} − eixo ${REC_EIXO[rec.largura] || 0} = <b style="font-size:20px;">${br(liq)} kg</b>`
+      + (state.balancaEstavel ? '' : ' <span style="color:var(--warn);">(instável)</span>');
+    pronto = state.balancaEstavel && liq >= 20 && liq <= 1500;
+  }
+  btn.disabled = !(pronto && rec.pin.length >= 4);
+}
+function recTecla(t) {
+  if (t === '⌫') rec.pin = rec.pin.slice(0, -1);
+  else if (rec.pin.length < 8) rec.pin += t;
+  recRender();
 }
 function abrirRecuperada() {
-  recLarguras();
-  document.getElementById('rec-peso').value = '';
-  document.getElementById('rec-senha').value = '';
-  recToken = null;
+  rec.pin = ''; rec.token = null;
+  const tec = document.getElementById('rec-teclado');
+  tec.innerHTML = '';
+  ['1','2','3','4','5','6','7','8','9','','0','⌫'].forEach(t => {
+    const b = document.createElement('div');
+    b.className = 'touch-btn'; b.textContent = t;
+    if (t) b.onclick = () => recTecla(t); else b.style.visibility = 'hidden';
+    tec.appendChild(b);
+  });
   document.getElementById('modal-recuperada').classList.add('on');
-  setTimeout(() => document.getElementById('rec-peso').focus(), 50);
+  recRender();
 }
 function fecharRecuperada() { document.getElementById('modal-recuperada').classList.remove('on'); }
+function recuperadaAberta() { return document.getElementById('modal-recuperada').classList.contains('on'); }
+setInterval(() => { if (recuperadaAberta()) recPeso(); }, 500);
 async function gerarRecuperada() {
-  const cor = document.getElementById('rec-cor').value;
-  const tipo = document.getElementById('rec-tipo').value;
-  const largura = document.getElementById('rec-largura').value;
-  const peso = Number(String(document.getElementById('rec-peso').value).replace(',', '.'));
-  const senha = document.getElementById('rec-senha').value;
-  if (!(peso >= 20 && peso <= 1500)) return toast('Peso líquido entre 20 e 1.500 kg', 'error');
-  if (!senha) return toast('Digite a senha do supervisor', 'error');
-  // o mesmo token enquanto a janela não fecha: clicar de novo não gera 2 etiquetas
-  recToken = recToken || ('rec-' + Date.now() + '-' + Math.random().toString(36).slice(2));
+  const liq = recLiquido();
+  // o mesmo token enquanto a janela não fecha: tocar de novo não gera 2 etiquetas
+  rec.token = rec.token || ('rec-' + Date.now() + '-' + Math.random().toString(36).slice(2));
   const btn = document.getElementById('btn-gerar-recuperada');
   btn.disabled = true;
   try {
     const r = await fetch(URL_BASE + '/etiquetas/bobina-recuperada', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ cor, tipo_bobina: tipo, largura, peso, senha_supervisor: senha, clientToken: recToken }),
+      body: JSON.stringify({ cor: rec.cor, tipo_bobina: rec.tipo, largura: rec.largura, peso_bruto: state.pesoBruto,
+                             senha_supervisor: rec.pin, clientToken: rec.token }),
     });
     const d = await r.json().catch(() => ({}));
-    if (!r.ok || d.ok === false) throw new Error(d.erro || ('HTTP ' + r.status));
-    toast(`✓ ${d.id} — ${cor} ${tipo} ${largura} · ${peso.toFixed(1).replace('.', ',')} kg no estoque`, 'success', 7000);
+    if (!r.ok || d.ok === false) {
+      if (r.status === 403) { rec.pin = ''; recRender(); }
+      throw new Error(d.erro || ('HTTP ' + r.status));
+    }
+    toast(`✓ ${d.id} — ${rec.cor === 'Colorida' ? 'Verde' : rec.cor} ${rec.tipo} ${rec.largura} · ${liq.toFixed(1).replace('.', ',')} kg no estoque`, 'success', 8000);
     fecharRecuperada();
   } catch (e) {
     toast('Erro: ' + e.message, 'error', 6000);
-  } finally { btn.disabled = false; }
+    recPeso();
+  }
 }
 
 // ─── REFUGO DE BOBINA (02/10/2026, Gustavo) ───

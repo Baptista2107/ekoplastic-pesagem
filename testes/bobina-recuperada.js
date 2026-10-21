@@ -121,6 +121,15 @@ const contar = () => comBanco(db => db.prepare(`SELECT COUNT(*) n FROM etiquetas
     r = await req('POST', '/bobinas/baixa', { id, destino: 'P1' });
     const m = comBanco(db => db.prepare('SELECT status, destino FROM etiquetas WHERE id = ?').get(id)) || {};
     ok(r.status === 200 && m.status === 'consumida' && m.destino === 'P1', 'a recuperada monta na P1', { r: r.body, m });
+
+    // 7. tela touch: peso da BALANÇA, o servidor tira o eixo pela largura (1,60 = 8 kg)
+    r = await req('POST', '/etiquetas/bobina-recuperada', { cor: 'Colorida', tipo_bobina: 'LEVE', largura: '1,60',
+                                                            peso_bruto: 431.5, senha_supervisor: SENHA, clientToken: 'rec-t2' });
+    const e2 = comBanco(db => db.prepare('SELECT peso, peso_bruto FROM etiquetas WHERE id = ?').get(r.body && r.body.id)) || {};
+    ok(r.status === 200 && e2.peso === 423.5, 'peso_bruto 431,5 na 1,60 → 423,5 kg líquido', { r: r.body, e2 });
+    r = await req('POST', '/etiquetas/bobina-recuperada', { cor: 'Colorida', tipo_bobina: 'LEVE', largura: '1,60',
+                                                            senha_supervisor: SENHA, clientToken: 'rec-t3' });
+    ok(r.status === 400, 'sem peso nenhum: recusado', r.body);
   } catch (e) {
     ok(false, 'exceção no teste: ' + e.message);
   } finally {
