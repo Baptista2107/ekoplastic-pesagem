@@ -1,0 +1,32 @@
+#!/bin/bash
+# PORTAO DE TESTES do push (22/10/2026) — o mesmo da FASE 1 do ENVIAR-ATUALIZACAO.bat,
+# para o caminho que virou padrao em 17/10: editar na VPS -> push -> ssh minipc POST
+# /sistema/atualizar. O Mini PC so puxa o origin/main; se o push nao passa sem teste,
+# o Mini PC nunca recebe codigo que nao passou.
+#
+# Testa o COMMIT que vai subir (worktree temporaria), nao a pasta de trabalho: arquivo
+# sujo nao aprova nem reprova o push. Teto: 15 min.
+# Ativo no clone por:  git config core.hooksPath tools/hooks
+# Pular (equivale ao IGNORAR do .bat; dizer no commit/conversa por que):
+#   git push --no-verify
+set -u
+raiz=$(git rev-parse --show-toplevel)
+zeros=0000000000000000000000000000000000000000
+while read -r _lref lsha _rref _rsha; do
+    [ "$lsha" = "$zeros" ] && continue          # apagando ramo remoto: nada a testar
+    tmp=$(mktemp -d)
+    trap 'git -C "$raiz" worktree remove --force "$tmp" >/dev/null 2>&1; rm -rf "$tmp"' EXIT
+    git -C "$raiz" worktree add --detach -q "$tmp" "$lsha" || exit 1
+    echo "[pre-push] testando ${lsha:0:7} (node testes/rodar-todos.js, teto 15 min)..."
+    saida=$(cd "$tmp" && timeout 900 node testes/rodar-todos.js 2>&1); rc=$?
+    echo "$saida" | tail -6
+    if [ $rc -ne 0 ]; then
+        echo "$saida" | grep -F '✗' | head -20
+        echo "[pre-push] push RECUSADO: testes falharam em ${lsha:0:7} (rc=$rc)."
+        echo "           Corrija e commite de novo. O Mini PC so recebe o que passou."
+        exit 1
+    fi
+    git -C "$raiz" worktree remove --force "$tmp" >/dev/null 2>&1; rm -rf "$tmp"
+    trap - EXIT
+done
+exit 0
