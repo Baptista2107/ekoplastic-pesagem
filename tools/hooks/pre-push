@@ -7,8 +7,8 @@
 # Testa o COMMIT que vai subir (worktree temporaria), nao a pasta de trabalho: arquivo
 # sujo nao aprova nem reprova o push. Teto: 15 min.
 # Ativo no clone por:  git config core.hooksPath tools/hooks
-# Pular (equivale ao IGNORAR do .bat; dizer no commit/conversa por que):
-#   git push --no-verify
+# Pular: nao ha chave desde 22/10 (padrao para qualquer pessoa; a trava do Claude
+# Code desta conta recusa --no-verify). Teste errado se conserta no teste.
 set -u
 raiz=$(git rev-parse --show-toplevel)
 zeros=0000000000000000000000000000000000000000
