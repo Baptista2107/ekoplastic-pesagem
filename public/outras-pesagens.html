@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Ekoplastic · Resíduos</title>
+<script src="/acesso-colaborador.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=Nunito:wght@600;700;800;900&display=swap');
@@ -989,7 +990,7 @@ async function garantirSessaoAberta() {
   try {
     const r = await fetch(URL_BASE + '/sessoes', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tipo: 'outras' }),   // sem operador/máquina/turno
+      body: JSON.stringify({ tipo: 'outras', operador: (window.EKO_RESPONSAVEL || null) }),   // sem máquina/turno
     });
     const d = await r.json();
     if (!d.ok) throw new Error(d.erro || 'Falha ao abrir sessão');
@@ -1050,6 +1051,7 @@ async function restaurarSessaoAberta() {
     if (!d.ok || !d.sessoes.length) return;
     const s = d.sessoes[0];
     state.sessaoId = s.id;
+    completarResponsavel(s, URL_BASE);
     state.itens = (s.etiquetas || []).slice().reverse().map(e => ({
       id: e.id, seq_sessao: e.seq_sessao, codigo: e.sku || e.codigo,
       nome: e.material_nome || e.sku || '?', peso: e.peso || 0, status: e.status,
@@ -1307,8 +1309,48 @@ function toast(msg, tipo = 'info', dur = 3500) {
   setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, dur);
 }
 
-// ─── INIT ───
+
+// ─── RESPONSÁVEL (06/11, Gustavo: "coloca os responsáveis de quem fez o que") ───
+// Igual ao Recebimento/Retorno: a tela só abre depois do PIN do colaborador
+// (tela 'mp'); o nome fica em window.EKO_RESPONSAVEL e vai como `operador` na
+// sessão — é ele que sai no resumo da operação e no Resumo do dia.
+function mostrarResponsavel() {
+  if (!window.EKO_RESPONSAVEL) return;
+  let el = document.getElementById('eko-resp-tag');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'eko-resp-tag';
+    el.style.cssText = 'position:fixed; top:8px; right:12px; z-index:900; background:rgba(0,0,0,0.55);'
+      + 'border:1px solid rgba(255,255,255,0.18); color:#cfe3ff; padding:6px 12px; border-radius:20px;'
+      + 'font-size:12px; font-weight:800; letter-spacing:0.4px; pointer-events:none;';
+    document.body.appendChild(el);
+  }
+  el.textContent = '👤 ' + window.EKO_RESPONSAVEL;
+}
+// Sessão que já estava aberta sem nome (aberta antes desta versão, ou por
+// outra aba) recebe o responsável de agora. O servidor só preenche se ainda
+// estiver vazia — nunca troca quem já está gravado.
+async function completarResponsavel(sessao, base) {
+  if (!sessao || !window.EKO_RESPONSAVEL) return;
+  if (sessao.operador && String(sessao.operador).trim()) return;
+  try {
+    await fetch((base || '') + '/sessoes/' + sessao.id + '/operador', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ operador: window.EKO_RESPONSAVEL }),
+    });
+  } catch (e) { console.warn('Não gravou o responsável na sessão #' + sessao.id + ':', e.message); }
+}
+// Rede de segurança: se o componente de acesso não carregar, a tela ABRE
+// mesmo assim (sem identificação) em vez de ficar morta — como no Recebimento.
+function comAcesso(tela, aoEntrar) {
+  if (window.EkoAcesso && typeof EkoAcesso.exigir === 'function') return EkoAcesso.exigir(tela, aoEntrar);
+  console.warn('acesso-colaborador.js não carregou — abrindo a tela sem identificação');
+  try { aoEntrar(); } catch (e) { console.error(e); }
+}
+
+// ─── INIT ─── só depois que o colaborador entrar com a senha dele.
 function init() {
+  mostrarResponsavel();
   renderHistorico();
   pingServidor();
   setInterval(pingServidor, 5000);
@@ -1316,7 +1358,7 @@ function init() {
   carregarRefugosHoje();
   setInterval(() => { if (!refugoAberto()) carregarRefugosHoje(); }, 30000);   // aviso de repesagem
 }
-init();
+comAcesso('mp', init);
 </script>
 
 <script src="/seguranca-saida.js"></script>

@@ -47,6 +47,28 @@ async function rotasSessoes(req, res, parsed, pathname) {
     return jsonOk(res, { sessao: s, etiquetas });
   }
 
+  // POST /sessoes/:id/operador  { operador }
+  // Sessão de retirada/resíduos aberta ANTES da identificação por PIN (ou
+  // restaurada depois de recarregar a tela) ganha o responsável. Só preenche
+  // se ainda estiver ABERTA e SEM operador — nunca troca quem já está lá.
+  // Um UPDATE só, com a condição no WHERE: repetir (clique duplo, duas abas)
+  // não muda nada depois do primeiro; responde ok com quem ficou gravado.
+  if ((m = pathname.match(/^\/sessoes\/(\d+)\/operador$/)) && req.method === 'POST') {
+    const id = parseInt(m[1]);
+    let body;
+    try { body = await lerBodyJson(req); } catch(e) { return jsonErr(res, 400, e.message); }
+    const nome = String((body && body.operador) || '').replace(/[\u0000-\u001f\u007f]/g, ' ').trim();
+    if (!nome) return jsonErr(res, 400, 'operador vazio');
+    if (nome.length > 60) return jsonErr(res, 400, 'operador longo demais');
+    const s = dbStmts.getSessao.get(id);
+    if (!s) return jsonErr(res, 404, 'Sessão não encontrada');
+    const r = db.prepare(`UPDATE sessoes SET operador = ?
+                           WHERE id = ? AND fim IS NULL AND (operador IS NULL OR TRIM(operador) = '')`).run(nome, id);
+    const atual = dbStmts.getSessao.get(id);
+    if (r.changes) logI('sessao', `Responsável da sessão #${id} (${s.tipo}) definido: ${nome}`);
+    return jsonOk(res, { sessao_id: id, operador: atual.operador || null, alterado: r.changes > 0 });
+  }
+
   // POST /sessoes/:id/finalizar  → fecha + envia pro Bling
   // Relatório PARCIAL (momentâneo): imprime o MESMO resumo do final, mas NÃO
   // finaliza a sessão, NÃO cancela pendentes e NÃO envia ao Bling. Pode ser
@@ -92,6 +114,7 @@ async function rotasSessoes(req, res, parsed, pathname) {
         abertas: d.abertas,
         total_kg: Number(d.totalKg.toFixed(3)),
         grupos: d.grupos.map(g => ({ label: g.label, itens: g.count, kg: Number(g.kg.toFixed(3)) })),
+        responsaveis: d.responsaveis,   // [{nome|null, operacoes, itens, kg}] — null = sem identificação
       });
     }
 

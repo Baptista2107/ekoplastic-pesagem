@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <title>Matéria-Prima · Retirada · v1</title>
+<script src="/acesso-colaborador.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;700&family=Nunito:wght@600;700;800;900&display=swap');
 
@@ -988,7 +989,7 @@ async function garantirSessao() {
     const r = await fetch(URL_SESS, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tipo: 'retirada' }),
+      body: JSON.stringify({ tipo: 'retirada', operador: (window.EKO_RESPONSAVEL || null) }),
     });
     const d = await r.json();
     if (!d.ok) throw new Error(d.erro || 'falha ao abrir sessão');
@@ -1578,6 +1579,7 @@ async function restaurarSessaoAberta() {
     if (!d.ok || !d.sessoes.length) return;
     const sessao = d.sessoes[0];     // mais recente
     estado.sessaoId = sessao.id;
+    completarResponsavel(sessao);
     estado.itens = (sessao.etiquetas || []).map(e => {
       const isAditivo = e.sub_tipo === 'aditivo-saida';
       const hora = e.hora_impressao
@@ -1650,13 +1652,57 @@ async function carregarCatalogoRetirada() {
   } catch (e) { /* fallback: mantém os fornecedores embutidos */ }
 }
 
-renderTipos();
-renderFornecedores();
-renderCores();
-ajustarSacos(0);
-renderHistorico();
-carregarCatalogoRetirada().then(() => { renderTipos(); renderFornecedores(); renderCores(); ajustarSacos(0); renderHistorico(); });
-restaurarSessaoAberta();
+
+// ─── RESPONSÁVEL (06/11, Gustavo: "coloca os responsáveis de quem fez o que") ───
+// Igual ao Recebimento/Retorno: a tela só abre depois do PIN do colaborador
+// (tela 'mp'); o nome fica em window.EKO_RESPONSAVEL e vai como `operador` na
+// sessão — é ele que sai no resumo da operação e no Resumo do dia.
+function mostrarResponsavel() {
+  if (!window.EKO_RESPONSAVEL) return;
+  let el = document.getElementById('eko-resp-tag');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'eko-resp-tag';
+    el.style.cssText = 'position:fixed; top:8px; right:12px; z-index:900; background:rgba(0,0,0,0.55);'
+      + 'border:1px solid rgba(255,255,255,0.18); color:#cfe3ff; padding:6px 12px; border-radius:20px;'
+      + 'font-size:12px; font-weight:800; letter-spacing:0.4px; pointer-events:none;';
+    document.body.appendChild(el);
+  }
+  el.textContent = '👤 ' + window.EKO_RESPONSAVEL;
+}
+// Sessão que já estava aberta sem nome (aberta antes desta versão, ou por
+// outra aba) recebe o responsável de agora. O servidor só preenche se ainda
+// estiver vazia — nunca troca quem já está gravado.
+async function completarResponsavel(sessao, base) {
+  if (!sessao || !window.EKO_RESPONSAVEL) return;
+  if (sessao.operador && String(sessao.operador).trim()) return;
+  try {
+    await fetch((base || '') + '/sessoes/' + sessao.id + '/operador', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ operador: window.EKO_RESPONSAVEL }),
+    });
+  } catch (e) { console.warn('Não gravou o responsável na sessão #' + sessao.id + ':', e.message); }
+}
+// Rede de segurança: se o componente de acesso não carregar, a tela ABRE
+// mesmo assim (sem identificação) em vez de ficar morta — como no Recebimento.
+function comAcesso(tela, aoEntrar) {
+  if (window.EkoAcesso && typeof EkoAcesso.exigir === 'function') return EkoAcesso.exigir(tela, aoEntrar);
+  console.warn('acesso-colaborador.js não carregou — abrindo a tela sem identificação');
+  try { aoEntrar(); } catch (e) { console.error(e); }
+}
+
+// INIT — só depois que o colaborador entrar com a senha dele.
+function iniciarTelaRetirada() {
+  renderTipos();
+  renderFornecedores();
+  renderCores();
+  ajustarSacos(0);
+  renderHistorico();
+  carregarCatalogoRetirada().then(() => { renderTipos(); renderFornecedores(); renderCores(); ajustarSacos(0); renderHistorico(); });
+  restaurarSessaoAberta();
+  mostrarResponsavel();
+}
+comAcesso('mp', iniciarTelaRetirada);
 
 </script>
 
