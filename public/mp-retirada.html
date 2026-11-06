@@ -591,6 +591,32 @@ header {
 }
 .modal .btn-fechar:hover { filter: brightness(1.1); }
 
+/* ─── PEDIDOS DO PAINEL (06/11/2026) ─── */
+.pedidos-painel { border: 1.5px solid var(--border); border-radius: 10px; padding: 10px 12px; background: var(--surface); }
+.pedidos-painel .pp-titulo { font-size: 11px; letter-spacing: 1.5px; font-weight: 800; color: var(--muted); text-transform: uppercase;
+  display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.pedidos-painel .pp-modo { font-size: 10px; padding: 2px 8px; border-radius: 10px; border: 1px solid var(--warn); color: var(--warn); }
+.pedidos-painel .pp-modo.producao { border-color: var(--danger); color: var(--danger); }
+.pedidos-painel .pp-faixa { margin-top: 8px; font-size: 12px; color: var(--warn); }
+.pedidos-painel .pp-vazio { margin-top: 8px; font-size: 13px; color: var(--muted); }
+.pp-item { margin-top: 8px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--panel);
+  opacity: 0.45; transition: opacity .3s; }
+.pp-item.andando { opacity: 0.75; }
+.pp-item.atendido { opacity: 1; border-color: var(--devol); }
+.pp-item .pp-mat { font-weight: 800; font-size: 14px; }
+.pp-item .pp-meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.pp-item .pp-bags { margin-top: 6px; display: flex; gap: 4px; flex-wrap: wrap; align-items: center; font-size: 12px; font-weight: 800; }
+.pp-bag { width: 18px; height: 18px; border-radius: 4px; border: 1.5px solid var(--muted); display: inline-flex; align-items: center;
+  justify-content: center; font-size: 11px; }
+.pp-bag.ok { background: var(--devol); border-color: var(--devol); color: #000; }
+.modal.fora { border-color: var(--warn); max-width: 560px; }
+.modal.fora .titulo { color: var(--warn); }
+.fora-motivos { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.fora-motivos button { padding: 14px; border-radius: 8px; border: 1.5px solid var(--warn); background: rgba(255,170,0,0.08);
+  color: var(--text); font-size: 15px; font-weight: 800; cursor: pointer; text-align: left; }
+.fora-motivos textarea { width: 100%; min-height: 60px; background: var(--panel); color: var(--text); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px; font-size: 14px; display: none; }
+
 /* ── Teclado na tela (touch, sem teclado físico) ── */
 .kp-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.78); display:none; align-items:center; justify-content:center; z-index:9999; }
 .kp-overlay.ativo { display:flex; }
@@ -671,6 +697,10 @@ header {
         </div>
         <button class="btn-simular" onclick="simularBipe()">⌨ Digitar código</button>
         <button class="btn-simular" onclick="reimprimirEtiqueta()">🖨 Reimprimir etiqueta</button>
+      </div>
+      <div class="pedidos-painel" id="pedidos-painel">
+        <div class="pp-titulo"><span>📋 Pedidos do painel</span><span class="pp-modo" id="pp-modo" style="display:none"></span></div>
+        <div id="pp-lista"><div class="pp-vazio">carregando…</div></div>
       </div>
       <div class="ultima-retirada" id="ultima-retirada">
         <div class="ok-ico">✓</div>
@@ -787,6 +817,26 @@ header {
     <div style="font-size:13px;color:var(--muted)">Esta matéria-prima já foi enviada para a extrusão anteriormente. Não pode ser retirada novamente.</div>
     <div class="info-bloco" id="bloq-info"></div>
     <button class="btn-fechar" onclick="fecharBloqueio()">FECHAR · CONTINUAR</button>
+  </div>
+</div>
+
+<!-- MODAL: BAG FORA DO PEDIDO DO PAINEL (06/11/2026) -->
+<div class="modal-overlay" id="modal-fora">
+  <div class="modal fora">
+    <div class="icone-grande">⚠️</div>
+    <div class="titulo" id="fora-titulo">SAINDO BAG DIFERENTE DO SOLICITADO</div>
+    <div style="font-size:13px;color:var(--muted)" id="fora-texto"></div>
+    <div class="info-bloco" id="fora-info"></div>
+    <div class="fora-motivos" id="fora-motivos">
+      <button type="button" data-motivo="Bag do lote pedido não está no estoque">Bag do lote pedido não está no estoque</button>
+      <button type="button" data-motivo="Lote pedido acabou">Lote pedido acabou</button>
+      <button type="button" data-motivo="Bag do lote pedido inacessível">Bag do lote pedido inacessível</button>
+      <button type="button" data-motivo="__outro">Outro motivo…</button>
+      <textarea id="fora-outro" maxlength="300" placeholder="Escreva o motivo e toque em CONFIRMAR MOTIVO"></textarea>
+      <button type="button" id="fora-outro-ok" style="display:none" data-motivo="__outro_ok">CONFIRMAR MOTIVO</button>
+      <button type="button" id="fora-teste" style="display:none" data-motivo="__teste">Seguir sem motivo (teste)</button>
+    </div>
+    <button class="btn-fechar" style="background:transparent;border:1.5px solid var(--border);color:var(--text)" onclick="fecharFora(null)">CANCELAR · NÃO RETIRAR</button>
   </div>
 </div>
 
@@ -1023,6 +1073,7 @@ document.addEventListener('keydown', (e) => {
   const tag = (e.target.tagName || '').toUpperCase();
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
   if (document.getElementById('modal-bloqueado').classList.contains('ativo')) return;
+  if (document.getElementById('modal-fora').classList.contains('ativo')) return;
   if (document.getElementById('keypad-modal').classList.contains('ativo')) return;
   if (e.key === 'Enter') {
     if (_bufKey.length > 0) {
@@ -1049,14 +1100,27 @@ async function processarBipe(raw) {
   const sessaoId = await garantirSessao();
   if (!sessaoId) return;
 
-  // 2) Tenta consumir
+  // 2) Tenta consumir. checar_pedido: bag fora dos pedidos do painel volta
+  // 409 fora_do_pedido (inclusive em teste) para a tela perguntar o motivo.
   try {
-    const r = await fetch(`${URL_ETIQ}/${id}/consumir`, {
+    let r = await fetch(`${URL_ETIQ}/${id}/consumir`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sessao_id: sessaoId }),
+      body: JSON.stringify({ sessao_id: sessaoId, checar_pedido: true }),
     });
-    const d = await r.json();
+    let d = await r.json();
+
+    if (r.status === 409 && d.fora_do_pedido) {
+      beepWarn();
+      const escolha = await perguntarFora(d);
+      if (!escolha) { showToast('warn', '↩', `${id} NÃO foi retirado`); return; }
+      r = await fetch(`${URL_ETIQ}/${id}/consumir`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessao_id: sessaoId, fora_do_pedido: escolha }),
+      });
+      d = await r.json();
+    }
 
     if (r.status === 409 && d.ja_consumida) {
       // Etiqueta já consumida — abre modal de bloqueio
@@ -1088,6 +1152,7 @@ async function processarBipe(raw) {
     renderHistorico();
     mostrarUltimaRetirada(itemLocal);
     beepOk();
+    carregarPedidos();
 
   } catch(e) {
     showToast('erro', '✗', 'Erro de comunicação: ' + e.message);
@@ -1184,6 +1249,110 @@ function fecharBloqueio() {
   document.getElementById('modal-bloqueado').classList.remove('ativo');
   _bufKey = '';                                       // limpa buffer de digitação acumulada
 }
+
+// ════════════════════════════════════════════════════════════════════
+//   PEDIDOS DO PAINEL (06/11/2026, Gustavo)
+//   O Willian pede no painel material + lote + nº de bags. Aqui cada
+//   pedido aberto aparece meio apagado e vai acendendo a cada bag que sai.
+//   Quem decide se o bag pode sair é o servidor (POST consumir); a lista
+//   vem do servidor do Mini PC, que pergunta à VPS.
+// ════════════════════════════════════════════════════════════════════
+const URL_PEDIDOS = URL_BASE + '/retirada/pedidos';
+const escP = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+let _pedidos = { modo: null, pedidos: [] };
+
+async function carregarPedidos() {
+  try {
+    const r = await fetch(URL_PEDIDOS);
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.erro || 'falha');
+    _pedidos = d;
+  } catch (e) {
+    _pedidos = { ..._pedidos, desatualizado: true, erro: e.message };
+  }
+  renderPedidos();
+}
+
+function renderPedidos() {
+  const d = _pedidos;
+  // Chave local desligada: o bloco nem aparece (retirada como sempre foi).
+  document.getElementById('pedidos-painel').style.display = d.desligado ? 'none' : '';
+  const modo = document.getElementById('pp-modo');
+  if (d.modo) {
+    modo.style.display = '';
+    modo.textContent = d.modo === 'producao' ? 'PRODUÇÃO · só sai o pedido' : 'TESTE · nada trava';
+    modo.className = 'pp-modo' + (d.modo === 'producao' ? ' producao' : '');
+  } else modo.style.display = 'none';
+  let h = '';
+  if (d.indisponivel) h += `<div class="pp-faixa">⚠ Pedidos indisponíveis (sem conexão com o painel). A retirada segue normal.</div>`;
+  else if (d.desatualizado) h += `<div class="pp-faixa">⚠ Sem conexão com o painel — lista de ${Math.round((d.idade_s || 0) / 60)} min atrás.</div>`;
+  const abertos = (d.pedidos || []).filter(p => p.status === 'aberto');
+  const atendidos = (d.pedidos || []).filter(p => p.status === 'atendido');
+  if (!abertos.length && !d.indisponivel) h += `<div class="pp-vazio">Nenhum pedido aberto.</div>`;
+  for (const p of [...abertos, ...atendidos]) {
+    const n = Number(p.bags_pedidos) || 0, a = Math.min(Number(p.bags_atendidos) || 0, n);
+    let bags = '';
+    for (let i = 0; i < n; i++) bags += `<span class="pp-bag${i < a ? ' ok' : ''}">${i < a ? '✓' : ''}</span>`;
+    const cls = p.status === 'atendido' ? ' atendido' : (a > 0 ? ' andando' : '');
+    h += `<div class="pp-item${cls}">
+      <div class="pp-mat">${escP(p.material_nome || p.material_key)}${p.cor ? ' · ' + escP(p.cor) : ''}</div>
+      <div class="pp-meta">${escP(p.fornecedor)} · Lote ${escP(p.lote)} · pedido por ${escP(p.autor_nome || '—')}</div>
+      <div class="pp-bags">${bags}<span style="margin-left:6px">${a} de ${n} bag${n === 1 ? '' : 's'}${p.status === 'atendido' ? ' · ✓ ATENDIDO' : ''}</span></div>
+    </div>`;
+  }
+  document.getElementById('pp-lista').innerHTML = h;
+}
+
+// Modal do bag fora do pedido. → {motivo, pedido_id} | {} (teste, sem motivo) | null (cancelou)
+let _foraResolver = null;
+function perguntarFora(d) {
+  const et = d.etiqueta || {};
+  const prod = d.modo === 'producao';
+  document.getElementById('fora-titulo').textContent = d.sem_pedido
+    ? 'NÃO HÁ PEDIDO ABERTO NO PAINEL' : 'SAINDO BAG DIFERENTE DO SOLICITADO';
+  document.getElementById('fora-texto').textContent = d.sem_pedido
+    ? 'Nenhum pedido do painel está aberto. Para retirar, diga o motivo.'
+    : 'Este bag não é de nenhum pedido aberto (material ou lote diferente). Para retirar, diga o motivo.';
+  const ped = (d.pedidos || []).map(p => `${escP(p.material_nome || p.material_key)}${p.cor ? ' · ' + escP(p.cor) : ''} · ${escP(p.fornecedor)} · Lote ${escP(p.lote)} (${Number(p.bags_atendidos) || 0} de ${Number(p.bags_pedidos) || 0})`);
+  document.getElementById('fora-info').innerHTML = `
+    <div><span class="lbl">Bag bipado</span><span class="val">${escP(et.id)} · ${escP(et.material_nome || et.material_key)}${et.cor ? ' · ' + escP(et.cor) : ''} · ${escP(et.fornecedor)} · Lote ${escP(et.lote)}</span></div>
+    <div><span class="lbl">Pedidos abertos</span><span class="val">${ped.length ? ped.join('<br>') : '—'}</span></div>`;
+  document.getElementById('fora-teste').style.display = prod ? 'none' : '';
+  document.getElementById('fora-outro').style.display = 'none';
+  document.getElementById('fora-outro-ok').style.display = 'none';
+  document.getElementById('fora-outro').value = '';
+  document.getElementById('modal-fora').dataset.pedido = (d.pedidos && d.pedidos.length === 1) ? String(d.pedidos[0].id) : '';
+  document.getElementById('modal-fora').classList.add('ativo');
+  return new Promise(res => { _foraResolver = res; });
+}
+function fecharFora(escolha) {
+  document.getElementById('modal-fora').classList.remove('ativo');
+  _bufKey = '';
+  const r = _foraResolver; _foraResolver = null;
+  if (r) r(escolha);
+}
+document.getElementById('fora-motivos').addEventListener('click', ev => {
+  const b = ev.target.closest('button[data-motivo]');
+  if (!b) return;
+  const m = b.dataset.motivo;
+  const pedido_id = document.getElementById('modal-fora').dataset.pedido || null;
+  if (m === '__outro') {
+    document.getElementById('fora-outro').style.display = 'block';
+    document.getElementById('fora-outro-ok').style.display = '';
+    document.getElementById('fora-outro').focus();
+    return;
+  }
+  if (m === '__outro_ok') {
+    const t = document.getElementById('fora-outro').value.trim();
+    if (!t) { showToast('warn', '⚠', 'Escreva o motivo'); return; }
+    return fecharFora({ motivo: t, pedido_id });
+  }
+  if (m === '__teste') return fecharFora({});
+  fecharFora({ motivo: m, pedido_id });
+});
+
+carregarPedidos();
+setInterval(carregarPedidos, 15000);
 
 // ════════════════════════════════════════════════════════════════════
 //   SUB-FLUXO: SACOS (PIG / DESSEC)
