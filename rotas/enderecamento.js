@@ -5,9 +5,58 @@
 const { PA_CORES } = require('../lib/config');
 const { logI, logW } = require('../lib/log');
 const { configGet, db } = require('../lib/db');
-const { GALPAO_NIVEIS, GALPAO_RUAS } = require('../lib/enderecamento');
+const { mapaGalpao } = require('../lib/enderecamento');
+const { avisarMudanca } = require('../lib/mapa-vps');
 const { gaiolasRegistro } = require('../lib/separacao');
 const { jsonErr, jsonOk, lerBodyJson, NAO_TRATADA } = require('../lib/http');
+
+// BIG BAG de MP num endereço (06/11/2026, Gustavo: os bags ficam nas mesmas
+// ruas do PA, UM por posição). O retrato vem da etiqueta de recebimento —
+// nada do QR é confiado. Só bag que ainda está no estoque (status 'bipada'):
+// R consumida já saiu numa retirada; cancelada nunca existiu.
+function ocuparBag(res, cod, rid, body) {
+  const et = db.prepare(
+    `SELECT id, tipo, status, material_key, material_nome, cor, fornecedor, lote, peso
+       FROM etiquetas WHERE id = ?`).get(rid);
+  if (!et || et.tipo !== 'recebimento')
+    return jsonErr(res, 404, `Etiqueta ${rid} não é de recebimento de MP nesta estação.`);
+  if (et.status === 'consumida')
+    return jsonErr(res, 409, `O bag ${rid} já saiu numa retirada — não está mais no estoque.`, { consumida: true });
+  if (et.status !== 'bipada')
+    return jsonErr(res, 409, `O bag ${rid} não está no estoque (situação: ${et.status}).`, { status: et.status });
+
+  const p = db.prepare('SELECT * FROM posicoes WHERE codigo = ?').get(cod);
+  if (!p) return jsonErr(res, 404, `Endereço ${cod} não existe`);
+  if (p.bloqueada) return jsonErr(res, 409, `Endereço ${cod} está bloqueado: ${p.motivo || 'não paletizar'}`, { bloqueada: true });
+  const ocupante = db.prepare('SELECT * FROM ocupacoes WHERE posicao = ? AND saida IS NULL').get(cod);
+  if (ocupante) {
+    if (ocupante.gaiola_id === rid)
+      return jsonOk(res, { ja_estava: true, posicao: cod, ocupacao: ocupante, mensagem: `O bag ${rid} já está em ${cod}.` });
+    return jsonErr(res, 409, `Endereço ${cod} já tem ${ocupante.gaiola_id}. Libere antes de colocar outro.`,
+                   { ocupada: true, ocupacao: ocupante });
+  }
+  const outroLugar = db.prepare('SELECT * FROM ocupacoes WHERE gaiola_id = ? AND saida IS NULL').get(rid);
+  if (outroLugar)
+    return jsonErr(res, 409, `O bag ${rid} já está endereçado em ${outroLugar.posicao}. Libere de lá primeiro.`,
+                   { gaiola_em_outro_lugar: true, ocupacao: outroLugar });
+
+  try {
+    db.prepare(`INSERT INTO ocupacoes (posicao, gaiola_id, entrada, operador_e, cor, kg, tipo_item,
+                                       material_key, material_nome, fornecedor, lote)
+                  VALUES (?, ?, ?, ?, ?, ?, 'bag', ?, ?, ?, ?)`)
+      .run(cod, rid, new Date().toISOString(), body.operador || null, et.cor || null, et.peso,
+           et.material_key, et.material_nome || null, et.fornecedor || null, et.lote || null);
+  } catch (e) {
+    if (/UNIQUE/i.test(e.message))
+      return jsonErr(res, 409, 'Outra leitura ocupou este endereço (ou este bag) neste instante. Confira o mapa.', { corrida: true });
+    throw e;
+  }
+  const ocup = db.prepare('SELECT * FROM ocupacoes WHERE posicao = ? AND saida IS NULL').get(cod);
+  avisarMudanca();
+  logI('enderecamento', `Bag ${rid} endereçado em ${cod} (${et.material_nome || et.material_key} ${et.cor || ''}`
+    + ` ${et.fornecedor || ''} lote ${et.lote || '?'}, ${et.peso} kg)` + (body.operador ? ` — ${body.operador}` : ''));
+  return jsonOk(res, { posicao: cod, ocupacao: ocup, aviso: null, bag: true });
+}
 
 // Devolve NAO_TRATADA quando nenhuma rota daqui atende o pedido.
 async function rotasEnderecamento(req, res, parsed, pathname) {
@@ -22,44 +71,7 @@ async function rotasEnderecamento(req, res, parsed, pathname) {
 
   // GET /enderecamento/mapa — todas as posições com quem mora nelas.
   if (pathname === '/enderecamento/mapa' && req.method === 'GET') {
-    const linhas = db.prepare(`
-        SELECT p.codigo, p.rua, p.nivel, p.posicao, p.tipo_gaiola, p.bloqueada, p.motivo,
-               o.gaiola_id, o.entrada, o.formato, o.cor, o.fardos, o.kg,
-               o.tipo_gaiola AS gaiola_tipo, o.operador_e
-          FROM posicoes p
-          LEFT JOIN ocupacoes o ON o.posicao = p.codigo AND o.saida IS NULL
-         ORDER BY p.rua, p.nivel, p.posicao`).all();
-
-    const agora = Date.now();
-    const posicoes = linhas.map(l => ({
-      codigo: l.codigo, rua: l.rua, nivel: l.nivel, posicao: l.posicao,
-      tipo_gaiola: l.tipo_gaiola, bloqueada: !!l.bloqueada, motivo: l.motivo,
-      ocupada: !!l.gaiola_id,
-      gaiola: l.gaiola_id ? {
-        id: l.gaiola_id, formato: l.formato, cor: l.cor,
-        fardos: l.fardos, kg: l.kg, tipo: l.gaiola_tipo,
-        entrada: l.entrada, operador: l.operador_e,
-        // Sem baixa automática na saída, o mapa envelhece calado. O
-        // número de dias é o que faz o esquecimento aparecer.
-        dias: l.entrada ? Math.floor((agora - new Date(l.entrada).getTime()) / 86400000) : null,
-      } : null,
-    }));
-
-    const ocupadas  = posicoes.filter(p => p.ocupada).length;
-    const bloqueadas = posicoes.filter(p => p.bloqueada).length;
-    return jsonOk(res, {
-      posicoes,
-      resumo: {
-        total: posicoes.length,
-        uteis: posicoes.length - bloqueadas,
-        ocupadas,
-        livres: posicoes.length - bloqueadas - ocupadas,
-        bloqueadas,
-        fardos: posicoes.reduce((a, p) => a + ((p.gaiola && p.gaiola.fardos) || 0), 0),
-        kg: Number(posicoes.reduce((a, p) => a + ((p.gaiola && p.gaiola.kg) || 0), 0).toFixed(1)),
-      },
-      layout: { ruas: GALPAO_RUAS, niveis: GALPAO_NIVEIS },
-    });
+    return jsonOk(res, mapaGalpao());
   }
 
   // GET /enderecamento/posicao/:codigo — detalhe + histórico curto.
@@ -80,7 +92,12 @@ async function rotasEnderecamento(req, res, parsed, pathname) {
       'SELECT * FROM ocupacoes WHERE gaiola_id = ? ORDER BY id DESC LIMIT 20').all(id);
     let gaiola = null;
     try { gaiola = (JSON.parse(configGet('gaiolas_pa', '{}')))[id] || null; } catch(e) {}
-    return jsonOk(res, { gaiola_id: id, atual: atual || null, historico, gaiola });
+    // Big bag de MP (06/11/2026): o retrato vem da etiqueta de recebimento.
+    const bag = /^R\d{7}$/.test(id)
+      ? (db.prepare(`SELECT id, status, material_key, material_nome, cor, fornecedor, lote, peso
+                       FROM etiquetas WHERE id = ? AND tipo = 'recebimento'`).get(id) || null)
+      : null;
+    return jsonOk(res, { gaiola_id: id, atual: atual || null, historico, gaiola, bag });
   }
 
   // POST /enderecamento/ocupar
@@ -93,11 +110,12 @@ async function rotasEnderecamento(req, res, parsed, pathname) {
     const cod = String(body.posicao || '').trim().toUpperCase();
     const gid = String(body.gaiola_id || '').trim().toUpperCase();
     if (!/^\d{2}-\d{2}-\d{3}$/.test(cod)) return jsonErr(res, 400, 'Endereço inválido (esperado RR-NN-PPP)');
-    // Só gaiola de produto acabado. Se alguém bipar uma etiqueta de big
-    // bag (R…) ou de bobina (E…) aqui, é engano — e melhor recusar do
-    // que endereçar a coisa errada.
+    // Gaiola de produto acabado (G…) ou, desde 06/11/2026, BIG BAG de MP
+    // pela etiqueta de recebimento (R…). Bobina (E…) e o resto é engano —
+    // melhor recusar do que endereçar a coisa errada.
+    if (/^R\d{7}$/.test(gid)) return ocuparBag(res, cod, gid, body);
     if (!/^G\d+$/.test(gid)) {
-      return jsonErr(res, 400, `"${gid || '(vazio)'}" não é uma etiqueta de gaiola. A etiqueta de gaiola começa com G.`);
+      return jsonErr(res, 400, `"${gid || '(vazio)'}" não é etiqueta de gaiola (G…) nem de big bag (R…).`);
     }
 
     // Gaiola ENCERRADA: já saiu numa separação. Se a etiqueta antiga
@@ -150,8 +168,8 @@ async function rotasEnderecamento(req, res, parsed, pathname) {
 
     const agoraISO = new Date().toISOString();
     try {
-      db.prepare(`INSERT INTO ocupacoes (posicao, gaiola_id, entrada, operador_e, formato, cor, fardos, kg, tipo_gaiola)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      db.prepare(`INSERT INTO ocupacoes (posicao, gaiola_id, entrada, operador_e, formato, cor, fardos, kg, tipo_gaiola, tipo_item)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'gaiola')`)
         .run(cod, gid, agoraISO, body.operador || null, dados.formato, dados.cor, dados.fardos, dados.kg, dados.tipo);
     } catch (e) {
       // As travas de "um por endereço" são do banco. Se duas leituras
@@ -186,6 +204,7 @@ async function rotasEnderecamento(req, res, parsed, pathname) {
       }
     } catch (e) { logW('separacao', 'Falha ao fechar a sobra: ' + e.message); }
 
+    avisarMudanca();
     logI('enderecamento', `Gaiola ${gid} endereçada em ${cod}`
       + (dados.formato ? ` (${dados.formato} ${dados.cor || ''}, ${dados.fardos || 0} fardos)` : '')
       + (body.operador ? ` — ${body.operador}` : ''));
@@ -214,7 +233,8 @@ async function rotasEnderecamento(req, res, parsed, pathname) {
     }
     db.prepare('UPDATE ocupacoes SET saida = ?, operador_s = ?, motivo_saida = ? WHERE id = ?')
       .run(new Date().toISOString(), body.operador || null, body.motivo || null, ocup.id);
-    logI('enderecamento', `Endereço ${ocup.posicao} liberado (gaiola ${ocup.gaiola_id})`
+    avisarMudanca();
+    logI('enderecamento', `Endereço ${ocup.posicao} liberado (${ocup.gaiola_id})`
       + (body.motivo ? ` — ${body.motivo}` : '') + (body.operador ? ` — ${body.operador}` : ''));
     return jsonOk(res, { liberado: true, posicao: ocup.posicao, gaiola_id: ocup.gaiola_id });
   }

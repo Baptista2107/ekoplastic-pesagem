@@ -506,6 +506,10 @@ function interpretar(texto) {
              tipo_gaiola: (p[6] || '').toUpperCase() || null };
   }
   if (/^G\d+$/i.test(t)) return { tipo: 'gaiola', id: t.toUpperCase() };
+  // Big bag de MP (06/11/2026): a etiqueta de recebimento R0001234 — o mesmo
+  // código que a tela de Retirada lê. Ocupa o quadro do "morador".
+  const mR = t.toUpperCase().match(/\bR\d{7}\b/);
+  if (mR) return { tipo: 'gaiola', bag: true, id: mR[0] };
   return { tipo: null, bruto: t };
 }
 
@@ -517,7 +521,7 @@ async function onLeu(texto) {
 
   if (!info.tipo) {
     beep(320, .2); vibrar(150);
-    dizer('err', 'Isso não é etiqueta de endereço nem de gaiola: <code>' + esc(String(texto).slice(0, 40)) + '</code>', 5000);
+    dizer('err', 'Isso não é etiqueta de endereço, de gaiola nem de big bag: <code>' + esc(String(texto).slice(0, 40)) + '</code>', 5000);
     return;
   }
   beep(880, .09); vibrar(40);
@@ -556,9 +560,18 @@ async function detalharGaiola() {
     const r = await fetch(URL_BASE + '/enderecamento/gaiola/' + encodeURIComponent(g.id));
     const d = await r.json();
     if (d.ok) {
+      if (g.bag) {
+        if (!d.bag) { dizer('err', `A etiqueta ${esc(g.id)} não é de recebimento de MP.`, 6000); ESCOLHA.gai = null; return; }
+        if (d.bag.status !== 'bipada') {
+          dizer('err', `O bag ${esc(g.id)} não está no estoque (${d.bag.status === 'consumida' ? 'já saiu numa retirada' : esc(d.bag.status)}).`, 7000);
+          ESCOLHA.gai = null; return;
+        }
+        g.material = d.bag.material_nome || d.bag.material_key; g.cor = d.bag.cor; g.kg = d.bag.peso;
+        g.fornecedor = d.bag.fornecedor; g.lote = d.bag.lote;
+      }
       if (d.gaiola) { g.formato = d.gaiola.formato || g.formato; g.fardos = d.gaiola.fardos ?? g.fardos;
                       g.kg = d.gaiola.kg ?? g.kg; g.tipo_gaiola = g.tipo_gaiola || d.gaiola.tipo_gaiola || null; }
-      if (d.atual) dizer('at', `A gaiola ${esc(g.id)} já está endereçada em <b>${esc(d.atual.posicao)}</b>. Retire de lá primeiro.`, 7000);
+      if (d.atual) dizer('at', `${g.bag ? 'O bag' : 'A gaiola'} ${esc(g.id)} já está endereçad${g.bag ? 'o' : 'a'} em <b>${esc(d.atual.posicao)}</b>. Retire de lá primeiro.`, 7000);
     }
   } catch (e) {}
 }
@@ -593,8 +606,10 @@ function pintar() {
 
   $('slot-gai').classList.toggle('cheio', !!g);
   $('v-gai').className = 'val' + (g ? '' : ' vazio2');
-  $('v-gai').textContent = g ? g.id : 'leia a etiqueta da gaiola';
-  $('e-gai').textContent = g ? [g.formato, g.cor, g.fardos ? g.fardos + ' fardos' : null, g.kg ? fmtKg(g.kg) : null]
+  $('v-gai').textContent = g ? g.id : 'leia a etiqueta da gaiola ou do big bag';
+  $('e-gai').textContent = g ? (g.bag
+      ? ['BIG BAG', g.material, g.cor, g.fornecedor, g.lote ? 'lote ' + g.lote : null, g.kg ? fmtKg(g.kg) : null]
+      : [g.formato, g.cor, g.fardos ? g.fardos + ' fardos' : null, g.kg ? fmtKg(g.kg) : null])
                                 .filter(Boolean).join(' · ') : '';
 
   const pronto = MODO === 'saida' ? !!e : (!!e && !!g);
@@ -644,8 +659,8 @@ async function confirmar() {
 
 async function digitar() {
   const v = prompt(MODO === 'saida'
-    ? 'Digite o endereço (01-02-007) ou a gaiola (G0000123):'
-    : 'Digite o endereço (01-02-007) ou a gaiola (G0000123):');
+    ? 'Digite o endereço (01-02-007), a gaiola (G0000123) ou o big bag (R0001234):'
+    : 'Digite o endereço (01-02-007), a gaiola (G0000123) ou o big bag (R0001234):');
   if (!v) return;
   delete ultimaLeitura[v.trim()];
   await onLeu(v.trim().toUpperCase());

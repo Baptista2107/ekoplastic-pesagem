@@ -21,6 +21,8 @@ const {
 } = require('../lib/negocio');
 const { enviarBlingIndividualExtrusao } = require('../lib/turnos');
 const { TARAS_EIXO } = require('../lib/bobinas');
+const { liberarBagNaRetirada } = require('../lib/enderecamento');
+const { avisarMudanca: avisarMapa } = require('../lib/mapa-vps');
 
 // Devolve NAO_TRATADA quando nenhuma rota daqui atende o pedido.
 async function rotasEtiquetas(req, res, parsed, pathname) {
@@ -149,6 +151,7 @@ async function rotasEtiquetas(req, res, parsed, pathname) {
     const seqRet = getProximoSeq('retirada');
     const idVirt = 'S' + String(seqRet).padStart(7, '0');
     const seqSessaoRet = proximoSeqSessao(sessaoIdRet);
+    let bagLiberado = null;
     const tr = makeTransaction(() => {
       dbStmts.insertEtiqueta.run({
         id:             idVirt,
@@ -178,8 +181,13 @@ async function rotasEtiquetas(req, res, parsed, pathname) {
       // Marca a original como consumida
       db.prepare(`UPDATE etiquetas SET status = 'consumida', hora_bipagem = ? WHERE id = ?`)
         .run(new Date().toISOString(), origId);
+      // Mapa do galpão (06/11/2026): o bag saiu — a posição dele fica livre
+      // na mesma transação (sem baixa automática o mapa envelhece calado).
+      bagLiberado = liberarBagNaRetirada(origId, `retirada sessao ${sessaoIdRet}`);
     });
     tr();
+    if (bagLiberado) avisarMapa();
+    if (bagLiberado) logI('enderecamento', `Bag ${origId} saiu de ${bagLiberado.posicao} (retirada sessão #${sessaoIdRet})`);
     logI('retirada', `Consumida ${origId} → ${idVirt} (sessão #${sessaoIdRet})`
       + (lida.substituida_de ? ` — lida como ${chaveProduto(lida.material_key, lida.cor, lida.fornecedor)} (troca de produto)` : ''), {
       material: lida.material_key, peso: orig.peso, fornecedor: lida.fornecedor
@@ -216,6 +224,13 @@ async function rotasEtiquetas(req, res, parsed, pathname) {
     });
     tr();
     logI('retirada', `Estorno ${virtId}${v.ref_id ? ' → liberou ' + v.ref_id : ''} (sessão #${v.sessao_id})`);
+    // O estorno NÃO devolve o bag ao endereço de onde saiu: ninguém sabe se
+    // ele voltou para o mesmo vão. Quem guardar de novo bipa no Endereçamento.
+    if (v.ref_id) {
+      const saiu = db.prepare(`SELECT posicao FROM ocupacoes WHERE gaiola_id = ? AND saida IS NOT NULL
+                                 AND motivo_saida LIKE 'retirada %' ORDER BY id DESC`).get(v.ref_id);
+      if (saiu) logW('enderecamento', `Estorno ${virtId}: o bag ${v.ref_id} tinha saído de ${saiu.posicao} e NÃO volta sozinho ao mapa — endereçar de novo`);
+    }
     return jsonOk(res, {
       estornada:          virtId,
       original_liberada:  v.ref_id || null,
