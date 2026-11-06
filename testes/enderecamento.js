@@ -188,10 +188,14 @@ async function testeRegras() {
   const formatoRuim = await req('POST', '/enderecamento/ocupar', { posicao: 'RUA1', gaiola_id: GAIOLA_B.id });
   eq(formatoRuim.status, 400, 'código fora do padrão RR-NN-PPP é recusado');
 
-  // Etiqueta de big bag no fluxo de gaiola é engano — melhor recusar.
-  const naoEhGaiola = await req('POST', '/enderecamento/ocupar', { posicao: '02-02-010', gaiola_id: 'R0000123' });
-  eq(naoEhGaiola.status, 400, 'etiqueta de big bag (R…) não entra como gaiola');
-  ok(/começa com G/i.test(naoEhGaiola.json.erro || ''), 'e a mensagem explica o que se espera', naoEhGaiola.json.erro);
+  // Desde 06/11/2026 o big bag de MP (R…) TAMBÉM mora nas ruas (testes/
+  // mapa-bags.js) — mas só bag que existe e está no estoque. Bobina (E…) e
+  // o resto continuam sendo engano.
+  const bagQueNaoExiste = await req('POST', '/enderecamento/ocupar', { posicao: '02-02-010', gaiola_id: 'R0000123' });
+  eq(bagQueNaoExiste.status, 404, 'big bag (R…) que não existe nesta estação é recusado');
+  const naoEhGaiola = await req('POST', '/enderecamento/ocupar', { posicao: '02-02-010', gaiola_id: 'E0001234' });
+  eq(naoEhGaiola.status, 400, 'etiqueta de bobina (E…) não entra no endereçamento');
+  ok(/G…|big bag/i.test(naoEhGaiola.json.erro || ''), 'e a mensagem explica o que se espera', naoEhGaiola.json.erro);
 }
 
 // ════════════════════════════════════════════════════════════════════

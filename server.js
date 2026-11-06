@@ -47,6 +47,7 @@ const { configGet, db, makeTransaction } = require('./lib/db');
 const { renovarToken, tk, trocarCodigo } = require('./lib/bling');
 const { detectarImpressora, garantirScriptImpressao } = require('./lib/impressao');
 const { corrigirSoltosHistorico, empurrarVivoVps, VIVO_CADA_MS } = require('./lib/bobinas');
+const { empurrarMapaVps, MAPA_CADA_MS } = require('./lib/mapa-vps');
 const { jsonErr, MIME, NAO_TRATADA } = require('./lib/http');
 const { checarSessoesParaAutoFim } = require('./lib/turnos');
 const impressaoMod = require('./lib/impressao');   // variaveis que mudam de valor: ler sempre por aqui
@@ -376,6 +377,10 @@ server.listen(PORT, '127.0.0.1', async () => {
   // Bipagem ao vivo → VPS (14/10/2026): ver empurrarVivoVps.
   setInterval(empurrarVivoVps, VIVO_CADA_MS);
   logI('vivo', `Envio ao vivo das bipagens à VPS ativado (a cada ${VIVO_CADA_MS / 1000}s)`);
+
+  // Mapa do galpão → VPS (06/11/2026): aba Mapa do painel. Ver lib/mapa-vps.js.
+  setTimeout(() => empurrarMapaVps().catch(() => {}), 10000);
+  setInterval(() => empurrarMapaVps().catch(() => {}), MAPA_CADA_MS);
 });
 
 server.on('error', e => {
