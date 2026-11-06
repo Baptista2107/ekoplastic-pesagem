@@ -63,7 +63,6 @@ const ROTAS = [
   require('./rotas/dashboard'),
   require('./rotas/bobinas'),
   require('./rotas/inventario'),
-  require('./rotas/retirada-pedidos'),
 ];
 
 // ════════════════════════════════════════════════════════════════════

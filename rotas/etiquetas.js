@@ -21,7 +21,6 @@ const {
 } = require('../lib/negocio');
 const { enviarBlingIndividualExtrusao } = require('../lib/turnos');
 const { TARAS_EIXO } = require('../lib/bobinas');
-const pedidosRetirada = require('../lib/retirada-pedidos');
 
 // Devolve NAO_TRATADA quando nenhuma rota daqui atende o pedido.
 async function rotasEtiquetas(req, res, parsed, pathname) {
@@ -142,17 +141,6 @@ async function rotasEtiquetas(req, res, parsed, pathname) {
     }
     // status === 'aguardando_bipe' ou 'bipada' — pode consumir
 
-    // Pedido de retirada do painel (06/11/2026): bag que não bate com nenhum
-    // pedido aberto só sai com motivo (em produção) — ver lib/retirada-pedidos.
-    await pedidosRetirada.atualizar();
-    const decisao = pedidosRetirada.avaliar(orig, body);
-    if (!decisao.pode) {
-      return jsonErr(res, decisao.http,
-        decisao.corpo.sem_pedido ? 'Não há pedido de retirada aberto no painel'
-                                 : `Bag ${origId} não é de nenhum pedido aberto (material/lote diferente)`,
-        { ...decisao.corpo, etiqueta: aplicarSubstituicao(orig) });
-    }
-
     // Produto trocado: a retirada sai como o produto NOVO (é ele que tem
     // saldo no Bling). A etiqueta original fica como foi impressa.
     const lida = aplicarSubstituicao(orig);
@@ -190,17 +178,8 @@ async function rotasEtiquetas(req, res, parsed, pathname) {
       // Marca a original como consumida
       db.prepare(`UPDATE etiquetas SET status = 'consumida', hora_bipagem = ? WHERE id = ?`)
         .run(new Date().toISOString(), origId);
-      if (decisao.registro)
-        db.prepare('UPDATE etiquetas SET pedido_retirada = ? WHERE id = ?')
-          .run(JSON.stringify(decisao.registro), idVirt);
     });
     tr();
-    if (decisao.registro && decisao.registro.fora) {
-      pedidosRetirada.enfileirarFora({
-        etiqueta_id: origId, sessao_id: sessaoIdRet, operador: sessao.operador || null,
-        motivo: decisao.registro.motivo || '(teste) seguiu sem motivo', pedido_id: decisao.registro.pedido_id });
-      pedidosRetirada.enviarFila().catch(() => {});
-    }
     logI('retirada', `Consumida ${origId} → ${idVirt} (sessão #${sessaoIdRet})`
       + (lida.substituida_de ? ` — lida como ${chaveProduto(lida.material_key, lida.cor, lida.fornecedor)} (troca de produto)` : ''), {
       material: lida.material_key, peso: orig.peso, fornecedor: lida.fornecedor
