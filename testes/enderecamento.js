@@ -8,7 +8,7 @@
 //  dos fundos (duas leituras ao mesmo tempo).
 //
 //  Prova também:
-//   · as 138 posições nascem certas, com as 2 bloqueadas;
+//   · as 228 posições nascem certas, com as 2 bloqueadas (38 vãos por rua desde 10/11);
 //   · endereço bloqueado não recebe palete;
 //   · liberar devolve o endereço e PRESERVA o histórico;
 //   · a etiqueta da gaiola ganhou o tipo sem quebrar o inventário,
@@ -96,18 +96,18 @@ function eplsGaiola() {
 //  [1] O GALPÃO NASCE DESENHADO
 // ════════════════════════════════════════════════════════════════════
 async function testeLayout() {
-  console.log('\n[1] As 138 posições do galpão nascem no banco');
+  console.log('\n[1] As 228 posições do galpão nascem no banco');
   const d = await mapa();
   ok(d && d.ok, 'GET /enderecamento/mapa responde');
-  eq(d.posicoes.length, 138, 'são 138 posições no total');
+  eq(d.posicoes.length, 228, 'são 228 posições no total');
   eq(d.resumo.bloqueadas, 2, 'duas bloqueadas (hidrante e espaço da informação)');
-  eq(d.resumo.uteis, 136, '136 úteis');
+  eq(d.resumo.uteis, 226, '226 úteis');
   eq(d.resumo.ocupadas, 0, 'nenhuma ocupada no começo');
-  eq(d.resumo.livres, 136, 'e 136 livres');
+  eq(d.resumo.livres, 226, 'e 226 livres');
 
   const r1 = d.posicoes.filter(p => p.rua === 1), r2 = d.posicoes.filter(p => p.rua === 2);
-  eq(r1.length, 60, 'rua 01 com 20 vãos × 3 níveis');
-  eq(r2.length, 78, 'rua 02 com 26 vãos × 3 níveis');
+  eq(r1.length, 114, 'rua 01 com 38 vãos × 3 níveis');
+  eq(r2.length, 114, 'rua 02 com 38 vãos × 3 níveis');
 
   const hidrante = d.posicoes.find(p => p.codigo === '01-01-005');
   ok(hidrante && hidrante.bloqueada && /HIDRANTE/i.test(hidrante.motivo || ''), 'o hidrante está em 01-01-005 e bloqueado', JSON.stringify(hidrante));
@@ -119,10 +119,10 @@ async function testeLayout() {
   ok(n1.every(p => p.tipo_gaiola === 'GRANDE'), 'todo o nível 01 é vão de gaiola GRANDE');
   ok(d.posicoes.filter(p => p.nivel !== 1).every(p => p.tipo_gaiola === 'PEQUENA'),
      'níveis 02 e 03 são vãos de gaiola PEQUENA');
-  eq(n1.filter(p => !p.bloqueada).length, 44, 'sobram 44 vãos grandes utilizáveis');
+  eq(n1.filter(p => !p.bloqueada).length, 74, 'sobram 74 vãos grandes utilizáveis');
 
   const cods = new Set(d.posicoes.map(p => p.codigo));
-  eq(cods.size, 138, 'nenhum código repetido');
+  eq(cods.size, 228, 'nenhum código repetido');
   ok(cods.has('01-01-001') && cods.has('02-03-026'), 'primeiro e último códigos no formato certo');
 }
 
@@ -148,7 +148,7 @@ async function testeOcupar() {
 
   const d = await mapa();
   eq(d.resumo.ocupadas, 1, 'o mapa passa a mostrar 1 ocupada');
-  eq(d.resumo.livres, 135, 'e 135 livres');
+  eq(d.resumo.livres, 225, 'e 225 livres');
   eq(d.resumo.fardos, 24, 'somando os fardos guardados');
   eq(d.resumo.kg, 600, 'e o peso em estoque');
   const p = d.posicoes.find(x => x.codigo === '01-02-003');
@@ -354,7 +354,7 @@ async function testeRestart() {
   await sleep(600);
   await subirServidor();
   const dep = (await mapa()).resumo;
-  eq(dep.total, 138, 'continuam 138 posições (a semeadura não duplica)');
+  eq(dep.total, 228, 'continuam 228 posições (a semeadura não duplica)');
   eq(dep.ocupadas, antes.ocupadas, 'as ocupações continuam lá');
   eq(dep.kg, antes.kg, 'com o mesmo peso guardado');
   const p = (await mapa()).posicoes.find(x => x.codigo === '02-01-020');
