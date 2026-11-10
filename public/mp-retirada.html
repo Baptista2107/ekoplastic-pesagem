@@ -591,24 +591,45 @@ header {
 }
 .modal .btn-fechar:hover { filter: brightness(1.1); }
 
-/* ─── PEDIDOS DO PAINEL (06/11/2026) ─── */
-.pedidos-painel { border: 1.5px solid var(--border); border-radius: 10px; padding: 10px 12px; background: var(--surface); }
-.pedidos-painel .pp-titulo { font-size: 11px; letter-spacing: 1.5px; font-weight: 800; color: var(--muted); text-transform: uppercase;
-  display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-.pedidos-painel .pp-modo { font-size: 10px; padding: 2px 8px; border-radius: 10px; border: 1px solid var(--warn); color: var(--warn); }
+/* ─── PEDIDOS DO PAINEL (06/11/2026; arrumado 10/11 — cartão por pedido) ─── */
+.pedidos-painel { border: 1.5px solid var(--border); border-radius: 10px; padding: 12px; background: var(--surface);
+  display: flex; flex-direction: column; gap: 10px; }
+.pedidos-painel .pp-titulo { display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+.pedidos-painel .pp-titulo .pp-nome { font-size: 12px; letter-spacing: 1.5px; font-weight: 800; color: var(--text); text-transform: uppercase; }
+.pedidos-painel .pp-conta { font-size: 11px; font-weight: 800; padding: 2px 8px; border-radius: 10px; background: var(--panel-hi); color: var(--muted); }
+.pedidos-painel .pp-conta.tem { background: rgba(250,204,21,0.15); color: #facc15; }
+.pedidos-painel .pp-modo { margin-left: auto; font-size: 10px; font-weight: 800; letter-spacing: 1px; padding: 2px 8px; border-radius: 10px;
+  border: 1px solid var(--warn); color: var(--warn); text-transform: uppercase; }
 .pedidos-painel .pp-modo.producao { border-color: var(--danger); color: var(--danger); }
-.pedidos-painel .pp-faixa { margin-top: 8px; font-size: 12px; color: var(--warn); }
-.pedidos-painel .pp-vazio { margin-top: 8px; font-size: 13px; color: var(--muted); }
-.pp-item { margin-top: 8px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--panel);
-  opacity: 0.45; transition: opacity .3s; }
-.pp-item.andando { opacity: 0.75; }
-.pp-item.atendido { opacity: 1; border-color: var(--devol); }
-.pp-item .pp-mat { font-weight: 800; font-size: 14px; }
-.pp-item .pp-meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
-.pp-item .pp-bags { margin-top: 6px; display: flex; gap: 4px; flex-wrap: wrap; align-items: center; font-size: 12px; font-weight: 800; }
+.pedidos-painel .pp-faixa { font-size: 12px; color: var(--warn); padding: 6px 10px; border-radius: 8px; background: rgba(255,170,0,0.08); }
+.pedidos-painel .pp-vazio { font-size: 13px; color: var(--muted); padding: 4px 2px; }
+.pp-lista { display: flex; flex-direction: column; gap: 8px; }
+.pp-item { display: grid; grid-template-columns: 34px 1fr; gap: 10px; align-items: start;
+  padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border); border-left: 4px solid #facc15; background: var(--panel); }
+.pp-item.atendido { border-left-color: var(--devol); }
+/* "meio apagado" enquanto não sai bag (decisão de 06/11): só o corpo; o sinal fica aceso */
+.pp-item.pendente .pp-corpo { opacity: 0.6; }
+.pp-item.andando .pp-corpo { opacity: 0.85; }
+.pp-sinal { width: 30px; height: 27px; display: flex; align-items: flex-end; justify-content: center; margin-top: 1px; }
+.pp-sinal.pendente { background: #facc15; color: #111827; clip-path: polygon(50% 0, 100% 100%, 0 100%);
+  font-weight: 900; font-size: 16px; line-height: 1; padding-bottom: 2px; }
+.pp-sinal.ok { color: #22c55e; font-weight: 900; font-size: 28px; line-height: 1; align-items: center; }
+.pp-corpo { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.pp-linha1 { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.pp-mat { font-weight: 800; font-size: 15px; color: var(--text); min-width: 0; overflow-wrap: anywhere; }
+.pp-qtd { flex: 0 0 auto; font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: var(--muted); }
+.pp-qtd b { font-size: 18px; color: var(--text); }
+.pp-item.atendido .pp-qtd b { color: var(--devol); }
+.pp-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.pp-chip { font-size: 12px; padding: 3px 8px; border-radius: 6px; background: var(--panel-hi); color: var(--text); white-space: nowrap; }
+.pp-chip i { font-style: normal; color: var(--muted); margin-right: 4px; font-size: 10px; letter-spacing: 1px; text-transform: uppercase; }
+.pp-bags { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
 .pp-bag { width: 18px; height: 18px; border-radius: 4px; border: 1.5px solid var(--muted); display: inline-flex; align-items: center;
-  justify-content: center; font-size: 11px; }
+  justify-content: center; font-size: 11px; font-weight: 800; }
 .pp-bag.ok { background: var(--devol); border-color: var(--devol); color: #000; }
+.pp-rodape { font-size: 11px; color: var(--muted); overflow-wrap: anywhere; }
+.pp-rodape .pp-onde { color: var(--entrada); }
 .modal.fora { border-color: var(--warn); max-width: 560px; }
 .modal.fora .titulo { color: var(--warn); }
 .fora-motivos { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
@@ -699,8 +720,8 @@ header {
         <button class="btn-simular" onclick="reimprimirEtiqueta()">🖨 Reimprimir etiqueta</button>
       </div>
       <div class="pedidos-painel" id="pedidos-painel">
-        <div class="pp-titulo"><span>📋 Pedidos do painel</span><span class="pp-modo" id="pp-modo" style="display:none"></span></div>
-        <div id="pp-lista"><div class="pp-vazio">carregando…</div></div>
+        <div class="pp-titulo"><span class="pp-nome">📋 Pedidos de retirada</span><span class="pp-conta" id="pp-conta"></span><span class="pp-modo" id="pp-modo" style="display:none"></span></div>
+        <div class="pp-lista" id="pp-lista"><div class="pp-vazio">carregando…</div></div>
       </div>
       <div class="ultima-retirada" id="ultima-retirada">
         <div class="ok-ico">✓</div>
@@ -830,6 +851,7 @@ header {
     <div class="fora-motivos" id="fora-motivos">
       <button type="button" data-motivo="Bag do lote pedido não está no estoque">Bag do lote pedido não está no estoque</button>
       <button type="button" data-motivo="Lote pedido acabou">Lote pedido acabou</button>
+      <button type="button" data-motivo="Bag do peso pedido não está no estoque">Bag do peso pedido não está no estoque</button>
       <button type="button" data-motivo="Bag do lote pedido inacessível">Bag do lote pedido inacessível</button>
       <button type="button" data-motivo="__outro">Outro motivo…</button>
       <textarea id="fora-outro" maxlength="300" placeholder="Escreva o motivo e toque em CONFIRMAR MOTIVO"></textarea>
@@ -1252,13 +1274,65 @@ function fecharBloqueio() {
 
 // ════════════════════════════════════════════════════════════════════
 //   PEDIDOS DO PAINEL (06/11/2026, Gustavo)
-//   O Willian pede no painel material + lote + nº de bags. Aqui cada
+//   O Willian pede no painel fornecedor + material + peso (ou qualquer
+//   peso) + lote + nº de bags (peso desde 10/11/2026). Aqui cada
 //   pedido aberto aparece meio apagado e vai acendendo a cada bag que sai.
 //   Quem decide se o bag pode sair é o servidor (POST consumir); a lista
 //   vem do servidor do Mini PC, que pergunta à VPS.
 // ════════════════════════════════════════════════════════════════════
 const URL_PEDIDOS = URL_BASE + '/retirada/pedidos';
+/* <pedidos-render> — testes/retirada-tela.js roda este trecho isolado (node:vm) */
 const escP = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+const pesoTxt = p => (p == null || p === '' || !isFinite(Number(p))) ? ''
+  : Number(p).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' kg';
+function horaPedido(iso) {
+  const d = new Date(iso);
+  return isNaN(d) ? '' : d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
+// Um cartão por pedido (Gustavo 10/11): no canto esquerdo, triângulo amarelo
+// com "!" enquanto não foi feito; V verde quando todos os bags saíram. Todo
+// texto vem da VPS/Mini PC: sempre escP.
+function htmlPedido(p) {
+  const n = Number(p.bags_pedidos) || 0, a = Math.min(Number(p.bags_atendidos) || 0, n);
+  const feito = p.status === 'atendido';
+  let bags = '';
+  for (let i = 0; i < n; i++) bags += `<span class="pp-bag${i < a ? ' ok' : ''}">${i < a ? '✓' : ''}</span>`;
+  const estado = feito ? 'atendido' : (a > 0 ? 'andando' : 'pendente');
+  const sinal = feito
+    ? `<div class="pp-sinal ok" data-sinal="ok" title="Feito: todos os bags saíram">✓</div>`
+    : `<div class="pp-sinal pendente" data-sinal="pendente" title="Ainda não foi feito">!</div>`;
+  const mat = String(p.material_nome || p.material_key || '');
+  const cor = p.cor && !mat.toUpperCase().includes(String(p.cor).toUpperCase()) ? ' · ' + escP(p.cor) : '';
+  const peso = pesoTxt(p.peso);
+  const onde = Array.isArray(p.enderecos) && p.enderecos.length
+    ? ` · <span class="pp-onde">📍 ${p.enderecos.slice(0, 6).map(escP).join(', ')}${p.enderecos.length > 6 ? ' e mais ' + (p.enderecos.length - 6) : ''}</span>` : '';
+  return `<div class="pp-item ${estado}" data-pedido="${escP(p.id)}" data-status="${feito ? 'atendido' : 'aberto'}">
+    ${sinal}
+    <div class="pp-corpo">
+      <div class="pp-linha1"><span class="pp-mat">${escP(mat)}${cor}</span><span class="pp-qtd"><b>${a}</b> de ${n} bag${n === 1 ? '' : 's'}</span></div>
+      <div class="pp-chips">
+        <span class="pp-chip"><i>Fornecedor</i>${escP(p.fornecedor)}</span>
+        <span class="pp-chip"><i>Peso</i>${peso ? escP(peso) : 'qualquer'}</span>
+        <span class="pp-chip"><i>Lote</i>${escP(p.lote_fmt || p.lote)}</span>
+      </div>
+      <div class="pp-bags">${bags}</div>
+      <div class="pp-rodape">${escP(p.id)} · pedido por ${escP(p.autor_nome || '—')}${p.criado_em ? ' · ' + escP(horaPedido(p.criado_em)) : ''}${onde}</div>
+    </div>
+  </div>`;
+}
+// → { lista: html, conta: texto do contador, temAberto }
+function htmlPedidos(d) {
+  let h = '';
+  if (d.indisponivel) h += `<div class="pp-faixa">⚠ Pedidos indisponíveis (sem conexão com o painel). A retirada segue normal.</div>`;
+  else if (d.desatualizado) h += `<div class="pp-faixa">⚠ Sem conexão com o painel — lista de ${Math.round((Number(d.idade_s) || 0) / 60)} min atrás.</div>`;
+  const abertos = (d.pedidos || []).filter(p => p.status === 'aberto');
+  const atendidos = (d.pedidos || []).filter(p => p.status === 'atendido');
+  if (!abertos.length && !d.indisponivel) h += `<div class="pp-vazio">Nenhum pedido aberto.</div>`;
+  for (const p of [...abertos, ...atendidos]) h += htmlPedido(p);
+  return { lista: h, conta: abertos.length ? `${abertos.length} aberto${abertos.length === 1 ? '' : 's'}` : 'nenhum aberto',
+           temAberto: abertos.length > 0 };
+}
+/* </pedidos-render> */
 let _pedidos = { modo: null, pedidos: [] };
 
 async function carregarPedidos() {
@@ -1283,24 +1357,11 @@ function renderPedidos() {
     modo.textContent = d.modo === 'producao' ? 'PRODUÇÃO · só sai o pedido' : 'TESTE · nada trava';
     modo.className = 'pp-modo' + (d.modo === 'producao' ? ' producao' : '');
   } else modo.style.display = 'none';
-  let h = '';
-  if (d.indisponivel) h += `<div class="pp-faixa">⚠ Pedidos indisponíveis (sem conexão com o painel). A retirada segue normal.</div>`;
-  else if (d.desatualizado) h += `<div class="pp-faixa">⚠ Sem conexão com o painel — lista de ${Math.round((d.idade_s || 0) / 60)} min atrás.</div>`;
-  const abertos = (d.pedidos || []).filter(p => p.status === 'aberto');
-  const atendidos = (d.pedidos || []).filter(p => p.status === 'atendido');
-  if (!abertos.length && !d.indisponivel) h += `<div class="pp-vazio">Nenhum pedido aberto.</div>`;
-  for (const p of [...abertos, ...atendidos]) {
-    const n = Number(p.bags_pedidos) || 0, a = Math.min(Number(p.bags_atendidos) || 0, n);
-    let bags = '';
-    for (let i = 0; i < n; i++) bags += `<span class="pp-bag${i < a ? ' ok' : ''}">${i < a ? '✓' : ''}</span>`;
-    const cls = p.status === 'atendido' ? ' atendido' : (a > 0 ? ' andando' : '');
-    h += `<div class="pp-item${cls}">
-      <div class="pp-mat">${escP(p.material_nome || p.material_key)}${p.cor ? ' · ' + escP(p.cor) : ''}</div>
-      <div class="pp-meta">${escP(p.fornecedor)} · Lote ${escP(p.lote)} · pedido por ${escP(p.autor_nome || '—')}</div>
-      <div class="pp-bags">${bags}<span style="margin-left:6px">${a} de ${n} bag${n === 1 ? '' : 's'}${p.status === 'atendido' ? ' · ✓ ATENDIDO' : ''}</span></div>
-    </div>`;
-  }
-  document.getElementById('pp-lista').innerHTML = h;
+  const r = htmlPedidos(d);
+  const conta = document.getElementById('pp-conta');
+  conta.textContent = r.conta;
+  conta.className = 'pp-conta' + (r.temAberto ? ' tem' : '');
+  document.getElementById('pp-lista').innerHTML = r.lista;
 }
 
 // Modal do bag fora do pedido. → {motivo, pedido_id} | {} (teste, sem motivo) | null (cancelou)
@@ -1312,10 +1373,12 @@ function perguntarFora(d) {
     ? 'NÃO HÁ PEDIDO ABERTO NO PAINEL' : 'SAINDO BAG DIFERENTE DO SOLICITADO';
   document.getElementById('fora-texto').textContent = d.sem_pedido
     ? 'Nenhum pedido do painel está aberto. Para retirar, diga o motivo.'
-    : 'Este bag não é de nenhum pedido aberto (material ou lote diferente). Para retirar, diga o motivo.';
-  const ped = (d.pedidos || []).map(p => `${escP(p.material_nome || p.material_key)}${p.cor ? ' · ' + escP(p.cor) : ''} · ${escP(p.fornecedor)} · Lote ${escP(p.lote)} (${Number(p.bags_atendidos) || 0} de ${Number(p.bags_pedidos) || 0})`);
+    : d.peso_diferente
+      ? 'Este bag é do lote pedido, mas o PESO não é o do pedido. Para retirar, diga o motivo.'
+      : 'Este bag não é de nenhum pedido aberto (material ou lote diferente). Para retirar, diga o motivo.';
+  const ped = (d.pedidos || []).map(p => `${escP(p.material_nome || p.material_key)}${p.cor ? ' · ' + escP(p.cor) : ''} · ${escP(p.fornecedor)} · Lote ${escP(p.lote)}${pesoTxt(p.peso) ? ' · ' + escP(pesoTxt(p.peso)) : ''} (${Number(p.bags_atendidos) || 0} de ${Number(p.bags_pedidos) || 0})`);
   document.getElementById('fora-info').innerHTML = `
-    <div><span class="lbl">Bag bipado</span><span class="val">${escP(et.id)} · ${escP(et.material_nome || et.material_key)}${et.cor ? ' · ' + escP(et.cor) : ''} · ${escP(et.fornecedor)} · Lote ${escP(et.lote)}</span></div>
+    <div><span class="lbl">Bag bipado</span><span class="val">${escP(et.id)} · ${escP(et.material_nome || et.material_key)}${et.cor ? ' · ' + escP(et.cor) : ''} · ${escP(et.fornecedor)} · Lote ${escP(et.lote)}${pesoTxt(et.peso) ? ' · ' + escP(pesoTxt(et.peso)) : ''}</span></div>
     <div><span class="lbl">Pedidos abertos</span><span class="val">${ped.length ? ped.join('<br>') : '—'}</span></div>`;
   document.getElementById('fora-teste').style.display = prod ? 'none' : '';
   document.getElementById('fora-outro').style.display = 'none';

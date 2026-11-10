@@ -151,7 +151,9 @@ async function rotasEtiquetas(req, res, parsed, pathname) {
     if (!decisao.pode) {
       return jsonErr(res, decisao.http,
         decisao.corpo.sem_pedido ? 'Não há pedido de retirada aberto no painel'
-                                 : `Bag ${origId} não é de nenhum pedido aberto (material/lote diferente)`,
+          : decisao.corpo.peso_diferente
+            ? `Bag ${origId} é do lote pedido, mas o peso (${orig.peso} kg) não é o do pedido`
+            : `Bag ${origId} não é de nenhum pedido aberto (material/lote diferente)`,
         { ...decisao.corpo, etiqueta: aplicarSubstituicao(orig) });
     }
 
