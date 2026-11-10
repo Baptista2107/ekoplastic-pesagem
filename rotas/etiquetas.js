@@ -17,7 +17,8 @@ const { gerarEPL, imprimir } = require('../lib/impressao');
 const { exigeCampos, jsonErr, jsonOk, lerBodyJson, NAO_TRATADA } = require('../lib/http');
 const {
   aplicarSubstituicao, chaveProduto, idempotenciaGet, imprimirEPersistirEtiqueta,
-  materiaisPorSacos, mensagemProdutoTrocado, paSku, proximoSeqSessao, substituicaoAtiva,
+  materiaisPorSacos, mensagemProdutoTrocado, origemVarreduraRecebimento, paSku, proximoSeqSessao,
+  recebimentosDoDia, substituicaoAtiva,
 } = require('../lib/negocio');
 const { enviarBlingIndividualExtrusao } = require('../lib/turnos');
 const { TARAS_EIXO } = require('../lib/bobinas');
@@ -874,6 +875,15 @@ async function rotasEtiquetas(req, res, parsed, pathname) {
     });
   }
 
+  // GET /etiquetas/outras/recebimentos-do-dia[?data=AAAA-MM-DD] — para a
+  // varredura de recebimento: recebimentos do dia (o último primeiro), cada
+  // um com os materiais recebidos (material, código, cor, lote, kg).
+  if (pathname === '/etiquetas/outras/recebimentos-do-dia' && req.method === 'GET') {
+    const dia = String((parsed.query && parsed.query.data) || '').trim() || dataLocalISO();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dia)) return jsonErr(res, 400, 'data inválida (use AAAA-MM-DD)');
+    return jsonOk(res, { data: dia, recebimentos: recebimentosDoDia(dia) });
+  }
+
   // POST /etiquetas/outras — OUTRAS PESAGENS (aparas/borra/varredura).
   // Sessão tipo='outras'. Sem operador/máquina/turno. item_codigo é a chave do
   // OUTRAS_CATALOGO (vira sku/codigo da etiqueta). Aparas não têm produto no
@@ -892,7 +902,27 @@ async function rotasEtiquetas(req, res, parsed, pathname) {
     const item = OUTRAS_CATALOGO[body.item_codigo];
     if (!item) return jsonErr(res, 400, `Item "${body.item_codigo}" não cadastrado em Outras Pesagens.`);
 
+    // Varredura de RECEBIMENTO × de PRODUÇÃO (10/11/2026, Vinicius). Só para a
+    // varredura. Sem varredura_tipo = como antes (tela antiga, cliente antigo).
+    // A origem da de recebimento é montada do banco, não do que a tela mandou.
+    let varreduraTipo = null, varreduraOrigem = null;
+    if (body.varredura_tipo != null && body.varredura_tipo !== '') {
+      if (body.item_codigo !== 'RES.VARREDURA') return jsonErr(res, 400, 'Tipo de varredura só vale para a VARREDURA.');
+      varreduraTipo = String(body.varredura_tipo);
+      if (varreduraTipo !== 'recebimento' && varreduraTipo !== 'producao') {
+        return jsonErr(res, 400, 'Tipo de varredura inválido (use recebimento ou producao).');
+      }
+      if (varreduraTipo === 'recebimento' && !idempotenciaGet(body.clientToken)) {
+        const o = body.varredura_origem || {};
+        const r = origemVarreduraRecebimento(o.sessao_id, o.codigo, o.lote);
+        if (r.erro) return jsonErr(res, 400, r.erro);
+        varreduraOrigem = r.origem;
+      }
+    }
+
     return imprimirEPersistirEtiqueta({
+      varredura_tipo:   varreduraTipo,
+      varredura_origem: varreduraOrigem,
       tipo:           'outras',
       clientToken:    body.clientToken || null,
       material_key:   item.categoria,                // APARA | RESIDUO

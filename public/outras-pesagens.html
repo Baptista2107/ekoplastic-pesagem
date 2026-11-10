@@ -654,6 +654,30 @@ header {
   </div>
 </div>
 
+<!-- Varredura: de RECEBIMENTO ou de PRODUÇÃO (10/11/2026, Vinicius) -->
+<div class="modal-overlay" id="modal-varredura">
+  <div class="modal" style="max-width: 640px;">
+    <div class="modal-titulo">Varredura de onde?</div>
+    <div class="modal-corpo">
+      <div class="touch-grid cols-2">
+        <div class="touch-btn" id="vr-tipo-recebimento" onclick="varreduraTipo('recebimento')">RECEBIMENTO</div>
+        <div class="touch-btn" id="vr-tipo-producao" onclick="varreduraTipo('producao')">PRODUÇÃO</div>
+      </div>
+      <div id="vr-receb" style="display:none; margin-top:14px;">
+        <div class="section-label">Recebimento de hoje</div>
+        <div id="vr-lista-receb" class="touch-grid" style="grid-template-columns:1fr;"></div>
+        <div class="section-label" style="margin-top:12px;">Material</div>
+        <div id="vr-lista-mat" class="touch-grid" style="grid-template-columns:1fr;"></div>
+      </div>
+      <div id="vr-aviso" style="display:none; margin-top:12px; color:var(--warn); font-weight:700;"></div>
+    </div>
+    <div class="modal-acoes">
+      <button class="btn-modal secundario" onclick="fecharVarredura()">Fechar</button>
+      <button class="btn-modal primary" id="btn-vr-ok" onclick="confirmarVarredura()" disabled>CONFIRMAR</button>
+    </div>
+  </div>
+</div>
+
 <!-- Toasts -->
 <div id="toast-area"></div>
 
@@ -682,6 +706,7 @@ const state = {
   proximoSeq:    1,
   itens:         [],
   tokenPendente: null,
+  varredura:     null,     // { tipo:'producao' } | { tipo:'recebimento', sessao_id, codigo, lote, ... }
 };
 
 function gerarToken() {
@@ -785,7 +810,7 @@ function renderListaPendentesModal() {
       <div>
         <div style="font-size:13px; font-weight:800; color:var(--warn);">${it.id}</div>
         <div style="font-size:11px; color:var(--muted); margin-top:2px;">
-          Pesagem #${String(it.seq_sessao||'-').padStart(2,'0')} · ${it.nome} · ${it.peso.toFixed(1)} kg
+          Pesagem #${String(it.seq_sessao||'-').padStart(2,'0')} · ${esc(it.nome)} · ${it.peso.toFixed(1)} kg
         </div>
       </div>
       <button class="hist-acao" onclick="biparItem('${it.id}')">BIPAR</button>
@@ -799,12 +824,122 @@ function bloqueadoPorBipagem() { if (pendentesBipagem().length > 0) { abrirModal
 // ─── SELEÇÃO DE ITEM ───
 function selecionarItem(codigo) {
   if (bloqueadoPorBipagem()) return;
+  // VARREDURA (10/11/2026): antes de tudo, de onde ela é. Só vira item
+  // escolhido depois de confirmar recebimento (com material) ou produção.
+  if (codigo === 'RES.VARREDURA') { abrirVarredura(); return; }
+  state.varredura = null;
+  marcarItem(codigo);
+}
+function marcarItem(codigo) {
   state.itemCodigo = codigo;
   document.querySelectorAll('.touch-panel .cor-btn, .touch-panel .touch-btn').forEach(b => b.classList.remove('selected'));
   const el = document.getElementById('it-' + codigo);
   if (el) el.classList.add('selected');
   atualizarPreview();
   atualizarBotaoImprimir();
+}
+
+// ─── VARREDURA: RECEBIMENTO × PRODUÇÃO (10/11/2026, Vinicius) ───
+// Recebimento: a varredura é do material/fornecedor que acabou de ser
+// recebido. A lista traz os recebimentos de hoje (o último já marcado) e os
+// materiais de cada um (material + código + lote); com um material só, ele
+// já vem marcado. Produção: varredura convencional, como sempre foi.
+// Texto do banco (fornecedor, material) é escapado; os botões levam índice
+// em data-*, nunca texto no onclick.
+const vr = { tipo: null, recebimentos: [], iReceb: 0, iMat: null };
+function esc(t) {
+  return String(t == null ? '' : t).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+}
+function rotuloVarredura(v) {
+  if (!v) return 'Varredura';
+  if (v.tipo === 'producao') return 'Varredura de produção';
+  return `Varredura de recebimento · ${v.fornecedor || '?'} · ${v.codigo || '?'} · lote ${v.lote || '?'}`;
+}
+function rotuloItemSalvo(e) {   // etiqueta vinda do servidor (restaurar a sessão)
+  if (e.varredura_tipo === 'producao') return 'Varredura de produção';
+  if (e.varredura_tipo === 'recebimento') {
+    let o = {}; try { o = JSON.parse(e.varredura_origem || '{}') || {}; } catch(x) {}
+    return rotuloVarredura({ tipo: 'recebimento', fornecedor: o.fornecedor, codigo: o.codigo, lote: o.lote });
+  }
+  return e.material_nome || e.sku || '?';
+}
+function abrirVarredura() {
+  vr.tipo = null; vr.recebimentos = []; vr.iReceb = 0; vr.iMat = null;
+  document.getElementById('vr-receb').style.display = 'none';
+  document.getElementById('vr-aviso').style.display = 'none';
+  ['recebimento', 'producao'].forEach(t => document.getElementById('vr-tipo-' + t).classList.remove('selected'));
+  document.getElementById('btn-vr-ok').disabled = true;
+  document.getElementById('modal-varredura').classList.add('on');
+}
+function fecharVarredura() { document.getElementById('modal-varredura').classList.remove('on'); }
+function varreduraAberta() { return document.getElementById('modal-varredura').classList.contains('on'); }
+async function varreduraTipo(tipo) {
+  vr.tipo = tipo;
+  ['recebimento', 'producao'].forEach(t => document.getElementById('vr-tipo-' + t).classList.toggle('selected', t === tipo));
+  const aviso = document.getElementById('vr-aviso');
+  aviso.style.display = 'none';
+  if (tipo === 'producao') {
+    document.getElementById('vr-receb').style.display = 'none';
+    document.getElementById('btn-vr-ok').disabled = false;
+    return;
+  }
+  document.getElementById('btn-vr-ok').disabled = true;
+  try {
+    const r = await fetch(URL_BASE + '/etiquetas/outras/recebimentos-do-dia');
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.erro || 'falha');
+    vr.recebimentos = d.recebimentos || [];
+  } catch(e) {
+    vr.recebimentos = [];
+    aviso.textContent = 'Não consegui buscar os recebimentos de hoje: ' + e.message;
+    aviso.style.display = 'block';
+    return;
+  }
+  if (vr.tipo !== 'recebimento') return;            // trocou de ideia durante a busca
+  if (!vr.recebimentos.length) {
+    document.getElementById('vr-receb').style.display = 'none';
+    aviso.textContent = 'Nenhum recebimento hoje. Se a varredura não é de recebimento, escolha PRODUÇÃO.';
+    aviso.style.display = 'block';
+    return;
+  }
+  vr.iReceb = 0;                                    // o último recebimento já vem marcado
+  vr.iMat = vr.recebimentos[0].materiais.length === 1 ? 0 : null;
+  document.getElementById('vr-receb').style.display = 'block';
+  renderVarredura();
+}
+function renderVarredura() {
+  const hora = iso => iso ? new Date(iso).toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' }) : '';
+  document.getElementById('vr-lista-receb').innerHTML = vr.recebimentos.map((s, i) => `
+    <div class="touch-btn vr-receb${i === vr.iReceb ? ' selected' : ''}" data-i="${i}" style="font-size:14px; line-height:1.35;">
+      ${esc(s.fornecedor || '?')} · ${hora(s.inicio)}${s.aberta ? ' (aberto)' : ''}<br>
+      <span style="font-size:12px; font-weight:400;">Recebimento #${esc(s.sessao_id)} · ${s.materiais.length} material(is)</span>
+    </div>`).join('');
+  const s = vr.recebimentos[vr.iReceb];
+  document.getElementById('vr-lista-mat').innerHTML = s.materiais.map((m, j) => `
+    <div class="touch-btn vr-mat${j === vr.iMat ? ' selected' : ''}" data-j="${j}" style="font-size:14px; line-height:1.35;">
+      ${esc(m.material_nome || m.material_key || '?')} ${esc(m.codigo || '')}${m.cor ? ' · ' + esc(m.cor) : ''}<br>
+      <span style="font-size:12px; font-weight:400;">Lote ${esc(m.lote || '?')} · ${esc(m.n)} big bag(s) · ${Number(m.kg || 0).toFixed(1).replace('.', ',')} kg</span>
+    </div>`).join('');
+  document.querySelectorAll('#vr-lista-receb .vr-receb').forEach(b => b.addEventListener('click', () => {
+    vr.iReceb = Number(b.dataset.i);
+    vr.iMat = vr.recebimentos[vr.iReceb].materiais.length === 1 ? 0 : null;
+    renderVarredura();
+  }));
+  document.querySelectorAll('#vr-lista-mat .vr-mat').forEach(b => b.addEventListener('click', () => {
+    vr.iMat = Number(b.dataset.j); renderVarredura();
+  }));
+  document.getElementById('btn-vr-ok').disabled = vr.iMat == null;
+}
+function confirmarVarredura() {
+  if (vr.tipo === 'producao') {
+    state.varredura = { tipo: 'producao' };
+  } else if (vr.tipo === 'recebimento' && vr.iMat != null) {
+    const s = vr.recebimentos[vr.iReceb], m = s.materiais[vr.iMat];
+    state.varredura = { tipo: 'recebimento', sessao_id: s.sessao_id, fornecedor: s.fornecedor,
+                        codigo: m.codigo, lote: m.lote, material_nome: m.material_nome };
+  } else { return; }
+  fecharVarredura();
+  marcarItem('RES.VARREDURA');
 }
 
 // ─── PREVIEW ───
@@ -816,9 +951,15 @@ function atualizarPreview() {
     return;
   }
   const idPreview = 'O' + String(state.proximoSeq || 1).padStart(7, '0');
+  const v = state.itemCodigo === 'RES.VARREDURA' ? state.varredura : null;
+  const nomePrev = v ? (v.tipo === 'producao' ? 'VARREDURA DE PRODUÇÃO' : 'VARREDURA DE RECEBIMENTO') : item.nome.toUpperCase();
+  const origPrev = v && v.tipo === 'recebimento'
+    ? `<div class="pe-info">${esc(v.fornecedor || '?')} · ${esc(v.codigo || '?')} · lote ${esc(v.lote || '?')}<br>${esc(v.material_nome || '')} · receb. #${esc(v.sessao_id)}</div>`
+    : '';
   div.innerHTML = `
     <div class="pe-turno">RESIDUOS</div>
-    <div class="pe-prod">${item.nome.toUpperCase()}</div>
+    <div class="pe-prod">${nomePrev}</div>
+    ${origPrev}
     <div class="pe-info">${item.categoria === 'RESIDUO' ? 'RESÍDUO (vai ao Bling)' : 'APARA (inventário)'}</div>
     <div class="pe-peso">${state.pesoAtual.toFixed(1)} kg</div>
     <div class="pe-sku">${state.itemCodigo}</div>
@@ -855,6 +996,8 @@ function atualizarBotaoImprimir() {
 async function imprimirEtiqueta() {
   if (bloqueadoPorBipagem()) return;
   if (!state.itemCodigo) { toast('Selecione o item.', 'error'); return; }
+  if (state.itemCodigo === 'RES.VARREDURA' && !state.varredura) { abrirVarredura(); return; }
+  const vSel = state.itemCodigo === 'RES.VARREDURA' ? state.varredura : null;
   const ok = await garantirSessaoAberta();
   if (!ok) return;
   const btn = document.getElementById('btn-imprimir');
@@ -870,17 +1013,21 @@ async function imprimirEtiqueta() {
         peso:        state.pesoAtual,
         peso_bruto:  state.pesoBruto || null,
         tara:        0,
+        varredura_tipo:   vSel ? vSel.tipo : null,
+        varredura_origem: vSel && vSel.tipo === 'recebimento'
+          ? { sessao_id: vSel.sessao_id, codigo: vSel.codigo, lote: vSel.lote } : null,
       }),
     });
     const d = await r.json();
     if (!d.ok) throw new Error(d.erro || 'Falha na impressão');
     state.tokenPendente = null;
     const item = OUTRAS_ITENS[state.itemCodigo] || { nome: state.itemCodigo };
-    toast(`✓ Etiqueta ${d.id} impressa (${item.nome})`, 'success');
+    const nomeItem = vSel ? rotuloVarredura(vSel) : item.nome;
+    toast(`✓ Etiqueta ${d.id} impressa (${nomeItem})`, 'success');
     if (d.seq) state.proximoSeq = d.seq + 1;
     state.itens.unshift({
       id: d.id, seq_sessao: d.seq_sessao, codigo: state.itemCodigo,
-      nome: item.nome, peso: state.pesoAtual, status: 'aguardando_bipe',
+      nome: nomeItem, peso: state.pesoAtual, status: 'aguardando_bipe',
       hora: new Date().toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' }),
     });
     renderHistorico();
@@ -911,7 +1058,7 @@ function renderHistorico() {
         : '<span class="hist-check" style="color:var(--danger);" title="cancelada">✕</span>';
       return `<div class="hist-item ${cls}">
         <span class="hist-id">${it.id}</span>
-        <span class="hist-desc">${it.nome}<br><span class="hist-small">Pesagem #${String(it.seq_sessao||'-').padStart(2,'0')} · ${it.hora}</span></span>
+        <span class="hist-desc">${esc(it.nome)}<br><span class="hist-small">Pesagem #${String(it.seq_sessao||'-').padStart(2,'0')} · ${it.hora}</span></span>
         <span class="hist-peso">${it.peso.toFixed(1)} kg</span>
         ${acao}
         <button class="hist-del" title="Excluir pesagem" onclick="excluirItem('${it.id}')">✕</button>
@@ -1054,7 +1201,7 @@ async function restaurarSessaoAberta() {
     completarResponsavel(s, URL_BASE);
     state.itens = (s.etiquetas || []).slice().reverse().map(e => ({
       id: e.id, seq_sessao: e.seq_sessao, codigo: e.sku || e.codigo,
-      nome: e.material_nome || e.sku || '?', peso: e.peso || 0, status: e.status,
+      nome: rotuloItemSalvo(e), peso: e.peso || 0, status: e.status,
       hora: e.hora_impressao ? new Date(e.hora_impressao).toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' }) : '--:--',
     }));
     aplicarBanner(true);

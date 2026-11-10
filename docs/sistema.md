@@ -94,6 +94,27 @@ Antes chamado "Outras Pesagens". Borra, varredura, **pó**, refile etc.
 ID `16572867344`). O que distingue é a **observação do pedido**, que informa
 quantos kg daquele lançamento foram de pó.
 
+**Varredura de recebimento × de produção** (Vinicius, 10/11/2026; ramo
+`varredura-recebimento-teste`, só liga com a validação do Gustavo). Ao tocar
+VARREDURA, a tela pergunta de onde ela é:
+- **Recebimento**: é a varredura pesada no fim de um recebimento, depois de tudo
+  o que não é varredura, e pertence ao material e ao fornecedor recebidos. A tela
+  lista os recebimentos do dia (abertos ou finalizados), com o último já marcado,
+  e os materiais de cada um (material, código, cor e lote). Com um material só,
+  ele já vem marcado; com mais de um, o responsável escolhe. O servidor monta a
+  origem pelo banco (`varredura_origem`: recebimento, fornecedor, material,
+  código, lote) e recusa material ou lote que o recebimento não tem.
+- **Produção**: a varredura convencional, como sempre foi.
+
+O produto no Bling continua `RES.VARREDURA`, no pedido da EKOPLASTIC (decisão do
+Vinicius: "A opção 1 é a melhor"). A etiqueta traz a origem, e a observação do
+pedido separa cada recebimento + material + lote numa linha, e a de produção em
+outra ("havendo varreduras de materiais diferentes, diferenciá-los na observação
+do pedido"). Opções que caíram: lançar a varredura no contato do fornecedor, e
+lançá-la como o próprio material, somando no estoque de MP. Etiqueta antiga, sem
+tipo, segue "Varredura". A VPS ainda não recebe `varredura_tipo` e
+`varredura_origem` (o ingestor usa uma lista fixa de colunas).
+
 ### 3.5 Inventário (`inventario.html`) — celular
 Contagem física comparada ao saldo do Bling. Dois universos:
 
