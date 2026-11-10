@@ -132,6 +132,8 @@ async function recebimento(fornecedor, bags, finalizar = true) {
     ok(r.status === 200 && r.json.recebimentos.length === 0, 'outro dia: nada', r.json);
     r = await req('GET', '/etiquetas/outras/recebimentos-do-dia?data=amanha');
     ok(r.status === 400, 'data inválida: 400', r.json);
+    r = await req('GET', '/etiquetas/outras/recebimentos-do-dia?data=2026-13-45');
+    ok(r.status === 400, 'data impossível (mês 13): 400, não 500', r.json);
 
     console.log('\n[2] Varredura de recebimento grava a origem do banco');
     const so = await req('POST', '/sessoes', { tipo: 'outras', operador: 'Teste' });
@@ -154,6 +156,11 @@ async function recebimento(fornecedor, bags, finalizar = true) {
       varredura_origem: { sessao_id: rB.sid, codigo: 'PT4', lote: '091126' } });
     const depois = comBanco(db => db.prepare("SELECT COUNT(*) n FROM etiquetas WHERE tipo='outras'").get().n);
     ok(r.status === 200 && r.json.idempotente === true && depois === antes, 'mesmo clientToken 2x: 1 etiqueta só', { r: r.json, antes, depois });
+    // retry com a resposta perdida: o 2º envio NÃO revalida a origem (senão um
+    // big bag cancelado no meio faria o retry falhar mesmo com a etiqueta impressa)
+    r = await req('POST', '/etiquetas/outras', { ...base, clientToken: 'v1', peso: 30.5, varredura_tipo: 'recebimento',
+      varredura_origem: { sessao_id: rB.sid, codigo: 'NAO-EXISTE', lote: 'x' } });
+    ok(r.status === 200 && r.json.idempotente === true, 'retry do mesmo token devolve a etiqueta já impressa (sem revalidar)', r.json);
 
     for (const [tok, cod, lote, peso] of [['v2', 'COL3', '101126', 20], ['v3', 'COL3', '101126', 12.5], ['v4', 'CAN1', '101126', 8]]) {
       const sid = cod === 'CAN1' ? rA.sid : rB.sid;
@@ -215,7 +222,44 @@ async function recebimento(fornecedor, bags, finalizar = true) {
     ok(/\nVARREDURA: 10,0 KG/.test(obs), 'observação: varredura sem tipo como antes', obs);
     const itensVar = (payload.itens || []).filter(i => i.chave_produto === 'RES.VARREDURA');
     ok(itensVar.length === 6 && itensVar.every(i => i.produto.id === '16572867344'), '6 itens de varredura, todos no produto RES.VARREDURA', itensVar);
-    ok(itensVar.some(i => /receb\. Piquiri PT4 lote 091126/.test(i.descricao_local)), 'descrição do item leva a origem curta', itensVar.map(i => i.descricao_local));
+    ok(itensVar.some(i => new RegExp(`rec #${rB.sid} PT4 L091126 Piquiri`).test(i.descricao_local)),
+       'descrição do item leva a origem curta', itensVar.map(i => i.descricao_local));
+
+    console.log('\n[6] Reimpressão, resumo com fornecedor de nome longo, desempate por cor');
+    const v1id = v1.id;
+    r = await req('POST', `/etiquetas/${v1id}/reimprimir`, {});
+    await sleep(300);
+    // a original + a reimpressão, as duas com a origem
+    const novas = eplsImpressos().filter(t => t.includes(v1id) && t.includes('VARREDURA DE RECEBIMENTO'));
+    ok(r.status === 200 && novas.length >= 2, 'reimprimir a varredura de recebimento: a cópia sai com a origem', { r: r.json, n: novas.length });
+    ok(novas.every(t => t.includes('PIQUIRI - PT4 - LOTE 091126')), 'as duas vias com fornecedor - código - lote');
+
+    const rL = await recebimento('Cristal Master Industria e Comercio', [
+      { codigo: 'COL9', lote: '101126', peso: 1000, cor: 'Natural' }, { codigo: 'COL9', lote: '101126', peso: 1000, cor: 'Azul' }]);
+    r = await req('GET', '/etiquetas/outras/recebimentos-do-dia');
+    const cm = (r.json.recebimentos || []).find(x => x.sessao_id === rL.sid) || { materiais: [] };
+    ok(cm.materiais.length === 2, 'mesmo código+lote com cores diferentes: 2 materiais na lista', cm.materiais);
+    const so2 = await req('POST', '/sessoes', { tipo: 'outras', operador: 'Teste' });
+    r = await req('POST', '/etiquetas/outras', { sessao_id: so2.json.sessao_id, item_codigo: 'RES.VARREDURA', clientToken: 'c1', peso: 9,
+      varredura_tipo: 'recebimento', varredura_origem: { sessao_id: rL.sid, codigo: 'COL9', lote: '101126', material_key: 'GBD', cor: 'Azul' } });
+    const vc = comBanco(db => db.prepare('SELECT varredura_origem FROM etiquetas WHERE id = ?').get(r.json && r.json.id)) || {};
+    let oc = {}; try { oc = JSON.parse(vc.varredura_origem); } catch(e) {}
+    ok(r.status === 200 && oc.cor === 'Azul', 'a escolha "Azul" grava Azul (não a primeira que achar)', oc);
+    r = await req('POST', '/etiquetas/outras', { sessao_id: so2.json.sessao_id, item_codigo: 'RES.VARREDURA', clientToken: 'c2', peso: 1,
+      varredura_tipo: 'recebimento', varredura_origem: 'texto' });
+    ok(r.status === 400, 'origem que não é objeto: 400', r.json);
+    const pend2 = comBanco(db => db.prepare("SELECT id FROM etiquetas WHERE sessao_id = ? AND status = 'aguardando_bipe'").all(so2.json.sessao_id));
+    for (const e of pend2) await req('POST', `/etiquetas/${e.id}/bipar`);
+    await req('POST', `/sessoes/${so2.json.sessao_id}/finalizar`);
+    const nR = eplsImpressos().length;
+    r = await req('POST', '/resumo-dia', { tipo: 'outras' });
+    await sleep(300);
+    const resumo = eplsImpressos().filter(t => /A30,24,0,4,1,1,N,"RESUMO/.test(t)).pop() || '';
+    ok(r.status === 200 && eplsImpressos().length > nR, 'resumo do dia de resíduos impresso', r.json);
+    ok(resumo.includes(`VARREDURA REC #${rL.sid} COL9 L101126 CRISTAL`),
+       'resumo: fornecedor de nome longo não come o lote (nº do recebimento, código e lote primeiro)',
+       (resumo.match(/"VARREDURA[^"]*"/g) || []).join(' | '));
+    ok(resumo.includes(`VARREDURA REC #${rB.sid} COL3 L101126 PIQUIRI`), 'resumo: grupo do Piquiri COL3');
   } catch (e) {
     ok(false, 'exceção no teste: ' + e.message);
   } finally {

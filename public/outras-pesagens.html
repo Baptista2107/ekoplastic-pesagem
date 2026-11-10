@@ -831,6 +831,9 @@ function selecionarItem(codigo) {
   marcarItem(codigo);
 }
 function marcarItem(codigo) {
+  // Escolha nova = intenção nova: a tentativa pendente (resposta perdida) não
+  // pode voltar com o rótulo da escolha nova.
+  state.tokenPendente = null;
   state.itemCodigo = codigo;
   document.querySelectorAll('.touch-panel .cor-btn, .touch-panel .touch-btn').forEach(b => b.classList.remove('selected'));
   const el = document.getElementById('it-' + codigo);
@@ -891,6 +894,7 @@ async function varreduraTipo(tipo) {
     vr.recebimentos = d.recebimentos || [];
   } catch(e) {
     vr.recebimentos = [];
+    document.getElementById('vr-receb').style.display = 'none';   // não deixa a lista antiga clicável
     aviso.textContent = 'Não consegui buscar os recebimentos de hoje: ' + e.message;
     aviso.style.display = 'block';
     return;
@@ -936,7 +940,8 @@ function confirmarVarredura() {
   } else if (vr.tipo === 'recebimento' && vr.iMat != null) {
     const s = vr.recebimentos[vr.iReceb], m = s.materiais[vr.iMat];
     state.varredura = { tipo: 'recebimento', sessao_id: s.sessao_id, fornecedor: s.fornecedor,
-                        codigo: m.codigo, lote: m.lote, material_nome: m.material_nome };
+                        codigo: m.codigo, lote: m.lote, material_nome: m.material_nome,
+                        material_key: m.material_key, cor: m.cor == null ? null : m.cor };
   } else { return; }
   fecharVarredura();
   marcarItem('RES.VARREDURA');
@@ -1015,7 +1020,8 @@ async function imprimirEtiqueta() {
         tara:        0,
         varredura_tipo:   vSel ? vSel.tipo : null,
         varredura_origem: vSel && vSel.tipo === 'recebimento'
-          ? { sessao_id: vSel.sessao_id, codigo: vSel.codigo, lote: vSel.lote } : null,
+          ? { sessao_id: vSel.sessao_id, codigo: vSel.codigo, lote: vSel.lote,
+              material_key: vSel.material_key, cor: vSel.cor } : null,
       }),
     });
     const d = await r.json();
@@ -1032,6 +1038,13 @@ async function imprimirEtiqueta() {
     });
     renderHistorico();
     state.aguardandoZero = true;
+    // Varredura: a origem NÃO fica valendo para a próxima pesagem. A seguinte
+    // pode ser de outro recebimento; tocar VARREDURA pergunta de novo (com o
+    // último recebimento já marcado).
+    if (vSel) {
+      state.varredura = null; state.itemCodigo = '';
+      document.querySelectorAll('.touch-panel .cor-btn, .touch-panel .touch-btn').forEach(b => b.classList.remove('selected'));
+    }
     setTimeout(() => {
       state.pesoBruto = 0; state.pesoAtual = 0;
       document.getElementById('peso-val').textContent = '0.0';

@@ -254,6 +254,9 @@ async function rotasEtiquetas(req, res, parsed, pathname) {
       operador:       et.operador,
       maquina:        et.maquina,
       turno_codigo:   et.turno_codigo,
+      // varredura de recebimento/produção: a cópia sai com a mesma origem
+      varredura_tipo:   et.varredura_tipo,
+      varredura_origem: et.varredura_origem,
     };
     const eplRe = gerarEPL(dadosRe);
     logI('print', `Reimprimindo ${idRe} (${et.tipo}) — mesmo número, sem alterar status`);
@@ -880,7 +883,9 @@ async function rotasEtiquetas(req, res, parsed, pathname) {
   // um com os materiais recebidos (material, código, cor, lote, kg).
   if (pathname === '/etiquetas/outras/recebimentos-do-dia' && req.method === 'GET') {
     const dia = String((parsed.query && parsed.query.data) || '').trim() || dataLocalISO();
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(dia)) return jsonErr(res, 400, 'data inválida (use AAAA-MM-DD)');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dia) || isNaN(new Date(`${dia}T00:00:00`).getTime())) {
+      return jsonErr(res, 400, 'data inválida (use AAAA-MM-DD)');
+    }
     return jsonOk(res, { data: dia, recebimentos: recebimentosDoDia(dia) });
   }
 
@@ -914,7 +919,9 @@ async function rotasEtiquetas(req, res, parsed, pathname) {
       }
       if (varreduraTipo === 'recebimento' && !idempotenciaGet(body.clientToken)) {
         const o = body.varredura_origem || {};
-        const r = origemVarreduraRecebimento(o.sessao_id, o.codigo, o.lote);
+        if (typeof o !== 'object' || Array.isArray(o)) return jsonErr(res, 400, 'Origem da varredura inválida.');
+        const r = origemVarreduraRecebimento(o.sessao_id, o.codigo, o.lote, o.material_key,
+                                             'cor' in o ? o.cor : undefined);
         if (r.erro) return jsonErr(res, 400, r.erro);
         varreduraOrigem = r.origem;
       }
