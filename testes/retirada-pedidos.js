@@ -11,7 +11,10 @@
 //      fica gravado na retirada e vai para a VPS;
 //    · VPS cai: a tela recebe o último bom (desatualizado) e o motivo fica
 //      na fila; a VPS volta e recebe UMA vez só;
-//    · aditivo por sacos não entra na regra.
+//    · aditivo por sacos não entra na regra;
+//    · pedido por PESO (10/11/2026): só o bag daquele peso conta; mesmo lote
+//      com outro peso é fora do pedido; o de peso escolhido é servido antes
+//      do de "qualquer peso".
 // ════════════════════════════════════════════════════════════════════
 const { spawn } = require('node:child_process');
 const { DatabaseSync } = require('node:sqlite');
@@ -95,10 +98,10 @@ async function subirServidor() {
 }
 
 let nTok = 0, sRec;
-async function bag(lote, mat = 'GBD', cor = 'Preto', forn = 'Ecorafia') {
+async function bag(lote, mat = 'GBD', cor = 'Preto', forn = 'Ecorafia', peso = 900) {
   const r = await req('POST', '/etiquetas', {
     clientToken: `rp-${C}-${++nTok}`, tipo: 'recebimento', materialKey: mat, materialNomeEt: 'GRÃO BAIXA DENSIDADE',
-    cor, fornecedor: forn, peso: 900, lote, codigo: 'X1', sku: `${mat}.PRE.ECORAF | 900 | L${lote}`, sessao_id: sRec });
+    cor, fornecedor: forn, peso, lote, codigo: 'X1', sku: `${mat}.PRE.ECORAF | ${peso} | L${lote}`, sessao_id: sRec });
   const id = r.body && r.body.id;
   if (id) await req('POST', `/etiquetas/${id}/bipar`);
   return id;
@@ -237,6 +240,33 @@ const registro = virtId => { const l = lerDb('SELECT pedido_retirada FROM etique
     await req('POST', `/etiquetas/${ce.body.etiqueta_virtual.id}/estornar`);
     const ge = await req('GET', '/retirada/pedidos');
     ok(ge.body.pedidos[0].status === 'aberto' && ge.body.pedidos[0].bags_atendidos === 0, 'estornado: P3 volta a aberto (0 de 1)', ge.body.pedidos[0]);
+
+    console.log('\n[6] Pedido por PESO (10/11/2026): só o bag daquele peso conta');
+    VPS.modo = 'producao'; VPS.recebidos = [];
+    VPS.pedidos = [pedido('P4', '080826', 1, { peso: 614.5 })];
+    await req('GET', '/retirada/pedidos');
+    const w1 = await bag('080826', 'GBD', 'Preto', 'Ecorafia', 1000);
+    const cw1 = await consumir(w1, sRet, { checar_pedido: true });
+    ok(cw1.status === 409 && cw1.body.peso_diferente === true && /peso/.test(cw1.body.erro || ''),
+       'mesmo lote com OUTRO peso é fora do pedido (409, peso_diferente)', cw1.body);
+    ok(cw1.body.pedidos && cw1.body.pedidos[0] && cw1.body.pedidos[0].peso === 614.5,
+       'a recusa traz o peso do pedido (o modal mostra)', cw1.body.pedidos);
+    ok(lerDb('SELECT status FROM etiquetas WHERE id = ?', w1).status === 'bipada', 'e o bag de 1000 kg NÃO foi consumido');
+    const w2 = await bag('080826', 'GBD', 'Preto', 'Ecorafia', 614.5);
+    const cw2 = await consumir(w2, sRet, { checar_pedido: true });
+    ok(cw2.status === 200 && registro(cw2.body.etiqueta_virtual.id)?.pedido_id === 'P4',
+       'o bag de 614,5 kg sai e conta para P4', cw2.body);
+    VPS.pedidos = [pedido('P5', '090926', 1),
+                   pedido('P6', '090926', 1, { peso: 360, criado_em: '2026-11-10T10:00:00-03:00' })];
+    await req('GET', '/retirada/pedidos');
+    const w3 = await bag('090926', 'GBD', 'Preto', 'Ecorafia', 360);
+    const cw3 = await consumir(w3, sRet, { checar_pedido: true });
+    ok(cw3.status === 200 && registro(cw3.body.etiqueta_virtual.id)?.pedido_id === 'P6',
+       'bag de 360 kg vai para o pedido de 360 kg, não para o "qualquer peso" mais antigo', cw3.body);
+    const w4 = await bag('090926', 'GBD', 'Preto', 'Ecorafia', 999);
+    const cw4 = await consumir(w4, sRet, { checar_pedido: true });
+    ok(cw4.status === 200 && registro(cw4.body.etiqueta_virtual.id)?.pedido_id === 'P5',
+       'bag de outro peso do mesmo lote atende o pedido de qualquer peso', cw4.body);
   } catch (e) {
     falhou++; console.log('  \x1b[31m✗ ERRO\x1b[0m', e.stack || e.message);
   } finally {
