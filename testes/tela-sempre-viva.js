@@ -97,8 +97,13 @@ function testeDecisao() {
   ok(d(false, 1000) === 'ABRIR', 'INICIAR aberto à mão durante a pausa: abre já');
   e = novoEstado();
   pausar(t, e);
-  ok(d(true, 1000) === 'ABERTA' && d(false, ESPERA_ABRIR_MS) === 'ABRIR',
-     'alguém abriu a tela durante a pausa: a pausa acaba (fechar pelo X faz voltar)');
+  const c1 = d(true, 500), c2 = d(false, 2000), c3 = d(false, 5000);
+  ok(c1 === 'ABERTA' && c2 === 'PAUSADA' && c3 === 'PAUSADA',
+     'vigia pergunta antes do taskkill do "Fechar agora" (tela ainda aberta): a pausa NÃO cai', `(${c1}, ${c2}, ${c3})`);
+  e = novoEstado();
+  pausar(t, e);
+  ok(d(true, tela.PAUSA_FIRME_MS + 1000) === 'ABERTA' && d(false, ESPERA_ABRIR_MS) === 'ABRIR',
+     'alguém abriu a tela durante a pausa (depois dos 15 s): a pausa acaba (fechar pelo X faz voltar)');
   const r = resumoTela(t + 7000, e);
   ok(r.vigia && r.vigia.sessao === '1' && r.vigia.tela_aberta === false && r.vigia.visto_ha_s === 7,
      'healthcheck mostra a sessão do vigia, se a tela está aberta e quando ele foi visto', JSON.stringify(r.vigia));
@@ -191,7 +196,7 @@ function testeIniciar() {
     return { pedaco, seguinte };
   };
   const seguro = ({ pedaco, seguinte }) => ALVO.endsWith(pedaco) && seguinte === ALVO;
-  ok(seguro(lerDaqui(POS_ANTIGA)), 'INICIAR antigo, ao trocar de arquivo no meio da atualização, cai num "goto atualizar_pos_merge"',
+  ok(seguro(lerDaqui(POS_ANTIGA)), 'INICIAR antigo, ao trocar de arquivo no meio da atualização: o resto de linha dá "não reconhecido" e a linha seguinte é "goto atualizar_pos_merge"',
      JSON.stringify(lerDaqui(POS_ANTIGA)));
   let ruins = 0;
   for (let p = POS_ANTIGA - 800; p <= POS_ANTIGA + 800; p++) if (!seguro(lerDaqui(p))) ruins++;
@@ -293,6 +298,15 @@ function testeVigia() {
      'vigia respeita atualização e manutenção, por no máximo 15 min');
   ok(/\$falhas -ge 6/.test(ps) && /node\.exe/.test(ps) && /INICIAR\\\.bat/.test(ps), 'vigia só sobe servidor após 30 s e sem node/INICIAR vivos');
   ok(ps.includes("'\" servidor\"'") || ps.includes("'\" servidor\"')"), 'vigia sobe "INICIAR.bat servidor"');
+  ok(/\$pais -contains \$_\.ProcessId/.test(ps) && /CreationDate\)\.TotalMinutes -lt 3/.test(ps),
+     'janela do INICIAR parada (sem node, velha) não conta como "alguém cuidando"');
+  ok(/\$Mutex\.WaitOne\(15000\)/.test(ps) && /function TrocarDeVersao/.test(ps) && /if \(\$porMinuto\) \{ TrocarDeVersao \}/.test(ps),
+     'vigia troca de versão sozinho depois da atualização (o novo espera o mutex do antigo)');
+  ok(/KioskNaSessao 0/.test(ps) && /\$aberta = TelaAberta \$porMinuto/.test(ps),
+     'uma vez por minuto confere que a tela está NESTA sessão; tela presa na sessão 0 é fechada');
+  const abrirTela = linhasDeCodigo(ler('ABRIR-TELA.bat'));
+  ok(!abrirTela.some(l => /chrome|msedge|--app=|^start\s/i.test(l)) && abrirTela.includes('call "%~dp0INICIAR.bat" abrir'),
+     'ABRIR-TELA.bat não abre navegador: pede a tela ao vigia (INICIAR.bat abrir)');
 
   const at = ler('ATUALIZAR.bat');
   const atCod = linhasDeCodigo(at);
@@ -300,12 +314,23 @@ function testeVigia() {
      'ATUALIZAR.bat grava eko-manutencao.flag no começo');
   const iParar = atCod.indexOf(':parar');
   ok(iParar > 0 && atCod[iParar + 1] === 'del "%MANUT%" >nul 2>&1', 'ATUALIZAR.bat apaga a bandeira ao parar');
-  const iStart = atCod.findIndex(l => /^start "" "%~dp0INICIAR\.bat"$/.test(l));
-  ok(iStart > 0 && atCod[iStart - 1] === 'del "%MANUT%" >nul 2>&1', 'ATUALIZAR.bat apaga a bandeira antes de subir o INICIAR');
-  const saidas = atCod.map((l, i) => [l, i]).filter(([l]) => /^exit \/b 0$/.test(l)).map(([, i]) => i);
-  const iCopiar = atCod.indexOf(':copiar');
-  ok(saidas.filter(i => i < iCopiar).every(i => atCod.slice(Math.max(0, i - 4), i).some(l => l === 'del "%MANUT%" >nul 2>&1') || i > iStart),
-     'toda saída do ATUALIZAR.bat apaga a bandeira');
+  const iStart = atCod.findIndex(l => /^start "Ekoplastic - Servidor de Etiquetas" cmd \/c ""%~dp0INICIAR\.bat""$/.test(l));
+  ok(iStart > 0 && atCod[iStart - 1] === 'del "%MANUT%" >nul 2>&1',
+     'ATUALIZAR.bat apaga a bandeira e sobe o INICIAR com cmd /c (janela cmd /K parada enganaria o vigia)');
+  ok(!atCod.some(l => /^start\s+""\s+"%~dp0INICIAR\.bat"/i.test(l)), 'ATUALIZAR.bat não usa mais start "" INICIAR.bat (cmd /K)');
+  // Toda saída do .bat (fora das sub-rotinas :copiar e :L, cujo exit /b só
+  // volta): ou é a de :parar (que apaga), ou tem o del logo antes, ou é a do
+  // sucesso (o del veio antes do start do INICIAR).
+  const iCopiar = atCod.indexOf(':copiar'), iL = atCod.indexOf(':L');
+  ok(iCopiar > 0 && iParar > iCopiar && iL > iParar, 'ATUALIZAR.bat: ordem :copiar, :parar, :L');
+  const saidas = atCod.map((l, i) => [l, i]).filter(([l]) => /^exit\b/i.test(l)).map(([, i]) => i)
+    .filter(i => !(i > iCopiar && i < iParar) && !(i > iL));
+  const semDel = saidas.filter(i => !(i > iParar && i < iL) && !(i > iStart && i < iCopiar) &&
+                                    !atCod.slice(Math.max(0, i - 4), i).includes('del "%MANUT%" >nul 2>&1'));
+  ok(saidas.length >= 3 && semDel.length === 0, 'toda saída do ATUALIZAR.bat apaga a bandeira', `(sem del: linhas ${semDel.join(', ')})`);
+  const iPause = atCod.indexOf('pause >nul');
+  ok(iPause > 0 && atCod.slice(iPause, iPause + 6).some(l => /curl .*%URLSAUDE%/.test(l)),
+     'depois da confirmação (pause sem prazo) confere de novo se o servidor voltou');
   const iEsp = atCod.indexOf(':esperar_parar');
   ok(iEsp > 0 && atCod.slice(iEsp, iEsp + 30).some(l => /if %_pare% GEQ 90/.test(l)), 'espera o servidor parar com teto de 3 min');
 

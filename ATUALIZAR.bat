@@ -128,6 +128,14 @@ echo  Pressione uma tecla para APLICAR. Para cancelar, feche esta
 echo  janela e abra o INICIAR (ou o vigia sobe o servidor em 15 min).
 echo ============================================================
 pause >nul
+REM  A bandeira vale 15 min. Se a confirmacao demorou mais que isso, o vigia
+REM  pode ter subido o servidor: confere de novo antes de mexer no codigo.
+> "%MANUT%" echo ATUALIZAR.bat %date% %time%
+curl -s -o nul --max-time 3 "%URLSAUDE%" >nul 2>&1
+if not errorlevel 1 (
+  call :L "FALHA: o sistema voltou a rodar enquanto esperava a confirmacao. Nada foi alterado."
+  goto :parar
+)
 
 REM ================= FASE 2 - BACKUP DO BANCO =================
 call :L "------------------------------------------------------------"
@@ -173,7 +181,9 @@ call :L "------------------------------------------------------------"
 call :L "FASE 4 - SUBINDO O SISTEMA"
 call :L "------------------------------------------------------------"
 del "%MANUT%" >nul 2>&1
-start "" "%~dp0INICIAR.bat"
+REM  cmd /c: "start arquivo.bat" abre cmd /K, e a janela parada sobraria
+REM  com INICIAR.bat na linha de comando, enganando o vigia (11/11/2026).
+start "Ekoplastic - Servidor de Etiquetas" cmd /c ""%~dp0INICIAR.bat""
 call :L "INICIAR.bat disparado. Aguardando o sistema responder..."
 
 set /a _t=0

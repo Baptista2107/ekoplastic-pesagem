@@ -53,8 +53,9 @@ sem o "pode ativar" do Gustavo.
 7. **Passagem do INICIAR antigo:** o cmd lê o .bat pela posição em bytes, e o
    INICIAR antigo rodava o `git merge` numa linha sozinha (termina no byte 4115).
    O arquivo novo tem, dos bytes 912 a 4942, só linhas
-   `goto atualizar_pos_merge`. Assim, onde quer que o cmd antigo caia depois da
-   troca, ele vai para o fim da atualização do código novo. Daqui para frente o
+   `goto atualizar_pos_merge`. O byte 4115 cai no meio de uma delas: o resto
+   da linha dá "não é reconhecido" (inofensivo) e a linha seguinte manda o cmd
+   antigo para o fim da atualização do código novo. Daqui para frente o
    merge e o goto ficam na mesma linha. O bloco pode sair quando nenhuma estação
    rodar mais o INICIAR antigo.
 8. `/healthcheck` ganhou `tela`, que mostra a sessão do vigia, se a tela está
@@ -93,10 +94,11 @@ sem o "pode ativar" do Gustavo.
   `eko-manutencao.flag` (até 15 min).
 
 ## O que foi testado e o que ficou só por leitura
-- `testes/tela-sempre-viva.js` (71 conferências). Contra o main de antes deu
+- `testes/tela-sempre-viva.js` (79 conferências). Contra o main de antes deu
   19 falhas: o servidor saía depois do POST e gravava a bandeira. Mutações numa
-  cópia também ficaram vermelhas: sem o freio, sem o bloco de passagem e sem a
-  pausa.
+  cópia também ficaram vermelhas: sem o freio, sem o bloco de passagem, sem a
+  pausa, sem a pausa firme dos 15 s, sem o del da bandeira numa saída do
+  ATUALIZAR.bat e com o ABRIR-TELA.bat antigo.
 - De verdade, no servidor real: a rota `/sistema/encerrar`, `/sistema/tela`,
   `/sistema/tela/abrir`, o `/healthcheck` e a decisão (`lib/tela.js`, com
   relógio injetado).
@@ -112,3 +114,43 @@ sem o "pode ativar" do Gustavo.
   quiosque (zoom do inventário, turno da retirada de bobinas, id do dispositivo
   do inventário) volta ao padrão uma vez. As sessões ficam no servidor e não se
   perdem.
+
+## Revisto em 11/11/2026 (revisão do commit 15d15de)
+Um revisor independente, só leitura, achou falhas. As corrigidas no commit
+seguinte:
+- **A pausa caía em ~1 de cada 10 cliques.** O taskkill sai ~0,5 s depois da
+  pausa. Se o vigia perguntasse nesse intervalo, a tela ainda aparecia aberta e
+  a pausa acabava. Agora, nos primeiros 15 s, tela aberta não desfaz a pausa.
+- **ABRIR-TELA.bat abria o Chrome por conta própria** no perfil do quiosque.
+  Rodado pela VPS (sessão 0), deixaria a tela invisível segurando o perfil, e o
+  vigia diria "aberta" para sempre. Agora ele só pede a tela ao vigia
+  (`INICIAR.bat abrir`). Para recarregar, basta fechar a janela, e o vigia
+  reabre. E o vigia, uma vez por minuto, confere pelos processos que a tela
+  está na sessão dele; tela do quiosque na sessão 0 é fechada.
+- **Janela cmd /K parada contava como "alguém cuidando" do servidor.** O
+  ATUALIZAR.bat abria o INICIAR com `start ""` (cmd /K). Agora abre com
+  `cmd /c`, e o vigia só conta um INICIAR que tem node filho, que foi aberto há
+  menos de 3 min ou o "INICIAR servidor" que ele mesmo subiu.
+- **ATUALIZAR.bat podia trocar o código com o servidor no ar** se a
+  confirmação (pause sem prazo) passasse dos 15 min da bandeira. Agora ele
+  confere de novo depois da tecla e para se o servidor voltou.
+- **O vigia nunca era atualizado.** Agora, uma vez por minuto, ele vê se o
+  tela-vigia.ps1 mudou. Se mudou, sobe a versão nova e sai, e a nova espera
+  até 15 s pelo mutex do antigo.
+
+Ficaram em aberto, de propósito:
+- **Na passagem não nasce vigia se o INICIAR está na sessão 0** (como estava
+  hoje às 10h53). O vigia só existe na sessão do monitor, e da VPS não há como
+  criá-lo lá sem tarefa agendada. Até alguém abrir o INICIAR no monitor (ou o
+  Mini PC reiniciar), o "Fechar agora" fecha a tela e ela não volta sozinha.
+  Conferir `tela.vigia` no `/healthcheck`: `null` = falta vigia.
+- **Node travado** (respondendo nada, mas vivo) conta como "alguém cuidando":
+  o vigia não mata node. Já era assim antes.
+- **Servidor na sessão 0 não tem janela para fechar.** O ATUALIZAR.bat manual
+  desiste em 3 min. O caminho é a atualização remota (o padrão desde 17/10).
+- **INICIAR ou node rodando elevados ou como outro usuário:** o vigia não lê a
+  linha de comando deles e pode subir um segundo laço. O perdedor sai pela
+  porta 3000. Com a conta `usuario` comum, isso não acontece.
+- **Conferências de texto do .bat e do .ps1** (sessão 0, mutex, taskkill)
+  provam o que está escrito, não o que o Windows faz. Só o ensaio prova. O
+  primeiro sinal é a linha "vigia iniciado" em `logs\tela-vigia.log`.

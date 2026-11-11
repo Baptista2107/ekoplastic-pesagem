@@ -54,14 +54,40 @@ if ($Sessao -eq 0) { Diga 'sessao 0 (servicos): aqui a tela nao aparece no monit
 
 $criado = $false
 $Mutex = New-Object System.Threading.Mutex($true, 'Global\EkoplasticTelaVigia', [ref]$criado)
-if (-not $criado) { exit 0 }   # ja ha um vigia
+if (-not $criado) {
+  # Ja ha um vigia. Espera ate 15 s: se for o antigo saindo para dar lugar
+  # a versao nova (ver $Versao abaixo), este assume; senao, sai.
+  $pegou = $false
+  try { $pegou = $Mutex.WaitOne(15000) }
+  catch { if ($_.Exception.ToString() -match 'Abandoned') { $pegou = $true } }
+  if (-not $pegou) { exit 0 }
+}
+
+# A atualizacao remota troca este arquivo, mas o vigia que ja roda continua
+# com a versao antiga. Uma vez por minuto ele confere; mudou, sobe o novo e sai.
+$Versao = (Get-Item $PSCommandPath).LastWriteTimeUtc
+function TrocarDeVersao {
+  $agora = (Get-Item $PSCommandPath).LastWriteTimeUtc
+  if (-not $agora -or $agora -eq $Versao) { return }
+  Diga "tela-vigia.ps1 mudou: subindo a versao nova e saindo"
+  Start-Process powershell.exe -WindowStyle Hidden -ArgumentList ('-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + $PSCommandPath + '"')
+  try { $Mutex.ReleaseMutex() } catch {}
+  exit 0
+}
 
 # --- a tela do quiosque esta aberta nesta sessao? ---
 # O Chrome segura <perfil>\lockfile aberto (so' leitura compartilhada)
 # enquanto roda e o Windows apaga o arquivo quando ele fecha. Conferir
 # isso custa quase nada. Se o arquivo diz "fechada", confere pelos
-# processos antes de abrir (mais caro, so' nessa hora).
-function TelaAberta {
+# processos antes de abrir (mais caro, so' nessa hora). O arquivo nao diz
+# de que sessao e' o Chrome: uma vez por minuto ($conferirSessao) o vigia
+# confere pelos processos que a tela esta NESTA sessao.
+function KioskNaSessao([int]$s) {
+  return @(Get-CimInstance Win32_Process -Filter "Name='chrome.exe' or Name='msedge.exe'" |
+           Where-Object { $_.SessionId -eq $s -and $_.CommandLine -like '*navegador-eko*' })
+}
+function TelaAberta([bool]$conferirSessao) {
+  $presa = $false
   foreach ($p in $Perfis) {
     $lock = Join-Path $p 'lockfile'
     if (Test-Path $lock) {
@@ -71,13 +97,18 @@ function TelaAberta {
       } catch {
         $h = $_.Exception.InnerException
         if (-not $h) { $h = $_.Exception }
-        if (($h.HResult -band 0xFFFF) -eq 32) { return $true }   # em uso: navegador aberto
+        if (($h.HResult -band 0xFFFF) -eq 32) { $presa = $true }   # em uso: navegador aberto
       }
     }
   }
-  $q = @(Get-CimInstance Win32_Process -Filter "Name='chrome.exe' or Name='msedge.exe'" |
-         Where-Object { $_.SessionId -eq $Sessao -and $_.CommandLine -like '*navegador-eko*' })
-  return ($q.Count -gt 0)
+  if ($presa -and -not $conferirSessao) { return $true }
+  if ((KioskNaSessao $Sessao).Count -gt 0) { return $true }
+  # Tela do quiosque presa na sessao 0 (invisivel) segura o perfil: fecha.
+  foreach ($a in (KioskNaSessao 0)) {
+    Diga ("fechando tela invisivel da sessao 0: " + $a.Name + " pid " + $a.ProcessId)
+    Stop-Process -Id $a.ProcessId -Force
+  }
+  return $false
 }
 
 # --- tela antiga: Chrome --app sem o perfil do quiosque ---
@@ -91,6 +122,10 @@ function FecharTelasAntigas {
                    $_.CommandLine -notlike '*navegador-eko*' })
   foreach ($a in $antigas) {
     Diga ("fechando tela antiga: " + $a.Name + " pid " + $a.ProcessId + " sessao " + $a.SessionId)
+    Stop-Process -Id $a.ProcessId -Force
+  }
+  foreach ($a in (KioskNaSessao 0)) {
+    Diga ("fechando tela invisivel da sessao 0: " + $a.Name + " pid " + $a.ProcessId)
     Stop-Process -Id $a.ProcessId -Force
   }
 }
@@ -160,10 +195,19 @@ function PrecisaSubirServidor {
       return $false
     }
   }
+  # Quem conta como "cuidando": um node server.js; um INICIAR com um node
+  # filho; um INICIAR aberto ha menos de 3 min (subindo, ou nos 5 s entre um
+  # node e outro); e o "INICIAR servidor" que este vigia subiu. Uma janela
+  # cmd /K do INICIAR que ficou parada (sem node, velha) NAO conta: senao o
+  # vigia nunca mais subiria o servidor (revisao de 11/11/2026).
   $procs = @(Get-CimInstance Win32_Process -Filter "Name='node.exe' or Name='cmd.exe'")
   $node = @($procs | Where-Object { $_.Name -eq 'node.exe' -and $_.CommandLine -like '*server.js*' })
+  $pais = @($node | ForEach-Object { $_.ParentProcessId })
   $sup  = @($procs | Where-Object { $_.Name -eq 'cmd.exe' -and $_.CommandLine -like '*INICIAR.bat*' -and
-                                    $_.CommandLine -notmatch 'INICIAR\.bat"?\s+"?(vigia|autostart|abrir)' })
+                                    $_.CommandLine -notmatch 'INICIAR\.bat"?\s+"?(vigia|autostart|abrir)' -and
+                                    (($pais -contains $_.ProcessId) -or
+                                     $_.CommandLine -match 'INICIAR\.bat"?\s+"?servidor' -or
+                                     ((Get-Date) - $_.CreationDate).TotalMinutes -lt 3) })
   if ($node.Count -gt 0 -or $sup.Count -gt 0) {
     Diga ("servidor fora ha 30 s, mas ja ha quem cuide (node: " + $node.Count + ", INICIAR: " + $sup.Count + ") - espero")
     return $false
@@ -180,11 +224,15 @@ function SubirServidor {
 }
 
 Diga "vigia iniciado"
-if (-not (TelaAberta)) { FecharTelasAntigas }
+if (-not (TelaAberta $true)) { FecharTelasAntigas }
 
 $falhas = 0
+$volta = 0
 while ($true) {
-  $aberta = TelaAberta
+  $volta++
+  $porMinuto = ($volta % 12) -eq 0
+  if ($porMinuto) { TrocarDeVersao }
+  $aberta = TelaAberta $porMinuto
   $a = 0
   if ($aberta) { $a = 1 }
   $r = Perguntar 'GET' ("/sistema/tela?s=$Sessao&a=$a")

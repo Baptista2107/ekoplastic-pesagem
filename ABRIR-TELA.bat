@@ -3,45 +3,27 @@ chcp 65001 >nul
 cd /d "%~dp0"
 
 REM ===================================================================
-REM  ABRIR-TELA: reabre SOMENTE o navegador (perfil limpo), SEM mexer
-REM  no servidor que ja esta rodando. Use quando precisar recarregar a
-REM  tela (ex: depois de uma atualizacao) sem reiniciar o Mini PC e sem
-REM  perder a sessao em andamento -- ela continua salva no servidor.
+REM  ABRIR-TELA: pede a tela de novo, SEM mexer no servidor que ja esta
+REM  rodando. A sessao em andamento continua salva no servidor.
+REM
+REM  Desde 11/11/2026 quem abre o navegador e' so' o vigia da tela
+REM  (tela-vigia.ps1). Este .bat tira a pausa do "Fechar agora" e garante
+REM  o vigia; se a tela ja estiver aberta, nao abre outra. Antes ele abria
+REM  o Chrome por conta propria no mesmo perfil do quiosque: rodado pela
+REM  VPS (sessao 0), deixava a tela invisivel segurando o perfil.
+REM  Para RECARREGAR a tela: fechar a janela (X ou Alt+F4); o vigia
+REM  reabre em ate 5 segundos.
 REM ===================================================================
 
-set "URL=http://localhost:3000"
-
-REM Confere se o servidor esta no ar; se nao estiver, avisa.
-curl -s -o nul http://localhost:3000/healthcheck >nul 2>&1
+curl -s -o nul -m 3 http://localhost:3000/healthcheck >nul 2>&1
 if errorlevel 1 (
-  echo [AVISO] O servidor nao respondeu em %URL%.
+  echo [AVISO] O servidor nao respondeu em http://localhost:3000.
   echo Se o sistema nao estiver rodando, use o INICIAR.bat normal.
   echo.
   pause
   exit /b
 )
-
-REM Perfil dedicado + limpeza de cache (garante a versao atual da tela)
-set "PERFIL=%~dp0navegador-eko"
-rmdir /s /q "%PERFIL%\Default\Cache"      >nul 2>&1
-rmdir /s /q "%PERFIL%\Default\Code Cache" >nul 2>&1
-rmdir /s /q "%PERFIL%\Default\GPUCache"   >nul 2>&1
-rmdir /s /q "%PERFIL%\ShaderCache"        >nul 2>&1
-
-set "CHROME=%ProgramFiles%\Google\Chrome\Application\chrome.exe"
-if not exist "%CHROME%" set "CHROME=%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe"
-if not exist "%CHROME%" set "CHROME=%LocalAppData%\Google\Chrome\Application\chrome.exe"
-if exist "%CHROME%" (
-  start "" "%CHROME%" --app=%URL% --user-data-dir="%PERFIL%" --start-maximized --no-first-run --no-default-browser-check --overscroll-history-navigation=0 --disable-gpu-compositing
-  exit /b
-)
-
-set "EDGE=%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe"
-if not exist "%EDGE%" set "EDGE=%ProgramFiles%\Microsoft\Edge\Application\msedge.exe"
-if exist "%EDGE%" (
-  start "" "%EDGE%" --app=%URL% --user-data-dir="%PERFIL%" --start-maximized --no-first-run --disable-gpu-compositing
-  exit /b
-)
-
-start "" "%URL%"
+call "%~dp0INICIAR.bat" abrir
+echo A tela abre em instantes.
+timeout /t 2 /nobreak >nul
 exit /b

@@ -53,7 +53,8 @@ no 24), Google Chrome, impressora térmica EPL2 e balança na serial.
   O vigia só roda na sessão do monitor, nunca na sessão 0 do Windows. Rodar de novo com o
   sistema aberto só pede a tela. "Fechar agora" fecha só a tela, por 10 min; o servidor
   não desliga pela tela. Ver `docs/decisoes/2026-11-11-tela-sempre-viva.md`.
-- **`ABRIR-TELA.bat`** reabre só o navegador, sem mexer no servidor.
+- **`ABRIR-TELA.bat`** pede a tela ao vigia, sem mexer no servidor (não abre outra se ela já
+  estiver aberta). Para recarregar a tela, feche a janela: o vigia reabre em até 5 s.
 - `/healthcheck` mostra versão (commit), impressora, balança, Bling, início automático e
   `tela` (sessão do vigia, tela aberta, pausa).
 
