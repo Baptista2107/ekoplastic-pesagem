@@ -2830,10 +2830,12 @@ async function enviarSessaoParaBling(modo, qtdEt, totalKg) {
   beepOk();
   showToast('info', '📤', `Enviando ao Bling...`);
 
+  let finalizou = false;
   try {
     const resp = await fetch(`${URL_SESSAO}/${sessaoId}/finalizar`, { method: 'POST' });
     const d = await resp.json();
     if (!d.ok) throw new Error(d.erro || 'falha ao finalizar sessão');
+    finalizou = true;
 
     setTimeout(() => beep(1100, 0.18), 180);
     const blingResp = d.bling || {};
@@ -2867,6 +2869,7 @@ async function enviarSessaoParaBling(modo, qtdEt, totalKg) {
   } else {
     resetarRecebimento();
   }
+  if (finalizou) encerrouProcesso();   // finalizou: o próximo pede a senha de novo
 }
 
 function resetarAditivos() {
@@ -2933,6 +2936,7 @@ async function cancelar() {
   } else {
     resetarRecebimento();
   }
+  if (sessaoId) encerrouProcesso();   // cancelou a sessão: a senha vale até aqui
 }
 
 function resetarRetornoCompleto() {
@@ -3859,6 +3863,7 @@ async function imprimirEtiquetaSacoParcial() {
 // Quando o operador sai sem finalizar (ex: vai pesar bobina na Extrusão
 // e volta depois), recuperamos sessão + itens direto do servidor.
 async function restaurarSessoesAbertas() {
+  estado.sessaoInfo = {};   // zera antes: sem sessão aberta, ninguém é dono
   try {
     const r = await fetch('/sessoes/abertas');
     if (!r.ok) return;
@@ -3903,6 +3908,7 @@ async function restaurarSessoesAbertas() {
       // estado.itens / retItens usam unshift (mais recente no topo)
       // Como o servidor devolveu por seq_sessao crescente, invertemos.
       const itensTopo = itens.slice().reverse();
+      estado.sessaoInfo[s.tipo] = { operador: s.operador || null, inicio: s.inicio || null, itens: itens.length };
 
       if (s.tipo === 'recebimento') {
         estado.sessaoRecebimento = s.id;
@@ -4029,9 +4035,51 @@ function avisarSeTrocado(mat, cor, forn) {
   return t;
 }
 
+// Senha PRÓPRIA por frame (11/11/2026, Gustavo): Recebimento e Retorno são esta
+// mesma página com ?aba=; cada uma guarda a sua liberação, que vale até a
+// pessoa encerrar (finalizar ou cancelar). A permissão continua sendo 'mp'.
+const ABA_PIN = (new URLSearchParams(location.search).get('aba') === 'retorno') ? 'retorno' : 'recebimento';
+const CHAVE_PIN = 'mp-' + ABA_PIN;
+
+// Processo encerrado pela própria pessoa: a senha vale até aqui.
+function encerrouProcesso() {
+  if (estado.encerrandoDeOutro) return;   // encerrou a de outro: segue logado
+  if (window.EkoAcesso && EkoAcesso.encerrar) EkoAcesso.encerrar(CHAVE_PIN);
+}
+
+// Sessão do frame aberta no nome de OUTRA pessoa (o servidor nunca troca o
+// nome gravado): continuar no nome dela ou encerrar primeiro.
+async function conferirSessaoDeOutro() {
+  const info = (estado.sessaoInfo || {})[ABA_PIN];
+  const dono = String((info && info.operador) || '').trim();
+  const eu = String(window.EKO_RESPONSAVEL || '').trim();
+  const key = ABA_PIN === 'retorno' ? 'sessaoRetorno' : 'sessaoRecebimento';
+  if (!estado[key] || !dono || !eu || dono.toUpperCase() === eu.toUpperCase()) return;
+  if (!window.EkoAcesso || !EkoAcesso.perguntarSessaoDeOutro) return;
+  const processo = ABA_PIN === 'retorno' ? 'Retorno' : 'Recebimento';
+  const escolha = await EkoAcesso.perguntarSessaoDeOutro({
+    processo, operador: dono, desde: info.inicio, itens: info.itens });
+  if (escolha === 'continuar') {
+    showToast('info', '👤', `Continuando o ${processo.toLowerCase()} de ${dono} — fica no nome dele`, 5000);
+    return;
+  }
+  estado.encerrandoDeOutro = true;
+  try { await finalizar(); } finally { estado.encerrandoDeOutro = false; }
+  // O finalizar zera a sessão local mesmo quando falha: o servidor decide.
+  await restaurarSessoesAbertas();
+  const ainda = (estado.sessaoInfo || {})[ABA_PIN];
+  if (ainda && String(ainda.operador || '').trim().toUpperCase() === dono.toUpperCase()) return conferirSessaoDeOutro();
+  showToast('sucesso', '✓', `${processo} de ${dono} encerrado · o próximo sai no nome de ${eu}`, 5000);
+}
+
 // INIT — só depois que o colaborador entrar com a senha dele. O nome fica em
 // window.EKO_RESPONSAVEL e vai como `operador` na sessão (sai no resumo).
+// Depois de encerrar, a senha é pedida de novo e esta função roda outra vez:
+// a tela já está montada, só troca o responsável e confere a sessão aberta.
+let _telaIniciada = false;
 function iniciarTelaMP() {
+  if (_telaIniciada) { mostrarResponsavel(); restaurarSessoesAbertas().then(conferirSessaoDeOutro); return; }
+  _telaIniciada = true;
   renderMateriais();
   atualizarEstadoBlocos();
   atualizarQtd();
@@ -4040,7 +4088,7 @@ function iniciarTelaMP() {
   inicializarServidor()
     .then(() => {
       detectarAbaURL();
-      return restaurarSessoesAbertas();
+      return restaurarSessoesAbertas().then(conferirSessaoDeOutro);
     })
     .catch(e => console.warn('Erro no init:', e.message));
   mostrarResponsavel();
@@ -4053,16 +4101,19 @@ function mostrarResponsavel() {
     el.id = 'eko-resp-tag';
     el.style.cssText = 'position:fixed; top:8px; right:12px; z-index:900; background:rgba(0,0,0,0.55);'
       + 'border:1px solid rgba(255,255,255,0.18); color:#cfe3ff; padding:6px 12px; border-radius:20px;'
-      + 'font-size:12px; font-weight:800; letter-spacing:0.4px; pointer-events:none;';
+      + 'font-size:12px; font-weight:800; letter-spacing:0.4px; cursor:pointer;';
+    el.title = 'Trocar responsável';
+    el.onclick = () => { if (window.EkoAcesso && EkoAcesso.encerrar) EkoAcesso.encerrar(CHAVE_PIN); };
     document.body.appendChild(el);
   }
-  el.textContent = '👤 ' + window.EKO_RESPONSAVEL;
+  el.textContent = '👤 ' + window.EKO_RESPONSAVEL + ' · trocar';
 }
 // Rede de segurança: se o componente de acesso não carregar por algum motivo,
 // a tela ABRE mesmo assim (sem identificação) em vez de ficar morta. Numa
 // fábrica, tela travada para a produção; falta de identificação, não.
 function comAcesso(tela, aoEntrar) {
-  if (window.EkoAcesso && typeof EkoAcesso.exigir === 'function') return EkoAcesso.exigir(tela, aoEntrar);
+  if (window.EkoAcesso && typeof EkoAcesso.exigir === 'function')
+    return EkoAcesso.exigir(tela, aoEntrar, { chave: CHAVE_PIN, nomeTela: ABA_PIN === 'retorno' ? 'Retorno de MP' : 'Recebimento de MP' });
   console.warn('acesso-colaborador.js não carregou — abrindo a tela sem identificação');
   try { aoEntrar(); } catch (e) { console.error(e); }
 }

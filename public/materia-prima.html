@@ -2,7 +2,6 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<script src="/acesso-colaborador.js"></script>
 <title>Ekoplastic · Matéria-Prima</title>
 <script>
 /* Trava anti-recursão: esta tela carrega telas de trabalho em iframes.
@@ -179,9 +178,6 @@ header {
     <div class="crumb">MATÉRIA-PRIMA &nbsp;›&nbsp; <b id="crumb-aba">Recebimento</b></div>
   </div>
   <div class="header-right">
-    <span id="resp-mp" onclick="trocarResponsavelMP()" title="Trocar responsável"
-      style="display:none; cursor:pointer; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.18);
-             color:#cfe3ff; padding:7px 13px; border-radius:20px; font-size:12px; font-weight:800; margin-right:8px;"></span>
     <button class="btn-icon" onclick="location.href='/'" title="Início">🏠</button>
   </div>
 </header>
@@ -285,9 +281,6 @@ function abaInicial() {
   return 'receb';
 }
 
-// A aba inicial só carrega depois da senha — se carregar antes, o iframe
-// abre o próprio pedido de senha (era o que fazia parecer que cada aba pedia).
-// Ver comAcesso('mp', ...) mais abaixo.
 
 // Badges: indicam aba com sessão aberta
 async function atualizarBadges() {
@@ -306,31 +299,13 @@ async function atualizarBadges() {
     }
   } catch(e) {}
 }
-// A senha é pedida UMA vez, ao entrar no módulo. As abas internas
-// (recebimento, retirada, retorno) herdam essa liberação — antes, cada uma
-// carregava sua própria tela e pedia a senha de novo.
-function comAcesso(tela, aoEntrar) {
-  if (window.EkoAcesso && typeof EkoAcesso.exigir === 'function') return EkoAcesso.exigir(tela, aoEntrar);
-  console.warn('acesso-colaborador.js não carregou — abrindo sem identificação');
-  try { aoEntrar(); } catch (e) { console.error(e); }
-}
-function mostrarRespMP(nome) {
-  const el = document.getElementById('resp-mp');
-  if (!el) return;
-  el.innerHTML = nome ? ('👤 ' + nome + ' <span style="opacity:.6">· trocar</span>') : '';
-  el.style.display = nome ? 'inline-block' : 'none';
-}
-function trocarResponsavelMP() {
-  if (window.EkoAcesso && EkoAcesso.sair) EkoAcesso.sair('mp');
-  location.reload();
-}
-
-comAcesso('mp', nome => {
-  mostrarRespMP(nome);
-  ativarAba(abaInicial());
-  atualizarBadges();
-  setInterval(atualizarBadges, 8000);
-});
+// 11/11/2026 (Gustavo): entrar na MP NÃO pede senha. A senha é de cada frame
+// (Recebimento, Retirada, Retorno) e vale até a pessoa encerrar aquele
+// processo — ver acesso-colaborador.js. Antes, a senha da entrada valia 8 h
+// para as três abas, e quem voltava da Extrusão seguia no nome de outro.
+ativarAba(abaInicial());
+atualizarBadges();
+setInterval(atualizarBadges, 8000);
 </script>
 
 <script src="/seguranca-saida.js"></script>

@@ -88,26 +88,30 @@ async function rotasSistema(req, res, parsed, pathname) {
     });
   }
 
-  // ─── SISTEMA: encerrar o quiosque de forma limpa ───
+  // ─── SISTEMA: fechar a TELA do quiosque ───
   // POST /sistema/encerrar
-  // Fecha o navegador do quiosque e encerra o próprio servidor. Cria o
-  // arquivo-sinal 'eko-encerrar.flag' — o INICIAR.bat vê esse arquivo e NÃO
-  // reabre (sem ele, o loop de auto-recuperação reabriria o servidor em 5s).
-  // Usado pelo botão "Fechar agora" da caixa de saída: window.close() não
-  // funciona em janela Chrome --app (não foi aberta por script).
+  // Fecha o navegador do quiosque. O SERVIDOR CONTINUA LIGADO (11/11/2026,
+  // Gustavo): até então este botão também desligava o servidor, sem religar, e
+  // em 11/11 às 08h14 a pesagem ficou fora 31 min depois de um "Fechar agora"
+  // na tela do Produto Acabado — coletor, celulares e balança dependem dele.
+  // Para abrir a tela de novo: INICIAR.bat (vê o servidor no ar e só abre a
+  // tela). Desligar o servidor de verdade continua sendo fechar a janela do
+  // INICIAR ou a atualização remota. window.close() não funciona em janela
+  // Chrome --app (não foi aberta por script), por isso o servidor fecha o navegador.
   if (pathname === '/sistema/encerrar' && req.method === 'POST') {
-    jsonOk(res, { encerrando: true });
-    logI('sistema', 'Encerramento solicitado pela tela — fechando navegador e servidor.');
+    jsonOk(res, { encerrando: true, servidor: 'continua ligado' });
+    logI('sistema', 'Tela fechada pelo botão "Fechar agora" — o servidor continua ligado.');
+    // EKO_FECHAR_TELA_SIMULAR=1 (testes): não fecha navegador nenhum — a suíte
+    // roda em PC Windows (ENVIAR-ATUALIZACAO.bat) e fecharia o Chrome de quem testa.
+    const simular = process.env.EKO_FECHAR_TELA_SIMULAR === '1';
     setTimeout(() => {
-      try { fs.writeFileSync(path.join(RAIZ, 'eko-encerrar.flag'), String(Date.now())); } catch (e) {}
-      if (process.platform === 'win32') {
+      if (process.platform === 'win32' && !simular) {
         try {
           // Fecha as janelas do navegador do quiosque (Chrome e o fallback Edge).
           spawn('taskkill', ['/IM', 'chrome.exe', '/F'], { detached: true, stdio: 'ignore' }).unref();
           spawn('taskkill', ['/IM', 'msedge.exe', '/F'], { detached: true, stdio: 'ignore' }).unref();
         } catch (e) {}
       }
-      setTimeout(() => process.exit(0), 700);
     }, 200);
     return;
   }
