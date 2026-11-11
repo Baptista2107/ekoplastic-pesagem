@@ -2617,6 +2617,9 @@ window.addEventListener('keydown', (e) => {
   // Ignora se está digitando em algum input (peso, tara, qtd)
   const ae = document.activeElement;
   if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA')) return;
+  // Teclado de senha ou "sessão de outro" na tela: a senha digitada não pode
+  // virar bipe (1234 + Enter = R0001234), nem o bipe cair sem ninguém identificado.
+  if (window.EkoAcesso && EkoAcesso.bloqueando && EkoAcesso.bloqueando()) { bipeBuffer = ''; return; }
 
   if (e.key === 'Enter') {
     if (bipeBuffer) {
@@ -3863,12 +3866,13 @@ async function imprimirEtiquetaSacoParcial() {
 // Quando o operador sai sem finalizar (ex: vai pesar bobina na Extrusão
 // e volta depois), recuperamos sessão + itens direto do servidor.
 async function restaurarSessoesAbertas() {
-  estado.sessaoInfo = {};   // zera antes: sem sessão aberta, ninguém é dono
   try {
     const r = await fetch('/sessoes/abertas');
-    if (!r.ok) return;
+    if (!r.ok) return;   // falhou: mantém o dono que já se sabia (não "ninguém")
     const d = await r.json();
-    if (!d.ok || !d.sessoes || !d.sessoes.length) return;
+    if (!d.ok || !d.sessoes) return;
+    estado.sessaoInfo = {};   // resposta válida: só é dono quem tem sessão aberta
+    if (!d.sessoes.length) return;
 
     let temRec = false, temRet = false, orfasCanceladas = 0;
 
@@ -4049,7 +4053,7 @@ function encerrouProcesso() {
 
 // Sessão do frame aberta no nome de OUTRA pessoa (o servidor nunca troca o
 // nome gravado): continuar no nome dela ou encerrar primeiro.
-async function conferirSessaoDeOutro() {
+async function conferirSessaoDeOutro(aviso) {
   const info = (estado.sessaoInfo || {})[ABA_PIN];
   const dono = String((info && info.operador) || '').trim();
   const eu = String(window.EKO_RESPONSAVEL || '').trim();
@@ -4058,7 +4062,7 @@ async function conferirSessaoDeOutro() {
   if (!window.EkoAcesso || !EkoAcesso.perguntarSessaoDeOutro) return;
   const processo = ABA_PIN === 'retorno' ? 'Retorno' : 'Recebimento';
   const escolha = await EkoAcesso.perguntarSessaoDeOutro({
-    processo, operador: dono, desde: info.inicio, itens: info.itens });
+    processo, operador: dono, desde: info.inicio, itens: info.itens, aviso });
   if (escolha === 'continuar') {
     showToast('info', '👤', `Continuando o ${processo.toLowerCase()} de ${dono} — fica no nome dele`, 5000);
     return;
@@ -4068,7 +4072,8 @@ async function conferirSessaoDeOutro() {
   // O finalizar zera a sessão local mesmo quando falha: o servidor decide.
   await restaurarSessoesAbertas();
   const ainda = (estado.sessaoInfo || {})[ABA_PIN];
-  if (ainda && String(ainda.operador || '').trim().toUpperCase() === dono.toUpperCase()) return conferirSessaoDeOutro();
+  if (ainda && String(ainda.operador || '').trim().toUpperCase() === dono.toUpperCase())
+    return conferirSessaoDeOutro(`Não deu para encerrar a sessão de ${dono}. Causa comum: etiqueta impressa e não bipada — bipe ou exclua, e tente de novo.`);
   showToast('sucesso', '✓', `${processo} de ${dono} encerrado · o próximo sai no nome de ${eu}`, 5000);
 }
 
@@ -4111,9 +4116,18 @@ function mostrarResponsavel() {
 // Rede de segurança: se o componente de acesso não carregar por algum motivo,
 // a tela ABRE mesmo assim (sem identificação) em vez de ficar morta. Numa
 // fábrica, tela travada para a produção; falta de identificação, não.
+// A senha guardada só vale se houver sessão deste frame aberta no nome dessa
+// pessoa. Entrou e saiu sem fazer nada (foi à Extrusão): pede a senha de novo.
+async function sessaoAbertaDe(lib) {
+  const r = await fetch('/sessoes/abertas?tipo=' + ABA_PIN);
+  if (!r.ok) return false;
+  const d = await r.json();
+  const nome = String(lib.nome || '').trim().toUpperCase();
+  return !!(d.ok && (d.sessoes || []).some(s => s.tipo === ABA_PIN && String(s.operador || '').trim().toUpperCase() === nome));
+}
 function comAcesso(tela, aoEntrar) {
   if (window.EkoAcesso && typeof EkoAcesso.exigir === 'function')
-    return EkoAcesso.exigir(tela, aoEntrar, { chave: CHAVE_PIN, nomeTela: ABA_PIN === 'retorno' ? 'Retorno de MP' : 'Recebimento de MP' });
+    return EkoAcesso.exigir(tela, aoEntrar, { chave: CHAVE_PIN, nomeTela: ABA_PIN === 'retorno' ? 'Retorno de MP' : 'Recebimento de MP', aindaValida: sessaoAbertaDe });
   console.warn('acesso-colaborador.js não carregou — abrindo a tela sem identificação');
   try { aoEntrar(); } catch (e) { console.error(e); }
 }

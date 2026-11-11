@@ -994,6 +994,8 @@ async function garantirSessao() {
     const d = await r.json();
     if (!d.ok) throw new Error(d.erro || 'falha ao abrir sessão');
     estado.sessaoId = d.sessao_id;
+    estado.sessaoOperador = window.EKO_RESPONSAVEL || null;   // quem abriu é o dono
+    estado.sessaoInicio = new Date().toISOString();
     console.log('Sessão de retirada aberta: #' + d.sessao_id);
     return d.sessao_id;
   } catch(e) {
@@ -1025,6 +1027,9 @@ document.addEventListener('keydown', (e) => {
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
   if (document.getElementById('modal-bloqueado').classList.contains('ativo')) return;
   if (document.getElementById('keypad-modal').classList.contains('ativo')) return;
+  // Teclado de senha ou "sessão de outro" na tela: ninguém identificado ainda.
+  // Bipe aqui abriria sessão sem nome e daria baixa no bag por trás do teclado.
+  if (window.EkoAcesso && EkoAcesso.bloqueando && EkoAcesso.bloqueando()) { _bufKey = ''; return; }
   if (e.key === 'Enter') {
     if (_bufKey.length > 0) {
       processarBipe(_bufKey);
@@ -1697,9 +1702,22 @@ async function completarResponsavel(sessao, base) {
 // 11/11/2026: a Retirada tem senha PRÓPRIA (chave 'mp-retirada'), que vale até
 // a pessoa encerrar (finalizar ou cancelar). A permissão continua sendo 'mp'.
 const CHAVE_PIN = 'mp-retirada';
+// O showToast monta HTML: nome vindo do servidor (operador) entra escapado.
+function escRet(t) {
+  return String(t == null ? '' : t).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+}
+// A senha guardada só vale se houver retirada aberta no nome dessa pessoa.
+// Entrou e saiu sem bipar nada (foi à Extrusão): pede a senha de novo.
+async function retiradaAbertaDe(lib) {
+  const r = await fetch('/sessoes/abertas?tipo=retirada');
+  if (!r.ok) return false;
+  const d = await r.json();
+  const nome = String(lib.nome || '').trim().toUpperCase();
+  return !!(d.ok && (d.sessoes || []).some(s => s.tipo === 'retirada' && String(s.operador || '').trim().toUpperCase() === nome));
+}
 function comAcesso(tela, aoEntrar) {
   if (window.EkoAcesso && typeof EkoAcesso.exigir === 'function')
-    return EkoAcesso.exigir(tela, aoEntrar, { chave: CHAVE_PIN, nomeTela: 'Retirada de MP' });
+    return EkoAcesso.exigir(tela, aoEntrar, { chave: CHAVE_PIN, nomeTela: 'Retirada de MP', aindaValida: retiradaAbertaDe });
   console.warn('acesso-colaborador.js não carregou — abrindo a tela sem identificação');
   try { aoEntrar(); } catch (e) { console.error(e); }
 }
@@ -1722,13 +1740,13 @@ async function conferirSessaoDeOutro() {
   const escolha = await EkoAcesso.perguntarSessaoDeOutro({
     processo: 'Retirada', operador: dono, desde: estado.sessaoInicio, itens: estado.itens.length });
   if (escolha === 'continuar') {
-    showToast('info', '👤', `Continuando a retirada de ${dono} — fica no nome dele`, 5000);
+    showToast('info', '👤', `Continuando a retirada de ${escRet(dono)} — fica no nome dele`, 5000);
     return;
   }
   estado.encerrandoDeOutro = true;
   try { await finalizar(); } finally { estado.encerrandoDeOutro = false; }
   if (estado.sessaoId) return conferirSessaoDeOutro();   // desistiu ou falhou: pergunta de novo
-  showToast('sucesso', '✓', `Retirada de ${dono} encerrada · a próxima sai no nome de ${eu}`, 5000);
+  showToast('sucesso', '✓', `Retirada de ${escRet(dono)} encerrada · a próxima sai no nome de ${escRet(eu)}`, 5000);
 }
 
 // INIT — só depois que o colaborador entrar com a senha dele. Depois de

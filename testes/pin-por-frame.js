@@ -143,12 +143,49 @@ async function testeFrames() {
   await sleep(600);
   ok(entrouRtn.join() === 'BRUNO', 'Retorno: Bruno entra com a senha dele');
 
-  // B) Mesmo frame recarregado (saiu para a Extrusão e voltou): não pede de novo.
+  // B) Mesmo frame recarregado (saiu para a Extrusão e voltou): a senha vale
+  //    enquanto houver processo aberto no nome dela (a tela confere no servidor).
+  let abertaDe = 'ANA';
+  const aindaValida = async lib => lib.nome === abertaDe;
   const ret2 = novoFrame(ss, fetchFalso);
   const entrouRet2 = [];
-  ret2.win.EkoAcesso.exigir('mp', nome => entrouRet2.push(nome), { chave: 'mp-retirada' });
-  ok(entrouRet2.join() === 'ANA' && !ret2.teclado(), 'Retirada recarregada: segue no nome da Ana sem pedir a senha',
+  ret2.win.EkoAcesso.exigir('mp', nome => entrouRet2.push(nome), { chave: 'mp-retirada', aindaValida });
+  await sleep(50);
+  ok(entrouRet2.join() === 'ANA' && !ret2.teclado(), 'Retirada recarregada COM retirada aberta da Ana: segue no nome dela sem pedir a senha',
      `(entrou: ${JSON.stringify(entrouRet2)})`);
+
+  // B2) Ana entrou e saiu sem fazer nada: quem chega depois NÃO entra no nome dela.
+  abertaDe = null;
+  const ret2b = novoFrame(ss, fetchFalso);
+  const entrouRet2b = [];
+  ret2b.win.EkoAcesso.exigir('mp', nome => entrouRet2b.push(nome), { chave: 'mp-retirada', aindaValida });
+  await sleep(50);
+  ok(entrouRet2b.length === 0 && ret2b.teclado(), 'Retirada recarregada SEM processo aberto: pede a senha de novo',
+     `(entrou: ${JSON.stringify(entrouRet2b)})`);
+  ok(!ret2b.win.EkoAcesso.liberado('mp-retirada'), 'sem processo aberto: a liberação guardada é apagada');
+
+  // B3) A conferência falhou (servidor fora): pede a senha, não segue no nome guardado.
+  ss.setItem('eko_liberado_mp-retorno', JSON.stringify({ nome: 'BRUNO', id: 5, ts: Date.now() }));
+  const rtnFalha = novoFrame(ss, fetchFalso);
+  const entrouFalha = [];
+  rtnFalha.win.EkoAcesso.exigir('mp', nome => entrouFalha.push(nome), { chave: 'mp-retorno', aindaValida: async () => { throw new Error('fora'); } });
+  await sleep(50);
+  ok(entrouFalha.length === 0 && rtnFalha.teclado(), 'conferência falhou: pede a senha');
+  rtnFalha.digitar('2222'); rtnFalha.entrar();
+  await sleep(600);
+  ok(entrouFalha.join() === 'BRUNO', 'Retorno: Bruno entra de novo com a senha');
+
+  // Leitor com o teclado na tela: o bipe não vira senha nem gasta tentativa.
+  const nPedidos = pedidos.length;
+  ok(ret2b.win.EkoAcesso.bloqueando(), 'teclado na tela: a tela sabe que está bloqueada (leitor não dá baixa)');
+  ret2b.digitar('R0001234'); ret2b.entrar();
+  await sleep(100);
+  ok(pedidos.length === nPedidos, 'bipe com o teclado aberto não é mandado como senha', `(pedidos: ${pedidos.length - nPedidos})`);
+  ok(/bipe/i.test(ret2b.doc.getElementById('eko-acesso').querySelector('#eko-msg').textContent), 'avisa que foi um bipe');
+  ret2b.digitar('1111'); ret2b.entrar();
+  await sleep(600);
+  ok(entrouRet2b.join() === 'ANA' && !ret2b.win.EkoAcesso.bloqueando(), 'depois do bipe, a senha digitada funciona e a tela desbloqueia');
+  abertaDe = 'ANA';
 
   // C) Ana encerra a retirada: o teclado volta só ali.
   const antes = entrouRet.length;
@@ -165,8 +202,20 @@ async function testeFrames() {
 
   const ret3 = novoFrame(ss, fetchFalso);
   const entrouRet3 = [];
-  ret3.win.EkoAcesso.exigir('mp', nome => entrouRet3.push(nome), { chave: 'mp-retirada' });
+  abertaDe = 'BRUNO';
+  ret3.win.EkoAcesso.exigir('mp', nome => entrouRet3.push(nome), { chave: 'mp-retirada', aindaValida });
+  await sleep(50);
   ok(entrouRet3.join() === 'BRUNO', 'Retirada recarregada depois da troca: nome do Bruno, não da Ana');
+
+  // Caixa "sessão de outro": nome escapado e aviso de encerrar recusado.
+  const cx = novoFrame(ss, fetchFalso);
+  const escolha = cx.win.EkoAcesso.perguntarSessaoDeOutro({ processo: 'Retirada', operador: '<img src=x onerror=alert(1)>', itens: 2, aviso: 'Não deu <b>' });
+  const ov = cx.doc.getElementById('eko-outro');
+  ok(ov && !/<img/.test(ov.innerHTML) && /&lt;img/.test(ov.innerHTML), 'caixa "sessão de outro": nome do operador escapado');
+  ok(ov && /Não deu &lt;b&gt;/.test(ov.innerHTML), 'caixa "sessão de outro": mostra o aviso (escapado)');
+  ok(cx.win.EkoAcesso.bloqueando(), 'caixa "sessão de outro" na tela: bloqueia o leitor');
+  ov.querySelector('#eko-outro-continuar').onclick();
+  ok((await escolha) === 'continuar' && !cx.win.EkoAcesso.bloqueando(), 'continuar: fecha a caixa e libera o leitor');
 
   // Telas sem chave (PA, Resíduos) seguem como antes: chave = tela.
   const pa = novoFrame(ss, fetchFalso);
@@ -183,12 +232,20 @@ function testeTelas() {
   const fimR = r.slice(r.indexOf('async function finalizar('), r.indexOf('async function finalizar(') + 4000);
   ok(r.indexOf('async function finalizar(') > 0 && /encerrouProcesso\(\)/.test(fimR), 'Retirada: finalizar encerra a senha');
   ok((r.match(/encerrouProcesso\(\);/g) || []).length >= 2, 'Retirada: finalizar e cancelar encerram a senha');
+  ok(/aindaValida: retiradaAbertaDe/.test(r), 'Retirada: a senha guardada só vale com retirada aberta da pessoa');
+  ok(/EkoAcesso\.bloqueando\(\)\) \{ _bufKey = ''; return; \}/.test(r), 'Retirada: leitor não dá baixa com o teclado de senha na tela');
+  ok(!/\$\{dono\}/.test(r) && !/\$\{eu\}/.test(r), 'Retirada: nome do operador escapado no aviso (showToast monta HTML)');
+  ok(/estado\.sessaoOperador = window\.EKO_RESPONSAVEL \|\| null;/.test(r), 'Retirada: quem abre a sessão fica como dono');
 
   const rr = ler('mp-recebimento-retorno.html');
   ok(/const CHAVE_PIN = 'mp-' \+ ABA_PIN;/.test(rr), 'Recebimento/Retorno: chave pela aba');
   ok(/EkoAcesso\.exigir\(tela, aoEntrar, \{ chave: CHAVE_PIN/.test(rr), 'Recebimento/Retorno passa a chave ao pedir a senha');
   ok(/if \(finalizou\) encerrouProcesso\(\);/.test(rr), 'Recebimento/Retorno: enviar ao Bling encerra a senha');
   ok(/if \(sessaoId\) encerrouProcesso\(\);/.test(rr), 'Recebimento/Retorno: cancelar encerra a senha');
+  ok(/aindaValida: sessaoAbertaDe/.test(rr), 'Recebimento/Retorno: a senha guardada só vale com sessão aberta da pessoa');
+  ok(/EkoAcesso\.bloqueando\(\)\) \{ bipeBuffer = ''; return; \}/.test(rr), 'Recebimento/Retorno: leitor parado com o teclado de senha na tela');
+  const rest = rr.slice(rr.indexOf('async function restaurarSessoesAbertas'), rr.indexOf('async function restaurarSessoesAbertas') + 600);
+  ok(rest.indexOf('estado.sessaoInfo = {}') > rest.indexOf('if (!r.ok) return;'), 'Recebimento/Retorno: consulta que falha não apaga quem é o dono');
 
   const mp = ler('materia-prima.html');
   ok(!/<script[^>]+acesso-colaborador\.js/.test(mp) && !/comAcesso\(/.test(mp), 'Matéria-Prima: entrar na função não pede senha');

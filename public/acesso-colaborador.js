@@ -148,12 +148,20 @@
       kb.appendChild(b);
     }
 
-    // teclado físico (o leitor de código de barras também digita)
+    // teclado físico (o leitor de código de barras também digita). Etiqueta
+    // começa com letra (R0001234, E0002428): com letra no meio, é bipe, não
+    // senha — descarta até o Enter, sem gastar tentativa de PIN.
+    let bipe = false;
     document.addEventListener('keydown', function ouvir(ev) {
       if (!document.getElementById('eko-acesso')) { document.removeEventListener('keydown', ouvir); return; }
+      if (ev.key && ev.key.length === 1 && /[A-Za-z]/.test(ev.key)) { bipe = true; pin = ''; pintar(); return; }
+      if (ev.key === 'Enter') {
+        if (bipe) { bipe = false; pin = ''; pintar(); msg('Isso foi um bipe. Digite a sua senha primeiro.'); return; }
+        tentar(); return;
+      }
+      if (bipe) return;
       if (ev.key >= '0' && ev.key <= '9') { if (pin.length < 8) { pin += ev.key; pintar(); msg(''); } }
       else if (ev.key === 'Backspace') { pin = pin.slice(0, -1); pintar(); }
-      else if (ev.key === 'Enter') { tentar(); }
     });
   }
 
@@ -182,6 +190,7 @@
             (quando ? 'Desde ' + escHtml(quando) + ' · ' : '') + itens + (itens === 1 ? ' item' : ' itens') + '.<br>' +
             'Se você continuar, o que você fizer agora fica no nome de <b>' + escHtml(info.operador) + '</b>.' +
           '</div>' +
+          (info.aviso ? '<div style="font-size:14px; color:#ff9b9b; font-weight:700; line-height:1.45; margin:-6px 0 16px;">' + escHtml(info.aviso) + '</div>' : '') +
           '<button id="eko-outro-encerrar" style="width:100%; padding:15px; border:none; border-radius:12px; background:#00ff9d; color:#052916; font-size:15px; font-weight:900; cursor:pointer; margin-bottom:10px;">Encerrar a de ' + escHtml(info.operador) + ' e começar a minha</button>' +
           '<button id="eko-outro-continuar" style="width:100%; padding:13px; border:1.5px solid #2a3a52; border-radius:12px; background:#131f30; color:#cbd5e8; font-size:14px; font-weight:800; cursor:pointer;">Continuar no nome de ' + escHtml(info.operador) + '</button>' +
         '</div>';
@@ -200,22 +209,31 @@
       opc = opc || {};
       const chave = opc.chave || tela;
       PEDIDOS[chave] = { tela, aoEntrar, opc };
-      // Já liberado nesta chave: não pede a senha de novo.
+      const quandoPronto = fn => {
+        if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fn);
+        else fn();
+      };
+      const pedirSenha = () => quandoPronto(() => montar(tela, aoEntrar, opc));
       const lib = lerLiberacao(chave);
-      if (lib) {
+      if (!lib) return pedirSenha();
+      const seguir = () => {
         window.EKO_RESPONSAVEL = lib.nome;
         window.EKO_RESPONSAVEL_ID = lib.id;
-        const seguir = () => { try { aoEntrar && aoEntrar(lib.nome, lib); } catch (e) { console.error(e); } };
-        if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', seguir);
-        else seguir();
-        return;
-      }
-      if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', () => montar(tela, aoEntrar, opc));
-      } else {
-        montar(tela, aoEntrar, opc);
-      }
+        quandoPronto(() => { try { aoEntrar && aoEntrar(lib.nome, lib); } catch (e) { console.error(e); } });
+      };
+      // opc.aindaValida(lib) → Promise<bool>: a tela confirma que a liberação
+      // ainda vale (na MP: há processo aberto no nome dessa pessoa). Sem
+      // processo, a pessoa saiu sem fazer nada: pede a senha de novo — senão
+      // quem chega depois entra no nome dela. Erro na conferência = pede a senha.
+      if (typeof opc.aindaValida !== 'function') return seguir();
+      Promise.resolve()
+        .then(() => opc.aindaValida(lib))
+        .then(vale => { if (vale) seguir(); else { window.EkoAcesso.sair(chave); pedirSenha(); } },
+              () => { window.EkoAcesso.sair(chave); pedirSenha(); });
     },
+    // Teclado de senha ou caixa "sessão de outro" na tela: a tela não deve
+    // aceitar bipe nem abrir sessão (ninguém está identificado ainda).
+    bloqueando() { return !!(document.getElementById('eko-acesso') || document.getElementById('eko-outro')); },
     // Encerra a liberação (trocar de responsável / fim de turno).
     sair(chave) {
       try { sessionStorage.removeItem(chaveLib(chave)); } catch (e) {}
