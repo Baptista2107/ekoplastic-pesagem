@@ -15,6 +15,13 @@ REM ===================================================================
 set "LOG=%~dp0OUTPUT_ATUALIZAR.TXT"
 set "URLSAUDE=http://localhost:3000/healthcheck"
 
+REM  MANUTENCAO (11/11/2026): o vigia da tela (tela-vigia.ps1) sobe o
+REM  servidor de novo 30 s depois de ele sumir. Enquanto este .bat roda,
+REM  eko-manutencao.flag pede ao vigia para esperar (no maximo 15 min,
+REM  para uma bandeira esquecida nunca deixar o servidor fechado).
+set "MANUT=%~dp0eko-manutencao.flag"
+> "%MANUT%" echo ATUALIZAR.bat %date% %time%
+
 > "%LOG%" echo ============================================================
 call :L "  EKOPLASTIC PESAGEM - ATUALIZAR A ESTACAO"
 call :L "============================================================"
@@ -37,21 +44,34 @@ if not defined REMOTO ( call :L "FALHA: sem remote origin." & goto :parar )
 call :L "OK 1/4: pasta clonada de %REMOTO%"
 
 REM ---- o servidor TEM que estar parado ----
+REM  O "Fechar agora" da tela nao desliga mais o servidor (11/11/2026).
+REM  Para parar: fechar a janela preta do INICIAR. A bandeira de
+REM  manutencao acima segura o vigia enquanto isso.
+set /a _pare=0
+:esperar_parar
 curl -s -o nul --max-time 3 "%URLSAUDE%" >nul 2>&1
-if not errorlevel 1 (
-  call :L "FALHA: o sistema ainda esta rodando."
+if errorlevel 1 goto :parou
+if %_pare%==0 (
+  call :L "O sistema ainda esta rodando - aguardando ele parar (ate 3 min)."
   echo.
   echo ============================================================
   echo  O SISTEMA AINDA ESTA NO AR.
   echo.
-  echo  Encerre primeiro pela propria tela do sistema, confirme que
-  echo  a janela preta do INICIAR fechou, e rode este .bat de novo.
+  echo  Feche a janela preta "Ekoplastic - Servidor de Etiquetas".
+  echo  Esta janela espera ate 3 minutos e segue sozinha.
   echo.
   echo  Atualizar com o servidor de pe' pode trocar o codigo debaixo
   echo  de uma operacao em andamento.
   echo ============================================================
+)
+set /a _pare+=1
+if %_pare% GEQ 90 (
+  call :L "FALHA: o sistema continuou no ar por 3 minutos. Nada foi alterado."
   goto :parar
 )
+timeout /t 2 /nobreak >nul
+goto :esperar_parar
+:parou
 call :L "OK 2/4: servidor parado."
 
 set "SUJO=0"
@@ -77,7 +97,9 @@ if "%NOVOS%"=="0" (
   call :L "=== FIM DO DIAGNOSTICO ==="
   echo.
   echo  Ja esta atualizado. Pode subir o sistema normalmente.
+  echo  (Se ninguem abrir o INICIAR, o vigia sobe o servidor em 30 s.)
   echo.
+  del "%MANUT%" >nul 2>&1
   pause
   exit /b 0
 )
@@ -102,7 +124,8 @@ echo ------------------------------------------------------------
 echo.
 echo ============================================================
 echo  Nada foi alterado ate' aqui.
-echo  Pressione uma tecla para APLICAR, ou feche para cancelar.
+echo  Pressione uma tecla para APLICAR. Para cancelar, feche esta
+echo  janela e abra o INICIAR (ou o vigia sobe o servidor em 15 min).
 echo ============================================================
 pause >nul
 
@@ -149,6 +172,7 @@ REM ================= FASE 4 - SUBIR E CONFERIR =================
 call :L "------------------------------------------------------------"
 call :L "FASE 4 - SUBINDO O SISTEMA"
 call :L "------------------------------------------------------------"
+del "%MANUT%" >nul 2>&1
 start "" "%~dp0INICIAR.bat"
 call :L "INICIAR.bat disparado. Aguardando o sistema responder..."
 
@@ -244,6 +268,7 @@ call :L "  copiado: %~1"
 exit /b 0
 
 :parar
+del "%MANUT%" >nul 2>&1
 call :L ""
 call :L "*** INTERROMPIDO ***"
 call :L "=== FIM DO DIAGNOSTICO ==="

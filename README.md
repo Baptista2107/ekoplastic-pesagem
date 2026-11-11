@@ -48,10 +48,14 @@ Variáveis de ambiente (usadas pelos testes): `EKO_PORT`, `EKO_PORT_HTTPS`, `EKO
 Pré-requisitos no Mini PC: **Node.js 22.5+** (usa o `node:sqlite` nativo; a estação está
 no 24), Google Chrome, impressora térmica EPL2 e balança na serial.
 
-- **`INICIAR.bat`** sobe o servidor num laço (caiu, volta em 5 s) e abre a tela em modo
-  quiosque. Rodar de novo com o sistema aberto só reabre a tela.
+- **`INICIAR.bat`** sobe o servidor num laço (caiu, volta em 5 s) e o vigia da tela
+  (`tela-vigia.ps1`, oculto), que abre a tela em modo quiosque e a reabre se ela fechar.
+  O vigia só roda na sessão do monitor, nunca na sessão 0 do Windows. Rodar de novo com o
+  sistema aberto só pede a tela. "Fechar agora" fecha só a tela, por 10 min; o servidor
+  não desliga pela tela. Ver `docs/decisoes/2026-11-11-tela-sempre-viva.md`.
 - **`ABRIR-TELA.bat`** reabre só o navegador, sem mexer no servidor.
-- `/healthcheck` mostra versão (commit), impressora, balança, Bling e início automático.
+- `/healthcheck` mostra versão (commit), impressora, balança, Bling, início automático e
+  `tela` (sessão do vigia, tela aberta, pausa).
 
 ### Início automático com o Windows
 

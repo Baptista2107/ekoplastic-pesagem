@@ -86,7 +86,7 @@
         '<div style="font-size:46px;line-height:1;margin-bottom:10px;">✓</div>' +
         '<div style="color:#fff;font-size:20px;font-weight:800;margin-bottom:8px;">Tela liberada</div>' +
         '<div style="color:#9fb0d0;font-size:14px;line-height:1.5;margin-bottom:18px;">' +
-          '<b>Fechar agora</b> encerra o sistema (fecha o navegador e o servidor). ' +
+          '<b>Fechar agora</b> fecha só a tela, por 10 minutos. O sistema continua ligado (balança, coletor e celulares seguem funcionando) e a tela volta sozinha; para abrir antes, use o INICIAR. ' +
           '<b>Voltar ao sistema</b> retorna à tela cheia.' +
         '</div>' +
         '<button id="eko-fechar-janela" style="width:100%;padding:13px;border:none;border-radius:10px;background:#ef4444;color:#fff;font-size:15px;font-weight:800;cursor:pointer;margin-bottom:10px;">Fechar agora</button>' +
@@ -95,10 +95,10 @@
     document.body.appendChild(d);
     document.getElementById('eko-fechar-janela').addEventListener('click', function () {
       const btn = this;
-      btn.textContent = 'Encerrando…';
+      btn.textContent = 'Fechando a tela…';
       btn.disabled = true;
       // window.close() não funciona em janela Chrome --app (não foi aberta por
-      // script). O servidor fecha o navegador e a si mesmo de forma limpa.
+      // script). O servidor fecha o navegador; ele mesmo continua ligado.
       fetch(URL_BASE + '/sistema/encerrar', { method: 'POST' }).catch(function () {});
       // Se em 3s nada fechou (rodando fora do quiosque), reabilita o botão.
       setTimeout(function () { btn.disabled = false; btn.textContent = 'Fechar agora'; }, 3000);

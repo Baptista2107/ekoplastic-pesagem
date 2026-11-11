@@ -18,6 +18,8 @@ const {
 } = require('../lib/impressao');
 const { jsonErr, jsonOk, lerBodyJson, NAO_TRATADA } = require('../lib/http');
 const { avaliarJanelaAtualizacao } = require('../lib/atualizacao');
+const { decidir: decidirTela, ehLocal, liberar: liberarTela, pausar: pausarTela, resumoTela } = require('../lib/tela');
+const telaMod = require('../lib/tela');   // estado.desistiuAvisado: ler sempre por aqui
 const blingMod = require('../lib/bling');   // variaveis que mudam de valor: ler sempre por aqui
 const impressaoMod = require('../lib/impressao');   // variaveis que mudam de valor: ler sempre por aqui
 
@@ -36,6 +38,8 @@ async function rotasSistema(req, res, parsed, pathname) {
       versao: VERSION,
       commit: commitAtual(),
       inicio_automatico: estadoInicioAutomatico(),
+      // Vigia da tela (INICIAR.bat): sessão do Windows, tela aberta, pausa.
+      tela: resumoTela(),
       impressora: impressaoMod.PRINTER_DETECTADA ? impressaoMod.PRINTER_ATIVA : null,    // A6: null se não detectada
       impressora_detectada: impressaoMod.PRINTER_DETECTADA,
       impressao_simulada: !impressaoMod.PRINTER_DETECTADA || PRINT_SIMULAR_ENV || configGet('print_simular', '0') === '1',
@@ -88,28 +92,63 @@ async function rotasSistema(req, res, parsed, pathname) {
     });
   }
 
-  // ─── SISTEMA: encerrar o quiosque de forma limpa ───
-  // POST /sistema/encerrar
-  // Fecha o navegador do quiosque e encerra o próprio servidor. Cria o
-  // arquivo-sinal 'eko-encerrar.flag' — o INICIAR.bat vê esse arquivo e NÃO
-  // reabre (sem ele, o loop de auto-recuperação reabriria o servidor em 5s).
-  // Usado pelo botão "Fechar agora" da caixa de saída: window.close() não
-  // funciona em janela Chrome --app (não foi aberta por script).
+  // ─── SISTEMA: fechar a TELA do quiosque ───
+  // POST /sistema/encerrar   (botão "Fechar agora", depois da senha do supervisor)
+  // Fecha o navegador do quiosque. O SERVIDOR CONTINUA LIGADO (11/11/2026,
+  // Gustavo: "esse servidor não pode ficar fechado de jeito algum"): até então
+  // este botão também desligava o servidor e gravava eko-encerrar.flag, que
+  // fazia o INICIAR.bat não religar; em 11/11 às 08h14 a pesagem ficou fora
+  // 31 min. Coletor, celulares e balança dependem do servidor.
+  // A tela fica fechada por 10 min (lib/tela.js) e o vigia do INICIAR.bat a
+  // reabre sozinho; para abrir antes, abrir o INICIAR.bat.
+  // window.close() não funciona em janela Chrome --app (não foi aberta por
+  // script), por isso o servidor fecha o navegador.
+  // Só da própria máquina: um celular pela rede não fecha a tela do monitor.
   if (pathname === '/sistema/encerrar' && req.method === 'POST') {
-    jsonOk(res, { encerrando: true });
-    logI('sistema', 'Encerramento solicitado pela tela — fechando navegador e servidor.');
+    if (!ehLocal(req)) return jsonErr(res, 403, 'Fechar a tela só pelo próprio Mini PC.');
+    const ate = pausarTela();
+    jsonOk(res, { encerrando: true, servidor: 'continua ligado', tela_volta_em: new Date(ate).toISOString() });
+    logI('sistema', 'Tela fechada pelo botão "Fechar agora" — o servidor continua ligado; a tela volta sozinha em 10 min.');
+    // EKO_FECHAR_TELA_SIMULAR=1 (testes): não fecha navegador nenhum — a suíte
+    // roda em PC Windows (ENVIAR-ATUALIZACAO.bat) e fecharia o Chrome de quem testa.
+    const simular = process.env.EKO_FECHAR_TELA_SIMULAR === '1';
     setTimeout(() => {
-      try { fs.writeFileSync(path.join(RAIZ, 'eko-encerrar.flag'), String(Date.now())); } catch (e) {}
-      if (process.platform === 'win32') {
+      if (process.platform === 'win32' && !simular) {
         try {
           // Fecha as janelas do navegador do quiosque (Chrome e o fallback Edge).
           spawn('taskkill', ['/IM', 'chrome.exe', '/F'], { detached: true, stdio: 'ignore' }).unref();
           spawn('taskkill', ['/IM', 'msedge.exe', '/F'], { detached: true, stdio: 'ignore' }).unref();
         } catch (e) {}
       }
-      setTimeout(() => process.exit(0), 700);
     }, 200);
     return;
+  }
+
+  // ─── VIGIA DA TELA (INICIAR.bat vigia, na sessão do monitor) ───
+  // GET /sistema/tela?s=<sessão do Windows>&a=<1 tela aberta | 0 fechada>
+  // Responde UMA palavra em texto puro (ABERTA, ABRIR, AGUARDAR, PAUSADA,
+  // DESISTIU) — ver lib/tela.js. Texto puro porque quem lê é um .bat.
+  if (pathname === '/sistema/tela' && req.method === 'GET') {
+    if (!ehLocal(req)) return jsonErr(res, 403, 'Só o vigia do próprio Mini PC.');
+    const q = parsed.query || {};
+    const r = decidirTela({ sessao: String(q.s || '?').slice(0, 8), aberta: q.a === '1' });
+    if (r === 'ABRIR') logI('tela', `Vigia da sessão ${String(q.s || '?').slice(0, 8)}: tela fechada — mandei abrir.`);
+    if (r === 'DESISTIU' && !telaMod.estado.desistiuAvisado) {
+      telaMod.estado.desistiuAvisado = true;
+      logW('tela', 'Mandei abrir a tela várias vezes e ela nunca apareceu aberta — parei de abrir até alguém abrir o INICIAR.bat.');
+    }
+    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
+    res.end(r);
+    return;
+  }
+
+  // POST /sistema/tela/abrir — o INICIAR.bat aberto à mão com o servidor no
+  // ar: tira a pausa do "Fechar agora" para o vigia abrir a tela já.
+  if (pathname === '/sistema/tela/abrir' && req.method === 'POST') {
+    if (!ehLocal(req)) return jsonErr(res, 403, 'Só pelo próprio Mini PC.');
+    liberarTela();
+    logI('tela', 'INICIAR.bat aberto com o servidor no ar — a tela abre já.');
+    return jsonOk(res, { tela: 'vai abrir' });
   }
 
   // ─── POST /sistema/atualizar  { senha } ───

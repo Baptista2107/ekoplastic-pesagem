@@ -43,6 +43,11 @@ npm-debug.log*
 #                      processo cair antes ela nao pode virar commit.
 eko-encerrar.flag
 eko-atualizar.flag
+# eko-atualizando.flag: o INICIAR.bat durante a atualizacao remota
+# eko-manutencao.flag : o ATUALIZAR.bat enquanto roda
+#                       (as duas seguram o vigia da tela por ate 15 min)
+eko-atualizando.flag
+eko-manutencao.flag
 
 # --- Estado do inicio automatico do Windows ---
 # Gravado pelo conferir-inicio-automatico.ps1 e lido pelo /healthcheck.
@@ -83,6 +88,7 @@ desktop.ini
 # segundo e pesa centenas de MB. Se entrar no repositorio, o clone do Mini PC
 # vira inviavel. Ele se recria sozinho na primeira abertura da tela.
 /navegador-eko/
+/navegador-eko-edge/
 
 # --- Historico de ZIPs no Mini PC - e' justamente o que o Git substitui ---
 # Padrao sem acento de proposito: nome com acento em .gitignore depende da
