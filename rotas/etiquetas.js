@@ -603,6 +603,10 @@ async function rotasEtiquetas(req, res, parsed, pathname) {
     // a garantia para quem bipou um segundo antes da troca ligar).
     // Uma nova tentativa de algo que JÁ foi impresso passa direto.
     const tipoEnt = dados.tipo || 'recebimento';
+    // Recebimento: o único sub_tipo aceito do corpo é a nota de VARREDURA
+    // (11/11/2026, Gustavo). Qualquer outro valor é ignorado — o sub_tipo
+    // muda o desenho da etiqueta e o agrupamento, não pode vir livre da tela.
+    if (tipoEnt === 'recebimento' && dados.sub_tipo !== 'varredura') delete dados.sub_tipo;
     if ((tipoEnt === 'recebimento' || tipoEnt === 'retorno') && !idempotenciaGet(dados.clientToken)) {
       const matEnt = String(dados.materialKey || dados.material_key).toUpperCase();
       const troca = substituicaoAtiva(matEnt, dados.cor || null, dados.fornecedor);

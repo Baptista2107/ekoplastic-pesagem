@@ -246,6 +246,22 @@ header {
 .peso-input:focus { border-color: var(--entrada); outline: none; }
 .peso-input.tara { font-size: 16px; color: var(--text); }
 .peso-acoes { display: flex; gap: 6px; margin-top: 8px; }
+.peso-grade { display: grid; grid-template-columns: 1fr 34%; gap: 8px; align-items: stretch; }
+.peso-col { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.peso-col .btn-bal { flex: none; }
+.btn-varredura {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  font-family: 'Nunito', sans-serif; cursor: pointer;
+  background: transparent; color: var(--muted);
+  border: 2px dashed var(--border); border-radius: 10px; padding: 8px;
+}
+.btn-varredura .vr-ico { font-size: 26px; line-height: 1; }
+.btn-varredura .vr-txt { font-size: 15px; font-weight: 900; letter-spacing: 1.5px; }
+.btn-varredura .vr-sub { font-size: 10px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; }
+.btn-varredura:hover { border-color: var(--warn); color: var(--warn); }
+.btn-varredura.ativo { background: var(--warn); color: #241600; border: 2px solid var(--warn); }
+.item .tag-varr { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 4px;
+  background: var(--warn); color: #241600; font-size: 10px; font-weight: 900; letter-spacing: 0.8px; }
 .btn-bal {
   flex: 1;
   font-family: 'Nunito', sans-serif;
@@ -1244,18 +1260,24 @@ body.modo-retorno #btn-corrigir { display: none; }
           <span id="bal-status-txt">Balança desconectada</span>
         </div>
       </div>
-      <div class="peso-row">
-        <div class="peso-input-wrap">
-          <div class="peso-label">Peso (kg)</div>
-          <input class="peso-input" type="number" id="peso-bruto" value="" placeholder="0,0" step="0.1" oninput="atualizarLiquido()">
+      <!-- 11/11/2026 (Gustavo): peso, Conectar e Simular um abaixo do outro à
+           esquerda; à direita o botão VARREDURA na altura dos três. Aceso, a
+           próxima pesagem sai marcada como varredura (etiqueta, lista e Bling).
+           O "Zerar Balança" saiu desta tela. -->
+      <div class="peso-grade">
+        <div class="peso-col">
+          <div class="peso-input-wrap">
+            <div class="peso-label">Peso (kg)</div>
+            <input class="peso-input" type="number" id="peso-bruto" value="" placeholder="0,0" step="0.1" oninput="atualizarLiquido()">
+          </div>
+          <button class="btn-bal" onclick="conectarBalanca()">⚡ Conectar Balança</button>
+          <button class="btn-bal sim" onclick="simularPeso()">↻ Simular</button>
         </div>
-      </div>
-      <div class="peso-acoes">
-        <button class="btn-bal" onclick="conectarBalanca()">⚡ Conectar Balança</button>
-        <button class="btn-bal sim" onclick="simularPeso()">↻ Simular</button>
-      </div>
-      <div class="bal-cmd-row" id="bal-cmd-row" style="display:none">
-        <button class="btn-bal-cmd" onclick="balancaZerar()">⊘ Zerar Balança</button>
+        <button class="btn-varredura" id="btn-varredura" type="button" aria-pressed="false" onclick="alternarVarredura()">
+          <span class="vr-ico">🧹</span>
+          <span class="vr-txt">VARREDURA</span>
+          <span class="vr-sub" id="vr-sub">toque para marcar</span>
+        </button>
       </div>
       <div class="aviso-bal" id="aviso-bal">
         ⚠ <b>Porta aberta mas sem dados da balança.</b><br>
@@ -2241,7 +2263,6 @@ async function conectarBalanca() {
     document.getElementById('bal-status').classList.add('on');
     document.getElementById('bal-status-txt').textContent =
       `Conectada · ${d.porta || 'COM3'} · aguardando peso`;
-    document.getElementById('bal-cmd-row').style.display = 'flex';
     beepOk();
 
     bal_polling = setInterval(lerPeso, POLLING_MS);
@@ -2381,6 +2402,23 @@ function setQtd(n) {
 
 // ─── IMPRIMIR — envia EPL2 ao servidor de impressão local ───
 
+// ─── VARREDURA (11/11/2026, Gustavo) ───
+// Aceso: a próxima pesagem do Recebimento sai marcada como varredura — selo
+// na etiqueta, etiqueta VARREDURA na lista e linha própria na observação do
+// Bling. O produto não muda (mesmo material/fornecedor/lote): é uma nota.
+// Apaga sozinho depois de imprimir (um toque = uma pesagem).
+estado.varredura = false;
+function marcarVarredura(on) {
+  estado.varredura = !!on;
+  const b = document.getElementById('btn-varredura');
+  if (!b) return;
+  b.classList.toggle('ativo', estado.varredura);
+  b.setAttribute('aria-pressed', estado.varredura ? 'true' : 'false');
+  const sub = document.getElementById('vr-sub');
+  if (sub) sub.textContent = estado.varredura ? 'próxima pesagem' : 'toque para marcar';
+}
+function alternarVarredura() { marcarVarredura(!estado.varredura); }
+
 async function imprimir() {
   // Decide a fonte dos dados conforme o modo + sub-fluxo
   let dadosImpr;
@@ -2448,7 +2486,7 @@ async function imprimir() {
       peso: comp ? estado.qtdSacos * kgSacoDe(estado.material) : estado.pesoBruto,
       comp: comp,
       qtdSacos: comp ? estado.qtdSacos : null,
-      subTipo: null,
+      subTipo: estado.varredura ? 'varredura' : null,
     };
   }
 
@@ -2529,6 +2567,7 @@ async function imprimir() {
         sku: sku,
         sessao_id: sessaoId,                              // vincula à sessão
         ref_id: item.origId || null,                      // se retorno: lote original
+        sub_tipo: item.subTipo === 'varredura' ? 'varredura' : undefined,   // nota de varredura
       })
     });
     const result = await resp.json();
@@ -2539,6 +2578,7 @@ async function imprimir() {
     }
     // O número é atribuído pelo SERVIDOR (C2). Usa o id/seq retornados como verdade.
     estado.tokenPendente = null;   // sucesso → próxima usa token novo
+    if (item.subTipo === 'varredura') marcarVarredura(false);   // um toque = uma pesagem
     if (result.id)  { item.id = result.id; }
     if (result.seq) { item.n  = result.seq; }
     if (result.seq_sessao) { item.seqSessao = result.seq_sessao; }
@@ -2992,7 +3032,8 @@ function renderHistorico() {
   }
 
   cont.innerHTML = lista.map(it => {
-    const desc = it.material + (it.cor ? ' · ' + it.cor : '');
+    const desc = it.material + (it.cor ? ' · ' + it.cor : '')
+      + (it.subTipo === 'varredura' ? '<span class="tag-varr">VARREDURA</span>' : '');
     const refOrig = it.origId ? ` · de ${it.origId}` : '';
     const extra = it.qtdSacos
       ? `${kgIndicadoDe(it.materialKey) ? '1 saco' : it.qtdSacos + ' sacos'} · ${it.hora}${refOrig}`
