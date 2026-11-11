@@ -120,6 +120,15 @@ async function testeServidor() {
 
   for (const id of [normal.id, varr.id, capa.id]) await req('POST', `/etiquetas/${id}/bipar`);
   const f = await req('POST', `/sessoes/${sid}/finalizar`);
+  // Resumo impresso do recebimento (sai ao finalizar): a linha da varredura marcada.
+  await sleep(500);
+  const resumo = (fs.existsSync(DIR_EPL) ? fs.readdirSync(DIR_EPL).sort() : [])
+    .map(x => fs.readFileSync(path.join(DIR_EPL, x), 'latin1')).filter(t => /RESUMO RECEBIMENTO/.test(t)).pop() || '';
+  const linhas = [...resumo.matchAll(/^A50,\d+,0,2,1,1,N,"(.*)"$/gm)].map(m => m[1]);
+  const lV = linhas.find(l => l.includes(varr.id)), lN = linhas.find(l => l.includes(normal.id));
+  ok(lV && /VARREDURA$/.test(lV), 'D) resumo impresso: a pesagem de varredura sai marcada', JSON.stringify(linhas));
+  ok(lN && !/VARREDURA/.test(lN), 'D) resumo impresso: a pesagem comum não', lN);
+  ok(linhas.length && linhas.every(l => l.length <= 46), 'D) toda linha do resumo cabe em 46 colunas', JSON.stringify(linhas.map(l => l.length)));
   const obs = f.json && f.json.bling && f.json.bling.payload ? f.json.bling.payload.observacoes
             : (f.json && f.json.payload ? f.json.payload.observacoes : null);
   ok(typeof obs === 'string', 'C) finalizar devolve a observação do Bling (simulação)', JSON.stringify(f.json).slice(0, 300));
