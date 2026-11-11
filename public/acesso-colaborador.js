@@ -45,6 +45,10 @@
   // Última chamada de exigir() por chave: encerrar() pede a senha de novo e
   // chama o mesmo aoEntrar (a tela já iniciada só troca o responsável).
   const PEDIDOS = {};
+  // Conferências de liberação em andamento (aindaValida): enquanto não se sabe
+  // quem está na tela, ela fica bloqueada para o leitor, como com o teclado.
+  let conferindo = 0;
+  const TETO_CONFERIR_MS = 8000;   // servidor travado: desiste e pede a senha
   function escHtml(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
   }
@@ -153,7 +157,9 @@
     // senha — descarta até o Enter, sem gastar tentativa de PIN.
     let bipe = false;
     document.addEventListener('keydown', function ouvir(ev) {
-      if (!document.getElementById('eko-acesso')) { document.removeEventListener('keydown', ouvir); return; }
+      // Ouve só o SEU teclado: depois de encerrar, monta-se outro, e este não
+      // pode mandar a senha de novo (antes, a senha ia duas vezes ao servidor).
+      if (!ov.isConnected) { document.removeEventListener('keydown', ouvir); return; }
       if (ev.key && ev.key.length === 1 && /[A-Za-z]/.test(ev.key)) { bipe = true; pin = ''; pintar(); return; }
       if (ev.key === 'Enter') {
         if (bipe) { bipe = false; pin = ''; pintar(); msg('Isso foi um bipe. Digite a sua senha primeiro.'); return; }
@@ -226,14 +232,20 @@
       // processo, a pessoa saiu sem fazer nada: pede a senha de novo — senão
       // quem chega depois entra no nome dela. Erro na conferência = pede a senha.
       if (typeof opc.aindaValida !== 'function') return seguir();
-      Promise.resolve()
-        .then(() => opc.aindaValida(lib))
-        .then(vale => { if (vale) seguir(); else { window.EkoAcesso.sair(chave); pedirSenha(); } },
-              () => { window.EkoAcesso.sair(chave); pedirSenha(); });
+      conferindo++;
+      let teto;
+      const limite = new Promise((_, nao) => { teto = setTimeout(() => nao(new Error('demorou')), TETO_CONFERIR_MS); });
+      Promise.race([Promise.resolve().then(() => opc.aindaValida(lib)), limite])
+        .then(vale => vale, () => false)
+        .then(vale => {
+          clearTimeout(teto);
+          conferindo--;
+          if (vale) seguir(); else { window.EkoAcesso.sair(chave); pedirSenha(); }
+        });
     },
     // Teclado de senha ou caixa "sessão de outro" na tela: a tela não deve
     // aceitar bipe nem abrir sessão (ninguém está identificado ainda).
-    bloqueando() { return !!(document.getElementById('eko-acesso') || document.getElementById('eko-outro')); },
+    bloqueando() { return conferindo > 0 || !!(document.getElementById('eko-acesso') || document.getElementById('eko-outro')); },
     // Encerra a liberação (trocar de responsável / fim de turno).
     sair(chave) {
       try { sessionStorage.removeItem(chaveLib(chave)); } catch (e) {}

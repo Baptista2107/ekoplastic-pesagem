@@ -4123,7 +4123,9 @@ async function sessaoAbertaDe(lib) {
   if (!r.ok) return false;
   const d = await r.json();
   const nome = String(lib.nome || '').trim().toUpperCase();
-  return !!(d.ok && (d.sessoes || []).some(s => s.tipo === ABA_PIN && String(s.operador || '').trim().toUpperCase() === nome));
+  // Sessão VAZIA não conta (órfã: a própria restauração a cancela em seguida).
+  return !!(d.ok && (d.sessoes || []).some(s => s.tipo === ABA_PIN && (s.etiquetas || []).length > 0
+    && String(s.operador || '').trim().toUpperCase() === nome));
 }
 function comAcesso(tela, aoEntrar) {
   if (window.EkoAcesso && typeof EkoAcesso.exigir === 'function')

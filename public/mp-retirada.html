@@ -1713,7 +1713,9 @@ async function retiradaAbertaDe(lib) {
   if (!r.ok) return false;
   const d = await r.json();
   const nome = String(lib.nome || '').trim().toUpperCase();
-  return !!(d.ok && (d.sessoes || []).some(s => s.tipo === 'retirada' && String(s.operador || '').trim().toUpperCase() === nome));
+  // Sessão VAZIA não conta (1º bipe que falhou deixa sessão aberta sem item).
+  return !!(d.ok && (d.sessoes || []).some(s => s.tipo === 'retirada' && (s.etiquetas || []).length > 0
+    && String(s.operador || '').trim().toUpperCase() === nome));
 }
 function comAcesso(tela, aoEntrar) {
   if (window.EkoAcesso && typeof EkoAcesso.exigir === 'function')
