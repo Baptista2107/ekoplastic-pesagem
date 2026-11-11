@@ -122,8 +122,15 @@ header {
 .central {
   padding: 12px 16px;
   display: flex; flex-direction: column; gap: 9px;
-  overflow: hidden;
+  /* 11/11/2026 (Gustavo: "tem que ser possível scrollar essa parte de
+     selecionar os itens"): era overflow:hidden — em tela mais baixa, ou com
+     muitos fornecedores, o passo do peso ficava cortado sem como chegar. */
+  overflow-y: auto; overflow-x: hidden;
+  min-height: 0;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
+.central > * { flex-shrink: 0; }
 
 .banner-recebimento {
   background: linear-gradient(135deg, rgba(0,212,255,0.10), rgba(0,212,255,0.04));
@@ -2190,6 +2197,7 @@ function atualizarAcoes() {
 
 // ─── AÇÕES ───
 function selMat(k) {
+  if (k !== estado.material) marcarVarredura(false);   // trocou o material: a nota não segue junto
   // Saindo de/entrando num material de kg indicado, o campo mostrava kg:
   // zera para não virar número de sacos no outro material.
   if (k !== estado.material && (kgIndicadoDe(k) || kgIndicadoDe(estado.material))) {
@@ -2486,7 +2494,7 @@ async function imprimir() {
       peso: comp ? estado.qtdSacos * kgSacoDe(estado.material) : estado.pesoBruto,
       comp: comp,
       qtdSacos: comp ? estado.qtdSacos : null,
-      subTipo: estado.varredura ? 'varredura' : null,
+      subTipo: (!comp && estado.varredura) ? 'varredura' : null,   // por sacos não é varredura
     };
   }
 
@@ -2986,6 +2994,7 @@ function resetarRetornoCompleto() {
 }
 
 function resetarRecebimento() {
+  marcarVarredura(false);   // nova sessão começa sem a nota
   estado.material = null; estado.fornecedor = null; estado.cor = null;
   estado.pesoBruto = 0; estado.tara = 0; estado.qtdSacos = 0;
   estado.itens = [];
@@ -3169,6 +3178,7 @@ function showToast(tipo, ico, txt) {
 
 function trocarModo(novoModo) {
   if (novoModo === estado.modo) return;
+  marcarVarredura(false);
 
   // Limpa qualquer seleção pendente do RETORNO ao sair dele,
   // para não vazar estado entre as sessões.

@@ -318,6 +318,7 @@ async function rotasEtiquetas(req, res, parsed, pathname) {
       fornecedor:     novo.fornecedor,
       seq:            novo.seq,
       seq_sessao:     novo.seq_sessao,
+      sub_tipo:       novo.sub_tipo,      // nota de VARREDURA sai de novo no papel corrigido
     };
     const eplC = gerarEPL(dadosRe);
     imprimir(eplC, null, (ok, out, err, printer) => {

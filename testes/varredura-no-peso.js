@@ -109,15 +109,27 @@ async function testeServidor() {
   ok(eN && !/VARREDURA/.test(eN), 'A) etiqueta comum sem VARREDURA');
   ok(eC && !/VARREDURA/.test(eC), 'B) etiqueta com sub_tipo recusado sai comum');
 
+  // Correção de etiqueta (troca a cor): o papel reimpresso continua VARREDURA.
+  const antes = fs.existsSync(DIR_EPL) ? fs.readdirSync(DIR_EPL).length : 0;
+  const corr = await req('POST', `/etiquetas/${varr.id}/corrigir`, {
+    materialKey: 'GBD', materialNomeEt: 'BAIXA DENSIDADE', cor: 'Preto', fornecedor: 'Piquiri',
+    codigo: 'PT1', sku: 'GBD.PRE.PIQUIR | 18.5 | L7788' });
+  const novos = fs.existsSync(DIR_EPL) ? fs.readdirSync(DIR_EPL).sort().slice(antes) : [];
+  const eCorr = novos.length ? fs.readFileSync(path.join(DIR_EPL, novos[novos.length - 1]), 'latin1') : '';
+  ok(corr.json && corr.json.ok && /PRETO/.test(eCorr) && /"VARREDURA"/.test(eCorr), 'A) etiqueta corrigida sai de novo com VARREDURA', JSON.stringify(corr.json));
+
   for (const id of [normal.id, varr.id, capa.id]) await req('POST', `/etiquetas/${id}/bipar`);
   const f = await req('POST', `/sessoes/${sid}/finalizar`);
   const obs = f.json && f.json.bling && f.json.bling.payload ? f.json.bling.payload.observacoes
             : (f.json && f.json.payload ? f.json.payload.observacoes : null);
   ok(typeof obs === 'string', 'C) finalizar devolve a observação do Bling (simulação)', JSON.stringify(f.json).slice(0, 300));
   if (typeof obs === 'string') {
-    ok(new RegExp(`VARREDURA: 18,5 KG \\(${varr.id}\\)`).test(obs), 'C) linha VARREDURA com kg e etiqueta', obs);
+    ok(new RegExp(`VARRIDO NO RECEBIMENTO: 18,5 KG \\(${varr.id}\\)`).test(obs), 'C) linha da varredura com kg e etiqueta', obs);
+    // Mesma regra do snapshot_producao.py da VPS (_RX_RESIDUO): se casar, a
+    // COMPRA INTEIRA vira resíduo lá e o fornecedor some das entradas.
+    ok(!/RES\.|RESIDUO|RESÍDUO|VARREDURA|BORRA/i.test(obs), 'C) observação sem palavra que a VPS lê como resíduo', obs);
     ok(/TOTAL: 1038,5 KG/.test(obs), 'C) total continua somando a varredura (é nota, não outro produto)', obs);
-    ok((obs.match(/VARREDURA/g) || []).length === 1, 'C) só a etiqueta marcada entra na linha de varredura', obs);
+    ok((obs.match(/VARRIDO/g) || []).length === 1 && !obs.includes(normal.id), 'C) só a etiqueta marcada entra na linha de varredura', obs);
   }
 }
 
@@ -134,7 +146,11 @@ function testeTela() {
   ok(/class="peso-grade"/.test(bloco) && /\.peso-grade \{ display: grid; grid-template-columns: 1fr 34%;[^}]*align-items: stretch/.test(h),
      'botão VARREDURA ao lado, esticado na altura da coluna');
   ok(/id="btn-varredura"[^>]*onclick="alternarVarredura\(\)"/.test(bloco) && />VARREDURA</.test(bloco), 'botão escrito VARREDURA');
-  ok(/subTipo: estado\.varredura \? 'varredura' : null/.test(h), 'botão aceso marca a pesagem');
+  ok(/subTipo: \(!comp && estado\.varredura\) \? 'varredura' : null/.test(h), 'botão aceso marca a pesagem (não a contagem por sacos)');
+  for (const fn of ['selMat', 'resetarRecebimento', 'trocarModo']) {
+    const corpo = h.slice(h.indexOf(`function ${fn}(`), h.indexOf(`function ${fn}(`) + 300);
+    ok(/marcarVarredura\(false\)/.test(corpo), `${fn}: o botão apaga (a nota não passa adiante)`);
+  }
   ok(/sub_tipo: item\.subTipo === 'varredura' \? 'varredura' : undefined/.test(h), 'a nota vai ao servidor junto da etiqueta');
   ok(/if \(item\.subTipo === 'varredura'\) marcarVarredura\(false\);/.test(h), 'depois de imprimir, o botão apaga (um toque = uma pesagem)');
   ok(/tag-varr/.test(h) && /it\.subTipo === 'varredura' \? '<span class="tag-varr">VARREDURA<\/span>'/.test(h), 'lista da sessão mostra VARREDURA no item');
