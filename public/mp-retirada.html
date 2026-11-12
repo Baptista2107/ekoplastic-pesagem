@@ -628,6 +628,9 @@ header {
 .pp-bag { width: 18px; height: 18px; border-radius: 4px; border: 1.5px solid var(--muted); display: inline-flex; align-items: center;
   justify-content: center; font-size: 11px; font-weight: 800; }
 .pp-bag.ok { background: var(--devol); border-color: var(--devol); color: #000; }
+/* pedido em kg (produto por saco, 12/11/2026): barra no lugar dos quadradinhos */
+.pp-barra { flex: 1 1 100%; height: 8px; border-radius: 4px; background: var(--panel-hi); overflow: hidden; }
+.pp-barra span { display: block; height: 100%; background: var(--devol); }
 .pp-rodape { font-size: 11px; color: var(--muted); overflow-wrap: anywhere; }
 .pp-rodape .pp-onde { color: var(--entrada); }
 .modal.fora { border-color: var(--warn); max-width: 560px; }
@@ -1285,6 +1288,22 @@ const URL_PEDIDOS = URL_BASE + '/retirada/pedidos';
 const escP = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
 const pesoTxt = p => (p == null || p === '' || !isFinite(Number(p))) ? ''
   : Number(p).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' kg';
+// Pedido em kg (12/11/2026): produto que sai por saco (Pigmento, Dessecante,
+// Auxiliar de Fluxo, Compatibilizante). "≈ N sacos" na mesma régua da VPS.
+const emKg = p => !!p && String(p.unidade || '').toLowerCase() === 'kg';
+const kgNum = v => (v == null || v === '' || typeof v === 'boolean' || !isFinite(Number(v))) ? 0 : Number(v);
+const kgTxt = v => kgNum(v).toLocaleString('pt-BR', { maximumFractionDigits: 1 });
+function sacosTxt(kg, kgSaco) {
+  const n = kgNum(kg) / (kgNum(kgSaco) || 25);
+  if (!(n >= 1)) return 'menos de 1 saco';
+  const r = Math.floor(n + 0.5); return '≈ ' + r + ' saco' + (r === 1 ? '' : 's');
+}
+// Uma linha por pedido (lista do modal de bag fora do pedido).
+function linhaPedido(p) {
+  const base = `${escP(p.material_nome || p.material_key)}${p.cor ? ' · ' + escP(p.cor) : ''} · ${escP(p.fornecedor)}`;
+  if (emKg(p)) return `${base} · ${kgTxt(p.kg_atendidos)} de ${kgTxt(p.kg_pedidos)} kg (${sacosTxt(p.kg_pedidos, p.kg_saco)})`;
+  return `${base} · Lote ${escP(p.lote)}${pesoTxt(p.peso) ? ' · ' + escP(pesoTxt(p.peso)) : ''} (${Number(p.bags_atendidos) || 0} de ${Number(p.bags_pedidos) || 0})`;
+}
 function horaPedido(iso) {
   const d = new Date(iso);
   return isNaN(d) ? '' : d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
@@ -1293,10 +1312,13 @@ function horaPedido(iso) {
 // com "!" enquanto não foi feito; V verde quando todos os bags saíram. Todo
 // texto vem da VPS/Mini PC: sempre escP.
 function htmlPedido(p) {
-  const n = Number(p.bags_pedidos) || 0, a = Math.min(Number(p.bags_atendidos) || 0, n);
+  const kg = emKg(p);
+  const n = kg ? kgNum(p.kg_pedidos) : (Number(p.bags_pedidos) || 0);
+  const a = kg ? kgNum(p.kg_atendidos) : Math.min(Number(p.bags_atendidos) || 0, n);
   const feito = p.status === 'atendido';
   let bags = '';
-  for (let i = 0; i < n; i++) bags += `<span class="pp-bag${i < a ? ' ok' : ''}">${i < a ? '✓' : ''}</span>`;
+  if (kg) bags = `<div class="pp-barra"><span style="width:${n > 0 ? Math.min(100, Math.round(a / n * 100)) : 0}%"></span></div>`;
+  else for (let i = 0; i < n; i++) bags += `<span class="pp-bag${i < a ? ' ok' : ''}">${i < a ? '✓' : ''}</span>`;
   const estado = feito ? 'atendido' : (a > 0 ? 'andando' : 'pendente');
   const sinal = feito
     ? `<div class="pp-sinal ok" data-sinal="ok" title="Feito: todos os bags saíram">✓</div>`
@@ -1309,11 +1331,14 @@ function htmlPedido(p) {
   return `<div class="pp-item ${estado}" data-pedido="${escP(p.id)}" data-status="${feito ? 'atendido' : 'aberto'}">
     ${sinal}
     <div class="pp-corpo">
-      <div class="pp-linha1"><span class="pp-mat">${escP(mat)}${cor}</span><span class="pp-qtd"><b>${a}</b> de ${n} bag${n === 1 ? '' : 's'}</span></div>
+      <div class="pp-linha1"><span class="pp-mat">${escP(mat)}${cor}</span><span class="pp-qtd">${kg
+        ? `<b>${kgTxt(a)}</b> de ${kgTxt(n)} kg` : `<b>${a}</b> de ${n} bag${n === 1 ? '' : 's'}`}</span></div>
       <div class="pp-chips">
-        <span class="pp-chip"><i>Fornecedor</i>${escP(p.fornecedor)}</span>
+        <span class="pp-chip"><i>Fornecedor</i>${escP(p.fornecedor)}</span>${kg ? `
+        <span class="pp-chip"><i>Sacos</i>${sacosTxt(n, p.kg_saco)} de ${kgTxt(kgNum(p.kg_saco) || 25)} kg</span>
+        <span class="pp-chip"><i>Lote</i>qualquer</span>` : `
         <span class="pp-chip"><i>Peso</i>${peso ? escP(peso) : 'qualquer'}</span>
-        <span class="pp-chip"><i>Lote</i>${escP(p.lote_fmt || p.lote)}</span>
+        <span class="pp-chip"><i>Lote</i>${escP(p.lote_fmt || p.lote)}</span>`}
       </div>
       <div class="pp-bags">${bags}</div>
       <div class="pp-rodape">${escP(p.id)} · pedido por ${escP(p.autor_nome || '—')}${p.criado_em ? ' · ' + escP(horaPedido(p.criado_em)) : ''}${onde}</div>
@@ -1376,7 +1401,7 @@ function perguntarFora(d) {
     : d.peso_diferente
       ? 'Este bag é do lote pedido, mas o PESO não é o do pedido. Para retirar, diga o motivo.'
       : 'Este bag não é de nenhum pedido aberto (material ou lote diferente). Para retirar, diga o motivo.';
-  const ped = (d.pedidos || []).map(p => `${escP(p.material_nome || p.material_key)}${p.cor ? ' · ' + escP(p.cor) : ''} · ${escP(p.fornecedor)} · Lote ${escP(p.lote)}${pesoTxt(p.peso) ? ' · ' + escP(pesoTxt(p.peso)) : ''} (${Number(p.bags_atendidos) || 0} de ${Number(p.bags_pedidos) || 0})`);
+  const ped = (d.pedidos || []).map(linhaPedido);
   document.getElementById('fora-info').innerHTML = `
     <div><span class="lbl">Bag bipado</span><span class="val">${escP(et.id)} · ${escP(et.material_nome || et.material_key)}${et.cor ? ' · ' + escP(et.cor) : ''} · ${escP(et.fornecedor)} · Lote ${escP(et.lote)}${pesoTxt(et.peso) ? ' · ' + escP(pesoTxt(et.peso)) : ''}</span></div>
     <div><span class="lbl">Pedidos abertos</span><span class="val">${ped.length ? ped.join('<br>') : '—'}</span></div>`;

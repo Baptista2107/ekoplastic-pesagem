@@ -65,5 +65,28 @@ const hX = T.htmlPedido(ped({ fornecedor: mau, lote_fmt: mau, autor_nome: mau, m
 ok(!/<img|<script/i.test(hX) && hX.includes('&lt;img'), 'fornecedor, lote, autor, id, cor e endereço escapados', hX);
 ok(/<i>Peso<\/i>qualquer/.test(T.htmlPedido(ped({ peso: '<b>' }))), 'peso que não é número não entra no HTML');
 
+console.log('\n[4] Pedido em KG (produto por saco, 12/11/2026)');
+const T2 = vm.runInNewContext(html.slice(ini, fim) + '\n;({ htmlPedido, linhaPedido })', {}, { timeout: 2000 });
+const pkg = (extra = {}) => ped({ material_key: 'PIG', cor: 'Amarelo', material_nome: 'PIGMENTO AMARELO',
+  fornecedor: 'Cristal Master', lote: '', lote_fmt: '', peso: null, bags_pedidos: null, bags_atendidos: 0,
+  unidade: 'kg', kg_pedidos: 200, kg_atendidos: 0, kg_saco: 25, ...extra });
+const hK = T2.htmlPedido(pkg());
+ok(/<b>0<\/b> de 200 kg/.test(hK) && !/bag/i.test(hK.replace(/pp-bags?/g, '')),
+   'kg: "0 de 200 kg" no alto, sem "bags" (nem "0 de 0")', hK);
+ok(/<i>Sacos<\/i>≈ 8 sacos de 25 kg/.test(hK) && /<i>Lote<\/i>qualquer/.test(hK) && !/<i>Peso<\/i>/.test(hK),
+   'kg: chip "≈ 8 sacos de 25 kg" e lote "qualquer" (sem chip de peso)', hK);
+ok(/pp-barra"><span style="width:0%">/.test(hK) && !/pp-bag[ "]/.test(hK), 'kg: barra no lugar dos quadradinhos de bag', hK);
+const hK2 = T2.htmlPedido(pkg({ kg_pedidos: 1975, kg_atendidos: 987.5, kg_saco: 20 }));
+ok(/<b>987,5<\/b> de 1\.975 kg/.test(hK2) && /≈ 99 sacos de 20 kg/.test(hK2) && /width:50%/.test(hK2) && sinalDe(hK2)?.dado === 'pendente',
+   'kg: 987,5 de 1.975 kg, saco de 20 kg, barra na metade e ainda "!"', hK2);
+ok(sinalDe(T2.htmlPedido(pkg({ kg_atendidos: 200, status: 'atendido' })))?.dado === 'ok', 'kg atendido: V verde');
+ok(/menos de 1 saco de 25 kg/.test(T2.htmlPedido(pkg({ kg_pedidos: 10 }))), 'kg: 10 kg = "menos de 1 saco"');
+ok(T2.linhaPedido(pkg({ kg_atendidos: 100 })) === 'PIGMENTO AMARELO · Amarelo · Cristal Master · 100 de 200 kg (≈ 8 sacos)',
+   'modal: pedido em kg em kg, não "(0 de 0)"', T2.linhaPedido(pkg({ kg_atendidos: 100 })));
+ok(T2.linhaPedido(ped()) === 'AMARELO BAIXA DENSIDADE · Amarelo · Aliana · Lote 020926 · 614,5 kg (0 de 3)',
+   'modal: pedido de bag continua igual', T2.linhaPedido(ped()));
+const hKx = T2.htmlPedido(pkg({ fornecedor: mau, kg_saco: mau, kg_pedidos: mau }));
+ok(!/<img/i.test(hKx) && T2.linhaPedido(pkg({ fornecedor: mau })).includes('&lt;img'), 'kg: texto de fora escapado', hKx);
+
 console.log(`\n ${passou} passaram, ${falhou} falharam`);
 process.exit(falhou ? 1 : 0);
