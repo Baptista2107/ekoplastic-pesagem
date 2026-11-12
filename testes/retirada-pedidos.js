@@ -271,32 +271,64 @@ const registro = virtId => { const l = lerDb('SELECT pedido_retirada FROM etique
     console.log('\n[7] Pedido em KG (produto por saco, 12/11/2026)');
     VPS.modo = 'producao'; VPS.recebidos = [];
     const pkg = (id, extra = {}) => pedido(id, '', null, { material_key: 'DESSEC', cor: null, material_nome: 'DESSECANTE',
-      fornecedor: 'Cristal Master', lote_fmt: '', unidade: 'kg', kg_pedidos: 1000, kg_atendidos: 0, kg_saco: 25,
+      fornecedor: 'Cristal Master', lote_fmt: '', unidade: 'kg', kg_pedidos: 2000, kg_atendidos: 0, kg_saco: 25,
       etiquetas_atendidas: [], ...extra });
+    const paraQuem = c => c.body && c.body.etiqueta_virtual && registro(c.body.etiqueta_virtual.id)?.pedido_id;
+    const doPedido = async id => (await req('GET', '/retirada/pedidos')).body.pedidos.find(p => p.id === id);
     VPS.pedidos = [pkg('K1')];
-    const gk = await req('GET', '/retirada/pedidos');
-    const k1 = gk.body.pedidos[0];
-    ok(k1.unidade === 'kg' && k1.kg_pedidos === 1000 && k1.kg_atendidos === 0 && k1.status === 'aberto',
+    const k1 = await doPedido('K1');
+    ok(k1.unidade === 'kg' && k1.kg_pedidos === 2000 && k1.kg_atendidos === 0 && k1.status === 'aberto',
        'a tela recebe o pedido em kg como veio (unidade, kg pedidos e atendidos)', k1);
-    const kr1 = await bag('111126', 'DESSEC', null, 'Cristal Master', 1000);
-    const ck1 = await consumir(kr1, sRet, { checar_pedido: true });
-    ok(ck1.status === 200 && registro(ck1.body.etiqueta_virtual.id)?.pedido_id === 'K1',
+    const ck1 = await consumir(await bag('111126', 'DESSEC', null, 'Cristal Master', 1000), sRet, { checar_pedido: true });
+    ok(ck1.status === 200 && paraQuem(ck1) === 'K1',
        'em PRODUÇÃO o palete inteiro de Dessecante (qualquer lote) sai e conta para o pedido em kg', ck1.body);
-    const gk2 = (await req('GET', '/retirada/pedidos')).body.pedidos[0];
-    ok(gk2.status === 'aberto' && gk2.kg_atendidos === 0 && gk2.etiquetas_atendidas.includes(kr1),
-       'quem fecha o pedido em kg é a VPS (pelo peso): aqui fica aberto, com a etiqueta junta', gk2);
-    const kr2 = await bag('111126', 'DESSEC', null, 'Karina', 1000);
-    const ck2 = await consumir(kr2, sRet, { checar_pedido: true });
+    const s1 = ck1.body.etiqueta_virtual.id;
+    const gk1 = await doPedido('K1');
+    ok(gk1.status === 'aberto' && gk1.kg_atendidos === 1000 && gk1.etiquetas_atendidas.includes(s1),
+       'antes da VPS saber, a conta daqui já mostra 1.000 de 2.000 kg', gk1);
+    const ck2 = await consumir(await bag('111126', 'DESSEC', null, 'Karina', 1000), sRet, { checar_pedido: true });
     ok(ck2.status === 409 && ck2.body.sem_pedido === false && ck2.body.peso_diferente === false,
        'Dessecante de OUTRO fornecedor não é do pedido (409)', ck2.body);
     const pk = ck2.body.pedidos && ck2.body.pedidos[0];
-    ok(pk && pk.unidade === 'kg' && pk.kg_pedidos === 1000 && pk.kg_saco === 25,
+    ok(pk && pk.unidade === 'kg' && pk.kg_pedidos === 2000 && pk.kg_saco === 25,
        'a recusa traz o pedido em kg com kg pedidos e o kg do saco (o modal mostra em kg)', pk);
+    const ck3 = await consumir(await bag('111126', 'DESSEC', null, 'Cristal Master', 1000), sRet, { checar_pedido: true });
+    ok(ck3.status === 200 && paraQuem(ck3) === 'K1' && (await doPedido('K1')).status === 'atendido',
+       '2º palete enche o pedido: 2.000 de 2.000 kg, atendido aqui mesmo', await doPedido('K1'));
+    const ck4 = await consumir(await bag('111126', 'DESSEC', null, 'Cristal Master', 1000), sRet, { checar_pedido: true });
+    ok(ck4.status === 409 && ck4.body.sem_pedido === true,
+       '3º palete logo depois (VPS ainda não sabe de nada): NÃO é do pedido, pede motivo (409)', ck4.body);
+    // a VPS recebeu a 1ª S pelo envio ao vivo: não conta duas vezes
+    VPS.pedidos = [pkg('K1', { kg_atendidos: 1000, etiquetas_atendidas: [s1] })];
+    const gk3 = await doPedido('K1');
+    ok(gk3.kg_atendidos === 2000 && gk3.status === 'atendido' && gk3.etiquetas_atendidas.length === 2,
+       'S que a VPS já contou não soma de novo (2.000, não 3.000)', gk3);
+
+    // folga de meio saco, igual à VPS
+    VPS.pedidos = [pkg('K3', { kg_pedidos: 1000 })];
+    const ck5 = await consumir(await bag('111126', 'DESSEC', null, 'Cristal Master', 987.6), sRet, { checar_pedido: true });
+    ok(ck5.status === 200 && (await doPedido('K3')).status === 'atendido',
+       '987,6 de 1.000 kg (falta menos de meio saco de 25): atendido', await doPedido('K3'));
+    VPS.pedidos = [pkg('K3b', { kg_pedidos: 1000 })];
+    await consumir(await bag('111126', 'DESSEC', null, 'Cristal Master', 987.4), sRet, { checar_pedido: true });
+    ok((await doPedido('K3b')).status === 'aberto', '987,4 de 1.000 kg (falta 12,6): continua aberto', await doPedido('K3b'));
+
+    // a chave é a da VPS: sem acento, espaços juntos, apelido do fornecedor
+    VPS.pedidos = [pkg('K4', { material_key: 'PIG', cor: 'Verde Limão', material_nome: 'PIGMENTO VERDE LIMAO',
+                               fornecedor: 'FG RESINAS' })];
+    const ck6 = await consumir(await bag('111126', 'PIG', 'VERDE  LIMAO', 'FG', 1000), sRet, { checar_pedido: true });
+    ok(ck6.status === 200 && paraQuem(ck6) === 'K4',
+       'palete "VERDE  LIMAO" do "FG" casa com o pedido de "Verde Limão" do "FG RESINAS"', ck6.body);
+
+    // dois pedidos em kg do mesmo produto: o mais antigo primeiro (a VPS manda o mais novo antes)
+    VPS.pedidos = [pkg('K6', { criado_em: '2026-11-12T13:00:00.000Z' }), pkg('K5', { criado_em: '2026-11-12T12:00:00.000Z' })];
+    const ck7 = await consumir(await bag('111126', 'DESSEC', null, 'Cristal Master', 1000), sRet, { checar_pedido: true });
+    ok(ck7.status === 200 && paraQuem(ck7) === 'K5', 'vai para o pedido mais antigo (FIFO, como a VPS)', ck7.body);
+
     VPS.pedidos = [pkg('K2', { lote: '111126' })];
     await req('GET', '/retirada/pedidos');
-    const ck4 = await consumir(await bag('121226', 'DESSEC', null, 'Cristal Master', 1000), sRet, { checar_pedido: true });
-    ok(ck4.status === 200 && registro(ck4.body.etiqueta_virtual.id)?.pedido_id === 'K2',
-       'pedido em kg não olha o lote', ck4.body);
+    const ck8 = await consumir(await bag('121226', 'DESSEC', null, 'Cristal Master', 1000), sRet, { checar_pedido: true });
+    ok(ck8.status === 200 && paraQuem(ck8) === 'K2', 'pedido em kg não olha o lote', ck8.body);
   } catch (e) {
     falhou++; console.log('  \x1b[31m✗ ERRO\x1b[0m', e.stack || e.message);
   } finally {
