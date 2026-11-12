@@ -116,3 +116,6 @@ desktop.ini
 android/build/
 *.jks
 *.keystore
+
+# --- Python dos testes de navegador (12/11/2026) ---
+__pycache__/
