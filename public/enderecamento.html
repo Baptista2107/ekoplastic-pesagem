@@ -29,7 +29,7 @@ header{display:flex;align-items:center;gap:12px;padding:10px 14px;background:var
   color:#04140d;display:flex;align-items:center;justify-content:center;font-size:15px}
 /* 12/11/2026 (Gustavo: "a casinha da home tá quebrando linha no coletor,
    esticando o cabeçalho"): o nome encolhe com reticências; os botões nunca
-   descem de linha (o nowrap do celular está no fim desta página). */
+   descem de linha (o nowrap do celular está no celular.css, seção ENDEREÇAMENTO). */
 .logo .nome{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 header .sp{flex:1;min-width:0}
 .btn-ic{background:transparent;border:1px solid var(--border);border-radius:8px;width:34px;height:34px;
@@ -274,8 +274,24 @@ function irAba(qual) {
    o teste de navegador perdia leitura com a máquina carregada.            */
 let ABA = 'mapa';
 const BIPE = { buf: '', ult: 0 };
+// Revisão do 11b7804 (12/11/2026):
+//  · com a senha (PIN) na tela, as teclas são do acesso-colaborador.js — antes
+//    o PIN virava "leitura" e ficava escrito no aviso, debaixo da senha;
+//  · dentro do app (window.__ekoApp) quem entrega é o app: ouvir o teclado aqui
+//    também daria leitura em dobro quando o foco está num botão;
+//  · na BUSCA do mapa, Enter com etiqueta válida é bipe (o campo se limpa);
+//    texto comum (50x60, G000…) continua sendo busca.
+function telaDeSenhaAberta() { return !!document.getElementById('eko-acesso'); }
 document.addEventListener('keydown', (e) => {
+  if (window.__ekoApp || telaDeSenhaAberta()) return;
   const tag = ((e.target && e.target.tagName) || '').toUpperCase();
+  if (e.target && e.target.id === 'busca' && e.key === 'Enter') {
+    const v = e.target.value.trim(), info = interpretar(v);
+    if (info.tipo === 'endereco' || /^EKOPA\|/i.test(v) || info.bag) {
+      e.preventDefault(); e.target.value = ''; desenhar(); onLeu(v);
+    }
+    return;
+  }
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
   if (e.ctrlKey || e.altKey || e.metaKey) return;
   const agora = Date.now();
@@ -447,6 +463,11 @@ function interpretar(texto) {
 }
 
 async function onLeu(texto) {
+  // Leitura entregue (por qualquer caminho) zera o que sobrou do teclado:
+  // sem isso, uma sobra sem Enter grudava na próxima leitura.
+  BIPE.buf = '';
+  // Senha na tela: nada é lido por baixo dela (vale também para o app).
+  if (telaDeSenhaAberta()) return;
   const agora = Date.now();
   if (ultimaLeitura[texto] && agora - ultimaLeitura[texto] < 2500) return;
   ultimaLeitura[texto] = agora;

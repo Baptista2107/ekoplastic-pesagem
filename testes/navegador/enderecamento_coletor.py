@@ -94,13 +94,29 @@ with sync_playwright() as p:
         pg.evaluate("limparSlot('gai')"); pg.evaluate("onLeu('R0001234')"); pg.wait_for_timeout(250)
         ok(pg.inner_text("#v-gai") == "R0001234" and "BIG BAG" in pg.inner_text("#e-gai"), f"big bag reconhecido ({pg.inner_text('#e-gai')})")
         pg.screenshot(path=str(OUT / f"{nome}-bag.png"), full_page=False)
-        # digitar devagar na busca do mapa não vira bipe
+        # busca do mapa: texto comum + Enter continua busca; etiqueta bipada vira leitura
         pg.evaluate("irAba('mapa')"); pg.click("#busca")
-        for ch in "01-01-001": pg.keyboard.press(ch); pg.wait_for_timeout(20)
-        pg.keyboard.press("Enter"); pg.wait_for_timeout(200)
-        ok(pg.evaluate("document.getElementById('pg-mapa').classList.contains('on')"), "Enter na busca não troca de aba")
+        pg.keyboard.type("50x60"); pg.keyboard.press("Enter"); pg.wait_for_timeout(200)
+        ok(pg.evaluate("document.getElementById('pg-mapa').classList.contains('on')"), "Enter com '50x60' na busca não troca de aba")
+        pg.fill("#busca", ""); pg.click("#busca"); bipar(pg, "01-02-009")
+        ok(pg.inner_text("#v-end") == "01-02-009" and pg.input_value("#busca") == "", "bipe com a busca em foco vira leitura e limpa a busca")
+        # senha (PIN) na tela: teclas não viram leitura, nada do PIN no aviso
+        pg.evaluate("irAba('mapa'); limparTudo(); const d=document.createElement('div'); d.id='eko-acesso'; document.body.appendChild(d)")
+        pg.keyboard.type("1234"); pg.keyboard.press("Enter"); pg.wait_for_timeout(200)
+        pg.evaluate("onLeu('01-01-003')"); pg.wait_for_timeout(200)
+        ok("1234" not in pg.inner_text("#msg") and pg.evaluate("ABA") == "mapa" and pg.inner_text("#v-end") != "01-01-003",
+           "com a senha aberta, PIN e leitura do app são ignorados")
+        pg.evaluate("document.getElementById('eko-acesso').remove()")
+        # dentro do app: o teclado não entrega (quem entrega é o app), mesmo com foco num botão
+        pg.evaluate("window.__ekoApp=1; irAba('acao'); limparTudo(); document.getElementById('md-entrada').focus()")
+        bipar(pg, "01-01-004")
+        ok(pg.inner_text("#v-end") != "01-01-004", "no app, o teclado não dá leitura em dobro")
+        pg.evaluate("delete window.__ekoApp")
+        # sobra do teclado sem Enter não gruda na leitura seguinte
+        pg.evaluate("limparTudo()"); pg.keyboard.type("R0001234"); pg.evaluate("onLeu('01-01-005')"); pg.wait_for_timeout(200)
+        ok(pg.evaluate("BIPE.buf") == "" and pg.inner_text("#v-end") == "01-01-005", "leitura entregue zera a sobra do teclado")
         # tecla de gente (lenta) fora de campo não vira leitura
-        pg.click("h1, .rua-tit, #resumo"); pg.evaluate("irAba('acao'); limparTudo()")
+        pg.evaluate("document.activeElement && document.activeElement.blur(); irAba('acao'); limparTudo()")
         for ch in "01-01-002": pg.keyboard.press(ch); pg.wait_for_timeout(1200)
         pg.keyboard.press("Enter"); pg.wait_for_timeout(200)
         ok("01-01-002" not in pg.inner_text("#v-end"), "digitação lenta fora de campo não vira bipe")
