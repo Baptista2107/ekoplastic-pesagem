@@ -261,6 +261,12 @@
   /* ─── ENDEREÇAMENTO ───
      Já nasceu para o celular; aqui só folga para o dedo. */
   body[data-tela="Endereçamento"] .pg { padding: 12px 10px !important; }
+  /* 12/11/2026 (Gustavo: "a casinha da home tá quebrando linha no coletor,
+     esticando o cabeçalho"): aqui o cabeçalho NÃO quebra — o nome encolhe
+     com reticências e os três botões ficam na mesma linha. */
+  body[data-tela="Endereçamento"] header { flex-wrap: nowrap !important; column-gap: 8px; }
+  body[data-tela="Endereçamento"] header .btn-ic { flex: 0 0 44px; }
+  body[data-tela="Endereçamento"] header .logo { letter-spacing: .3px !important; gap: 7px; }
 
   /* ─── INVENTÁRIO / RETIRADA DE BOBINAS ───
      Também já eram de celular. Sem regra estrutural: herdam só o

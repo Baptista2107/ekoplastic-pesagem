@@ -24,18 +24,21 @@ body{padding-bottom:24px}
 
 header{display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--surface);
   border-bottom:1px solid var(--border);position:sticky;top:0;z-index:50}
-.logo{display:flex;align-items:center;gap:9px;font-weight:900;letter-spacing:1px;font-size:14px}
-.logo .ic{width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,var(--accent),#12b980);
+.logo{display:flex;align-items:center;gap:9px;font-weight:900;letter-spacing:1px;font-size:14px;min-width:0}
+.logo .ic{width:30px;height:30px;flex:0 0 30px;border-radius:8px;background:linear-gradient(135deg,var(--accent),#12b980);
   color:#04140d;display:flex;align-items:center;justify-content:center;font-size:15px}
-header .sp{flex:1}
+/* 12/11/2026 (Gustavo: "a casinha da home tá quebrando linha no coletor,
+   esticando o cabeçalho"): o nome encolhe com reticências; os botões nunca
+   descem de linha (o nowrap do celular está no fim desta página). */
+.logo .nome{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+header .sp{flex:1;min-width:0}
 .btn-ic{background:transparent;border:1px solid var(--border);border-radius:8px;width:34px;height:34px;
-  color:var(--muted);font-size:15px;cursor:pointer}
+  flex:0 0 auto;color:var(--muted);font-size:15px;cursor:pointer}
 .btn-ic:hover{color:var(--text)}
 
-.abas{display:flex;gap:8px;padding:12px 14px 0;flex-wrap:wrap}
-/* Quatro abas não cabem numa linha de 390 px — a última ficava cortada.
-   Abaixo de 620 px viram duas por linha, que é largura de dedo. */
-@media (max-width:620px){ .aba{flex:1 1 calc(50% - 4px)} }
+/* Duas abas (MAPA e ENDEREÇAR) desde 12/11/2026: Separação e Sobras saíram
+   a pedido do Gustavo — o código está no git. */
+.abas{display:flex;gap:8px;padding:12px 14px 0}
 .aba{flex:1;padding:11px;border:1px solid var(--border);background:var(--panel);border-radius:11px;
   color:var(--muted);font-family:inherit;font-size:13.5px;font-weight:800;letter-spacing:.4px;cursor:pointer}
 .aba.on{background:linear-gradient(135deg,var(--accent),#12b980);color:#04140d;border-color:transparent}
@@ -113,100 +116,22 @@ header .sp{flex:1}
 .hist-item span:last-child{color:var(--muted);white-space:nowrap;font-family:'IBM Plex Mono',monospace}
 .dica{font-size:12px;color:var(--muted);line-height:1.55;margin-top:10px}
 
-/* ─── Separação ─── */
-.foto-alvo{display:block;border:1.5px dashed var(--border);border-radius:14px;padding:26px 16px;text-align:center;
-  background:var(--panel);cursor:pointer;margin-bottom:14px}
-.foto-alvo:hover{border-color:var(--accent)}
-.foto-alvo .ic2{font-size:34px;display:block;margin-bottom:8px}
-.foto-alvo b{display:block;font-size:15px;font-weight:900;letter-spacing:.4px}
-.foto-alvo span{display:block;font-size:12.5px;color:var(--muted);margin-top:5px;line-height:1.5}
-.guia-mini{display:flex;gap:10px;align-items:center;background:var(--panel);border:1px solid var(--border);
-  border-radius:12px;padding:9px;margin-bottom:12px}
-.guia-mini img{width:56px;height:56px;object-fit:cover;border-radius:8px;background:#000;cursor:zoom-in}
-.guia-mini .gt{flex:1;font-size:12.5px;color:var(--muted);line-height:1.45}
-.guia-mini .gt b{display:block;color:var(--text);font-size:13.5px}
-#lupa{position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:200;display:none;align-items:center;justify-content:center;padding:10px}
-#lupa.on{display:flex}
-#lupa img{max-width:100%;max-height:100%;object-fit:contain}
+/* COLOCAR / RETIRAR de ponta a ponta (12/11/2026, Gustavo) */
+.modos{display:flex;gap:8px;margin-bottom:12px}
+.modos .chip{flex:1;padding:14px 8px;font-size:15px;font-weight:900;letter-spacing:.5px;text-align:center}
+.modos .chip.on{background:linear-gradient(135deg,var(--accent),#12b980);color:#04140d;border-color:transparent}
+.modos #md-saida.on{background:linear-gradient(135deg,#ff6b81,#e0354f);color:#2a0710}
+/* O leitor do coletor está sempre ouvindo: não há o que ligar */
+.leitor{display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--border);
+  border-radius:12px;padding:11px 13px;font-size:13px;color:var(--muted);line-height:1.4}
+.leitor .pulso{flex:0 0 10px;height:10px;border-radius:50%;background:var(--accent);
+  box-shadow:0 0 0 0 rgba(46,230,166,.6);animation:pulso 1.6s infinite}
+@keyframes pulso{70%{box-shadow:0 0 0 9px rgba(46,230,166,0)}100%{box-shadow:0 0 0 0 rgba(46,230,166,0)}}
+@media (prefers-reduced-motion: reduce){ .leitor .pulso{animation:none} }
+.leitor b{color:var(--text)}
+.leitor .sp{flex:1}
+.leitor .btn{padding:8px 11px;font-size:12px}
 
-.ped{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:10px}
-.ped-top{display:flex;gap:8px;align-items:center;margin-bottom:9px}
-.ped-ordem{flex:0 0 44px;height:44px;border-radius:10px;background:var(--panel-hi);border:1px solid var(--border);
-  display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-size:17px;font-weight:700}
-.ped-cli{flex:1;min-width:0;background:var(--surface);border:1px solid var(--border);border-radius:9px;
-  padding:10px;color:var(--text);font-family:inherit;font-size:14px}
-/* O item ocupa DUAS linhas de propósito: numa tela de 390 px, cor +
-   formato + quantidade + remover não cabem numa linha só, e deixar
-   quebrar sozinho jogava o ✕ órfão embaixo, parecendo outro botão. */
-.item{padding:9px 0;border-top:1px dashed var(--border)}
-.it-l1{display:flex;align-items:center;justify-content:space-between;gap:8px}
-.it-l2{display:flex;align-items:center;gap:8px;margin-top:8px}
-.it-l2 .sel-fmt{flex:1;min-width:0}
-.cores{display:flex;gap:4px}
-.cb{width:34px;height:34px;border-radius:8px;border:2px solid var(--border);cursor:pointer;font-size:11px;
-  font-weight:900;display:flex;align-items:center;justify-content:center;font-family:inherit}
-.cb.on{border-color:var(--accent);box-shadow:0 0 0 2px rgba(46,230,166,.3)}
-.sel-fmt{background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:9px 8px;
-  color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:14px;font-weight:700}
-.qtd{width:76px;background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:9px 8px;
-  color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:15px;font-weight:700;text-align:right}
-.lixo{background:transparent;border:none;color:#6b4a52;font-size:17px;cursor:pointer;padding:6px}
-.lixo:hover{color:var(--bloqueada)}
-.unid{display:flex;gap:6px;align-items:center;margin-bottom:10px;font-size:12.5px;color:var(--muted)}
-
-/* ─── Os três passos da separação ───
-   A régua existe porque o processo tem uma ordem que não é óbvia:
-   conferir a guia, decidir a ordem de carregamento, só então separar.
-   Sem ela, importar o PDF caía numa tela de coleta e a decisão do meio
-   parecia ter sido tomada pelo sistema — quando é a única que não é. */
-.passos{display:flex;gap:6px;margin-bottom:12px}
-.passo{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 4px;
-  border:1px solid var(--border);border-radius:10px;background:var(--surface);opacity:.5}
-.passo b{width:22px;height:22px;border-radius:50%;background:var(--panel-hi);color:var(--muted);
-  display:flex;align-items:center;justify-content:center;font-size:12px}
-.passo span{font-size:9.5px;font-weight:800;letter-spacing:.4px;color:var(--muted);text-align:center;line-height:1.25}
-.passo.on{opacity:1;border-color:var(--accent);background:rgba(46,230,166,.08)}
-.passo.on b{background:var(--accent);color:#04140d}
-.passo.on span{color:var(--text)}
-.passo.feito{opacity:.85}
-.passo.feito b{background:transparent;border:1px solid var(--accent);color:var(--accent)}
-
-/* ─── Ordem de carregamento (passo 2) ─── */
-.ord{display:flex;gap:11px;align-items:center;background:var(--panel);border:1px solid var(--border);
-  border-radius:12px;padding:12px;margin-bottom:8px}
-.ord-n{flex:0 0 46px;height:46px;border-radius:10px;background:var(--accent);color:#04140d;
-  display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:900}
-.ord-c{flex:1;min-width:0}
-.ord-cli{font-size:14.5px;font-weight:800;line-height:1.25}
-.ord-sub{font-size:12.5px;color:var(--muted);margin-top:2px}
-.ord-tag{display:inline-block;margin-top:5px;padding:3px 8px;border-radius:20px;font-size:11px;
-  font-weight:800;background:rgba(46,230,166,.12);color:var(--accent)}
-.ord-qtd{font-size:12.5px;color:var(--muted);margin-top:5px}
-.ord-set{flex:0 0 auto;display:flex;flex-direction:column;gap:5px}
-.ord-set .btn-ic:disabled{opacity:.25}
-
-/* ─── Plano de coleta ─── */
-.pl-ped{margin-bottom:16px}
-.pl-ped h4{font-size:12px;font-weight:900;letter-spacing:1.2px;color:var(--muted);margin-bottom:8px;text-transform:uppercase}
-.pl-sub{font-size:12px;color:var(--muted);margin:-4px 0 8px}
-.cl{display:flex;gap:11px;align-items:flex-start;background:var(--panel);border:1px solid var(--border);
-  border-radius:12px;padding:12px;margin-bottom:8px}
-.cl .end{flex:0 0 auto;font-family:'IBM Plex Mono',monospace;font-size:17px;font-weight:700;color:var(--accent);
-  letter-spacing:.5px;line-height:1.2}
-.cl .cp{flex:1;min-width:0}
-.cl .cp .p1{font-size:14px;font-weight:800}
-.cl .cp .p2{font-size:12.5px;color:var(--muted);margin-top:3px;line-height:1.5}
-.cl.doca{border-style:dashed;opacity:.85}
-.tag2{display:inline-block;padding:3px 8px;border-radius:20px;font-size:11px;font-weight:800;margin:4px 4px 0 0}
-.tag2.share{background:rgba(46,230,166,.14);color:var(--accent)}
-.tag2.sobra{background:rgba(255,170,0,.14);color:var(--warn)}
-.tag2.doca{background:rgba(120,140,130,.16);color:var(--muted)}
-.cl.pronta{border-color:var(--accent);background:rgba(46,230,166,.07)}
-.cl.pronta .end{opacity:.65}
-#reader-sep{width:100%;max-width:460px;margin:0 auto 12px;border-radius:12px;overflow:hidden;display:none}
-#reader-sep.on{display:block}
-#sob-badge{display:inline}
-.aba#ab-sob{position:relative}
 </style>
 <!-- Ajuste automatico para celular: so vale abaixo de 900px de largura -->
 <link rel="stylesheet" href="/celular.css">
@@ -214,7 +139,7 @@ header .sp{flex:1}
 <body data-tela="Endereçamento">
 
 <header>
-  <div class="logo"><div class="ic">🗺</div> ENDEREÇAMENTO</div>
+  <div class="logo"><div class="ic">🗺</div><span class="nome">ENDEREÇAMENTO</span></div>
   <div class="sp"></div>
   <button class="btn-ic" onclick="carregarMapa()" title="Atualizar">↻</button>
   <button class="btn-ic" onclick="location.href='/produto-acabado.html'" title="Produto Acabado">📦</button>
@@ -223,9 +148,7 @@ header .sp{flex:1}
 
 <div class="abas">
   <button class="aba on" id="ab-mapa" onclick="irAba('mapa')">🗺 MAPA</button>
-  <button class="aba" id="ab-acao" onclick="irAba('acao')">📷 ENDEREÇAR</button>
-  <button class="aba" id="ab-sep" onclick="irAba('sep')">📋 SEPARAÇÃO</button>
-  <button class="aba" id="ab-sob" onclick="irAba('sob')">🏷 SOBRAS<span id="sob-badge"></span></button>
+  <button class="aba" id="ab-acao" onclick="irAba('acao')">📟 ENDEREÇAR</button>
 </div>
 
 <!-- ═══════════ MAPA ═══════════ -->
@@ -252,17 +175,22 @@ header .sp{flex:1}
 
 <!-- ═══════════ ENDEREÇAR ═══════════ -->
 <div class="pg" id="pg-acao">
-  <div class="barra">
+  <div class="modos">
     <button class="chip on" id="md-entrada" onclick="irModo('entrada')">➕ COLOCAR</button>
     <button class="chip" id="md-saida" onclick="irModo('saida')">➖ RETIRAR</button>
   </div>
 
   <div id="msg"></div>
 
+  <!-- 12/11/2026 (Gustavo): quem lê é o gatilho do coletor, sem ligar câmera.
+       A câmera fica de reserva para o celular sem leitor. -->
   <div id="reader"></div>
-  <div class="acoes" style="margin-top:0">
-    <button class="btn ok" id="btn-cam" onclick="toggleCamera()">▶ LIGAR CÂMERA</button>
+  <div class="leitor">
+    <span class="pulso"></span>
+    <span><b>Pronto para bipar.</b> Aperte o gatilho do coletor na etiqueta.</span>
+    <span class="sp"></span>
     <button class="btn" onclick="digitar()">⌨ DIGITAR</button>
+    <button class="btn" id="btn-cam" onclick="toggleCamera()">📷</button>
   </div>
 
   <div style="margin-top:14px">
@@ -272,8 +200,8 @@ header .sp{flex:1}
       <div class="extra" id="e-end"></div>
     </div>
     <div class="slot" id="slot-gai" onclick="limparSlot('gai')">
-      <div class="rot">Gaiola</div>
-      <div class="val vazio2" id="v-gai">leia a etiqueta da gaiola</div>
+      <div class="rot">Gaiola ou big bag</div>
+      <div class="val vazio2" id="v-gai">leia a etiqueta da gaiola ou do big bag</div>
       <div class="extra" id="e-gai"></div>
     </div>
   </div>
@@ -290,30 +218,6 @@ header .sp{flex:1}
     <div id="hist"><div class="vazio">—</div></div>
   </div>
 </div>
-
-<!-- ═══════════ SEPARAÇÃO ═══════════ -->
-<div class="pg" id="pg-sep">
-  <div id="sep-msg"></div>
-  <div id="sep-corpo"><div class="vazio">Carregando…</div></div>
-</div>
-
-<!-- ═══════════ SOBRAS ═══════════ -->
-<div class="pg" id="pg-sob">
-  <div id="sob-msg"></div>
-  <div id="sob-corpo"><div class="vazio">Carregando…</div></div>
-</div>
-
-<!-- A foto da guia, ampliada -->
-<div id="lupa" onclick="this.classList.remove('on')"><img id="lupa-img" alt="Guia de separação"></div>
-
-<!-- Entrada da foto. `capture` faz o celular abrir a câmera direto; no
-     computador o mesmo campo abre o seletor de arquivo (serve PDF). -->
-<input type="file" id="arq-guia" accept="image/*,application/pdf" capture="environment"
-       style="display:none" onchange="sepEnviarFoto(this)">
-<!-- Importar o PDF da guia. Sem `capture`: aqui queremos o seletor de
-     arquivo, nao a camera. -->
-<input type="file" id="arq-pdf" accept="application/pdf"
-       style="display:none" onchange="sepImportarPdf(this)">
 
 <script>
 const URL_BASE = '';
@@ -347,15 +251,44 @@ function dizer(tipo, txt, ms) {
 }
 
 function irAba(qual) {
-  for (const a of ['mapa', 'acao', 'sep', 'sob']) {
+  ABA = qual;
+  for (const a of ['mapa', 'acao']) {
     $('ab-' + a).classList.toggle('on', qual === a);
     $('pg-' + a).classList.toggle('on', qual === a);
   }
   if (qual !== 'acao') pararCamera();
   if (qual === 'mapa') carregarMapa();
-  if (qual === 'sep') sepRender();
-  if (qual === 'sob') sobRender();
 }
+
+/* ══════════════ leitor do coletor ══════════════
+   12/11/2026 (Gustavo): "sem ligar câmera, o coletor que vai fazer a
+   leitura; bipagem a qualquer momento". Dois caminhos chegam em onLeu():
+   1. o app Ekoplastic Inventário/Coletor chama onLeu(código) direto (aviso
+      do leitor, MainActivity.entregarLivre);
+   2. no navegador comum, o leitor "teclado" digita o código e dá Enter (ou
+      Tab): o ouvinte abaixo junta as teclas e entrega no Enter.
+   Vale em qualquer aba; leitura no MAPA leva para ENDEREÇAR.
+   Campo de texto com foco (a busca do mapa, o DIGITAR) fica de fora: ali a
+   tecla é de quem digita. Tecla com mais de 1 s de intervalo recomeça a
+   leitura (descarta tecla solta); o leitor digita em poucos ms. Com 300 ms
+   o teste de navegador perdia leitura com a máquina carregada.            */
+let ABA = 'mapa';
+const BIPE = { buf: '', ult: 0 };
+document.addEventListener('keydown', (e) => {
+  const tag = ((e.target && e.target.tagName) || '').toUpperCase();
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+  if (e.ctrlKey || e.altKey || e.metaKey) return;
+  const agora = Date.now();
+  if (agora - BIPE.ult > 1000) BIPE.buf = '';
+  BIPE.ult = agora;
+  if (e.key === 'Enter' || e.key === 'Tab') {
+    const t = BIPE.buf.trim();
+    BIPE.buf = '';
+    if (t.length >= 3) { e.preventDefault(); onLeu(t); }
+    return;
+  }
+  if (e.key && e.key.length === 1) BIPE.buf += e.key;
+});
 
 /* ══════════════ MAPA ══════════════ */
 async function carregarMapa() {
@@ -488,7 +421,7 @@ function irModo(m) {
   limparTudo();
   $('slot-gai').style.display = (m === 'saida') ? 'none' : '';
   $('dica-modo').innerHTML = (m === 'entrada')
-    ? 'Leia os dois QR, na ordem que for mais fácil: a etiqueta da prateleira e a da gaiola. Toque num quadro para apagar e ler de novo.'
+    ? 'Bipe as duas etiquetas, na ordem que for mais fácil: a da prateleira e a da gaiola (ou do big bag). O sistema reconhece qual é qual. Toque num quadro para apagar e ler de novo.'
     : 'Leia <b>ou</b> a etiqueta da prateleira <b>ou</b> a da gaiola — o sistema descobre o resto sozinho.';
   $('v-end').textContent = (m === 'entrada') ? 'leia a etiqueta da prateleira' : 'leia a prateleira ou a gaiola';
 }
@@ -517,6 +450,8 @@ async function onLeu(texto) {
   const agora = Date.now();
   if (ultimaLeitura[texto] && agora - ultimaLeitura[texto] < 2500) return;
   ultimaLeitura[texto] = agora;
+  // Bipou no MAPA: vai para ENDEREÇAR, onde a leitura aparece (12/11/2026).
+  if (ABA !== 'acao') irAba('acao');
   const info = interpretar(texto);
 
   if (!info.tipo) {
@@ -700,9 +635,8 @@ async function escolherCameraId() {
   } catch (e) { return null; }
 }
 
-// A camera atende DUAS abas: Enderecar e Separacao. O destino diz em
-// qual quadro o video aparece, qual botao troca de texto e para onde vai
-// a leitura. Sem isso seriam dois leitores concorrendo pela mesma camera.
+// Câmera de reserva (celular sem leitor). Desde 12/11/2026 só a aba
+// Endereçar usa; o destino ficou como estava.
 let CAM_DEST = { el: 'reader', btn: 'btn-cam', cb: (t) => onLeu(t) };
 async function toggleCamera(destino) {
   if (destino && camLigada && destino.el !== CAM_DEST.el) await pararCamera();
@@ -714,7 +648,7 @@ async function toggleCamera(destino) {
     return;
   }
   $(CAM_DEST.el).classList.add('on');
-  $(CAM_DEST.btn).textContent = '⏹ DESLIGAR CÂMERA';
+  $(CAM_DEST.btn).textContent = '⏹';
   camLigada = true;
 
   const qrboxFn = (vw, vh) => { const l = Math.floor(Math.min(vw, vh) * 0.92); return { width: Math.max(120, l), height: Math.max(120, l) }; };
@@ -733,7 +667,7 @@ async function toggleCamera(destino) {
     catch (err) { ultimo = (err && (err.name || err.message)) || 'erro'; if (/NotAllowed|Permission/i.test(String(ultimo))) break; }
   }
   if (!ok) {
-    camLigada = false; $(CAM_DEST.el).classList.remove('on'); $(CAM_DEST.btn).textContent = '▶ LIGAR CÂMERA';
+    camLigada = false; $(CAM_DEST.el).classList.remove('on'); $(CAM_DEST.btn).textContent = '📷';
     dizer('err', 'A câmera não abriu (' + esc(ultimo) + '). Use DIGITAR.', 0);
     return;
   }
@@ -742,1085 +676,16 @@ async function toggleCamera(destino) {
 
 async function pararCamera() {
   camLigada = false;
-  const b = $(CAM_DEST.btn); if (b) b.textContent = '▶ LIGAR CÂMERA';
+  const b = $(CAM_DEST.btn); if (b) b.textContent = '📷';
   try { if (scanner) { await scanner.stop(); scanner.clear(); } } catch (e) {}
   const e2 = $(CAM_DEST.el); if (e2) e2.classList.remove('on');
 }
-
-/* ══════════════════════════════════════════════════════════════════
-   SEPARAÇÃO
-   ------------------------------------------------------------------
-   O ciclo: FOTO DA GUIA → conferência → ordem de carregamento →
-   plano de coleta.
-
-   A foto é o gatilho de propósito. Ela é o que prova de onde vieram os
-   números, e fica na tela durante toda a conferência para comparar.
-   ══════════════════════════════════════════════════════════════════ */
-const SEP_CORES = [
-  { key: 'AM',  nome: 'Amarela',  cor: '#f5c800', txt: '#231d00' },
-  { key: 'BC',  nome: 'Branca',   cor: '#eaeaea', txt: '#1a1a1a' },
-  { key: 'PT',  nome: 'Preta',    cor: '#3a3a3a', txt: '#f0f0f0' },
-  { key: 'REC', nome: 'Colorida', cor: '#2eb82e', txt: '#04220a' },
-];
-const SEP_FORMATOS = ['30x40','30x45','33x46','35x45','40x50','42x53','50x60','60x80','80x100'];
-const KG_FARDO = 25;
-
-let SEP = null;            // { id, status, arquivo }
-let SEP_PEDIDOS = [];      // rascunho editável na tela
-let SEP_UNIDADE = 'kg';    // a guia vem em kg; fardos existe para quem preferir
-let SEP_PLANO = null;
-let SEP_ESTADO = null;
-let SEP_CORRIGINDO = false;    // resposta completa do GET /separacao/:id
-let SEP_ORDENANDO = false;     // na tela de ORDEM DE CARREGAMENTO (passo 2)
-let SEP_LISTA = [];
-
-const sepAviso = (t, c) => { $('sep-msg').innerHTML = t ? `<div class="aviso ${c||'at'}">${t}</div>` : ''; };
-
-/* ── Entrada da guia ───────────────────────────────────────────── */
-function sepFotografar() { $('arq-guia').click(); }
-
-// Reduz a foto antes de enviar. Foto de celular passa de 4 MB e não
-// acrescenta nada: o que se lê numa guia impressa cabe folgado em
-// 2000 px. Se a redução falhar (formato que o navegador não abre),
-// manda o arquivo original em vez de desistir.
-function sepReduzir(file, lado, q) {
-  return new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(file);
-    const img = new Image();
-    img.onload = () => {
-      try {
-        const esc = Math.min(1, lado / Math.max(img.width, img.height));
-        const c = document.createElement('canvas');
-        c.width = Math.round(img.width * esc); c.height = Math.round(img.height * esc);
-        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-        URL.revokeObjectURL(url);
-        c.toBlob(b => b ? resolve(b) : reject(new Error('canvas vazio')), 'image/jpeg', q);
-      } catch (e) { URL.revokeObjectURL(url); reject(e); }
-    };
-    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('navegador não abriu a imagem')); };
-    img.src = url;
-  });
-}
-
-async function sepEnviarFoto(input) {
-  const f = input.files && input.files[0];
-  input.value = '';                       // deixa escolher o mesmo arquivo de novo
-  if (!f) return;
-  sepAviso('Enviando a guia…', 'at');
-  let corpo = f, tipo = f.type || 'image/jpeg';
-  if (tipo !== 'application/pdf') {
-    try { corpo = await sepReduzir(f, 2000, 0.85); tipo = 'image/jpeg'; }
-    catch (e) { corpo = f; tipo = f.type || 'image/jpeg'; }
-  }
-  try {
-    const r = await fetch(URL_BASE + '/separacao/nova',
-                          { method: 'POST', headers: { 'Content-Type': tipo }, body: corpo });
-    const d = await r.json();
-    if (!d.ok) throw new Error(d.erro || 'falha ao enviar');
-    beep(880, .09); vibrar(40);
-    SEP = { id: d.id, status: d.status, arquivo: d.arquivo };
-    SEP_PEDIDOS = [];  SEP_ESTADO = null;  SEP_CORRIGINDO = false;  SEP_ORDENANDO = false;
-    SEP_UNIDADE = 'kg';        // guia nova SEMPRE começa em kg — ver comentário
-    sepNovoPedido();
-    sepAviso('Guia recebida. Agora confira os pedidos com a foto ao lado.', 'ok');
-    sepRender();
-  } catch (e) {
-    sepAviso('Não consegui enviar a guia: ' + esc(e.message), 'err');
-  }
-}
-
-/* ── Estado ────────────────────────────────────────────────────── */
-async function sepCarregarLista() {
-  try {
-    const r = await fetch(URL_BASE + '/separacao?limit=15');
-    const d = await r.json();
-    SEP_LISTA = d.ok ? (d.separacoes || []) : [];
-  } catch (e) { SEP_LISTA = []; }
-}
-
-// Recarrega o estado inteiro do servidor. A tela do plano desenha SEMPRE
-// a partir daqui — nunca de um plano guardado na memória — para o que o
-// operador vê ser o que o banco tem, inclusive o que já foi coletado.
-async function sepCarregarEstado() {
-  const r = await fetch(URL_BASE + '/separacao/' + SEP.id);
-  const d = await r.json();
-  if (!d.ok) throw new Error(d.erro || 'falha');
-  SEP = d.separacao;
-  SEP_ESTADO = d;
-  SEP_PEDIDOS = (d.pedidos || []).map(p => ({
-    id: p.id, ordem: p.ordem, cliente: p.cliente || '', cidade: p.cidade || '', uf: p.uf || '',
-    carga: p.carga || '', pedido_numero: p.pedido_numero || '',
-    itens: (p.itens || []).map(it => ({ cor_key: it.cor_key, formato: it.formato, qtd: it.fardos })),
-  }));
-  if (SEP_PEDIDOS.length) SEP_UNIDADE = 'fardos';   // o banco já guarda em fardos
-  return d;
-}
-
-async function sepAbrir(id) {
-  try {
-    SEP = { id };
-    await sepCarregarEstado();
-    if (!SEP_PEDIDOS.length) sepNovoPedido();
-    sepAviso('');
-    sepRender();
-  } catch (e) { sepAviso('Não consegui abrir: ' + esc(e.message), 'err'); }
-}
-
-function sepFechar() { SEP = null; SEP_PEDIDOS = []; SEP_ESTADO = null; SEP_CORRIGINDO = false;
-  SEP_ORDENANDO = false; pararCamera(); sepAviso(''); sepRender(); }
-
-/* ── Edição da conferência ─────────────────────────────────────── */
-function sepNovoPedido() {
-  const ordem = SEP_PEDIDOS.length ? Math.max(...SEP_PEDIDOS.map(p => p.ordem)) + 1 : 1;
-  SEP_PEDIDOS.push({ ordem, cliente: '', cidade: '', uf: '', itens: [{ cor_key: 'BC', formato: '50x60', qtd: '' }] });
-  sepRender();
-}
-function sepRemoverPedido(i) {
-  SEP_PEDIDOS.splice(i, 1);
-  SEP_PEDIDOS.forEach((p, k) => p.ordem = k + 1);   // renumera para não deixar buraco
-  sepRender();
-}
-function sepNovoItem(i) { SEP_PEDIDOS[i].itens.push({ cor_key: 'BC', formato: '50x60', qtd: '' }); sepRender(); }
-function sepRemoverItem(i, j) { SEP_PEDIDOS[i].itens.splice(j, 1); sepRender(); }
-function sepSetCor(i, j, key) { SEP_PEDIDOS[i].itens[j].cor_key = key; sepRender(); }
-function sepSet(i, campo, v) { SEP_PEDIDOS[i][campo] = v; }
-function sepSetItem(i, j, campo, v) { SEP_PEDIDOS[i].itens[j][campo] = v; }
-function sepUnidade(u) { SEP_UNIDADE = u; sepRender(); }
-
-// Subir/descer na ordem de carregamento. Primeiro a carregar é o
-// último a entregar — quem decide é o gestor, o sistema só respeita.
-function sepMover(i, d) {
-  const j = i + d;
-  if (j < 0 || j >= SEP_PEDIDOS.length) return;
-  const t = SEP_PEDIDOS[i]; SEP_PEDIDOS[i] = SEP_PEDIDOS[j]; SEP_PEDIDOS[j] = t;
-  SEP_PEDIDOS.forEach((p, k) => p.ordem = k + 1);
-  sepRender();
-}
-
-/* ── Enviar conferência e planejar ─────────────────────────────── */
-async function sepConferirEPlanejar() {
-  const pedidos = [];
-  for (const p of SEP_PEDIDOS) {
-    const itens = [];
-    for (const it of p.itens) {
-      const q = Number(String(it.qtd).replace(',', '.'));
-      if (!(q > 0)) continue;
-      itens.push(SEP_UNIDADE === 'kg'
-        ? { cor_key: it.cor_key, formato: it.formato, kg: q }
-        : { cor_key: it.cor_key, formato: it.formato, fardos: Math.round(q) });
-    }
-    if (!itens.length) continue;
-    // carga e pedido_numero vêm da guia e não aparecem nesta tela; se
-    // não forem devolvidos aqui, corrigir um item apagaria o rótulo
-    // "CARGA 1 · Entrega #4" que a tela de ordem usa como referência.
-    pedidos.push({ ordem: p.ordem, cliente: p.cliente || null, cidade: p.cidade || null,
-                   uf: p.uf || null, carga: p.carga || null,
-                   pedido_numero: p.pedido_numero || null, itens });
-  }
-  if (!pedidos.length) { sepAviso('Preencha ao menos um item com quantidade.', 'err'); return; }
-
-  sepAviso('Conferindo…', 'at');
-  try {
-    let r = await fetch(URL_BASE + `/separacao/${SEP.id}/conferir`,
-      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pedidos }) });
-    let d = await r.json();
-    if (!d.ok) throw new Error(d.erro || 'falha na conferência');
-    const avisos = d.avisos || [];
-
-    SEP_CORRIGINDO = false;
-    await sepCarregarEstado();
-    beep(880, .09); vibrar(40);
-
-    // Confere → ORDEM → lista. Não pula direto para os endereços: a
-    // sequência de carregamento é o que decide a lista, e ela é do
-    // gestor. Os avisos do arredondamento em kg viajam junto.
-    SEP_ORDENANDO = true;
-    sepAviso(avisos.length ? avisos.map(a => esc(a)).join('<br>') : '', 'at');
-    sepRender();
-  } catch (e) { sepAviso('Não consegui gerar o plano: ' + esc(e.message), 'err'); }
-}
-
-async function sepReplanejar() {
-  sepAviso('Refazendo o plano…', 'at');
-  try {
-    const r = await fetch(URL_BASE + `/separacao/${SEP.id}/planejar`, { method: 'POST' });
-    const d = await r.json();
-    if (!d.ok) throw new Error(d.erro || 'falha');
-    await sepCarregarEstado();
-    sepAviso(d.resumo && d.resumo.faltando
-      ? `Plano refeito. Ainda faltam ${d.resumo.faltando} fardo(s).`
-      : 'Plano refeito. Nada faltando.', d.resumo && d.resumo.faltando ? 'at' : 'ok');
-    sepRender();
-  } catch (e) { sepAviso('Não consegui refazer: ' + esc(e.message), 'err'); }
-}
-
-/* ── Desenho ───────────────────────────────────────────────────────
-   O processo tem TRÊS passos, nesta ordem, e a tela diz em qual você
-   está. Sem isso, importar a guia caía direto numa tela de coleta e
-   ninguém entendia onde entrou a decisão da ordem de carregamento —
-   que é justamente a única decisão que o sistema não pode tomar. */
-function sepRender() {
-  if (!SEP) { sepDesenharAbertura(); return; }
-  if (SEP_CORRIGINDO) { sepDesenharConferencia(); return; }
-  if (SEP_ORDENANDO)  { sepDesenharOrdem(); return; }
-
-  // DEPOIS DE PLANEJADA, A TELA É A LISTA — mesmo que a lista esteja
-  // vazia. Isto já foi decidido por "tem alguma coleta?", e era um
-  // buraco: quando o galpão ainda não foi bipado o alocador não acha
-  // nada, a tela caía no editor de pedidos, o operador voltava para a
-  // ordem, confirmava de novo e caía no editor outra vez. Um círculo,
-  // justamente no estado em que todo mundo começa.
-  const planejada = SEP.status === 'em_separacao' || SEP.status === 'concluida';
-  const temColeta = SEP_ESTADO && (SEP_ESTADO.coletas || []).some(
-    c => c.status === 'planejada' || c.status === 'coletada');
-  if (planejada || temColeta) { sepDesenharPlano(); return; }
-  // 'conferida' = a guia já foi lida e entendida; o que falta é a
-  // ordem. Reabrir uma carga assim tem de cair no passo 2, não num
-  // formulário de itens que ninguém pediu para preencher. O editor é
-  // do rascunho — a foto, onde de fato não há nada digitado ainda.
-  if (SEP.status === 'conferida' && SEP_PEDIDOS.length) { sepDesenharOrdem(); return; }
-  sepDesenharConferencia();
-}
-
-// A régua dos três passos, no alto de cada tela.
-function sepPassos(atual) {
-  const nomes = [[1, 'CONFERIR A GUIA'], [2, 'ORDEM DE CARREGAMENTO'], [3, 'SEPARAR']];
-  return `<div class="passos">${nomes.map(([n, t]) => `
-    <div class="passo ${n === atual ? 'on' : (n < atual ? 'feito' : '')}">
-      <b>${n < atual ? '✓' : n}</b><span>${t}</span></div>`).join('')}</div>`;
-}
-
-async function sepDesenharAbertura() {
-  await sepCarregarLista();
-  const linhas = SEP_LISTA.map(s => {
-    const q = { rascunho: 'aguardando conferência', conferida: 'conferida',
-                em_separacao: 'em separação', concluida: 'concluída', cancelada: 'cancelada' }[s.status] || s.status;
-    const dt = String(s.criada_em || '').slice(0, 16).replace('T', ' ');
-    return `<div class="hist-item">
-      <span style="flex:1;cursor:pointer" onclick="sepAbrir(${s.id})">
-        <b>#${s.id}</b> · ${esc(q)}${s.pedidos ? ' · ' + s.pedidos + ' pedido(s)' : ''}
-        ${s.pendentes ? ` · <span style="color:var(--warn)">${s.pendentes} a coletar</span>` : ''}
-        ${s.faltando ? ` · <span style="color:var(--warn)">faltam ${s.faltando}</span>` : ''}</span>
-      <span style="color:var(--muted)">${esc(dt)}</span>
-      <button class="lixo" title="Apagar esta importação"
-              onclick="event.stopPropagation();sepApagar(${s.id})">✕</button></div>`;
-  }).join('');
-
-  $('sep-corpo').innerHTML = `
-    <div class="foto-alvo" onclick="sepEscolherPdf()" style="border-style:solid;border-color:var(--accent)">
-      <span class="ic2">📄</span>
-      <b>IMPORTAR A GUIA DE SEPARAÇÃO</b>
-      <span>O PDF da guia. A estação lê o arquivo inteiro — clientes,
-        cores, formatos e quantidades — e já monta o plano. Ninguém digita.</span>
-    </div>
-    <div class="acoes" style="margin-bottom:6px">
-      <button class="btn" onclick="sepBuscarBling()">🧾 pedidos do Bling</button>
-      <button class="btn" onclick="sepFotografar()">📷 foto da guia</button>
-    </div>
-    <div class="dica">Os dois de cima são alternativas para quando não houver
-      o PDF. A foto obriga a digitar a carga inteira.</div>
-    ${linhas ? `<div class="hist" style="margin-top:16px"><div class="rua-tit">SEPARAÇÕES RECENTES</div>${linhas}</div>` : ''}`;
-}
-
-/* ══════════════════════════════════════════════════════════════════
-   IMPORTAR O PDF DA GUIA
-   ------------------------------------------------------------------
-   O PDF da guia tem camada de texto — não é imagem. Então aqui não há
-   OCR: o pdf.js (servido pela própria estação, sem CDN) extrai o texto
-   e o servidor interpreta as linhas. É exato, e é o que dispensa
-   digitar a carga inteira.
-   ══════════════════════════════════════════════════════════════════ */
-let PDF_ARQUIVO = null, PDF_NOME = null, PDF_LIDO = null;
-
-function sepEscolherPdf() { $('arq-pdf').click(); }
-
-// A tela só ENVIA o arquivo. Quem lê o PDF é o servidor.
-//
-// A primeira versão lia aqui, no navegador, com módulo ES. Funcionou no
-// laboratório e falhou no galpão: dependia do aparelho suportar módulo
-// ES e worker de módulo, e isso muda de celular para celular e para o
-// navegador da tela touch. Enviar o arquivo é o mesmo que a foto já
-// fazia — e a foto nunca falhou.
-async function sepImportarPdf(input) {
-  const f = input.files && input.files[0];
-  input.value = '';
-  if (!f) return;
-  PDF_NOME = f.name;
-  PDF_ARQUIVO = f;
-  sepAviso('Lendo a guia no servidor…', 'at');
-  $('sep-corpo').innerHTML = '<div class="vazio">Lendo a guia…</div>';
-  try {
-    const r = await fetch(URL_BASE + '/separacao/guia/previa', {
-      method: 'POST', headers: { 'Content-Type': 'application/pdf' }, body: f });
-    const d = await r.json();
-    if (!d.ok) throw new Error(d.erro || 'falha ao interpretar');
-    PDF_LIDO = d;
-    sepAviso('');
-    sepDesenharPrevia();
-  } catch (e) {
-    sepAviso('Não consegui ler o PDF: ' + esc(e.message), 'err');
-    sepDesenharAbertura();
-  }
-}
-
-// Mostra o que foi entendido ANTES de criar a carga. Não é digitação:
-// é conferir de relance se o total bate com o da guia.
-function sepDesenharPrevia() {
-  const d = PDF_LIDO;
-  // Não reconheceu nada? Em vez de uma tela vazia e um botão que vai
-  // falhar, mostra O QUE FOI LIDO do PDF. É com essas linhas que se
-  // descobre em que o layout difere — sem elas, o problema é um beco
-  // sem saída para quem está no galpão.
-  if (!d.pedidos.length) { sepDesenharDiagnostico(); return; }
-  const blocos = d.pedidos.map(p => `
-    <div class="ped">
-      <div class="ped-top">
-        <div class="ped-ordem">${p.ordem}</div>
-        <div style="flex:1;min-width:0">
-          <div style="font-size:14.5px;font-weight:800">${esc(p.cliente)}</div>
-          <div style="font-size:12.5px;color:var(--muted)">${esc(p.cidade || '')}${p.uf ? '/' + esc(p.uf) : ''}${
-            p.pedido_numero ? ' · Ped.' + esc(p.pedido_numero) : ''}</div>
-          ${p.carga ? `<div style="font-size:11.5px;color:var(--accent);font-weight:700">${esc(p.carga)}</div>` : ''}
-        </div>
-      </div>
-      ${p.itens.map(i => `<div class="linha"><span>${esc(i.formato)} ${esc(i.cor_key)}</span>
-        <span>${fmtKg(i.kg)} · ${i.fardos} fardo(s)</span></div>`).join('')}
-    </div>`).join('');
-
-  // A guia imprime os próprios totais. Bater com eles é a garantia que
-  // não depende de eu ter entendido o layout — e poupa conferência no olho.
-  const cf = d.conferencia;
-  const blocoConf = cf ? (cf.ok ? `
-    <div class="aviso ok">✓ <b>Confere com a guia:</b> ${cf.guia_fardos != null
-      ? `${cf.guia_fardos} fardos · ${fmtKg(cf.guia_kg)} — o mesmo que o documento imprime.`
-      : 'os totais por carga batem com o rodapé.'}</div>` : `
-    <div class="aviso err"><b>NÃO bate com os totais da guia:</b><br>
-      ${cf.avisos.map(a => esc(a)).join('<br>')}<br>
-      Não siga com esta carga sem conferir o documento.</div>`) : '';
-
-  const avisos = (d.avisos || []).length ? `
-    <div class="det" style="border-color:var(--warn)">
-      <h3 style="font-family:inherit;font-size:14.5px;color:var(--warn)">
-        ⚠ ${d.avisos.length} linha(s) que não entendi</h3>
-      <div class="sub">Ficaram DE FORA da carga. Confira se são de produto acabado.</div>
-      ${d.avisos.map(a => `<div class="linha"><span>${esc(String(a.linha).slice(0, 42))}</span>
-        <span>${esc(a.motivo)}</span></div>`).join('')}
-    </div>` : '';
-
-  $('sep-corpo').innerHTML = `
-    ${sepPassos(1)}
-    <div class="guia-mini">
-      <div style="width:56px;height:56px;border-radius:8px;background:var(--surface);display:flex;
-        align-items:center;justify-content:center;font-size:22px">📄</div>
-      <div class="gt"><b>${esc(PDF_NOME || 'guia.pdf')}</b>
-        ${d.pedidos.length} cliente(s) · ${d.total_fardos} fardos</div>
-      <button class="btn" onclick="sepFechar()">✕</button>
-    </div>
-    <div class="resumo">
-      <div class="rz"><b>${d.pedidos.length}</b><span>clientes</span></div>
-      <div class="rz"><b>${fmtKg(d.total_kg).replace(' kg','')}</b><span>kg na guia</span></div>
-      <div class="rz"><b>${d.total_fardos}</b><span>fardos</span></div>
-    </div>
-    ${blocoConf}
-    ${avisos}
-    <div class="acoes" style="margin-bottom:12px">
-      <button class="btn" onclick="sepFechar()">← voltar</button>
-      <button class="btn ok" style="flex:1" onclick="sepCriarDaGuia()">
-        ✓ CONFERE — DEFINIR A ORDEM DE CARREGAMENTO</button>
-    </div>
-    <div class="dica" style="margin-bottom:12px">A ordem abaixo é a das colunas da guia.
-      <b>O próximo passo é confirmar ou mudar a ordem de carregamento</b> — é ela que
-      define por quais endereços você vai passar, e em que sequência.</div>
-    ${blocos}`;
-}
-
-function sepDesenharDiagnostico() {
-  const linhas = (PDF_LIDO && PDF_LIDO.linhas) || [];
-  const amostra = linhas.filter(l => l && l.trim()).slice(0, 40);
-  const d = (PDF_LIDO && PDF_LIDO.diag) || null;
-
-  // As quatro peças que o leitor precisa achar. Mostrar quais vieram e
-  // qual faltou vale mais que qualquer texto: o galpão manda um print
-  // desta tela e a causa já está nele.
-  const pecas = !d ? '' : [
-    ['colunas de pedido', d.colunas_pedido, 'Ped.1063'],
-    ['produtos', d.cabecalhos_produto, 'SACOLA … (25KG)'],
-    ['tamanhos', d.linhas_tamanho, 'TAMANHO:40X50'],
-    ['quantidades', d.quantidades_frd, '120 frd'],
-  ].map(([nome, n, ex]) => `
-    <div style="display:flex;align-items:center;gap:8px;padding:6px 0">
-      <span style="font-size:15px">${n ? '✓' : '✕'}</span>
-      <span style="flex:1">${nome}
-        <span style="opacity:.55;font-size:12px">(ex.: ${esc(ex)})</span></span>
-      <b style="color:${n ? 'var(--accent)' : 'var(--bloqueada)'}">${n}</b>
-    </div>`).join('');
-
-  const extras = !d ? '' : [
-    d.formatos_fora && d.formatos_fora.length
-      ? `Formato(s) que o galpão não tem: <b>${esc(d.formatos_fora.join(', '))}</b>.` : '',
-    d.cores_fora && d.cores_fora.length
-      ? `Produto(s) sem cor conhecida: <b>${esc(d.cores_fora.join(' / '))}</b>.` : '',
-    d.amostra_colunas && d.amostra_colunas.length
-      ? `Cabeçalhos de coluna que achei: ${esc(d.amostra_colunas.join(' · '))}.` : '',
-  ].filter(Boolean).join('<br>');
-
-  $('sep-corpo').innerHTML = `
-    <div class="guia-mini">
-      <div style="width:56px;height:56px;border-radius:8px;background:var(--surface);display:flex;
-        align-items:center;justify-content:center;font-size:22px">📄</div>
-      <div class="gt"><b>${esc(PDF_NOME || 'guia.pdf')}</b>
-        ${linhas.length} linha(s) lidas · nenhum cliente reconhecido</div>
-      <button class="btn" onclick="sepFechar()">✕</button>
-    </div>
-    <div class="aviso err">${d ? esc(d.motivo)
-      : 'O texto do PDF foi lido, mas o <b>layout é diferente</b> do que eu conheço.'}</div>
-    ${d ? `<div class="det" style="margin-bottom:12px">
-      <h3 style="font-family:inherit;font-size:14.5px">O que eu procurei no arquivo</h3>
-      ${pecas}
-      ${extras ? `<div class="sub" style="margin-top:8px">${extras}</div>` : ''}
-    </div>` : ''}
-    <div class="det">
-      <h3 style="font-family:inherit;font-size:14.5px">O que eu li do arquivo</h3>
-      <div class="sub">Estas são as primeiras linhas, como saíram do PDF.
-        Mande esta tela (ou o próprio PDF) que eu ajusto a leitura.</div>
-      <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;line-height:1.6;
-        background:var(--surface);border:1px solid var(--border);border-radius:8px;
-        padding:10px;overflow-x:auto;white-space:pre;max-height:420px;overflow-y:auto">${
-        amostra.map((l, i) => esc(String(i + 1).padStart(3, ' ') + '  ' + l)).join('\n')
-        || '(o PDF não tinha texto nenhum)'}</div>
-      <div class="acoes">
-        <button class="btn" onclick="sepCopiarLinhas()">📋 copiar as linhas</button>
-        <button class="btn" onclick="sepEscolherPdf()">📄 tentar outro PDF</button>
-      </div>
-    </div>`;
-}
-
-function sepCopiarLinhas() {
-  const txt = ((PDF_LIDO && PDF_LIDO.linhas) || []).join('\n');
-  try {
-    navigator.clipboard.writeText(txt);
-    sepAviso('Linhas copiadas. Cole na conversa para eu ajustar a leitura.', 'ok');
-  } catch (e) {
-    sepAviso('Não consegui copiar — mande um print desta tela.', 'at');
-  }
-}
-
-async function sepCriarDaGuia() {
-  sepAviso('Montando a carga…', 'at');
-  try {
-    const r = await fetch(URL_BASE + '/separacao/de-guia', {
-      method: 'POST', headers: { 'Content-Type': 'application/pdf' }, body: PDF_ARQUIVO });
-    const d = await r.json();
-    if (!d.ok) throw new Error(d.erro || 'falha');
-    beep(880, .09); vibrar(40);
-    SEP = { id: d.id, status: d.status, arquivo: null };
-    SEP_UNIDADE = 'fardos'; SEP_CORRIGINDO = false;
-    await sepCarregarEstado();
-    // Não planeja ainda. A lista de endereços é consequência da ordem
-    // de carregamento, e a ordem é do gestor — montar a lista antes de
-    // perguntar é montar a lista errada e ter de refazer.
-    SEP_ORDENANDO = true;
-    sepAviso('Guia lida. Agora confirme a ordem de carregamento.', 'ok');
-    sepRender();
-  } catch (e) { sepAviso('Não consegui montar a carga: ' + esc(e.message), 'err'); }
-}
-
-/* ── Pedidos direto do Bling ──────────────────────────────────────
-   A guia sai do painel de carteira, que existe porque os pedidos estão
-   no Bling. Ler na fonte é exato e não custa digitação nenhuma. */
-let BL_PEDIDOS = [], BL_ESCOLHA = [];
-
-async function sepBuscarBling() {
-  sepAviso('Buscando os pedidos em aberto no Bling…', 'at');
-  $('sep-corpo').innerHTML = '<div class="vazio">Carregando…</div>';
-  try {
-    const r = await fetch(URL_BASE + '/separacao/bling/pedidos?dias=60');
-    const d = await r.json();
-    if (!d.ok) throw new Error(d.erro || 'falha');
-    BL_PEDIDOS = d.pedidos || [];
-    BL_ESCOLHA = [];
-    sepAviso('');
-    sepDesenharBling();
-  } catch (e) {
-    sepAviso('Não consegui falar com o Bling: ' + esc(e.message)
-      + '<br>Dá para seguir pela foto da guia enquanto isso.', 'err');
-    sepDesenharAbertura();
-  }
-}
-
-function blMarcar(id) {
-  const i = BL_ESCOLHA.indexOf(id);
-  if (i >= 0) BL_ESCOLHA.splice(i, 1); else BL_ESCOLHA.push(id);   // a ordem da escolha vira a de carregamento
-  sepDesenharBling();
-}
-function blMover(i, d) {
-  const j = i + d;
-  if (j < 0 || j >= BL_ESCOLHA.length) return;
-  const t = BL_ESCOLHA[i]; BL_ESCOLHA[i] = BL_ESCOLHA[j]; BL_ESCOLHA[j] = t;
-  sepDesenharBling();
-}
-
-function sepDesenharBling() {
-  const busca = (window.__blBusca || '').toLowerCase();
-  const visiveis = BL_PEDIDOS.filter(p => !busca
-    || String(p.cliente || '').toLowerCase().includes(busca)
-    || String(p.numero || '').includes(busca));
-
-  // A ORDEM DE CARREGAMENTO é a ordem em que foram marcados. Fica no
-  // topo, com setas, porque é decisão do gestor — o sistema não escolhe.
-  const escolhidos = BL_ESCOLHA.map((id, i) => {
-    const p = BL_PEDIDOS.find(x => x.bling_id === id) || {};
-    return `<div class="cl">
-      <div class="end">${i + 1}º</div>
-      <div class="cp"><div class="p1">${esc(p.cliente || '')}</div>
-        <div class="p2">pedido ${esc(String(p.numero || p.bling_id))}</div></div>
-      <div style="display:flex;gap:4px">
-        <button class="btn-ic" onclick="blMover(${i},-1)" title="Carregar antes">↑</button>
-        <button class="btn-ic" onclick="blMover(${i},1)" title="Carregar depois">↓</button>
-        <button class="btn-ic" onclick="blMarcar(${p.bling_id})" title="Tirar">✕</button>
-      </div></div>`;
-  }).join('');
-
-  const lista = visiveis.map(p => {
-    const on = BL_ESCOLHA.includes(p.bling_id);
-    return `<div class="cl ${on ? 'pronta' : ''}" style="cursor:pointer" onclick="blMarcar(${p.bling_id})">
-      <div class="end" style="font-size:15px">${on ? '✓' : '○'}</div>
-      <div class="cp"><div class="p1">${esc(p.cliente || '(sem nome)')}</div>
-        <div class="p2">pedido ${esc(String(p.numero || p.bling_id))} ·
-          ${esc(String(p.data || '').slice(0, 10))}</div></div></div>`;
-  }).join('');
-
-  $('sep-corpo').innerHTML = `
-    <div class="acoes" style="margin-bottom:12px">
-      <button class="btn" onclick="sepFechar()">← voltar</button>
-      <button class="btn ok" style="flex:1" onclick="sepCriarDoBling()"
-        ${BL_ESCOLHA.length ? '' : 'disabled'}>✓ MONTAR CARGA (${BL_ESCOLHA.length})</button>
-    </div>
-    ${escolhidos ? `<div class="rua-tit">ORDEM DE CARREGAMENTO</div>${escolhidos}
-      <div class="dica" style="margin-bottom:14px">O primeiro a carregar é o
-        último a entregar. Use as setas para acertar.</div>` : ''}
-    <div class="rua-tit">PEDIDOS EM ABERTO NO BLING (${BL_PEDIDOS.length})</div>
-    <input class="busca" style="width:100%;margin:8px 0 10px" placeholder="Buscar cliente ou número…"
-           value="${esc(window.__blBusca || '')}"
-           oninput="window.__blBusca=this.value; sepDesenharBling()">
-    ${lista || '<div class="vazio">Nenhum pedido em aberto encontrado.</div>'}`;
-}
-
-async function sepCriarDoBling() {
-  if (!BL_ESCOLHA.length) return;
-  sepAviso('Lendo os itens dos pedidos no Bling…', 'at');
-  try {
-    const r = await fetch(URL_BASE + '/separacao/de-bling', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ operador: window.EKO_RESPONSAVEL || null,
-        pedidos: BL_ESCOLHA.map((id, i) => ({ bling_id: id, ordem: i + 1 })) }) });
-    const d = await r.json();
-    if (!d.ok) throw new Error(d.erro || 'falha');
-    beep(880, .09); vibrar(40);
-    SEP = { id: d.id, status: d.status, arquivo: null };
-    SEP_UNIDADE = 'fardos'; SEP_CORRIGINDO = false;
-    await sepCarregarEstado();
-
-    // Item que a estação não soube traduzir NÃO some calado.
-    if ((d.nao_reconhecidos || []).length) {
-      sepAviso('<b>Não reconheci estes itens e eles ficaram de fora:</b><br>'
-        + d.nao_reconhecidos.map(x => `${esc(x.cliente || '')} — ${esc(x.descricao || x.codigo || '?')}`
-            + ` <i>(${esc(x.motivo)})</i>`).join('<br>')
-        + '<br>Confira se são de produto acabado. Se forem, dá para acrescentar em “corrigir a guia”.', 'at');
-    } else sepAviso('Pedidos lidos. Agora confirme a ordem de carregamento.', 'ok');
-
-    SEP_ORDENANDO = true;      // mesma regra do PDF: a ordem vem antes da lista
-    sepRender();
-  } catch (e) { sepAviso('Não consegui montar a carga: ' + esc(e.message), 'err'); }
-}
-
-function sepCabecalhoGuia() {
-  if (!SEP) return '';
-  const ehPdf = String(SEP.arquivo || '').toLowerCase().endsWith('.pdf');
-  const url = `${URL_BASE}/separacao/${SEP.id}/guia`;
-  const mini = ehPdf
-    ? `<div style="width:56px;height:56px;border-radius:8px;background:var(--surface);display:flex;
-         align-items:center;justify-content:center;font-size:22px">📄</div>`
-    : `<img src="${url}" alt="Guia" onclick="sepLupa('${url}')">`;
-  return `<div class="guia-mini">
-      ${mini}
-      <div class="gt"><b>Separação #${SEP.id}</b>
-        ${ehPdf ? `<a href="${url}" target="_blank" style="color:var(--accent)">abrir o PDF da guia</a>`
-                : 'toque na foto para ampliar'}</div>
-      <button class="lixo" title="Apagar esta importação" onclick="sepApagar(${SEP.id})">🗑</button>
-      <button class="btn" onclick="sepFechar()">✕</button>
-    </div>`;
-}
-function sepLupa(url) { $('lupa-img').src = url; $('lupa').classList.add('on'); }
-
-function sepDesenharConferencia() {
-  const cards = SEP_PEDIDOS.map((p, i) => {
-    const itens = p.itens.map((it, j) => `
-      <div class="item">
-        <div class="it-l1">
-          <div class="cores">${SEP_CORES.map(c => `
-            <button class="cb ${it.cor_key === c.key ? 'on' : ''}" style="background:${c.cor};color:${c.txt}"
-                    title="${c.nome}" onclick="sepSetCor(${i},${j},'${c.key}')">${c.key}</button>`).join('')}</div>
-          <button class="lixo" onclick="sepRemoverItem(${i},${j})" title="Remover item">✕</button>
-        </div>
-        <div class="it-l2">
-          <select class="sel-fmt" onchange="sepSetItem(${i},${j},'formato',this.value)">
-            ${SEP_FORMATOS.map(f => `<option ${it.formato === f ? 'selected' : ''}>${f}</option>`).join('')}
-          </select>
-          <input class="qtd" type="number" inputmode="decimal" min="0" placeholder="0"
-                 value="${it.qtd === '' ? '' : it.qtd}" oninput="sepSetItem(${i},${j},'qtd',this.value)">
-          <span style="font-size:12.5px;color:var(--muted);flex:0 0 42px">${SEP_UNIDADE}</span>
-        </div>
-      </div>`).join('');
-    return `<div class="ped">
-      <div class="ped-top">
-        <div class="ped-ordem" title="Ordem de carregamento">${p.ordem}</div>
-        <input class="ped-cli" placeholder="Cliente" value="${esc(p.cliente)}"
-               oninput="sepSet(${i},'cliente',this.value)">
-        <button class="btn-ic" onclick="sepMover(${i},-1)" title="Carregar antes">↑</button>
-        <button class="btn-ic" onclick="sepMover(${i},1)" title="Carregar depois">↓</button>
-        <button class="lixo" onclick="sepRemoverPedido(${i})" title="Remover pedido">✕</button>
-      </div>
-      ${itens}
-      <div class="acoes" style="margin-top:8px">
-        <button class="btn" onclick="sepNovoItem(${i})">+ item</button>
-      </div>
-    </div>`;
-  }).join('');
-
-  $('sep-corpo').innerHTML = `
-    ${sepPassos(1)}
-    ${sepCabecalhoGuia()}
-    <div class="unid">A guia está em:
-      <button class="chip ${SEP_UNIDADE === 'kg' ? 'on' : ''}" onclick="sepUnidade('kg')">kg</button>
-      <button class="chip ${SEP_UNIDADE === 'fardos' ? 'on' : ''}" onclick="sepUnidade('fardos')">fardos</button>
-      <span style="margin-left:auto">1 fardo = ${KG_FARDO} kg</span>
-    </div>
-    ${cards}
-    <div class="acoes">
-      <button class="btn" onclick="sepNovoPedido()">+ PEDIDO</button>
-      <button class="btn ok" style="flex:1" onclick="sepConferirEPlanejar()">
-        ✓ CONFERIDO — DEFINIR A ORDEM</button>
-    </div>
-    <div class="dica">Aqui você acerta <b>o que</b> vai na carga. A <b>ordem de
-      carregamento</b> vem na tela seguinte, com a lista inteira à vista — as setas daqui
-      são só um atalho.</div>`;
-}
-
-/* ══════════════════════════════════════════════════════════════════
-   PASSO 2 — A ORDEM DE CARREGAMENTO
-   ------------------------------------------------------------------
-   Esta é a única decisão da separação que o sistema NÃO pode tomar
-   sozinho: quem entra primeiro no caminhão depende da rota, do cliente
-   e do que o motorista combinou. Tudo o que vem depois — quais
-   endereços visitar, em que sequência, qual gaiola serve dois pedidos
-   de uma vez — é consequência dela.
-
-   Por isso ela virou uma tela inteira, e não uma seta escondida no
-   canto de outra: o sistema PERGUNTA antes de montar qualquer lista.
-
-   A guia numera as cargas da esquerda para a direita e imprime, em
-   cada uma, o número da entrega. Como o cabeçalho dela diz que a
-   coluna da esquerda é a última a ser carregada, os dois números
-   costumam correr em sentidos opostos — e é exatamente por isso que a
-   tela mostra os dois e deixa você inverter tudo com um toque.
-   ══════════════════════════════════════════════════════════════════ */
-function sepDesenharOrdem() {
-  const totalFardos = p => (p.itens || []).reduce((a, it) => a + (Number(it.qtd) || 0), 0);
-  const linhas = SEP_PEDIDOS.map((p, i) => `
-    <div class="ord">
-      <div class="ord-n">${p.ordem}º</div>
-      <div class="ord-c">
-        <div class="ord-cli">${esc(p.cliente || 'pedido ' + p.ordem)}</div>
-        <div class="ord-sub">${esc(p.cidade || '')}${p.uf ? '/' + esc(p.uf) : ''}${
-          p.pedido_numero ? ' · Ped.' + esc(p.pedido_numero) : ''}</div>
-        ${p.carga ? `<div class="ord-tag">${esc(p.carga)}</div>` : ''}
-        <div class="ord-qtd">${totalFardos(p)} fardo(s) · ${fmtKg(totalFardos(p) * KG_FARDO)}</div>
-      </div>
-      <div class="ord-set">
-        <button class="btn-ic" onclick="sepMover(${i},-1)" ${i === 0 ? 'disabled' : ''}
-                title="Carregar antes">↑</button>
-        <button class="btn-ic" onclick="sepMover(${i},1)" ${i === SEP_PEDIDOS.length - 1 ? 'disabled' : ''}
-                title="Carregar depois">↓</button>
-      </div>
-    </div>`).join('');
-
-  $('sep-corpo').innerHTML = `
-    ${sepPassos(2)}
-    ${sepCabecalhoGuia()}
-    <div class="det" style="margin-bottom:12px">
-      <h3 style="font-family:inherit;font-size:15px">Em que ordem o caminhão vai ser carregado?</h3>
-      <div class="sub">O <b>1º da lista entra primeiro no caminhão</b> — e por isso é o
-        <b>último a ser entregue</b>. É esta sequência que vai definir por quais endereços
-        você passa e em que ordem.</div>
-      <div class="acoes" style="margin-top:10px">
-        <button class="btn" onclick="sepInverterOrdem()">⇅ inverter a ordem toda</button>
-      </div>
-    </div>
-    ${linhas || '<div class="vazio">Nenhum pedido nesta carga.</div>'}
-    <div class="acoes" style="margin-top:12px">
-      <button class="btn ok" style="flex:1" onclick="sepConfirmarOrdem()">
-        ✓ ESTA É A ORDEM — VER OS ENDEREÇOS</button>
-    </div>
-    <div class="acoes">
-      <button class="btn" onclick="sepVoltarConferencia()">← corrigir a guia</button>
-      <button class="btn" onclick="sepFechar()">fechar</button>
-    </div>`;
-}
-
-// Inverter tudo de uma vez. Existe porque a dúvida real quase nunca é
-// "trocar o 2º com o 3º": é se a guia deve ser lida da esquerda para a
-// direita ou ao contrário. Um toque resolve, sem subir carga por carga.
-function sepInverterOrdem() {
-  SEP_PEDIDOS.reverse();
-  SEP_PEDIDOS.forEach((p, k) => p.ordem = k + 1);
-  sepRender();
-}
-
-async function sepConfirmarOrdem() {
-  const ids = SEP_PEDIDOS.map(p => p.id).filter(Boolean);
-  if (ids.length !== SEP_PEDIDOS.length) {
-    sepAviso('Esta carga ainda não foi gravada. Confira a guia primeiro.', 'err');
-    return;
-  }
-  sepAviso('Gravando a ordem e montando a lista de endereços…', 'at');
-  try {
-    let r = await fetch(URL_BASE + `/separacao/${SEP.id}/ordem`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ordens: ids }) });
-    let d = await r.json();
-    if (!d.ok) throw new Error(d.erro || 'falha ao gravar a ordem');
-
-    r = await fetch(URL_BASE + `/separacao/${SEP.id}/planejar`, { method: 'POST' });
-    d = await r.json();
-    if (!d.ok) throw new Error(d.erro || 'falha ao montar a lista');
-    SEP_ORDENANDO = false;
-    await sepCarregarEstado();
-    beep(880, .09); vibrar(40);
-    sepAviso('');
-    sepRender();
-  } catch (e) { sepAviso('Não consegui montar a lista: ' + esc(e.message), 'err'); }
-}
-
-function sepVoltarOrdem() { SEP_ORDENANDO = true; SEP_CORRIGINDO = false; pararCamera(); sepRender(); }
-
-/* ── Apagar uma importação ─────────────────────────────────────────
-   Testar gera lixo: a guia importada duas vezes, a carga montada só
-   para ver como fica. Sem um jeito de apagar, a lista de separações
-   vira um monte de tentativas e ninguém mais acha a de verdade.
-
-   O que some é o papel: a guia, os pedidos e o plano. O que fica é o
-   que virou realidade no galpão — endereço já liberado por um bipe, e
-   sobra que já foi etiquetada e endereçada, porque essa é uma gaiola
-   física ocupando um vão. */
-async function sepApagar(id) {
-  const alvo = SEP_LISTA.find(s => s.id === id) || {};
-  const detalhe = [alvo.pedidos ? `${alvo.pedidos} pedido(s)` : null,
-                   alvo.pendentes ? `${alvo.pendentes} a coletar` : null]
-                  .filter(Boolean).join(' · ');
-  if (!confirm(`Apagar a separação #${id}${detalhe ? ' (' + detalhe + ')' : ''}?\n\n`
-    + 'A guia, os pedidos e o plano somem. O que já foi bipado no galpão '
-    + 'continua como está.')) return;
-  sepAviso('Apagando…', 'at');
-  try {
-    const r = await fetch(URL_BASE + '/separacao/' + id, { method: 'DELETE' });
-    const d = await r.json();
-    if (!d.ok) throw new Error(d.erro || 'falha');
-    if (SEP && SEP.id === id) { SEP = null; SEP_PEDIDOS = []; SEP_ESTADO = null;
-                                SEP_CORRIGINDO = false; SEP_ORDENANDO = false; pararCamera(); }
-    vibrar(30);
-    sepAviso(`Separação #${id} apagada.`
-      + (d.sobras_preservadas ? ` ${d.sobras_preservadas} sobra(s) já endereçada(s) `
-         + 'continuam no mapa — são gaiolas de verdade na prateleira.' : ''), 'ok');
-    await sobRender();
-    sepRender();
-  } catch (e) { sepAviso('Não consegui apagar: ' + esc(e.message), 'err'); }
-}
-
-function sepDesenharPlano() {
-  const est = SEP_ESTADO || {};
-  const coletas = est.coletas || [];
-  const falta = est.falta || { por_item: [], por_produto: [], fardos: 0 };
-  const vivas = coletas.filter(c => c.status === 'planejada' || c.status === 'coletada');
-  const feitas = vivas.filter(c => c.status === 'coletada');
-  const fardos = vivas.reduce((a, c) => a + Object.values(c.reparticao || {}).reduce((x, y) => x + y, 0), 0);
-  const nomePedido = o => {
-    const p = SEP_PEDIDOS.find(x => x.ordem === Number(o));
-    return p && p.cliente ? p.cliente : 'pedido ' + o;
-  };
-
-  // ── O bloco da FALTA. Quase nunca a guia inteira está pronta: parte
-  //    está na máquina e fica pronta no dia. Isso não é erro, é o
-  //    normal — o erro seria o caminhão sair faltando carga sem
-  //    ninguém saber.
-  //
-  //    Ele já ocupou o topo desta tela, e foi um engano: com o mapa
-  //    ainda incompleto a tela abria com um muro laranja de "falta
-  //    tudo" e os endereços — que são o motivo de a tela existir —
-  //    ficavam empurrados para baixo do fim do celular. Agora a falta
-  //    entra como uma tarja de uma linha em cima e o detalhe fica no
-  //    fim, depois da lista. ──
-  let tarjaFalta = '', blocoFalta = '';
-  if (falta.fardos > 0) {
-    tarjaFalta = `<div class="aviso at" style="display:flex;align-items:center;gap:10px">
-      <span style="font-size:16px">⏳</span>
-      <span style="flex:1"><b>${falta.fardos} fardo(s)</b> desta carga ainda não estão
-        endereçados — o normal é estarem em produção.</span>
-      <button class="btn" onclick="document.getElementById('falta-det').scrollIntoView({behavior:'smooth'})"
-        style="flex:0 0 auto">ver</button></div>`;
-  }
-  if (falta.fardos > 0) {
-    const porProd = falta.por_produto.map(f =>
-      `<div class="linha"><span>${esc(f.formato)} ${esc(f.cor_key)}</span>
-        <span>${f.faltam} fardo(s) · ${fmtKg(f.kg)}</span></div>`).join('');
-    const porPed = falta.por_item.map(f =>
-      `<div class="linha"><span>${f.ordem}º · ${esc(f.cliente || 'pedido ' + f.ordem)}</span>
-        <span>${f.faltam} × ${esc(f.formato)} ${esc(f.cor_key)}</span></div>`).join('');
-    blocoFalta = `<div class="det" id="falta-det" style="border-color:var(--warn)">
-      <h3 style="font-family:inherit;font-size:15px;color:var(--warn)">⏳ FALTAM ${falta.fardos} FARDO(S) NO GALPÃO</h3>
-      <div class="sub">Não estão endereçados agora. O normal é estarem em produção —
-        assim que ficarem prontos e forem endereçados, toque em <b>refazer o plano</b>
-        e eles entram sozinhos.</div>
-      ${porProd}
-      <div class="rua-tit" style="margin:12px 0 4px">QUEM FICA FALTANDO</div>
-      ${porPed}
-    </div>`;
-  }
-
-  // ── Coletas, por pedido na ordem de carregamento, caminhando pelo galpão ──
-  // A lista percorre TODOS os pedidos da carga, não só os que têm
-  // endereço. Um pedido inteiro em produção sumindo da lista abriria um
-  // buraco entre a ordem que o gestor confirmou e a lista que o
-  // separador lê — ele contaria "1º, 3º, 4º" e iria procurar o 2º.
-  const ordens = SEP_PEDIDOS.length
-    ? SEP_PEDIDOS.map(p => p.ordem).sort((a, b) => a - b)
-    : [...new Set(vivas.flatMap(c => Object.keys(c.reparticao || {}).map(Number)))].sort((a, b) => a - b);
-  const jaBuscada = new Set();
-  const blocos = ordens.map(o => {
-    const doPedido = vivas.filter(c => c.reparticao && c.reparticao[o]).sort((a, b) => {
-      const A = a.posicao.split('-').map(Number), B = b.posicao.split('-').map(Number);
-      return (A[0] - B[0]) || (A[2] - B[2]) || (A[1] - B[1]);
-    });
-    const linhas = doPedido.map(c => {
-      const naDoca = jaBuscada.has(c.gaiola_id);
-      jaBuscada.add(c.gaiola_id);
-      const outros = Object.keys(c.reparticao).map(Number).filter(x => x !== o).sort((a, b) => a - b);
-      const pronta = c.status === 'coletada';
-      return `<div class="cl ${naDoca ? 'doca' : ''} ${pronta ? 'pronta' : ''}" id="cl-${c.id}-${o}">
-        <div class="end">${esc(c.posicao)}</div>
-        <div class="cp">
-          <div class="p1">${pronta ? '✓ ' : ''}${c.reparticao[o]} fardo(s) · ${esc(c.formato)} ${esc(c.cor_key)}</div>
-          <div class="p2">gaiola ${esc(c.gaiola_id)} · ${c.fardos_na_gaiola} fardo(s) na gaiola</div>
-          ${naDoca ? '<span class="tag2 doca">já está na doca — não busque de novo</span>' : ''}
-          ${outros.length ? `<span class="tag2 share">atende também: ${outros.map(x =>
-              esc(nomePedido(x)) + ' (' + c.reparticao[x] + ')').join(', ')}</span>` : ''}
-          ${c.sobra > 0 ? `<span class="tag2 sobra">sobram ${c.sobra} fardo(s) — vai para reetiquetagem</span>` : ''}
-          ${(!pronta && !naDoca) ? `<div class="acoes" style="margin-top:9px">
-              <button class="btn ok" onclick="sepConfirmar(${c.id})">✓ COLETEI</button>
-              <button class="btn perigo" onclick="sepNaoEncontrada(${c.id})">✗ não está aqui</button>
-            </div>` : ''}
-        </div></div>`;
-    }).join('');
-    const p = SEP_PEDIDOS.find(x => x.ordem === Number(o)) || {};
-    const sub = [p.cidade ? p.cidade + (p.uf ? '/' + p.uf : '') : '',
-                 p.pedido_numero ? 'Ped.' + p.pedido_numero : '',
-                 p.carga || ''].filter(Boolean).join(' · ');
-    const nEnd = doPedido.length;
-    // Pedido sem nenhum endereço: não some da lista, aparece dizendo por quê.
-    const faltaDele = falta.por_item.filter(f => Number(f.ordem) === Number(o));
-    const vazio = nEnd ? '' : `<div class="cl" style="border-style:dashed;opacity:.8">
-      <div class="end" style="color:var(--warn)">—</div>
-      <div class="cp"><div class="p1">nada endereçado para este pedido ainda</div>
-        <div class="p2">${faltaDele.length
-          ? faltaDele.map(f => `${f.faltam} × ${esc(f.formato)} ${esc(f.cor_key)}`).join(' · ')
-            + ' — em produção'
-          : 'sem itens a coletar'}</div></div></div>`;
-    return `<div class="pl-ped">
-      <h4>${o}º a carregar — ${esc(nomePedido(o))}</h4>
-      <div class="pl-sub">${esc(sub)}${sub ? ' · ' : ''}${nEnd} endereço(s) a visitar</div>
-      ${linhas}${vazio}</div>`;
-  }).join('');
-
-  const compart = vivas.filter(c => Object.keys(c.reparticao || {}).length > 1).length;
-
-  $('sep-corpo').innerHTML = `
-    ${sepPassos(3)}
-    ${sepCabecalhoGuia()}
-    <div class="resumo">
-      <div class="rz"><b>${feitas.length}/${vivas.length}</b><span>coletadas</span></div>
-      <div class="rz"><b>${fardos}</b><span>fardos</span></div>
-      <div class="rz"><b>${compart}</b><span>em 2+ pedidos</span></div>
-      <div class="rz" ${falta.fardos ? 'style="border-color:var(--warn)"' : ''}>
-        <b${falta.fardos ? ' style="color:var(--warn)"' : ''}>${falta.fardos}</b><span>faltando</span></div>
-    </div>
-    ${vivas.length ? tarjaFalta : `
-      <div class="det" style="border-color:var(--warn);margin-bottom:12px">
-        <h3 style="font-family:inherit;font-size:15px;color:var(--warn)">
-          Nenhum item desta carga está endereçado ainda</h3>
-        <div class="sub">A guia entrou certa e a ordem está gravada — o que falta é o
-          <b>mapa do galpão</b>. Enquanto as gaiolas não forem bipadas na aba
-          <b>ENDEREÇAR</b>, o sistema não tem de onde tirar os endereços.<br><br>
-          Pode ir bipando: a cada tanto, toque em <b>↻ refazer</b> aqui e o que já foi
-          endereçado entra na lista sozinho. Não precisa começar de novo.</div>
-        <div class="acoes" style="margin-top:10px">
-          <button class="btn ok" style="flex:1" onclick="sepReplanejar()">↻ REFAZER A LISTA</button>
-        </div>
-      </div>`}
-    <div id="reader-sep"></div>
-    ${vivas.length ? `<div class="acoes" style="margin-top:0">
-      <button class="btn ok" id="btn-cam-sep" style="flex:1" onclick="sepBipar()">▶ LIGAR CÂMERA</button>
-      <button class="btn" onclick="sepReplanejar()">↻ refazer</button>
-    </div>` : ''}
-    <div class="rua-tit" style="margin:14px 0 6px">LISTA DE SEPARAÇÃO — NA ORDEM DE CARREGAMENTO</div>
-    <div class="dica" style="margin-bottom:12px">Cada bloco é um pedido, na sequência que
-      você definiu${vivas.length ? `, e dentro dele os endereços vêm na ordem de caminhada
-      pelo galpão. Bipe a etiqueta da prateleira <b>ou</b> a da gaiola ao pegar — é esse
-      bipe que libera o endereço no mapa.` : '. Os endereços entram aqui à medida que as gaiolas forem bipadas no mapa.'}${compart ? ` <b>${compart} ${compart === 1 ? 'gaiola atende' : 'gaiolas atendem'}</b>
-      mais de um pedido: a etiqueta verde avisa, e ${compart === 1 ? 'ela' : 'elas'} não
-      ${compart === 1 ? 'deve' : 'devem'} ser buscada${compart === 1 ? '' : 's'} duas vezes.` : ''}</div>
-    ${blocos || '<div class="vazio">Nada a coletar.</div>'}
-    ${blocoFalta}
-    <div class="acoes">
-      <button class="btn" onclick="sepVoltarOrdem()">⇅ mudar a ordem</button>
-      <button class="btn" onclick="sepVoltarConferencia()">← corrigir a guia</button>
-      <button class="btn" onclick="sepFechar()">fechar</button>
-    </div>`;
-}
-
-/* ── O bipe da coleta ──────────────────────────────────────────────
-   É o gesto que fecha o ciclo: o separador já está no endereço e já
-   está tirando a gaiola. Bipar ali não é trabalho a mais — e é o que
-   dá baixa sem depender de alguém lembrar depois. */
-function sepBipar() {
-  toggleCamera({ el: 'reader-sep', btn: 'btn-cam-sep', cb: sepLeu });
-}
-
-async function sepLeu(texto) {
-  const t = String(texto || '').trim().toUpperCase();
-  const agora = Date.now();
-  if (ultimaLeitura[t] && agora - ultimaLeitura[t] < 2500) return;
-  ultimaLeitura[t] = agora;
-
-  const info = interpretar(t);
-  const alvo = (info.tipo === 'gaiola' ? info.id : info.tipo === 'endereco' ? info.codigo : t);
-  const c = (SEP_ESTADO.coletas || []).find(
-    x => x.status === 'planejada' && (x.gaiola_id === alvo || x.posicao === alvo));
-  if (!c) {
-    beep(320, .2); vibrar(150);
-    sepAviso(`<b>${esc(alvo)}</b> não está no plano desta separação. Confira se é a gaiola certa.`, 'err');
-    return;
-  }
-  beep(880, .09); vibrar(40);
-  await sepConfirmar(c.id, alvo);
-}
-
-async function sepConfirmar(id, lido) {
-  try {
-    const r = await fetch(URL_BASE + `/separacao/coleta/${id}/confirmar`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ lido: lido || null, operador: window.EKO_RESPONSAVEL || null }) });
-    const d = await r.json();
-    if (!d.ok) throw new Error(d.erro || 'falha');
-    await sepCarregarEstado();
-    if (d.sobra > 0) {
-      sepAviso(`Coletada. <b>Sobram ${d.sobra} fardo(s)</b> — a etiqueta nova está na aba
-                <b>SOBRAS</b>${d.posicao_sugerida ? `, para endereçar em <b>${esc(d.posicao_sugerida)}</b>` : ''}.`, 'at');
-    } else {
-      sepAviso(`Coletada. Endereço <b>${esc(d.posicao_liberada)}</b> liberado no mapa.`, 'ok');
-    }
-    sepRender();
-    sobAtualizarBadge();
-  } catch (e) { sepAviso('Não consegui confirmar: ' + esc(e.message), 'err'); }
-}
-
-async function sepNaoEncontrada(id) {
-  try {
-    const r = await fetch(URL_BASE + `/separacao/coleta/${id}/nao-encontrada`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ operador: window.EKO_RESPONSAVEL || null }) });
-    const d = await r.json();
-    if (!d.ok) throw new Error(d.erro || 'falha');
-    sepAviso('Anotado: o mapa foi corrigido. Refazendo o plano com o que resta…', 'at');
-    await sepReplanejar();
-  } catch (e) { sepAviso('Não consegui: ' + esc(e.message), 'err'); }
-}
-
-/* ══════════════════════════════════════════════════════════════════
-   SOBRAS — a fila de reetiquetagem
-   Gaiola que saiu do endereço mas não foi 100% usada. Fica aqui até a
-   etiqueta nova ser impressa e endereçada. A fila tem fim visível.
-   ══════════════════════════════════════════════════════════════════ */
-async function sobRender() {
-  try {
-    const r = await fetch(URL_BASE + '/sobras');
-    const d = await r.json();
-    const lista = (d.sobras || []);
-    sobPintarBadge(lista.length);
-    if (!lista.length) {
-      $('sob-corpo').innerHTML = `<div class="det"><h3 style="font-family:inherit;font-size:15px">Nada pendente</h3>
-        <div class="sub">Quando uma gaiola sair do endereço sem ser usada por
-        inteiro, a etiqueta nova dela aparece aqui.</div></div>`;
-      return;
-    }
-    $('sob-corpo').innerHTML = lista.map(s => {
-      const impressa = s.status === 'impressa' && s.gaiola_nova;
-      return `<div class="det">
-        <h3 style="font-family:inherit;font-size:16px">${esc(s.formato)} ${esc(s.cor_key)} · ${s.fardos} fardo(s)</h3>
-        <div class="sub">${fmtKg(s.fardos * KG_FARDO)} · saiu de ${esc(s.posicao_origem || '—')}
-          (gaiola ${esc(s.gaiola_origem)})</div>
-        <div class="linha"><span>Endereço sugerido</span>
-          <span style="font-family:'IBM Plex Mono',monospace;color:var(--accent);font-size:16px">
-            ${esc(s.posicao_sugerida || 'nenhum vão livre')}</span></div>
-        ${impressa ? `<div class="linha"><span>Etiqueta nova</span>
-          <span style="font-family:'IBM Plex Mono',monospace">${esc(s.gaiola_nova)}</span></div>` : ''}
-        <div class="acoes">
-          <button class="btn ok" onclick="sobImprimir(${s.id})">🖨 ${impressa ? 'IMPRIMIR DE NOVO' : 'IMPRIMIR ETIQUETA'}</button>
-          ${impressa ? `<button class="btn" onclick="irAba('acao')">📷 ir endereçar</button>` : ''}
-        </div>
-        ${impressa ? `<div class="dica">Cole a etiqueta nova na gaiola, leve ao endereço e
-          bipe na aba <b>ENDEREÇAR</b>. A pendência fecha sozinha.</div>` : ''}
-      </div>`;
-    }).join('');
-  } catch (e) {
-    $('sob-corpo').innerHTML = `<div class="aviso err">Não consegui carregar: ${esc(e.message)}</div>`;
-  }
-}
-
-async function sobImprimir(id) {
-  $('sob-msg').innerHTML = '<div class="aviso at">Imprimindo…</div>';
-  try {
-    const r = await fetch(URL_BASE + `/sobras/${id}/imprimir`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ operador: window.EKO_RESPONSAVEL || null }) });
-    const d = await r.json();
-    if (!d.ok) throw new Error(d.erro || 'falha');
-    beep(880, .09);
-    const imp = d.impressao || {};
-    $('sob-msg').innerHTML = `<div class="aviso ${imp.ok ? 'ok' : 'at'}">
-      Etiqueta <b>${esc(d.gaiola_nova)}</b> — ${d.fardos} fardo(s), ${fmtKg(d.kg)}.
-      ${imp.ok ? 'Saiu na impressora.' : 'A impressora não confirmou: ' + esc(imp.erro || 'sem resposta') + '.'}
-      Endereço sugerido: <b>${esc(d.posicao_sugerida || '—')}</b>.</div>`;
-    sobRender();
-  } catch (e) { $('sob-msg').innerHTML = `<div class="aviso err">${esc(e.message)}</div>`; }
-}
-
-function sobPintarBadge(n) {
-  const b = $('sob-badge');
-  if (b) b.textContent = n ? ' ' + n : '';
-}
-async function sobAtualizarBadge() {
-  try { const d = await (await fetch(URL_BASE + '/sobras')).json(); sobPintarBadge((d.sobras || []).length); }
-  catch (e) {}
-}
-
-function sepVoltarConferencia() { SEP_CORRIGINDO = true; pararCamera(); sepRender(); }
 
 /* ══════════════ início ══════════════ */
 function iniciar() {
   irModo('entrada');
   carregarMapa();
   carregarHistorico();
-  sobAtualizarBadge();
   // No celular a tela nasce no leitor; no computador, no mapa.
   if (window.innerWidth < 760) irAba('acao');
 }
