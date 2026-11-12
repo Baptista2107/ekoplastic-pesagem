@@ -325,6 +325,65 @@ const registro = virtId => { const l = lerDb('SELECT pedido_retirada FROM etique
     const ck7 = await consumir(await bag('111126', 'DESSEC', null, 'Cristal Master', 1000), sRet, { checar_pedido: true });
     ok(ck7.status === 200 && paraQuem(ck7) === 'K5', 'vai para o pedido mais antigo (FIFO, como a VPS)', ck7.body);
 
+    // saída por SACOS (a mais comum): não passa pelo avaliar, mas conta aqui
+    // como na VPS — senão o palete seguinte entrava como "do pedido"
+    VPS.pedidos = [pkg('K7', { kg_pedidos: 200 })];
+    const sc = await req('POST', '/retirada/aditivo', { sessao_id: sRet, materialKey: 'DESSEC', fornecedor: 'Cristal Master', qtd_sacos: 8 });
+    const k7 = await doPedido('K7');
+    ok(sc.status === 200 && k7.kg_atendidos === 200 && k7.status === 'atendido' && k7.etiquetas_atendidas.includes(sc.body.etiqueta.id),
+       '8 sacos (200 kg) lançados aqui fecham o pedido de 200 kg antes da VPS saber', k7);
+    const ck9 = await consumir(await bag('111126', 'DESSEC', null, 'Cristal Master', 1000), sRet, { checar_pedido: true });
+    ok(ck9.status === 409 && ck9.body.sem_pedido === true, 'e o palete logo depois NÃO é do pedido (409)', ck9.body);
+    // a VPS já contou esses sacos (pedido de 400 kg, ainda aberto lá): não soma de novo
+    VPS.pedidos = [pkg('K7', { kg_pedidos: 400, kg_atendidos: 200, etiquetas_atendidas: [sc.body.etiqueta.id] })];
+    const k7b = await doPedido('K7');
+    ok(k7b.kg_atendidos === 200 && k7b.status === 'aberto', 'a VPS contou os sacos: 200 de 400 kg, não 400 (nem fecha)', k7b);
+    // sacos de antes do pedido não são dele
+    VPS.pedidos = [pkg('K8', { kg_pedidos: 200, criado_em: new Date(Date.now() + 3600e3).toISOString() })];
+    await req('POST', '/retirada/aditivo', { sessao_id: sRet, materialKey: 'DESSEC', fornecedor: 'Cristal Master', qtd_sacos: 8 });
+    const k8 = await doPedido('K8');
+    ok(k8.kg_atendidos === 0 && k8.status === 'aberto', 'sacos lançados antes do pedido não contam para ele', k8);
+
+    // dois pedidos em kg: os sacos vão ao mais antigo, inteiros, e o
+    // seguinte só depois que ele fechou (a VPS manda o mais novo antes)
+    const t0 = Date.now();
+    VPS.pedidos = [pkg('K12', { kg_pedidos: 100, criado_em: new Date(t0 + 1).toISOString() }),
+                   pkg('K11', { kg_pedidos: 100, criado_em: new Date(t0).toISOString() })];
+    const sa = await req('POST', '/retirada/aditivo', { sessao_id: sRet, materialKey: 'DESSEC', fornecedor: 'Cristal Master', qtd_sacos: 8 });
+    const sb = await req('POST', '/retirada/aditivo', { sessao_id: sRet, materialKey: 'DESSEC', fornecedor: 'Cristal Master', qtd_sacos: 4 });
+    const [k11, k12] = [await doPedido('K11'), await doPedido('K12')];
+    ok(k11.kg_atendidos === 200 && k11.status === 'atendido' && k11.etiquetas_atendidas.join() === sa.body.etiqueta.id
+       && k12.kg_atendidos === 100 && k12.status === 'atendido' && k12.etiquetas_atendidas.join() === sb.body.etiqueta.id,
+       '8 sacos inteiros no mais antigo (fecha), os 4 seguintes no outro', { k11, k12 });
+    // a VPS já deu os 8 sacos ao K11: aqui eles não sobram para o K12
+    VPS.pedidos = [pkg('K12', { kg_pedidos: 400, criado_em: new Date(t0 + 1).toISOString() }),
+                   pkg('K11', { kg_pedidos: 100, criado_em: new Date(t0).toISOString(), kg_atendidos: 200,
+                                status: 'atendido', etiquetas_atendidas: [sa.body.etiqueta.id] })];
+    const k12b = await doPedido('K12');
+    ok(k12b.kg_atendidos === 100 && k12b.status === 'aberto',
+       'sacos que a VPS já deu a outro pedido não entram neste (100 de 400, não 300)', k12b);
+
+    // S de peso 0: a VPS descarta, aqui também (não vira "1 saída")
+    VPS.pedidos = [pkg('K9', { kg_pedidos: 10, criado_em: new Date().toISOString() })];   // depois dos sacos acima
+    { const db = new DatabaseSync(TMP_DB);
+      try { db.prepare(`INSERT INTO etiquetas (id, seq, tipo, material_key, fornecedor, lote, peso, codigo, sku, status, hora_impressao, pedido_retirada)
+                        VALUES ('S9999999', 9999999, 'retirada', 'DESSEC', 'Cristal Master', '111126', 0, 'X', 'X', 'bipada', ?, ?)`)
+              .run(new Date().toISOString(), JSON.stringify({ pedido_id: 'K9', fora: false, modo: 'producao' })); }
+      finally { db.close(); } }
+    const k9 = await doPedido('K9');
+    ok(k9.status === 'aberto' && k9.bags_atendidos === 0 && k9.kg_atendidos === 0,
+       'S de 0 kg não conta nem fecha o pedido de 10 kg', k9);
+
+    // troca de produto ativa: a S sai como o produto NOVO, e é ele que casa
+    const velho = await bag('111126', 'DESSEC', null, 'Velho', 1000);
+    await req('POST', '/config', { mp_substituicoes: JSON.stringify({ 'DESSEC::Velho': 'DESSEC::Karina' }),
+                                   mapa_produto_bling: JSON.stringify({ 'DESSEC::Karina': '99999' }) });
+    VPS.pedidos = [pkg('K10', { fornecedor: 'Karina' })];
+    const ck10 = await consumir(velho, sRet, { checar_pedido: true });
+    ok(ck10.status === 200 && paraQuem(ck10) === 'K10' && ck10.body.etiqueta_virtual.fornecedor === 'Karina',
+       'palete do produto trocado (Velho → Karina) casa com o pedido em kg de Karina', ck10.body);
+    await req('POST', '/config', { mp_substituicoes: '{}', mapa_produto_bling: '{}' });
+
     VPS.pedidos = [pkg('K2', { lote: '111126' })];
     await req('GET', '/retirada/pedidos');
     const ck8 = await consumir(await bag('121226', 'DESSEC', null, 'Cristal Master', 1000), sRet, { checar_pedido: true });

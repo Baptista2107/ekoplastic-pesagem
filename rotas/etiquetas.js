@@ -147,7 +147,10 @@ async function rotasEtiquetas(req, res, parsed, pathname) {
     // Pedido de retirada do painel (06/11/2026): bag que não bate com nenhum
     // pedido aberto só sai com motivo (em produção) — ver lib/retirada-pedidos.
     await pedidosRetirada.atualizar();
-    const decisao = pedidosRetirada.avaliar(orig, body);
+    // Produto trocado: a retirada sai como o produto NOVO (é ele que tem
+    // saldo no Bling). A etiqueta original fica como foi impressa.
+    const lida = aplicarSubstituicao(orig);
+    const decisao = pedidosRetirada.avaliar(orig, body, lida);
     if (!decisao.pode) {
       return jsonErr(res, decisao.http,
         decisao.corpo.sem_pedido ? 'Não há pedido de retirada aberto no painel'
@@ -156,10 +159,6 @@ async function rotasEtiquetas(req, res, parsed, pathname) {
             : `Bag ${origId} não é de nenhum pedido aberto (material/lote diferente)`,
         { ...decisao.corpo, etiqueta: aplicarSubstituicao(orig) });
     }
-
-    // Produto trocado: a retirada sai como o produto NOVO (é ele que tem
-    // saldo no Bling). A etiqueta original fica como foi impressa.
-    const lida = aplicarSubstituicao(orig);
 
     // Cria etiqueta virtual de retirada
     const seqRet = getProximoSeq('retirada');
