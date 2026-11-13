@@ -547,7 +547,8 @@ async function iniciarSessao(k) {
   } catch (e) { toast('Erro ao iniciar: ' + e.message, 'error'); }
 }
 
-// Data sugerida: turno A = hoje; turnos C e EXTRA = amanhã (D+1). Sempre editável.
+// Data sugerida: turno A = hoje; turnos C e EXTRA = ontem (lançados no dia
+// seguinte). Sempre editável.
 function ymdLocal(d) {
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 }
@@ -557,7 +558,9 @@ function dataSugerida(k) {
   // mas a produção é contabilizada no dia em que COMEÇOU. Como o lançamento é
   // feito de madrugada (já no dia seguinte), a data sugerida é a de ontem —
   // assim o operador não precisa mexer no calendário toda vez.
-  if (k === 'C') d.setDate(d.getDate() - 1);
+  // O turno EXTRA segue o mesmo modelo (Vinicius, 13/11/2026): também é
+  // lançado no dia seguinte.
+  if (k === 'C' || k === 'EXTRA') d.setDate(d.getDate() - 1);
   return ymdLocal(d);
 }
 function fmtDataBR(iso) {
