@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>POP · Operação Sacoleiras</title>
+<style>
+  @page { size: A4; margin: 9mm 10mm 9mm 10mm; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "DejaVu Sans", Arial, sans-serif; color: #111; font-size: 10.5pt; line-height: 1.3; }
+  .folha { height: 278mm; display: flex; flex-direction: column; break-after: page; overflow: hidden; }
+  .folha:last-child { break-after: auto; }
+
+  .topo { display: flex; align-items: center; gap: 5mm; border-bottom: 1.2mm solid #0b2a4a; padding-bottom: 2.5mm; margin-bottom: 3mm; }
+  .topo img { height: 13mm; }
+  .topo .t { flex: 1; }
+  .topo h1 { margin: 0; font-size: 19pt; color: #0b2a4a; letter-spacing: -0.2pt; }
+  .topo .sub { font-size: 8.5pt; color: #444; }
+  .topo .pg { font-size: 9pt; font-weight: 700; color: #0b2a4a; text-align: right; white-space: nowrap; }
+
+  h2 { margin: 1mm 0 2.5mm; font-size: 13.5pt; background: #0b2a4a; color: #fff; padding: 1.4mm 3mm; border-radius: 1.5mm; }
+
+  .regra { border: 0.6mm solid #00a676; background: #e9fbf4; border-radius: 2mm; padding: 2mm 3.5mm; margin-bottom: 3mm; font-size: 11pt; }
+  .regra b { color: #00764f; }
+
+  .grade { display: grid; gap: 3mm; }
+  .g2 { grid-template-columns: 1fr 1fr; }
+  .g3 { grid-template-columns: 1fr 1fr 1fr; }
+
+  .passo { border: 0.35mm solid #c9d3de; border-radius: 2.5mm; padding: 2.5mm; display: flex; flex-direction: column; break-inside: avoid; }
+  .cab { display: flex; gap: 2.5mm; align-items: flex-start; margin-bottom: 1.5mm; }
+  .n { flex: none; width: 9mm; height: 9mm; border-radius: 50%; background: #00a676; color: #fff; font-weight: 700; font-size: 14pt; display: flex; align-items: center; justify-content: center; }
+  .n.enc { background: #0b2a4a; }
+  .n.alerta { background: #d64545; }
+  .cab h3 { margin: 0.6mm 0 0; font-size: 12pt; line-height: 1.15; }
+  .quem { display: inline-block; font-size: 7.5pt; font-weight: 700; background: #0b2a4a; color: #fff; border-radius: 1mm; padding: 0.2mm 1.5mm; margin-left: 1mm; vertical-align: 1pt; }
+  .txt { font-size: 9.8pt; margin: 0 0 2mm; }
+  .fotos { display: flex; gap: 2.5mm; justify-content: center; align-items: flex-start; margin-top: auto; }
+  .fotos img { border-radius: 2mm; box-shadow: 0 0 0 0.3mm #9aa7b4; }
+  .seta { align-self: center; font-size: 16pt; color: #00a676; font-weight: 700; }
+
+  .nunca { border: 0.6mm dashed #d64545; border-radius: 2mm; padding: 2mm 3.5mm; font-size: 9.8pt; margin-top: 3mm; }
+  .nunca b.t { color: #b22; font-size: 10.5pt; }
+  .nunca ul { margin: 1mm 0 0; padding-left: 5mm; }
+  .nunca li { margin: 0.5mm 0; }
+  .rodape { margin-top: auto; padding-top: 2mm; font-size: 8pt; color: #555; border-top: 0.3mm solid #c9d3de; display: flex; justify-content: space-between; }
+</style>
+</head>
+<body>
+
+<!-- ============ FOLHA 1 ============ -->
+<section class="folha">
+  <div class="topo">
+    <img src="img/logo.png" alt="Ekoplastic">
+    <div class="t">
+      <h1>POP · Operação Sacoleiras</h1>
+      <div class="sub">Coletor do corte · operador da sacoleira e encarregado · 13/11/2026</div>
+    </div>
+    <div class="pg">Folha 1 de 3</div>
+  </div>
+
+  <div class="regra">
+    <b>Regra de ouro:</b> toda bobina que <b>entra</b> na sacoleira é bipada.
+    Toda bobina que <b>sai</b> informa os <b>fardos fechados</b>.
+  </div>
+
+  <h2>Começar o turno e montar a bobina</h2>
+
+  <div class="grade g2" style="flex:1">
+    <div class="passo">
+      <div class="cab"><div class="n enc">1</div>
+        <h3>Iniciar o turno <span class="quem">ENCARREGADO</span></h3></div>
+      <p class="txt">Sem turno aberto não se bipa nada. Toque <b>Iniciar turno</b>, escolha o turno e toque <b>Iniciar</b>.</p>
+      <div class="fotos">
+        <img src="img/01_sem_turno.png" style="height:74mm">
+        <span class="seta">›</span>
+        <img src="img/02_iniciar_turno.png" style="width:38mm">
+      </div>
+    </div>
+
+    <div class="passo">
+      <div class="cab"><div class="n">2</div>
+        <h3>Bipar a etiqueta da bobina</h3></div>
+      <p class="txt">Puxe o gatilho na etiqueta <b>E…</b> Confira cor, largura e peso. Toque <b>P1</b> ou <b>P2</b>.</p>
+      <div class="fotos"><img src="img/04_bipou.png" style="height:80mm"></div>
+    </div>
+
+    <div class="passo">
+      <div class="cab"><div class="n">3</div>
+        <h3>Tocar o seu nome</h3></div>
+      <p class="txt">Quem bipa é quem corta a bobina. Toque o nome (ou digite) e <b>Continuar</b>.</p>
+      <div class="fotos"><img src="img/05_quem_bipa.png" style="height:64mm"></div>
+    </div>
+
+    <div class="passo">
+      <div class="cab"><div class="n">4</div>
+        <h3>Conferir o cartão da sacoleira</h3></div>
+      <p class="txt">O cartão mostra o <b>formato</b> que está cortando, a cor, o peso e quem bipou.</p>
+      <div class="fotos"><img src="img/06_montadas.png" style="height:72mm"></div>
+    </div>
+  </div>
+
+  <div class="rodape"><span>Etiqueta estragada? Toque <b>Digitar código da etiqueta</b> (só o número: 2301 vira E0002301).</span><span>POP-CORTE-01</span></div>
+</section>
+
+<!-- ============ FOLHA 2 ============ -->
+<section class="folha">
+  <div class="topo">
+    <img src="img/logo.png" alt="Ekoplastic">
+    <div class="t"><h1>POP · Operação Sacoleiras</h1>
+      <div class="sub">Coletor do corte · versão 13/11/2026</div></div>
+    <div class="pg">Folha 2 de 3</div>
+  </div>
+
+  <h2>Quando a bobina acaba</h2>
+  <div class="grade g3">
+    <div class="passo">
+      <div class="cab"><div class="n">5</div>
+        <h3>Tocar <span style="color:#00a676">✓ Bobina finalizou</span></h3></div>
+      <p class="txt">Digite os <b>fardos fechados</b> desta bobina. Toque os <b>pacotes soltos</b> (0 a 4). <b>Finalizar bobina</b>.</p>
+      <div class="fotos"><img src="img/07_finalizou_fardos.png" style="height:82mm"></div>
+    </div>
+    <div class="passo">
+      <div class="cab"><div class="n">6</div>
+        <h3>Formato da próxima</h3></div>
+      <p class="txt">Mesmo formato: <b>Confirmar e bipar a próxima</b>. Vai mudar: toque o formato novo antes.</p>
+      <div class="fotos"><img src="img/08_proxima_formato.png" style="width:52mm"></div>
+    </div>
+    <div class="passo" style="background:#fff8e6">
+      <div class="cab"><div class="n">7</div>
+        <h3>BIPE A PRÓXIMA</h3></div>
+      <p class="txt">O cartão fica <b>amarelo</b> até bipar a bobina nova. Volte ao <b>passo 2</b>.</p>
+      <div class="fotos"><img src="img/09_bipe_a_proxima.png" style="height:82mm"></div>
+    </div>
+  </div>
+
+  <h2 style="margin-top:4mm">Trocar o formato sem trocar a bobina</h2>
+  <div class="passo" style="flex:1">
+    <div class="cab"><div class="n">8</div>
+      <h3>Tocar <b>Trocar formato</b> no cartão da sacoleira</h3></div>
+    <div class="fotos" style="margin-top:0; gap:4mm">
+      <div style="width:44mm; align-self:center" class="txt">
+        <b>A.</b> Digite os <b>fardos fechados no formato que estava rodando</b> e os pacotes soltos.
+        Toque <b>Avançar</b>.<br><br>
+        <b>B.</b> Toque o <b>formato novo</b> e <b>Confirmar troca</b>.<br><br>
+        A bobina continua na máquina. O formato novo começa do zero.
+      </div>
+      <img src="img/10_troca_formato_fardos.png" style="height:80mm">
+      <span class="seta">›</span>
+      <img src="img/11_troca_formato_novo.png" style="width:48mm">
+    </div>
+  </div>
+
+  <div class="rodape"><span>Errou o número? Toque <b>Neste turno</b> (embaixo da tela), toque a bobina e corrija.</span><span>POP-CORTE-01</span></div>
+</section>
+
+<!-- ============ FOLHA 3 ============ -->
+<section class="folha">
+  <div class="topo">
+    <img src="img/logo.png" alt="Ekoplastic">
+    <div class="t"><h1>POP · Operação Sacoleiras</h1>
+      <div class="sub">Coletor do corte · versão 13/11/2026</div></div>
+    <div class="pg">Folha 3 de 3</div>
+  </div>
+
+  <h2>Refugo e erro de bipagem</h2>
+  <div class="grade g2">
+    <div class="passo">
+      <div class="cab"><div class="n alerta">9</div>
+        <h3>Bobina sai <u>sem acabar</u>: ♻ REFUGO</h3></div>
+      <div class="fotos" style="margin-top:0; gap:3mm">
+        <div class="txt" style="flex:1; align-self:center">
+          Toque <b>♻ REFUGO</b>, digite os fardos fechados e <b>Mandar para REFUGO</b>.<br><br>
+          Depois leve a bobina ao <b>Mini PC</b> → <b>Outras pesagens</b> → <b>REFUGO</b>, bipe a etiqueta antiga e pese de novo.
+        </div>
+        <img src="img/12_refugo.png" style="height:84mm">
+      </div>
+    </div>
+    <div class="passo">
+      <div class="cab"><div class="n alerta">!</div>
+        <h3>Apareceu "Já foi para a sacoleira"</h3></div>
+      <p class="txt">Essa bobina <b>já foi usada</b>. Confira se pegou a etiqueta certa. Bipou errado? <b>Chame o encarregado</b>.</p>
+      <div class="fotos" style="margin-top:2mm"><img src="img/14_erro_ja_usada.png" style="width:72mm"></div>
+      <div class="nunca">
+        <b class="t">Nunca</b>
+        <ul>
+          <li>Deixar os fardos de uma bobina para lançar na próxima.</li>
+          <li>Contar pacote solto como fardo.</li>
+          <li>Montar bobina sem bipar.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <h2 style="margin-top:4mm">Fim do turno <span style="font-size:9pt; font-weight:400">· encarregado</span></h2>
+  <div class="passo" style="flex:1">
+    <div class="grade g3" style="flex:1">
+      <div style="display:flex; flex-direction:column">
+        <div class="cab"><div class="n enc">10</div><h3>Encerrar turno</h3></div>
+        <p class="txt">Toque <b>Encerrar turno</b> e digite a <b>senha do supervisor</b>.</p>
+        <div class="fotos"><img src="img/15_encerrar_senha.png" style="width:52mm"></div>
+      </div>
+      <div style="display:flex; flex-direction:column">
+        <div class="cab"><div class="n enc">11</div><h3>Fardos de cada sacoleira</h3></div>
+        <p class="txt">Para a P1 e a P2: fardos fechados <b>neste turno</b> e pacotes soltos.</p>
+        <div class="fotos"><img src="img/16_fim_turno_fardos.png" style="height:96mm"></div>
+      </div>
+      <div style="display:flex; flex-direction:column">
+        <div class="cab"><div class="n enc">12</div><h3>Conferir o resumo</h3></div>
+        <p class="txt">Algo errado? Toque <b>corrigir</b>. Tudo certo: <b>OK</b>.</p>
+        <div class="fotos"><img src="img/17_resumo_turno.png" style="height:96mm"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="rodape"><span>Depois de encerrar, as sacoleiras ficam sem turno até o próximo encarregado tocar <b>Iniciar turno</b>.</span><span>POP-CORTE-01</span></div>
+</section>
+
+</body>
+</html>
