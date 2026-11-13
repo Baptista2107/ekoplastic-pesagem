@@ -118,7 +118,7 @@ const contar = () => comBanco(db => db.prepare(`SELECT COUNT(*) n FROM etiquetas
     // 6. monta na sacoleira
     r = await req('POST', '/bobinas/turno-corte/iniciar', { senha: SENHA, turno: 'A', maquinas: ['P1'], operador: 'SUP' });
     ok(r.status === 200, 'turno A aberto na P1', r.body);
-    r = await req('POST', '/bobinas/baixa', { id, destino: 'P1' });
+    r = await req('POST', '/bobinas/baixa', { id, destino: 'P1', operador: 'CARINE' });
     const m = comBanco(db => db.prepare('SELECT status, destino FROM etiquetas WHERE id = ?').get(id)) || {};
     ok(r.status === 200 && m.status === 'consumida' && m.destino === 'P1', 'a recuperada monta na P1', { r: r.body, m });
 

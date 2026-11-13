@@ -112,7 +112,7 @@ async function duasLeituras(mm) {
     });
     let r = await req('POST', '/bobinas/turno-corte/iniciar', { senha: SENHA, turno: 'A', maquinas: ['P2'], operador: 'SUP' });
     ok(r.status === 200, 'turno A iniciado na P2', r.body);
-    r = await req('POST', '/bobinas/baixa', { id: 'E9930001', destino: 'P2' });
+    r = await req('POST', '/bobinas/baixa', { id: 'E9930001', destino: 'P2', operador: 'HOZANA' });
     ok(r.status === 200, 'E9930001 montada na P2', r.body);
     let s = await p2();
     ok(s.bobina.formato.sugerido === '30x40', 'CLP em 401 mm → cortando 30x40', s.bobina.formato);
@@ -141,7 +141,7 @@ async function duasLeituras(mm) {
     clpSacosMin = 700; novaLeitura(401);
 
     // 3. bipou a próxima
-    r = await req('POST', '/bobinas/baixa', { id: 'E9930002', destino: 'P2' });
+    r = await req('POST', '/bobinas/baixa', { id: 'E9930002', destino: 'P2', operador: 'HOZANA' });
     ok(r.status === 200, 'E9930002 bipada na P2', r.body);
     s = await p2();
     ok(s.bobina && s.bobina.id === 'E9930002' && !s.aguardando_bipe, 'o aviso sai com o bipe', s);
@@ -161,7 +161,7 @@ async function duasLeituras(mm) {
     ok(r.status === 200, 'desfeita a E9930002', r.body);
     s = await p2();
     ok(!s.bobina && s.aguardando_bipe && s.formato_proximo === '30x45', 'o aviso de bipe volta (30x45)', s);
-    r = await req('POST', '/bobinas/baixa', { id: 'E9930003', destino: 'P2' });
+    r = await req('POST', '/bobinas/baixa', { id: 'E9930003', destino: 'P2', operador: 'HOZANA' });
     s = await p2();
     ok(r.status === 200 && s.bobina.id === 'E9930003' && s.bobina.formato.sugerido === '30x45',
        'E9930003 bipada no lugar, em 30x45 (CLP já em 451)', s.bobina && s.bobina.formato);
@@ -170,7 +170,7 @@ async function duasLeituras(mm) {
     r = await req('POST', '/bobinas/finalizar', { sacoleira: 'P2', fardos: 9, soltos: 0, formato: '30x45',
                                                  formato_origem: 'sugerido', acabou: true, formato_proximo: '30x45' });
     ok(r.status === 200, 'E9930003 finalizou mantendo 30x45 para a próxima', r.body);
-    r = await req('POST', '/bobinas/baixa', { id: 'E9930004', destino: 'P2' });
+    r = await req('POST', '/bobinas/baixa', { id: 'E9930004', destino: 'P2', operador: 'HOZANA' });
     ok(r.status === 200, 'E9930004 bipada', r.body);
     s = await duasLeituras(401);
     ok(s.bobina.formato.sugerido === '30x40' && !s.bobina.formato.setup_detectado,

@@ -129,9 +129,19 @@ function criarBobina(db, id, seq, peso) {
        'cada parte ficou no turno certo (A 6, C 4, EXTRA 3 final)', partes);
 
     // 5. troca de bobina soma igual; desfazer bloqueado com parte > 0
-    // sem nome: desde 19/10/2026 o coletor não pergunta quem bipa
+    // sem nome: recusada (quem bipa voltou a ser obrigatório em 13/11/2026)
     r = await req('POST', '/bobinas/baixa', { id: 'E9900002', destino: 'P1' });
+    ok(r.status === 400 && r.body && r.body.precisa_operador, 'bipagem sem nome é recusada (400)', r.body);
+    r = await req('POST', '/bobinas/baixa', { id: 'E9900002', destino: 'P1', operador: '  ' });
+    ok(r.status === 400, 'bipagem com nome em branco é recusada (400)', r.body);
+    r = await req('GET', '/bobinas/operadores');
+    ok(r.status === 200 && JSON.stringify(r.body.operadores) ===
+       JSON.stringify(['GISLENE', 'HOZANA', 'CARINE', 'ROMULO', 'HEIDIANE', 'GUERBY', 'ANDRÉ', 'ITALO']),
+       'lista de operadores da sacoleira', r.body);
+    r = await req('POST', '/bobinas/baixa', { id: 'E9900002', destino: 'P1', operador: 'GUERBY' });
     ok(r.status === 200, 'bobina E9900002 montada na P1', r.body);
+    ok(comBanco(db => db.prepare(`SELECT baixa_operador FROM etiquetas WHERE id = 'E9900002'`).get()).baixa_operador === 'GUERBY',
+       'baixa_operador gravado (GUERBY)');
     r = await req('POST', '/bobinas/turno-corte/iniciar', { senha: SENHA, turno: 'A', maquinas: ['P1'], parciais: { P1: { fardos: 2 } } });
     ok(r.status === 200, 'troca EXTRA → A com 2 fardos da E9900002', r.body);
     r = await req('POST', '/bobinas/desfazer', { id: 'E9900002' });
