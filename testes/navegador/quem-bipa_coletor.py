@@ -54,11 +54,13 @@ def rodada(pw, larg, alt, porta):
         api(base, "POST", "/config", {"vps_sacoleiras_url": "http://127.0.0.1:9/x"})
         c = sqlite3.connect(db)
         agora = datetime.now(timezone.utc).isoformat()
-        for i, bid in enumerate(("E9940001", "E9940002")):
+        # larguras de formato único (1,20 → 60x80 na P1; 1,75 → 35x45 na P2): sem o
+        # CLP no teste, a 1,60 mostraria 4 formatos possíveis e o card cresceria por isso
+        for i, (bid, larg_b) in enumerate((("E9940001", "1,20"), ("E9940002", "1,75"))):
             c.execute("""INSERT INTO etiquetas (id, seq, tipo, material_key, fornecedor, lote, peso, codigo, sku, status,
                          hora_impressao, cor, largura, tipo_bobina, maquina, operador)
-                         VALUES (?, ?, 'extrusao', 'BOBINA', '-', '-', 400, ?, 'BOB-TESTE', 'bipada', ?, 'BRANCO', '1,60', 'LISA', 'E1', 'TESTE')""",
-                      (bid, 9940001 + i, bid, agora))
+                         VALUES (?, ?, 'extrusao', 'BOBINA', '-', '-', 400, ?, 'BOB-TESTE', 'bipada', ?, 'BRANCO', ?, 'LISA', 'E1', 'TESTE')""",
+                      (bid, 9940001 + i, bid, agora, larg_b))
         c.commit(); c.close()
         s, _ = api(base, "POST", "/bobinas/turno-corte/iniciar", {"turno": "A", "maquinas": ["P1", "P2"]})
         ok(s == 200, f"[{larg}] turno A aberto nas duas")
@@ -66,9 +68,11 @@ def rodada(pw, larg, alt, porta):
         br = _navegador(pw)
         pg = br.new_page(viewport={"width": larg, "height": alt})
         pg.set_default_timeout(5000)
+        # aparelho que já usava a tela antes de 19/10: o nome velho não pode voltar a valer
+        pg.add_init_script("try{ if(!sessionStorage.getItem('x')){ localStorage.setItem('eko_bipador','ESDRAS'); sessionStorage.setItem('x','1'); } }catch(e){}")
         pg.goto(base + "/retirada-bobinas.html"); pg.wait_for_timeout(1200)
         quem = lambda: pg.locator("#quem").inner_text().strip() if pg.locator("#quem").count() else "(sem #quem)"
-        ok(quem() == "", f"[{larg}] aparelho novo: topo sem nome")
+        ok(quem() == "", f"[{larg}] aparelho com nome antigo (ESDRAS, chave de antes de 19/10): topo sem nome")
 
         def bipar(bid, sac):
             pg.evaluate(f"onLeu('{bid}')"); pg.wait_for_timeout(600)
@@ -96,7 +100,10 @@ def rodada(pw, larg, alt, porta):
         if pg.locator("#md-ok").count(): pg.locator("#md-ok").click(); pg.wait_for_timeout(300)
         ok(pg.locator(".modal-fundo").count() == 1 and baixa_op("E9940001")[0] == "bipada",
            f"[{larg}] Continuar sem nome é barrado na tela")
-        # 4. escolhe GUERBY → grava
+        # 4. bipe de outra bobina com a pergunta aberta não troca a bobina por baixo
+        pg.evaluate("onLeu('E9940002')"); pg.wait_for_timeout(600)
+        ok(pg.evaluate("bobinaAtual && bobinaAtual.id") == "E9940001", f"[{larg}] bipe com a pergunta aberta é ignorado")
+        # 5. escolhe GUERBY → grava
         if pg.locator(".modal .nomes .chip[data-n='GUERBY']").count():
             pg.locator(".modal .nomes .chip[data-n='GUERBY']").click(); pg.locator("#md-ok").click()
         pg.wait_for_timeout(1500)
@@ -106,16 +113,33 @@ def rodada(pw, larg, alt, porta):
         rola = pg.evaluate("document.documentElement.scrollHeight - window.innerHeight")
         ok(rola <= 1, f"[{larg}] operação cabe sem rolar (sobra {rola}px)")
         pg.screenshot(path=str(OUT / f"quem_{larg}x{alt}_montada.png"))
-        # 5. o aparelho lembra: próxima bipagem já vem com GUERBY marcado; troca por ANDRÉ
+        ok(baixa_op("E9940002")[0] == "bipada", f"[{larg}] a bobina bipada por cima (E9940002) não foi montada")
+        # 6. o aparelho lembra o responsável, mas a pergunta seguinte vem em branco
+        #    (cada bipagem é uma escolha); "andre" digitado vira ANDRÉ da lista
         pg.reload(); pg.wait_for_timeout(1200)
         ok(quem() == "👤 GUERBY", f"[{larg}] depois de recarregar, topo lembra GUERBY")
         bipar("E9940002", "P2")
         sel = pg.locator(".modal .nomes .chip.sel").all_inner_texts()
-        ok(sel == ["GUERBY"], f"[{larg}] último nome já vem marcado: {sel}")
-        if pg.locator(".modal .nomes .chip[data-n='ANDRÉ']").count():
-            pg.locator(".modal .nomes .chip[data-n='ANDRÉ']").click(); pg.locator("#md-ok").click()
+        val = pg.locator("#md-nome").input_value() if pg.locator("#md-nome").count() else "?"
+        ok(sel == [] and val == "", f"[{larg}] nada vem marcado nem preenchido: sel={sel} campo={val!r}")
+        chips = [x.strip() for x in pg.locator(".modal .nomes .chip").all_inner_texts()]
+        ok(chips == NOMES, f"[{larg}] lista na mesma ordem na 2ª bipagem")
+        if pg.locator("#md-nome").count():
+            pg.locator("#md-nome").fill("andre"); pg.locator("#md-ok").click()
         pg.wait_for_timeout(1500)
         ok(baixa_op("E9940002") == ("consumida", "ANDRÉ"), f"[{larg}] P2 com ANDRÉ: {baixa_op('E9940002')}")
+        # 7. nome longo (40) + "há 2h 15min" no card: a operação segue sem rolar
+        c = sqlite3.connect(db)
+        from datetime import timedelta
+        c.execute("UPDATE etiquetas SET baixa_operador=?, baixa_em=? WHERE id='E9940001'",
+                  ("MARIA APARECIDA DOS SANTOS OLIVEIRA SILV",
+                   (datetime.now(timezone.utc) - timedelta(minutes=135)).isoformat().replace("+00:00", "Z")))
+        c.commit(); c.close()
+        pg.evaluate("localStorage.setItem(CHAVE_BIPADOR,'MARIA APARECIDA DOS SANTOS OLIVEIRA SILV')")
+        pg.reload(); pg.wait_for_timeout(1500)
+        rola = pg.evaluate("document.documentElement.scrollHeight - window.innerHeight")
+        ok(rola <= 1, f"[{larg}] nome de 40 letras e 2h15: segue sem rolar (sobra {rola}px)")
+        pg.screenshot(path=str(OUT / f"quem_{larg}x{alt}_nome_longo.png"))
         br.close()
     finally:
         srv.kill(); srv.wait(timeout=10); shutil.rmtree(tmp, ignore_errors=True)

@@ -138,10 +138,18 @@ function criarBobina(db, id, seq, peso) {
     ok(r.status === 200 && JSON.stringify(r.body.operadores) ===
        JSON.stringify(['GISLENE', 'HOZANA', 'CARINE', 'ROMULO', 'HEIDIANE', 'GUERBY', 'ANDRÉ', 'ITALO']),
        'lista de operadores da sacoleira', r.body);
-    r = await req('POST', '/bobinas/baixa', { id: 'E9900002', destino: 'P1', operador: 'GUERBY' });
+    r = await req('POST', '/bobinas/baixa', { id: 'E9900002', destino: 'P1', operador: 'G' });
+    ok(r.status === 400, 'nome de 1 letra é recusado', r.body);
+    r = await req('POST', '/bobinas/baixa', { id: 'E9900002', destino: 'P1', operador: 123 });
+    ok(r.status === 400, 'nome que não é texto é recusado', r.body);
+    r = await req('POST', '/config', { operadores_sacoleira: ['FULANA', 'beltrano'] });
+    r = await req('GET', '/bobinas/operadores');
+    ok(JSON.stringify(r.body.operadores) === '["FULANA","BELTRANO"]', 'config operadores_sacoleira substitui a lista', r.body);
+    await req('POST', '/config', { operadores_sacoleira: '[]' });
+    r = await req('POST', '/bobinas/baixa', { id: 'E9900002', destino: 'P1', operador: '  guerby ' });
     ok(r.status === 200, 'bobina E9900002 montada na P1', r.body);
     ok(comBanco(db => db.prepare(`SELECT baixa_operador FROM etiquetas WHERE id = 'E9900002'`).get()).baixa_operador === 'GUERBY',
-       'baixa_operador gravado (GUERBY)');
+       'baixa_operador gravado em maiúsculo (" guerby " → GUERBY)');
     r = await req('POST', '/bobinas/turno-corte/iniciar', { senha: SENHA, turno: 'A', maquinas: ['P1'], parciais: { P1: { fardos: 2 } } });
     ok(r.status === 200, 'troca EXTRA → A com 2 fardos da E9900002', r.body);
     r = await req('POST', '/bobinas/desfazer', { id: 'E9900002' });
@@ -187,8 +195,10 @@ function criarBobina(db, id, seq, peso) {
     await req('POST', '/bobinas/turno-corte/iniciar', { senha: SENHA, turno: 'A', maquinas: ['P2'] });
     r = await req('POST', '/bobinas/baixa', { id: 'E9900010', destino: 'P2', operador: 'HOZANA' });
     r = await req('POST', '/bobinas/finalizar', { sacoleira: 'P2', fardos: 3, soltos: 2, acabou: true });
-    r = await req('POST', '/bobinas/baixa', { id: 'E9900011', destino: 'P2', operador: 'HOZANA' });
+    r = await req('POST', '/bobinas/baixa', { id: 'E9900011', destino: 'P2', operador: 'andre' });
     ok(r.status === 200, 'A (E9900010) sai com 3 fechados e 2 soltos', r.body);
+    ok(comBanco(db => db.prepare(`SELECT baixa_operador FROM etiquetas WHERE id = 'E9900011'`).get()).baixa_operador === 'ANDRÉ',
+       '"andre" digitado vira ANDRÉ, o nome da lista');
     let pa = comBanco(db => db.prepare('SELECT fardos, pacotes FROM etiquetas WHERE id = ?').get('E9900010'));
     ok(pa.pacotes === 17 && pa.fardos === 3, 'A fez 17 pacotes (3 fardos +2 pc)', pa);
     r = await req('GET', '/bobinas/abertas');

@@ -11,7 +11,7 @@ const {
   cortandoSemBobina, devolverProximaBobina, encerrarBobina,
   formatoDaBobina, herdaSoltos, imprimirEtiquetaRefugo, inventarioAberto, lerFardos,
   lerFormatoDaMaquina, lerMaquinasCorte, lerParte, lerSoltos, marcarProximaBobina, montagensDaBobina,
-  montarProximaBobina, normalizarDestinoBobina, OPERADORES_SACOLEIRA, PACOTES_POR_FARDO, pacotesParciaisDe, PESO_FARDO_KG,
+  montarProximaBobina, normalizarDestinoBobina, lerOperadorSacoleira, operadoresSacoleira, PACOTES_POR_FARDO, pacotesParciaisDe, PESO_FARDO_KG,
   proximaBobinaNa, refugoAbertoDe,
   registrarParcial, resumoInventario, setupDaBobina, situacaoBobina, soltosNaMaquina,
   SQL_PACOTES_PARTE, sugerirFormato, TARAS_EIXO, turnoCorteAberto, TURNOS_CORTE,
@@ -78,8 +78,10 @@ async function rotasBobinas(req, res, parsed, pathname) {
     // Quem bipou é quem vai cortar a bobina (29/09/2026, Gustavo): sem nome
     // o aproveitamento por operador fica vazio, então é obrigatório. Saiu em
     // 19/10/2026 (Vinicius) e VOLTOU em 13/11/2026 (Gustavo).
-    const operador = (body.operador ? String(body.operador).trim().slice(0, 80) : null) || null;
-    if (!operador) return jsonErr(res, 400, 'Informe o nome de quem está bipando', { precisa_operador: true });
+    const operador = lerOperadorSacoleira(body.operador);
+    // Tela antiga (aberta antes da atualização) não pergunta: a mensagem diz o que fazer.
+    if (!operador) return jsonErr(res, 400, 'Informe o nome de quem está bipando. Se a tela não perguntou, feche e abra o app.',
+                                  { precisa_operador: true });
     // Sem turno do corte aberto não monta bobina (01/10/2026, Gustavo): a
     // bobina e os fardos dela ficariam fora de turno, sem dono no resumo.
     if (!turnoCorteAberto(destino)) {
@@ -333,9 +335,7 @@ async function rotasBobinas(req, res, parsed, pathname) {
   // 29/09/2026; voltou em 13/11/2026). Config `operadores_sacoleira` (JSON
   // ["NOME",...]) substitui a lista; nome digitado na hora continua valendo.
   if (pathname === '/bobinas/operadores' && req.method === 'GET') {
-    let nomes = OPERADORES_SACOLEIRA;
-    try { const c = JSON.parse(configGet('operadores_sacoleira', '[]')); if (Array.isArray(c) && c.length) nomes = c; } catch(e) {}
-    return jsonOk(res, { operadores: nomes.map(n => String(n).trim().toUpperCase()).filter(Boolean) });
+    return jsonOk(res, { operadores: operadoresSacoleira() });
   }
 
   // ── Turno do corte (ver turnoCorteAberto, lá em cima) ──

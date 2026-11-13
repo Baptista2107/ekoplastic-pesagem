@@ -19,7 +19,7 @@
   header{padding:calc(12px + env(safe-area-inset-top)) 16px 12px; border-bottom:1px solid var(--border); position:sticky; top:0; background:var(--bg); z-index:20; display:flex; align-items:center; gap:12px;}
   header .logo{height:40px; width:auto; flex:0 0 auto; display:block;}
   header h1{margin:0; font-size:19px; font-weight:800; flex:1; line-height:1.2;}
-  header h1 small{display:block; font-size:12px; color:var(--muted); font-weight:600; margin-top:2px;}
+  header h1 small{display:block; font-size:12px; color:var(--muted); font-weight:600; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
   .btn-sair{background:var(--panel-hi); border:1px solid var(--border); color:var(--muted); border-radius:12px; min-width:44px; height:44px; display:flex; align-items:center; justify-content:center; font-size:17px; font-weight:800; text-decoration:none;}
   .wrap{padding:14px 16px; max-width:560px; margin:0 auto;}
   /* 19/10/2026 (Vinicius): a operação inteira cabe na tela sem rolar — turno
@@ -81,7 +81,7 @@
   .sacs-grande .sac .s-corte small{font-size:12px;}
   .sacs-grande .sac .s-kg{font-size:21px; margin-top:4px; white-space:nowrap;}
   .sacs-grande .sac .s-info{font-size:12px;}
-  .sac .s-info .s-quem{color:var(--txt); font-family:inherit;}
+  .sac .s-info .s-quem{color:var(--txt); font-family:inherit; display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
   .sacs-grande .sac .s-vazia{font-size:20px;}
   .sacs-grande .sac .s-bts{margin-top:auto; padding-top:6px; display:flex; flex-direction:column;}
   .sacs-grande .sac .s-fim{min-height:44px; font-size:14px; padding:4px 6px; border-radius:12px; margin-top:6px; line-height:1.15;}
@@ -387,6 +387,9 @@ async function onLeu(codigo){
   if(ultimoBipe[id] && agora-ultimoBipe[id]<2500) return;
   ultimoBipe[id]=agora;
   if(enviando) return;
+  // Bipe com uma pergunta aberta (ex.: "Quem está bipando?") não troca a
+  // bobina por baixo dela (13/11/2026): termine ou cancele a pergunta antes.
+  if(MODO==='sac' && document.querySelector('.modal-fundo')){ beep(320,0.2); vibrar(150); toast('aviso','Responda a pergunta da tela antes de bipar outra',3000); return; }
   if(MODO==='inv'){ await lerInventario(id); return; }
   if(MODO==='inv-fim'){ beep(320,0.2); toast('aviso','Inventário concluído. Toque em "Voltar às sacoleiras" para bipar entradas.',4000); return; }
   try{
@@ -453,7 +456,7 @@ function soltarDestinos(){ document.querySelectorAll('.btn-destino').forEach(b=>
 // ── BAIXA: a bobina entra na sacoleira. Se já havia uma, ela sai agora e a
 // tela pergunta quantos fardos ela deu.
 async function confirmarBaixa(sac){
-  if(!bobinaAtual || enviando) return;
+  if(!bobinaAtual || enviando || document.querySelector('.modal-fundo')) return;
   if(BLING && !TURNO){ toast('erro','Escolha o turno primeiro',3000); return; }
   // A bipagem só inicia (16/10/2026): sem troca aqui; o fim é o botão do card.
   const fardosAnterior=null, saida=null;
@@ -465,8 +468,11 @@ async function confirmarBaixa(sac){
   }
   // Quem está bipando é quem vai cortar esta bobina (29/09/2026). Saiu em
   // 19/10/2026 (Vinicius) e VOLTOU em 13/11/2026 (Gustavo): obrigatório.
+  const bob=bobinaAtual;
+  enviando=true;                        // toque duplo enquanto a lista carrega
   const nome=await perguntarNome(sac);
-  if(!nome) return;
+  enviando=false;
+  if(!nome || bobinaAtual!==bob) return;
   enviando=true; travarDestinos(sac);
   try{
     let d, r;
@@ -655,22 +661,26 @@ function perguntarFardos(bob, sac, modo){
 // da sacoleira, deixa digitar um novo e lembra o último neste aparelho.
 // Resolve o nome ou null.
 let NOMES=null;
+// Chave nova em 13/11/2026: a antiga (eko_bipador) guardou o último nome até
+// 19/10 e voltaria a valer como responsável com gente que saiu da lista.
+const CHAVE_BIPADOR='eko_bipador_1311';
 async function perguntarNome(sac){
-  if(NOMES===null){
+  if(!NOMES || !NOMES.length){
     try{ const d=await (await fetch(URL_BASE+'/bobinas/operadores')).json(); NOMES=(d&&d.operadores)||[]; }
     catch(e){ NOMES=[]; }
   }
-  let ultimo=''; try{ ultimo=localStorage.getItem('eko_bipador')||''; }catch(e){}
+  // Nada vem marcado (13/11/2026): cada bipagem é uma escolha, e a lista fica
+  // sempre na mesma ordem (o último nome na frente mudaria os botões de lugar).
   return new Promise(resolve=>{
     const fundo=document.createElement('div');
     fundo.className='modal-fundo';
-    const lista=[...new Set([ultimo].concat(NOMES).filter(Boolean))];
+    const lista=[...new Set(NOMES.filter(Boolean))];
     fundo.innerHTML='<div class="modal">'+
       '<h2>Quem está bipando?</h2>'+
       '<div class="m-sub">A <b>'+esc(bobinaAtual.id)+'</b> vai para a Sacoleira <b>'+esc(sac)+'</b>. '+
         'Quem bipa é quem corta esta bobina.</div>'+
-      '<div class="nomes">'+lista.map(n=>'<button class="chip'+(n===ultimo?' sel':'')+'" data-n="'+esc(n)+'">'+esc(n)+'</button>').join('')+'</div>'+
-      '<label>OU DIGITE O NOME</label><input id="md-nome" class="txt" type="text" autocomplete="off" autocapitalize="characters" maxlength="40" value="'+esc(ultimo)+'">'+
+      '<div class="nomes">'+lista.map(n=>'<button class="chip" data-n="'+esc(n)+'">'+esc(n)+'</button>').join('')+'</div>'+
+      '<label>OU DIGITE O NOME</label><input id="md-nome" class="txt" type="text" autocomplete="off" autocapitalize="characters" maxlength="40" value="">'+
       '<button class="btn btn-verde" id="md-ok">Continuar</button>'+
       '<button class="btn-link" id="md-cancelar">Cancelar</button></div>';
     document.body.appendChild(fundo);
@@ -684,9 +694,9 @@ async function perguntarNome(sac){
     fundo.querySelector('#md-ok').onclick=()=>{
       const n=inp.value.trim().toUpperCase();
       if(n.length<2){ toast('erro','Toque no seu nome ou digite',3000); inp.focus(); return; }
-      try{ localStorage.setItem('eko_bipador',n); }catch(e){}
+      try{ localStorage.setItem(CHAVE_BIPADOR,n); }catch(e){}
       window.EKO_RESPONSAVEL=n; mostrarQuem();
-      if(!NOMES.includes(n)) NOMES.unshift(n);
+      if(!NOMES.includes(n)) NOMES.push(n);   // digitado vai pro fim: os da lista não mudam de lugar
       fim(n);
     };
     inp.addEventListener('keydown',e=>{ if(e.key==='Enter') fundo.querySelector('#md-ok').click(); });
@@ -853,7 +863,7 @@ async function carregarSacoleiras(){
           (sd.mm_antes&&sd.mm_agora?(' ('+Math.round(sd.mm_antes)+' → '+Math.round(sd.mm_agora)+' mm)'):'')+
           '</small><small>Informe quanto rendeu o '+esc(de)+'</small></div>'+
         '<div class="s-kg">'+fmtKg(b.peso)+'</div>'+
-        '<div class="s-info">'+esc(b.id)+' · '+haQuanto(b.baixa_em)+'</div>'+
+        '<div class="s-info">'+esc(b.id)+' · '+haQuanto(b.baixa_em)+(b.baixa_operador?('<b class="s-quem">'+esc(b.baixa_operador)+'</b>'):'')+'</div>'+
         '<button class="btn btn-verde s-fim" onclick="trocarFormato(\''+a.sacoleira+'\')">Informar '+esc(de)+'</button></div>';
     }
     if(f.aguardando_setup) corte='<div class="s-corte duvida">trocando formato…<small>'+esc(f.motivo||'')+'</small></div>';
@@ -865,7 +875,7 @@ async function carregarSacoleiras(){
       '<div class="s-mat">'+descCurta(b)+'</div>'+
       corte+
       '<div class="s-kg">'+fmtKg(b.peso)+'</div>'+
-      '<div class="s-info">'+esc(b.id)+' · '+haQuanto(b.baixa_em)+(b.baixa_operador?(' · <b class="s-quem">'+esc(b.baixa_operador)+'</b>'):'')+'</div>'+
+      '<div class="s-info">'+esc(b.id)+' · '+haQuanto(b.baixa_em)+(b.baixa_operador?('<b class="s-quem">'+esc(b.baixa_operador)+'</b>'):'')+'</div>'+
       // "Bobina finalizou" VOLTOU (16/10/2026, Vinicius): o fim pela bipagem da
       // seguinte trocava as janelas de metros (E0001983 184% × E0001989 20%).
       // O operador já vem ao coletor dar os fardos; confirma antes de gravar.
@@ -1391,7 +1401,7 @@ function escolherTurno(codigo,label){
 // está bipando?" neste aparelho. Saiu em 19/10/2026 (Vinicius) e voltou em
 // 13/11/2026 (Gustavo), junto com a pergunta na bipagem.
 (function(iniciar){
-  let nome=null; try{ nome=localStorage.getItem('eko_bipador')||null; }catch(e){}
+  let nome=null; try{ nome=localStorage.getItem(CHAVE_BIPADOR)||null; }catch(e){}
   window.EKO_RESPONSAVEL=nome;
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',iniciar); else iniciar();
 })(() => {
