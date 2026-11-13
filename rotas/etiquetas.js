@@ -23,6 +23,7 @@ const { enviarBlingIndividualExtrusao } = require('../lib/turnos');
 const { TARAS_EIXO } = require('../lib/bobinas');
 const { liberarBagNaRetirada } = require('../lib/enderecamento');
 const { avisarMudanca: avisarMapa } = require('../lib/mapa-vps');
+const { adicionarOperadorExtrusao, operadoresExtrusao, removerOperadorExtrusao } = require('../lib/operadores');
 
 // Devolve NAO_TRATADA quando nenhuma rota daqui atende o pedido.
 async function rotasEtiquetas(req, res, parsed, pathname) {
@@ -646,6 +647,20 @@ async function rotasEtiquetas(req, res, parsed, pathname) {
       if (resp.ok) jsonOk(res, resp);
       else jsonErr(res, 500, resp.erro, { printer: resp.printer });
     });
+  }
+
+  // Operadores da extrusão (13/11/2026): a lista mora no servidor, não mais
+  // no navegador da tela. GET lista; POST {nome} adiciona; POST .../remover {nome}.
+  if (pathname === '/extrusao/operadores' && req.method === 'GET') {
+    return jsonOk(res, { operadores: operadoresExtrusao() });
+  }
+  if ((pathname === '/extrusao/operadores' || pathname === '/extrusao/operadores/remover') && req.method === 'POST') {
+    let body; try { body = await lerBodyJson(req); } catch(e) { return jsonErr(res, 400, e.message); }
+    const remover = pathname.endsWith('/remover');
+    const r = remover ? removerOperadorExtrusao(body && body.nome) : adicionarOperadorExtrusao(body && body.nome);
+    if (!r.ok) return jsonErr(res, r.status || 400, r.erro);
+    if (!r.ja_existia) logI('operadores', `Extrusão: ${remover ? 'removido' : 'adicionado'} ${remover ? String(body.nome).trim().toUpperCase() : r.nome}`);
+    return jsonOk(res, { operadores: r.operadores, nome: r.nome, ja_existia: !!r.ja_existia });
   }
 
   // POST /etiquetas/extrusao  → cria + imprime etiqueta de bobina

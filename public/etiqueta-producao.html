@@ -2124,22 +2124,48 @@ function setAba(qual) {
 }
 
 // ─── OPERADORES (cadastro) ───
-function adicionarOperador() {
+// 13/11/2026: a lista mora no SERVIDOR (/extrusao/operadores). Antes era só
+// do navegador da tela: perfil novo depois da queda de energia = lista vazia.
+// O localStorage fica só como cópia para o servidor fora do ar.
+async function carregarOperadores() {
+  try {
+    const r = await fetch(URL_BASE + '/extrusao/operadores', { signal: AbortSignal.timeout(4000) });
+    const d = await r.json();
+    if (r.ok && d && Array.isArray(d.operadores)) {
+      state.operadores = d.operadores;
+      saveLocal('operadores', state.operadores);
+    }
+  } catch (e) {}
+  renderOperadores();
+}
+
+async function mudarOperadores(rota, nome) {
+  const r = await fetch(URL_BASE + rota, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nome }),
+  });
+  let d = null; try { d = await r.json(); } catch (e) {}
+  if (!r.ok) throw new Error((d && (d.erro || d.error)) || ('HTTP ' + r.status));
+  state.operadores = d.operadores || [];
+  saveLocal('operadores', state.operadores);
+  renderOperadores();
+  return d;
+}
+
+async function adicionarOperador() {
   const inp = document.getElementById('novo-operador');
   const nome = inp.value.trim();
   if (!nome) return;
-  if (state.operadores.includes(nome)) { toast('Operador já cadastrado.', 'warn'); return; }
-  state.operadores.push(nome);
-  saveLocal('operadores', state.operadores);
-  inp.value = '';
-  renderOperadores();
-  toast(`✓ Operador "${nome}" adicionado`, 'success');
+  try {
+    const d = await mudarOperadores('/extrusao/operadores', nome);
+    inp.value = '';
+    if (d.ja_existia) toast(`Operador "${d.nome}" já cadastrado.`, 'warn');
+    else toast(`✓ Operador "${d.nome}" adicionado`, 'success');
+  } catch (e) { toast('Não salvou o operador: ' + e.message, 'error'); }
 }
 
-function removerOperador(nome) {
-  state.operadores = state.operadores.filter(o => o !== nome);
-  saveLocal('operadores', state.operadores);
-  renderOperadores();
+async function removerOperador(nome) {
+  try { await mudarOperadores('/extrusao/operadores/remover', nome); }
+  catch (e) { toast('Não removeu o operador: ' + e.message, 'error'); }
 }
 
 function renderOperadores() {
@@ -2249,8 +2275,9 @@ async function carregarInfo() {
 }
 
 // ─── INIT ───
-function init() {
+async function init() {
   renderOperadores();
+  await carregarOperadores();
   renderHistorico();
   renderCapas();
   atualizarOperadorCapa();
