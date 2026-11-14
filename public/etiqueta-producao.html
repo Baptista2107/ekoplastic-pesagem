@@ -1059,6 +1059,8 @@ async function pingServidor() {
     if (d.ok) {
       el.className = 'srv-status on';
       el.textContent = 'SERVIDOR OK';
+      // lista de operadores não veio ao abrir (servidor lento/fora): tenta de novo
+      if (!state.operadores.length) carregarOperadores();
       // Atualiza próximo seq de extrusão pra preview do ID/barcode
       if (d.proximoSeq && d.proximoSeq.extrusao) {
         const novoSeq = d.proximoSeq.extrusao;
@@ -1289,10 +1291,18 @@ function bloqueadoPorBipagem() {
   return false;
 }
 
+// Nome sem diferença de maiúscula/acento/espaços: a sessão de 13/11 foi aberta
+// como "Alexandro" (digitado à mão) e a lista tem ALEXANDRO — é a mesma pessoa.
+function chaveOperador(n) {
+  return String(n || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim().toUpperCase();
+}
+function nomeDaLista(n) {
+  return state.operadores.find(o => chaveOperador(o) === chaveOperador(n)) || '';
+}
 function selecionarOperador(nome) {
   state.operador = nome;
   document.querySelectorAll('#grid-operadores .touch-btn').forEach(b => {
-    b.classList.toggle('selected', b.dataset.nome === nome);
+    b.classList.toggle('selected', chaveOperador(b.dataset.nome) === chaveOperador(nome));
   });
   saveLocal('operador_atual', nome);
   atualizarBotaoImprimir();
@@ -2180,7 +2190,7 @@ function renderOperadores() {
     g.innerHTML = '<div class="op-vazio">Adicione operadores em Configurações →</div>';
   } else {
     g.innerHTML = state.operadores.map(o =>
-      `<div class="touch-btn ${state.operador === o ? 'selected' : ''}" data-nome="${o}" onclick="selecionarOperador('${o.replace(/'/g, "\\'")}')">${o}</div>`
+      `<div class="touch-btn ${chaveOperador(state.operador) === chaveOperador(o) ? 'selected' : ''}" data-nome="${o}" onclick="selecionarOperador('${o.replace(/'/g, "\\'")}')">${o}</div>`
     ).join('');
   }
 }
@@ -2298,7 +2308,7 @@ async function init() {
         // A sessão será criada automaticamente na primeira impressão.
         const opUltimo  = loadLocal('operador_atual', '');
         const maqUltima = loadLocal('maquina_atual', '');
-        if (opUltimo && state.operadores.includes(opUltimo)) selecionarOperador(opUltimo);
+        if (opUltimo && nomeDaLista(opUltimo)) selecionarOperador(nomeDaLista(opUltimo));
         if (maqUltima === 'C1' || maqUltima === 'C2')        selecionarMaquina(maqUltima);
         state.turno = getTurnoAtual();
       }

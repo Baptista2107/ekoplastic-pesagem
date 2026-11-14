@@ -403,7 +403,40 @@ setInterval(checarSessoesAbertas, 10000);
   if (document.readyState !== 'loading') armarTiles();
   else document.addEventListener('DOMContentLoaded', armarTiles);
   // abertura direta de uma tela fora do shell (/?tela=/...)
-  try { const t = new URLSearchParams(location.search).get('tela'); if (t) window.ekoAbrirTela(t); } catch (e) {}
+  let telaPedida = null;
+  try { telaPedida = new URLSearchParams(location.search).get('tela'); if (telaPedida) window.ekoAbrirTela(telaPedida); } catch (e) {}
+
+  // Tela que reabre (queda de energia, atualização, vigia) com sessão em
+  // andamento vai DIRETO para a tela dela, que retoma a sessão — não fica
+  // parada no menu (Gustavo 13/11/2026: "quando abrir, traz a sessão pra
+  // aparecer na tela, não só abre ela"). Só na abertura do quiosque: voltar
+  // ao menu depois não reabre nada. Com mais de uma, vale a da etiqueta mais
+  // recente. MP (recebimento/retorno/retirada) fica no menu: tem submenu.
+  const TELA_DA_SESSAO = {
+    'extrusao': '/etiqueta-producao.html',
+    'produto-acabado': '/produto-acabado.html',
+    'outras': '/outras-pesagens.html',
+  };
+  window.ekoTelaDaSessaoAberta = function (sessoes) {
+    let melhor = null, quando = '';
+    (sessoes || []).forEach(function (s) {
+      const url = TELA_DA_SESSAO[s.tipo];
+      if (!url || !s.etiquetas || !s.etiquetas.length) return;
+      const ult = s.etiquetas.reduce(function (m, e) { return (e.hora_impressao || '') > m ? e.hora_impressao : m; }, s.inicio || '');
+      if (!melhor || ult > quando) { melhor = url; quando = ult; }
+    });
+    return melhor;
+  };
+  if (!telaPedida) {
+    fetch(window.location.origin + '/sessoes/abertas', { signal: AbortSignal.timeout(5000) })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d || !d.ok || frame.style.display === 'block') return;   // alguém já abriu uma tela
+        const url = window.ekoTelaDaSessaoAberta(d.sessoes);
+        if (url) window.ekoAbrirTela(url);
+      })
+      .catch(function () {});
+  }
 })();
 </script>
 <script src="/seguranca-saida.js"></script>
