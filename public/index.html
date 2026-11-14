@@ -350,6 +350,20 @@ setInterval(checarSessoesAbertas, 10000);
     // Foca o quadro ao carregar: o leitor de código de barras precisa que o
     // foco do teclado chegue na tela (e, dela, no iframe da aba de trabalho).
     frame.addEventListener('load', function () { try { frame.contentWindow.focus(); } catch (e) {} }, { once: true });
+    // Toque DENTRO do quadro não chega ao documento do shell: sem isto, a tela
+    // aberta sozinha (sessão em andamento) nunca entrava em tela cheia e a trava
+    // de saída ficava sem efeito (revisor do 2930b7a). Mesma origem: dá para
+    // ouvir o documento da tela. A ativação do toque vale para o shell também.
+    frame.addEventListener('load', function () {
+      try {
+        const doc = frame.contentDocument;
+        if (!doc || doc.__ekoFS) return;
+        doc.__ekoFS = true;
+        ['click', 'pointerup', 'touchend', 'keydown'].forEach(function (ev) {
+          doc.addEventListener(ev, function () { window.ekoEntrarFS(); }, true);
+        });
+      } catch (e) {}
+    });
     frame.src = url;
     // Força reflow/repaint do quadro. Em tela cheia, trocar o src do iframe às
     // vezes deixa o quadro "preto" até um repaint (glitch de composição da GPU).
@@ -412,6 +426,12 @@ setInterval(checarSessoesAbertas, 10000);
   // aparecer na tela, não só abre ela"). Só na abertura do quiosque: voltar
   // ao menu depois não reabre nada. Com mais de uma, vale a da etiqueta mais
   // recente. MP (recebimento/retorno/retirada) fica no menu: tem submenu.
+  // Só no quiosque do próprio Mini PC (o vigia abre http://localhost:3000):
+  // celular e coletor que abrem o menu pela rede continuam no menu. Sessão
+  // cuja última etiqueta tem mais de 12 h (PA/resíduos esquecidos, que não
+  // fecham sozinhos) não abre sozinha.
+  const SESSAO_VELHA_MS = 12 * 3600 * 1000;
+  const NO_QUIOSQUE = ['localhost', '127.0.0.1', '[::1]', '::1'].indexOf(location.hostname) >= 0;
   const TELA_DA_SESSAO = {
     'extrusao': '/etiqueta-producao.html',
     'produto-acabado': '/produto-acabado.html',
@@ -423,11 +443,13 @@ setInterval(checarSessoesAbertas, 10000);
       const url = TELA_DA_SESSAO[s.tipo];
       if (!url || !s.etiquetas || !s.etiquetas.length) return;
       const ult = s.etiquetas.reduce(function (m, e) { return (e.hora_impressao || '') > m ? e.hora_impressao : m; }, s.inicio || '');
+      const t = Date.parse(ult);
+      if (!(t > Date.now() - SESSAO_VELHA_MS)) return;
       if (!melhor || ult > quando) { melhor = url; quando = ult; }
     });
     return melhor;
   };
-  if (!telaPedida) {
+  if (!telaPedida && NO_QUIOSQUE) {
     fetch(window.location.origin + '/sessoes/abertas', { signal: AbortSignal.timeout(5000) })
       .then(function (r) { return r.json(); })
       .then(function (d) {

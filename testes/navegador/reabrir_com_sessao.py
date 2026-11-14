@@ -13,12 +13,16 @@ Sobe o server.js de verdade com banco temporário. Confere:
      a Extrusão sozinho, a sessão aparece (bobina no histórico) e o botão
      ALEXANDRO fica marcado, sem trocar o nome da sessão
   4. extrusão e PA abertas: abre a da etiqueta mais recente (PA)
+  5. toque DENTRO da tela aberta sozinha liga a tela cheia do shell (sem isso
+     a trava de saída fica sem efeito — revisor do 2930b7a)
+  6. aparelho da rede (celular/coletor pelo IP no HTTPS) fica no menu
+  7. sessão esquecida (última etiqueta há 13 h) não abre sozinha
 Não entra no rodar-todos.js (o Mini PC não tem navegador de teste).
 
     cd ~/bling-claude && venv/bin/python <repo pesagem>/testes/navegador/reabrir_com_sessao.py <repo pesagem>
 
 Sai 1 se falhar."""
-import json, os, shutil, sqlite3, subprocess, sys, tempfile, time, urllib.request
+import json, os, shutil, socket, sqlite3, subprocess, sys, tempfile, time, urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 sys.path.insert(0, "/home/ekoplastic/bling-claude")
@@ -69,10 +73,10 @@ def main():
             time.sleep(0.2)
         with sync_playwright() as pw:
             br = _navegador(pw)
-            def abrir():
-                pg = br.new_context(viewport={"width": 1280, "height": 800}).new_page()
+            def abrir(url=None):
+                pg = br.new_context(viewport={"width": 1280, "height": 800}, ignore_https_errors=True).new_page()
                 pg.set_default_timeout(6000)
-                pg.goto(base + "/"); pg.wait_for_timeout(2500)
+                pg.goto(url or (base + "/")); pg.wait_for_timeout(2500)
                 return pg
 
             # 1
@@ -86,6 +90,12 @@ def main():
             ok(iframe_src(pg) in ("", "about:blank"), f"sessão aberta VAZIA: fica no menu (iframe '{iframe_src(pg)}')")
             pg.context.close()
             c = sqlite3.connect(db); c.execute("UPDATE sessoes SET fim = ? WHERE id = ?", (iso(0), vazia)); c.commit(); c.close()
+
+            # 7
+            sessao(db, "outras", "DAVI", None, etiqueta="O9950001", min_atras=13 * 60)
+            pg = abrir()
+            ok(iframe_src(pg) in ("", "about:blank"), f"sessão esquecida (última etiqueta há 13 h): fica no menu (iframe '{iframe_src(pg)}')")
+            pg.context.close()
 
             # 3
             sessao(db, "extrusao", "Alexandro", "EXT-C1", etiqueta="E9950001", min_atras=10)
@@ -101,8 +111,23 @@ def main():
                 ok(marcados == ["ALEXANDRO"], f"operador 'Alexandro' da sessão marca o botão ALEXANDRO — marcados {marcados}")
                 op = pg.frame(url=lambda u: u.endswith("/etiqueta-producao.html")).evaluate("state.operador")
                 ok(op == "Alexandro", f"o nome da sessão não muda no meio do turno (state.operador = {op!r})")
+                # 5: espiona o ekoEntrarFS do shell e toca dentro da tela
+                # (termina em "0": string que acaba numa função, o Playwright a executa e contaria 1)
+                pg.evaluate("window.__fs = 0; window.ekoEntrarFS = function(){ window.__fs++; }; 0")
+                # toque em qualquer ponto (pode haver aviso por cima, como na fábrica)
+                f.locator("body").click(position={"x": 640, "y": 400}, force=True)
+                ok(pg.evaluate("window.__fs") > 0, f"toque dentro da tela aberta sozinha chama a tela cheia do shell ({pg.evaluate('window.__fs')}x)")
             except Exception as e:
                 ok(False, f"tela da extrusão não carregou a sessão: {e}")
+            pg.context.close()
+
+            # 6: celular/coletor pela rede (HTTPS no IP da máquina, não localhost)
+            s_ = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            try: s_.connect(("10.255.255.255", 1)); ip = s_.getsockname()[0]
+            finally: s_.close()
+            pg = abrir(f"https://{ip}:{porta + 2000}/")
+            ok(pg.locator("#eko-frame").count() == 1 and iframe_src(pg) in ("", "about:blank"),
+               f"aparelho da rede ({ip}) com sessão aberta: fica no menu (iframe '{iframe_src(pg)}')")
             pg.context.close()
 
             # 4
