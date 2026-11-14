@@ -15,7 +15,8 @@ Sobe o server.js de verdade com banco temporário. Confere:
   4. extrusão e PA abertas: abre a da etiqueta mais recente (PA)
   5. toque DENTRO da tela aberta sozinha liga a tela cheia do shell (sem isso
      a trava de saída fica sem efeito — revisor do 2930b7a)
-  6. aparelho da rede (celular/coletor pelo IP no HTTPS) fica no menu
+  6. aparelho da rede (celular/coletor pelo IP no HTTPS) fica no menu, e
+     toque dentro de uma tela lá não pede tela cheia; 127.0.0.1 é quiosque
   7. sessão esquecida (última etiqueta há 13 h) não abre sozinha
 Não entra no rodar-todos.js (o Mini PC não tem navegador de teste).
 
@@ -128,6 +129,17 @@ def main():
             pg = abrir(f"https://{ip}:{porta + 2000}/")
             ok(pg.locator("#eko-frame").count() == 1 and iframe_src(pg) in ("", "about:blank"),
                f"aparelho da rede ({ip}) com sessão aberta: fica no menu (iframe '{iframe_src(pg)}')")
+            # no aparelho da rede, quem sai da tela cheia de propósito não pode ter cada
+            # toque/tecla dentro da tela pedindo de novo (revisor do c335716)
+            pg.evaluate("window.ekoAbrirTela('/etiqueta-producao.html'); 0"); pg.wait_for_timeout(2500)
+            pg.evaluate("window.__fs = 0; window.ekoEntrarFS = function(){ window.__fs++; }; 0")
+            pg.frame_locator("#eko-frame").locator("body").click(position={"x": 640, "y": 400}, force=True)
+            ok(pg.evaluate("window.__fs") == 0, f"aparelho da rede: toque dentro da tela não pede tela cheia ({pg.evaluate('window.__fs')}x)")
+            pg.context.close()
+
+            # quiosque também por 127.0.0.1 (a porta 3000 só escuta nele)
+            pg = abrir(f"http://127.0.0.1:{porta}/")
+            ok(iframe_src(pg) == "/etiqueta-producao.html", f"quiosque por 127.0.0.1: abre a Extrusão sozinho (iframe '{iframe_src(pg)}')")
             pg.context.close()
 
             # 4

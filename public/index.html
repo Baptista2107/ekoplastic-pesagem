@@ -332,6 +332,25 @@ setInterval(checarSessoesAbertas, 10000);
 (function () {
   if (window.self !== window.top) return;   // só o shell de verdade orquestra
   const frame = document.getElementById('eko-frame');
+  // Quiosque do próprio Mini PC (o tela-vigia abre http://localhost:3000; a
+  // porta 3000 só escuta em 127.0.0.1). Celular e coletor entram pelo IP.
+  const NO_QUIOSQUE = ['localhost', '127.0.0.1', '[::1]', '::1'].indexOf(location.hostname) >= 0;
+  // Toque DENTRO do quadro não chega ao documento do shell: sem isto, a tela
+  // aberta sozinha (sessão em andamento) nunca entrava em tela cheia e a trava
+  // de saída ficava sem efeito (revisor do 2930b7a). Mesma origem: dá para
+  // ouvir o documento da tela; a ativação do toque vale para o shell também.
+  // Registrado UMA vez (não a cada tela aberta) e só no quiosque: no celular,
+  // sair da tela cheia de propósito não pode fazer cada tecla pedir de novo.
+  if (NO_QUIOSQUE && frame) frame.addEventListener('load', function () {
+    try {
+      const doc = frame.contentDocument;
+      if (!doc || doc.__ekoFS) return;
+      doc.__ekoFS = true;
+      ['pointerup', 'keydown'].forEach(function (ev) {
+        doc.addEventListener(ev, function () { window.ekoEntrarFS(); }, true);
+      });
+    } catch (e) {}
+  });
   function emFS(){ return !!(document.fullscreenElement || document.webkitFullscreenElement); }
   window.ekoEntrarFS = function () {
     if (window.__ekoSaindo || emFS()) return;
@@ -350,20 +369,6 @@ setInterval(checarSessoesAbertas, 10000);
     // Foca o quadro ao carregar: o leitor de código de barras precisa que o
     // foco do teclado chegue na tela (e, dela, no iframe da aba de trabalho).
     frame.addEventListener('load', function () { try { frame.contentWindow.focus(); } catch (e) {} }, { once: true });
-    // Toque DENTRO do quadro não chega ao documento do shell: sem isto, a tela
-    // aberta sozinha (sessão em andamento) nunca entrava em tela cheia e a trava
-    // de saída ficava sem efeito (revisor do 2930b7a). Mesma origem: dá para
-    // ouvir o documento da tela. A ativação do toque vale para o shell também.
-    frame.addEventListener('load', function () {
-      try {
-        const doc = frame.contentDocument;
-        if (!doc || doc.__ekoFS) return;
-        doc.__ekoFS = true;
-        ['click', 'pointerup', 'touchend', 'keydown'].forEach(function (ev) {
-          doc.addEventListener(ev, function () { window.ekoEntrarFS(); }, true);
-        });
-      } catch (e) {}
-    });
     frame.src = url;
     // Força reflow/repaint do quadro. Em tela cheia, trocar o src do iframe às
     // vezes deixa o quadro "preto" até um repaint (glitch de composição da GPU).
@@ -431,7 +436,6 @@ setInterval(checarSessoesAbertas, 10000);
   // cuja última etiqueta tem mais de 12 h (PA/resíduos esquecidos, que não
   // fecham sozinhos) não abre sozinha.
   const SESSAO_VELHA_MS = 12 * 3600 * 1000;
-  const NO_QUIOSQUE = ['localhost', '127.0.0.1', '[::1]', '::1'].indexOf(location.hostname) >= 0;
   const TELA_DA_SESSAO = {
     'extrusao': '/etiqueta-producao.html',
     'produto-acabado': '/produto-acabado.html',
