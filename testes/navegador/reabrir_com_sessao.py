@@ -142,6 +142,18 @@ def main():
             ok(iframe_src(pg) == "/etiqueta-producao.html", f"quiosque por 127.0.0.1: abre a Extrusão sozinho (iframe '{iframe_src(pg)}')")
             pg.context.close()
 
+            # o Mini PC é tela de TOQUE: tap (pointerup de toque) e tecla do leitor
+            ctx = br.new_context(viewport={"width": 1280, "height": 800}, has_touch=True)
+            pg = ctx.new_page(); pg.set_default_timeout(6000)
+            pg.goto(base + "/"); pg.wait_for_timeout(2500)
+            pg.evaluate("window.__fs = 0; window.ekoEntrarFS = function(){ window.__fs++; }; 0")
+            pg.frame_locator("#eko-frame").locator("body").tap(position={"x": 640, "y": 400}, force=True)
+            ok(pg.evaluate("window.__fs") > 0, f"quiosque com toque: tap dentro da tela pede tela cheia ({pg.evaluate('window.__fs')}x)")
+            pg.evaluate("window.__fs = 0; 0")
+            pg.keyboard.press("5")
+            ok(pg.evaluate("window.__fs") > 0, f"quiosque: tecla do leitor dentro da tela pede tela cheia ({pg.evaluate('window.__fs')}x)")
+            ctx.close()
+
             # 4
             sessao(db, "produto-acabado", "BRUNO", "A", etiqueta="P9950001", min_atras=2)
             pg = abrir()
