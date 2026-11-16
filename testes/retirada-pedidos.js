@@ -643,7 +643,13 @@ const registro = virtId => { const l = lerDb('SELECT pedido_retirada FROM etique
     const fr = { R0999503: { em: '2026-11-16T10:00:03.000Z', corpo: { etiqueta_id: 'R0999503', motivo: 'rede caiu' },
                              falhas_5xx: 3, falhas_5xx_desde: desde } };
     await req('POST', '/config', { retirada_fora_fila: JSON.stringify(fr), vps_sacoleiras_url: 'http://127.0.0.1:9/api/sacoleiras/agora' });
-    await req('GET', '/retirada/pedidos'); await sleep(600);
+    await req('GET', '/retirada/pedidos');
+    // Prova de que a fila TENTOU (senão "a conta ficou em 3" também seria o
+    // estado de quem nem rodou): o log diz que o item não chegou à VPS.
+    const tentou = () => { try { return fs.readdirSync(TMP_LOGS).filter(n => n.endsWith('.log'))
+      .some(n => /R0999503/.test(fs.readFileSync(path.join(TMP_LOGS, n), 'utf8'))); } catch (e) { return false; } };
+    for (let i = 0; i < 40 && !tentou(); i++) await sleep(150);
+    ok(tentou(), 'a fila tentou mandar o item com a VPS fora (log)', null);
     f = JSON.parse((await req('GET', '/config')).body.config.retirada_fora_fila || '{}');
     ok(f.R0999503 && f.R0999503.falhas_5xx === 3 && f.R0999503.falhas_5xx_desde === desde,
        'VPS sem resposta não zera a conta de falhas 5xx', f);

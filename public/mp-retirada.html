@@ -1098,13 +1098,18 @@ function setFluxo(f) {
 //  · o Enter do leitor nunca chega ao botão em foco (nem atrás da janela);
 //  · na caixa "Outro motivo…" o código bipado não fica no texto: uma sequência
 //    no ritmo do leitor que fecha um código R/S/T + Enter sai da caixa e vira bipe.
-// entre teclas do leitor; gente digitando passa disso. O teste de navegador
-// alarga (o Playwright, com a máquina carregada, manda a rajada a 20-70 ms).
-const LEITOR_MAX_MS = Number(window.EKO_LEITOR_MAX_MS) || 60;
+// Quem é o leitor se decide NO ENTER (16/11/2026, revisão do teste instável):
+// as 8 últimas teclas formam R/S/T + 7 dígitos, seguidas, e a rajada inteira
+// (1ª tecla do código até o Enter) coube em LEITOR_RAJADA_MS. Antes era "cada
+// intervalo ≤ 60 ms": um soluço de 70 ms no meio da rajada (Mini PC ocupado)
+// zerava a conta e o código ficava no texto do motivo, sem sair. O HS-960 manda
+// os 9 toques em ~40 ms; gente, mesmo rápida, leva ~1 s para 8 teclas + Enter.
+const LEITOR_RAJADA_MS = 500;
 const LEITOR_REINICIO_MS = 1000; // pausa longa: o que estava no buffer era lixo
 const RX_CODIGO = /[RTS]\d{7}/;
+const TECLAS_MODIFICADORAS = new Set(['Shift', 'CapsLock', 'Control', 'Alt', 'AltGraph', 'Meta']);
 let _bufKey = '';
-let _bufRapido = '';             // só teclas no ritmo do leitor (caixa de motivo)
+let _teclasCaixa = [];           // últimas 8 teclas da caixa de motivo, com o carimbo
 let _tUltTecla = 0;
 function janelaAberta() {
   return ['modal-bloqueado', 'modal-fora', 'modal-confirmar']
@@ -1118,7 +1123,6 @@ function teclaDoLeitor(e) {
   const intervalo = agora - _tUltTecla;
   _tUltTecla = agora;
   if (intervalo > LEITOR_REINICIO_MS) _bufKey = '';
-  if (intervalo > LEITOR_MAX_MS) _bufRapido = '';
   const ehTecla = e.key && e.key.length === 1 && /^[A-Za-z0-9]$/.test(e.key);
   // "Digitar código"/"Reimprimir" (teclado da tela) aberto: o Enter do leitor
   // não pode apertar o botão tocado por último (repetia o dígito, reabria o
@@ -1142,16 +1146,18 @@ function teclaDoLeitor(e) {
     // Caixa do motivo: o texto é de quem digita; o código do leitor é bipe.
     if (e.key === 'Enter') {
       e.preventDefault();                       // motivo é uma linha só
-      const m = _bufRapido.length >= 8 && _bufRapido.match(/[RTS]\d{7}$/);
-      if (m) {
-        if (alvo.value.endsWith(m[0])) alvo.value = alvo.value.slice(0, -m[0].length);
-        processarBipe(m[0]);
+      const ult = _teclasCaixa;
+      const cod = ult.map(x => x.k).join('');
+      if (ult.length === 8 && /^[RTS]\d{7}$/.test(cod) && agora - ult[0].t <= LEITOR_RAJADA_MS) {
+        if (alvo.value.endsWith(cod)) alvo.value = alvo.value.slice(0, -cod.length);
+        processarBipe(cod);
       }
-      _bufRapido = '';
+      _teclasCaixa = [];
     } else if (ehTecla) {
-      _bufRapido += e.key;
-    } else {
-      _bufRapido = '';
+      _teclasCaixa.push({ k: e.key, t: agora });
+      if (_teclasCaixa.length > 8) _teclasCaixa.shift();
+    } else if (!TECLAS_MODIFICADORAS.has(e.key)) {
+      _teclasCaixa = [];                        // espaço, apagar, setas: não é o leitor
     }
     return;
   }
@@ -1195,8 +1201,13 @@ function processarBipe(raw) {
   };
   if (!podeSeguir()) avisarEspera();
   else if (_bipesNaFila > 0) {
-    // Atrás de um bipe ainda no ar: se ele abrir uma janela, este avisa que espera.
-    setTimeout(() => { if (!vezDele.comecou && !podeSeguir()) avisarEspera(); }, 700);
+    // Atrás de um bipe ainda no ar: se ele abrir uma janela, este avisa que
+    // espera. Vigia até a vez dele, e não só aos 700 ms: com o Mini PC lento o
+    // /consumir do 1º passava disso, a janela abria depois e o 2º esperava calado.
+    const vigia = setInterval(() => {
+      if (vezDele.comecou) { clearInterval(vigia); return; }
+      if (!podeSeguir()) { clearInterval(vigia); avisarEspera(); }
+    }, 200);
   }
   _bipesNaFila++;
   const vez = _filaBipe
@@ -1743,7 +1754,16 @@ function atualizarBotaoAdd() {
   document.getElementById('btn-add-aditivo').disabled = !ok;
 }
 
-async function adicionarAditivo() {
+// Aditivo e estorno mexem na lista local: passam pela MESMA fila do leitor
+// (5ª revisão, item a), senão a releitura da lista de um bipe que passou do teto
+// apagava o aditivo recém-lançado ou trazia de volta o item estornado.
+function naFilaDoLeitor(fn) {
+  const vez = _filaBipe.then(fn);
+  _filaBipe = vez.catch(() => {});
+  return vez;
+}
+function adicionarAditivo() { return naFilaDoLeitor(adicionarAditivoAgora); }
+async function adicionarAditivoAgora() {
   let sessaoId = await garantirSessao();
   if (!sessaoId) return;
   const matKey = estado.tipo;
@@ -2022,7 +2042,8 @@ async function cancelarSessaoSeVazia() {
 // Remove UM item da retirada (botão X). Estorna no servidor: cancela a etiqueta
 // virtual e devolve a etiqueta ORIGINAL para 'bipada' (apta a ser bipada de
 // novo). Depois tira o item da lista local.
-async function estornarItem(virtId) {
+function estornarItem(virtId) { return naFilaDoLeitor(() => estornarItemAgora(virtId)); }
+async function estornarItemAgora(virtId) {
   try {
     const r = await fetch(`${URL_ETIQ}/${virtId}/estornar`, { method: 'POST' });
     const d = await r.json();
@@ -2088,10 +2109,9 @@ async function relerLista() {
     const r = await fetch(`${URL_SESS}/${sid}`, { signal: AbortSignal.timeout(5000) });
     const d = await r.json();
     if (!d.ok || !d.sessao || d.sessao.fim || estado.sessaoId !== sid) return;
-    estado.itens = (d.etiquetas || []).filter(e => e.tipo === 'retirada').map(itemDaEtiqueta).reverse();
-    renderHistorico();
-    document.getElementById('btn-finalizar').disabled = estado.itens.length === 0;
-    document.getElementById('btn-cancelar').disabled  = estado.itens.length === 0;
+    estado.itens = (d.etiquetas || []).map(itemDaEtiqueta).reverse();
+    renderHistorico();          // liga/desliga Finalizar e Cancelar
+    atualizarBadgesPai();
   } catch (e) {
     console.warn('Falha ao reler a lista da retirada:', e.message);
   }

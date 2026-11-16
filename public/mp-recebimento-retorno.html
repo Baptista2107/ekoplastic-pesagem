@@ -1851,9 +1851,16 @@ async function garantirSessao(tipo, fornecedor) {
 // sessão desta tela já fechou em outra aba ou no fim automático — 16/11/2026,
 // revisão dos cartões), a lista local é de uma sessão que não existe mais:
 // zera, abre outra e repete UMA vez. enviar(sid) devolve o fetch.
+function semSessao() {
+  const e = new Error('não deu para abrir a sessão — nada foi impresso; confira a conexão e tente de novo');
+  e.semSessao = true;
+  return e;
+}
 async function enviarNaSessao(tipo, fornecedor, enviar) {
   const key = tipo === 'retorno' ? 'sessaoRetorno' : 'sessaoRecebimento';
   let sid = await garantirSessao(tipo, fornecedor);
+  // Sem sessão o item nunca iria ao Bling: não envia (5ª revisão, item e).
+  if (!sid) throw semSessao();
   let resp = await enviar(sid);
   let d = await resp.json();
   if (resp.status === 409 && d && d.sessao_fechada) {
@@ -1863,7 +1870,7 @@ async function enviarNaSessao(tipo, fornecedor, enviar) {
     try { renderHistorico(); atualizarBadgesPai(); } catch (e) {}
     sid = await garantirSessao(tipo, fornecedor);
     // Sem sessão nova não repete: o item sairia sem sessão e nunca iria ao Bling.
-    if (!sid) throw new Error('não deu para abrir uma sessão nova — tente de novo');
+    if (!sid) throw semSessao();
     resp = await enviar(sid);
     d = await resp.json();
   }
@@ -2688,7 +2695,8 @@ async function imprimir() {
       beepErro();
       return;
     }
-    showToast('erro', '✗', 'Falha na impressão: ' + e.message + ' — Servidor INICIAR_IMPRESSORA.bat rodando?');
+    showToast('erro', '✗', e.semSessao ? e.message
+      : 'Falha na impressão: ' + e.message + ' — Servidor INICIAR_IMPRESSORA.bat rodando?');
     beepErro();
     return;
   }
