@@ -350,6 +350,116 @@ async function testeContinuadas() {
   }
 }
 
+// ─── G) frame VIVO, leitor na restauração, confirmar encerrar (16/11/2026) ───
+// Achados do revisor: F1 (trocar de aba sem recarregar mantinha a senha de quem
+// não tinha processo), F2 (teto de 8 h só contava ao recarregar), F5 (bipe entre
+// a senha e a caixa "sessão de outro" abria sessão nova), F6 (Gustavo: encerrar
+// a sessão de outro no Recebimento/Retorno pede confirmação).
+async function testeFrameVivo() {
+  console.log('\n[G] frame vivo: reconferir ao voltar à aba, teto de 8 h, leitor seguro, confirmar encerrar');
+  const ss = novoStorage();
+  const fetchFalso = async (url, o) => {
+    const corpo = JSON.parse(o.body);
+    const nome = corpo.pin === '1111' ? 'ANA' : null;
+    return { ok: !!nome, json: async () => (nome ? { ok: true, nome, id: 3 } : { ok: false, erro: 'Senha não confere' }) };
+  };
+  const api = f => f.win.EkoAcesso;
+  const chama = (f, nome) => (typeof api(f)[nome] === 'function' ? api(f)[nome]() : undefined);
+
+  // F1: Ana entra no Retorno, não faz nada, vai a outra aba e volta (frame vivo).
+  let abertaDe = null;
+  const aindaValida = async lib => lib.nome === abertaDe;
+  const rtn = novoFrame(ss, fetchFalso);
+  const entrou = [];
+  api(rtn).exigir('mp', nome => entrou.push(nome), { chave: 'mp-retorno', aindaValida });
+  rtn.digitar('1111'); rtn.entrar();
+  await sleep(600);
+  ok(entrou.join() === 'ANA' && !rtn.teclado(), 'F1: Ana entra no Retorno');
+  await chama(rtn, 'reconferir'); await sleep(20);
+  ok(rtn.teclado(), 'F1: sem processo no nome dela, voltar à aba (sem recarregar) pede a senha de novo');
+  ok(!api(rtn).liberado('mp-retorno'), 'F1: e a liberação guardada é apagada');
+  rtn.digitar('1111'); rtn.entrar();
+  await sleep(600);
+  abertaDe = 'ANA';
+  await chama(rtn, 'reconferir'); await sleep(20);
+  ok(!rtn.teclado(), 'F1: com processo aberto no nome dela, voltar à aba NÃO pede a senha');
+  const mpHtml = fs.readFileSync(path.join(PUBLIC, 'materia-prima.html'), 'utf8');
+  const ativar = extrairFuncao(mpHtml, 'ativarAba');
+  ok(/EkoAcesso\.reconferir\(\)/.test(ativar), 'F1: a Matéria-Prima reconfere a senha do frame ao voltar a uma aba já carregada');
+
+  // F2: 8 h depois do login, com o frame aberto o tempo todo.
+  ss.setItem('eko_liberado_mp-retorno', JSON.stringify({ nome: 'ANA', id: 3, ts: Date.now() - 9 * 3600 * 1000 }));
+  chama(rtn, 'verificarTeto');
+  ok(rtn.teclado(), 'F2: passou de 8 h com o frame aberto → o relógio pede a senha (sem recarregar nem trocar de aba)');
+  rtn.digitar('1111'); rtn.entrar();
+  await sleep(600);
+  ss.setItem('eko_liberado_mp-retorno', JSON.stringify({ nome: 'ANA', id: 3, ts: Date.now() - 9 * 3600 * 1000 }));
+  await chama(rtn, 'reconferir'); await sleep(20);
+  ok(rtn.teclado(), 'F2: passou de 8 h → voltar à aba pede a senha mesmo com processo aberto');
+
+  // PA/Resíduos (sem aindaValida) não mudam: o relógio não mexe neles.
+  const pa = novoFrame(ss, fetchFalso);
+  api(pa).exigir('pa', () => {});
+  pa.digitar('1111'); pa.entrar();
+  await sleep(600);
+  ss.setItem('eko_liberado_pa', JSON.stringify({ nome: 'ANA', id: 3, ts: Date.now() - 9 * 3600 * 1000 }));
+  chama(pa, 'verificarTeto'); await chama(pa, 'reconferir');
+  ok(!pa.teclado(), 'PA (sem conferência de processo) segue como antes: o relógio da MP não pede a senha ali');
+
+  // F5: a tela segura o leitor até restaurar a sessão e conferir se é de outro.
+  const ret = novoFrame(ss, fetchFalso);
+  let soltar;
+  const segura = typeof api(ret).segurar === 'function'
+    ? api(ret).segurar(new Promise(r => { soltar = r; })) : null;
+  ok(!!segura && api(ret).bloqueando(), 'F5: restaurando a sessão depois da senha → leitor bloqueado');
+  if (soltar) { soltar(); await segura; }
+  ok(!!segura && !api(ret).bloqueando(), 'F5: restauração terminou → leitor liberado');
+  let soltarErro;
+  const seguraErro = segura ? api(ret).segurar(new Promise((_, n) => { soltarErro = n; })) : null;
+  if (soltarErro) { soltarErro(new Error('rede')); await seguraErro.catch(() => {}); }
+  ok(!!seguraErro && !api(ret).bloqueando(), 'F5: restauração falhou → leitor liberado mesmo assim (não trava a tela)');
+  for (const [arq, fn, restaura] of [['mp-retirada.html', 'iniciarTelaRetirada', 'restaurarSessaoAberta'],
+                                     ['mp-recebimento-retorno.html', 'iniciarTelaMP', 'restaurarSessoesAbertas']]) {
+    const corpo = extrairFuncao(fs.readFileSync(path.join(PUBLIC, arq), 'utf8'), fn);
+    const chamadas = corpo.split(restaura + '()').length - 1;
+    const seguras = (corpo.match(new RegExp('segurarLeitor\\((inicializarServidor\\(\\)[\\s\\S]*?)?' + restaura + '\\(\\)', 'g')) || []).length;
+    ok(chamadas > 0 && chamadas === seguras, `F5: ${arq} restaura a sessão SEMPRE com o leitor seguro (${seguras} de ${chamadas})`);
+  }
+
+  // F6: Recebimento/Retorno — "Encerrar a de X" pede confirmação antes de ir ao Bling.
+  for (const aba of ['recebimento', 'retorno']) {
+    const html = fs.readFileSync(path.join(PUBLIC, 'mp-recebimento-retorno.html'), 'utf8');
+    const f = novoFrame(novoStorage(), fetchFalso);
+    const key = aba === 'retorno' ? 'sessaoRetorno' : 'sessaoRecebimento';
+    let finalizou = 0;
+    Object.assign(f.win, {
+      ABA_PIN: aba, CHAVE_PIN: 'mp-' + aba, showToast: () => {},
+      finalizar: async () => { finalizou++; f.win.estado[key] = null; f.win.estado.sessaoInfo = {}; },
+      restaurarSessoesAbertas: async () => {},
+      estado: { sessaoInfo: { [aba]: { operador: 'BRUNO', inicio: null, itens: 2 } }, [key]: 77 },
+    });
+    vm.runInContext(extrairFuncao(html, 'conferirSessaoDeOutro'), f.win);
+    f.win.EKO_RESPONSAVEL = 'ANA';
+    const p = f.win.conferirSessaoDeOutro();
+    await sleep(20);
+    f.doc.getElementById('eko-outro').querySelector('#eko-outro-encerrar').onclick();
+    await sleep(20);
+    const cx = f.doc.getElementById('eko-confirma');
+    ok(!!cx && finalizou === 0, `F6 ${aba}: "Encerrar a de BRUNO" pede confirmação antes de mandar ao Bling`, `(finalizou: ${finalizou})`);
+    ok(api(f).bloqueando(), `F6 ${aba}: com a confirmação na tela, o leitor fica bloqueado`);
+    if (cx) cx.querySelector('#eko-confirma-nao').onclick();
+    await sleep(20);
+    ok(finalizou === 0 && !!f.doc.getElementById('eko-outro'), `F6 ${aba}: "Voltar" não finaliza e volta à pergunta continuar/encerrar`);
+    const outro = f.doc.getElementById('eko-outro');
+    if (outro) outro.querySelector('#eko-outro-encerrar').onclick();
+    await sleep(20);
+    const cx2 = f.doc.getElementById('eko-confirma');
+    if (cx2) cx2.querySelector('#eko-confirma-sim').onclick();
+    await Promise.race([p, sleep(200)]);
+    ok(finalizou === 1, `F6 ${aba}: confirmou → finaliza a sessão do Bruno uma vez`, `(finalizou: ${finalizou})`);
+  }
+}
+
 function testeTelas() {
   console.log('\n[D] telas (conferência estática)');
   const ler = f => fs.readFileSync(path.join(PUBLIC, f), 'utf8');
@@ -428,6 +538,7 @@ function encerrar() {
   try {
     await testeFrames();
     await testeContinuadas();
+    await testeFrameVivo();
     testeTelas();
     await subirServidor();
     const h = await (await fetch(BASE + '/healthcheck')).json();

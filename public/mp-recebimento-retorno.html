@@ -4124,6 +4124,18 @@ async function conferirSessaoDeOutro(aviso) {
     showToast('info', '👤', `Continuando o ${processo.toLowerCase()} de ${dono} — fica no nome dele`, 5000);
     return;
   }
+  // 16/11/2026 (Gustavo, achado F6): encerrar = finalizar e mandar ao Bling o
+  // processo de outra pessoa. Pede confirmação, como a Retirada; desistiu,
+  // volta à pergunta "continuar ou encerrar".
+  if (EkoAcesso.confirmar) {
+    const n = Number(info.itens) || 0;
+    const segue = await EkoAcesso.confirmar({
+      titulo: `Encerrar o ${processo.toLowerCase()} de ${dono}?`,
+      texto: `Ele será finalizado e enviado ao Bling agora (${n} ${n === 1 ? 'item' : 'itens'}). Depois de enviado, não dá para desfazer por aqui.`,
+      botao: 'Sim, encerrar e enviar ao Bling',
+    });
+    if (!segue) return conferirSessaoDeOutro();
+  }
   estado.encerrandoDeOutro = true;
   try { await finalizar(); } finally { estado.encerrandoDeOutro = false; }
   // O finalizar zera a sessão local mesmo quando falha: o servidor decide.
@@ -4138,21 +4150,27 @@ async function conferirSessaoDeOutro(aviso) {
 // window.EKO_RESPONSAVEL e vai como `operador` na sessão (sai no resumo).
 // Depois de encerrar, a senha é pedida de novo e esta função roda outra vez:
 // a tela já está montada, só troca o responsável e confere a sessão aberta.
+// Segura o leitor até restaurar a sessão aberta e conferir se é de outro
+// (16/11/2026, achado F5 do revisor): entre a senha aceita e a caixa "sessão
+// de outro", um bipe abria uma sessão nova no nome de quem entrou.
+function segurarLeitor(p) {
+  const seguro = (window.EkoAcesso && EkoAcesso.segurar) ? EkoAcesso.segurar(p) : p;
+  return seguro.catch(e => console.warn('Restaurar/conferir sessão:', e && e.message));
+}
 let _telaIniciada = false;
 function iniciarTelaMP() {
-  if (_telaIniciada) { mostrarResponsavel(); restaurarSessoesAbertas().then(conferirSessaoDeOutro); return; }
+  if (_telaIniciada) { mostrarResponsavel(); segurarLeitor(restaurarSessoesAbertas().then(conferirSessaoDeOutro)); return; }
   _telaIniciada = true;
   renderMateriais();
   atualizarEstadoBlocos();
   atualizarQtd();
   renderRetornoCard();
   carregarCatalogoMP().then(() => { renderMateriais(); if (estado.material) renderFornecedores(); });
-  inicializarServidor()
+  segurarLeitor(inicializarServidor()
     .then(() => {
       detectarAbaURL();
       return restaurarSessoesAbertas().then(conferirSessaoDeOutro);
-    })
-    .catch(e => console.warn('Erro no init:', e.message));
+    }));
   mostrarResponsavel();
 }
 function mostrarResponsavel() {

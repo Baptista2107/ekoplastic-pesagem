@@ -236,6 +236,15 @@ function ativarAba(qual) {
       if (ld) ld.textContent = 'Erro ao carregar.';
     }, { once: true });
     iframe.src = iframe.dataset.src;
+  } else if (abaAtiva() !== qual) {
+    // 16/11/2026 (achado F1 do revisor): o frame já carregado fica vivo. Ao
+    // VOLTAR a ele, confere de novo se a senha guardada vale (processo aberto
+    // no nome da pessoa ou sessão que ela continuou; teto de 8 h). Quem entrou,
+    // não fez nada e foi para outra aba: o próximo digita a senha dele.
+    try {
+      const w = iframe.contentWindow;
+      if (w && w.EkoAcesso && w.EkoAcesso.reconferir) w.EkoAcesso.reconferir();
+    } catch (e) {}
   }
 
   // Esconde TODOS, mostra a ativa

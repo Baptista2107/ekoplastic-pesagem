@@ -1763,9 +1763,16 @@ async function conferirSessaoDeOutro() {
 // INIT — só depois que o colaborador entrar com a senha dele. Depois de
 // encerrar, a senha é pedida de novo e esta função roda outra vez: a tela já
 // está montada, só troca o responsável e confere a sessão aberta.
+// Restaura a sessão aberta e confere se é de outro com o leitor SEGURO até o
+// fim (16/11/2026, achado F5 do revisor): entre a senha aceita e a caixa
+// "sessão de outro", um bipe abria uma retirada nova no nome de quem entrou.
+function segurarLeitor(p) {
+  const seguro = (window.EkoAcesso && EkoAcesso.segurar) ? EkoAcesso.segurar(p) : p;
+  return seguro.catch(e => console.warn('Restaurar/conferir sessão:', e && e.message));
+}
 let _telaIniciada = false;
 function iniciarTelaRetirada() {
-  if (_telaIniciada) { mostrarResponsavel(); restaurarSessaoAberta().then(conferirSessaoDeOutro); return; }
+  if (_telaIniciada) { mostrarResponsavel(); segurarLeitor(restaurarSessaoAberta().then(conferirSessaoDeOutro)); return; }
   _telaIniciada = true;
   renderTipos();
   renderFornecedores();
@@ -1773,7 +1780,7 @@ function iniciarTelaRetirada() {
   ajustarSacos(0);
   renderHistorico();
   carregarCatalogoRetirada().then(() => { renderTipos(); renderFornecedores(); renderCores(); ajustarSacos(0); renderHistorico(); });
-  restaurarSessaoAberta().then(conferirSessaoDeOutro);
+  segurarLeitor(restaurarSessaoAberta().then(conferirSessaoDeOutro));
   mostrarResponsavel();
 }
 comAcesso('mp', iniciarTelaRetirada);
