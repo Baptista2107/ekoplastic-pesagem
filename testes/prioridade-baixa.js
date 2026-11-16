@@ -33,15 +33,19 @@ const nice = os.getPriority();
 ok(nice === 19, 'processo de teste com nice 19', `(veio ${nice})`);
 
 const disco = spawnSync('ionice', ['-p', String(process.pid)], { encoding: 'utf8', timeout: 10000 });
+const temIonice = !disco.error;
 const io = (disco.stdout || '').trim();
-ok(io === 'best-effort: prio 7' || io === 'idle', 'processo de teste com disco best-effort 7 (ou idle)', `(veio "${io}")`);
+if (temIonice) ok(io === 'best-effort: prio 7' || io === 'idle', 'processo de teste com disco best-effort 7 (ou idle)', `(veio "${io}")`);
+else console.log('  - pulado: sem o binário ionice nesta máquina (disco)');
 
 const filho = spawnSync(process.execPath, ['-e', 'console.log(require("node:os").getPriority())'],
   { encoding: 'utf8', timeout: 30000 });
 const niceFilho = (filho.stdout || '').trim();
 ok(niceFilho === '19', 'filho do teste herda nice 19', `(veio "${niceFilho}")`);
 
-const ioFilho = (spawnSync('ionice', [], { encoding: 'utf8', timeout: 10000 }).stdout || '').trim();
-ok(ioFilho === 'best-effort: prio 7' || ioFilho === 'idle', 'filho do teste herda o disco baixo', `(veio "${ioFilho}")`);
+if (temIonice) {
+  const ioFilho = (spawnSync('ionice', [], { encoding: 'utf8', timeout: 10000 }).stdout || '').trim();
+  ok(ioFilho === 'best-effort: prio 7' || ioFilho === 'idle', 'filho do teste herda o disco baixo', `(veio "${ioFilho}")`);
+}
 
 process.exit(falhou ? 1 : 0);
