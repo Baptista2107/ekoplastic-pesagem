@@ -1710,8 +1710,11 @@ function escRet(t) {
 // Entrou e saiu sem bipar nada (foi à Extrusão): pede a senha de novo.
 async function retiradaAbertaDe(lib) {
   const r = await fetch('/sessoes/abertas?tipo=retirada');
-  if (!r.ok) return false;
+  // Consulta que falha NÃO é "não há processo" (achado F10): o componente
+  // mantém quem está e confere de novo no minuto seguinte.
+  if (!r.ok) throw new Error('consulta das retiradas abertas: HTTP ' + r.status);
   const d = await r.json();
+  if (!d || !d.ok) throw new Error('consulta das retiradas abertas falhou');
   const nome = String(lib.nome || '').trim().toUpperCase();
   // 16/11/2026 (Gustavo): escolheu continuar a retirada de outra pessoa, saiu e
   // voltou: enquanto AQUELA sessão segue aberta, a senha ainda vale.
@@ -1749,6 +1752,9 @@ async function conferirSessaoDeOutro() {
   }
   const escolha = await EkoAcesso.perguntarSessaoDeOutro({
     processo: 'Retirada', operador: dono, desde: estado.sessaoInicio, itens: estado.itens.length });
+  // Caixa descartada (saiu da aba sem responder; quem voltou digita a senha e
+  // a pergunta é refeita para ele): não faz nada aqui.
+  if (escolha === 'cancelado') return;
   if (escolha === 'continuar') {
     if (EkoAcesso.continuar) EkoAcesso.continuar(CHAVE_PIN, estado.sessaoId);
     showToast('info', '👤', `Continuando a retirada de ${escRet(dono)} — fica no nome dele`, 5000);

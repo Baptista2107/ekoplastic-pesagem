@@ -85,7 +85,7 @@ function novoElemento(tag, doc) {
   };
   return el;
 }
-function novoFrame(sessionStorage, fetchFalso) {
+function novoFrame(sessionStorage, fetchFalso, extras) {
   const doc = {
     _ids: {}, _ouvintes: [], readyState: 'complete',
     getElementById(id) { return this._ids[id] || null; },
@@ -95,7 +95,7 @@ function novoFrame(sessionStorage, fetchFalso) {
   };
   doc.head = novoElemento('head', doc);
   doc.body = novoElemento('body', doc);
-  const win = { document: doc, sessionStorage, fetch: fetchFalso, console, setTimeout, clearTimeout, Date, JSON, Promise };
+  const win = { document: doc, sessionStorage, fetch: fetchFalso, console, setTimeout, clearTimeout, Date, JSON, Promise, ...(extras || {}) };
   win.window = win;
   vm.createContext(win);
   vm.runInContext(fs.readFileSync(path.join(PUBLIC, 'acesso-colaborador.js'), 'utf8'), win, { filename: 'acesso-colaborador.js' });
@@ -436,9 +436,11 @@ async function testeFrameVivo() {
       ABA_PIN: aba, CHAVE_PIN: 'mp-' + aba, showToast: () => {},
       finalizar: async () => { finalizou++; f.win.estado[key] = null; f.win.estado.sessaoInfo = {}; },
       restaurarSessoesAbertas: async () => {},
-      estado: { sessaoInfo: { [aba]: { operador: 'BRUNO', inicio: null, itens: 2 } }, [key]: 77 },
+      estado: { sessaoInfo: { [aba]: { operador: 'BRUNO', inicio: null, itens: 2 } }, [key]: 77, itens: [], retItens: [] },
     });
-    vm.runInContext(extrairFuncao(html, 'conferirSessaoDeOutro'), f.win);
+    const fns = ['conferirSessaoDeOutro'];
+    if (/function textoEncerrarDeOutro\s*\(/.test(html)) fns.unshift('textoEncerrarDeOutro');
+    vm.runInContext(fns.map(n => extrairFuncao(html, n)).join('\n'), f.win);
     f.win.EKO_RESPONSAVEL = 'ANA';
     const p = f.win.conferirSessaoDeOutro();
     await sleep(20);
@@ -460,6 +462,246 @@ async function testeFrameVivo() {
   }
 }
 
+// ─── H) 2ª revisão (16/11/2026): B1-B6 ───
+// B1 caixa sem resposta deixava o próximo entrar sem senha · B2 película na
+// conferência · B3 confirmação diz o que vai e o que é descartado · B4 nada
+// trava o leitor (teto + caixa trocada responde) · B5 teclado tira o foco do
+// campo · B6/F10 falha na consulta ≠ "não há processo"; F8 sessão sem nome.
+const espera = (p, ms = 300) => Promise.race([p, sleep(ms).then(() => '__sem_resposta__')]);
+
+async function testeSegundaRevisao() {
+  console.log('\n[H] 2ª revisão: caixa sem resposta, teto, foco, falha na consulta, confirmação, película, relógio');
+  const fetchFalso = async (url, o) => {
+    const corpo = JSON.parse(o.body);
+    const nome = corpo.pin === '1111' ? 'ANA' : corpo.pin === '2222' ? 'BRUNO' : null;
+    return { ok: !!nome, json: async () => (nome ? { ok: true, nome, id: nome.length } : { ok: false, erro: 'Senha não confere' }) };
+  };
+  const api = f => f.win.EkoAcesso;
+  const logado = async (chave, aindaValida, extras) => {
+    const ss = novoStorage();
+    const f = novoFrame(ss, fetchFalso, { EKO_TETO_CONFERIR_MS: 150, ...(extras || {}) });
+    f.ss = ss; f.entrou = [];
+    api(f).exigir('mp', nome => f.entrou.push(nome), { chave, aindaValida });
+    f.digitar('1111'); f.entrar();
+    await sleep(600);
+    return f;
+  };
+
+  // B1: Ana entra, aparece "sessão de outro", ela vai a outra aba sem responder.
+  {
+    const f = await logado('mp-recebimento', async () => false);
+    const escolha = api(f).perguntarSessaoDeOutro({ processo: 'Recebimento', operador: 'JOAO', itens: 2 });
+    await api(f).reconferir(); await sleep(20);
+    ok(f.teclado(), 'B1: caixa "sessão de outro" sem resposta + voltar à aba → pede a senha (quem volta pode ser outro)');
+    ok(!f.doc.getElementById('eko-outro'), 'B1: a caixa de quem estava antes sai da tela');
+    ok((await espera(escolha)) === 'cancelado', 'B1: a pergunta pendente responde "cancelado" (ninguém decide no nome da Ana)');
+    ok(!api(f).liberado('mp-recebimento'), 'B1: a senha da Ana deixa de valer');
+  }
+  // B1 com a caixa de CONFIRMAÇÃO aberta, e pelo relógio (8 h) com caixa aberta.
+  {
+    const f = await logado('mp-retorno', async () => true);
+    const sim = api(f).confirmar ? api(f).confirmar({ titulo: 't', texto: 'x' }) : Promise.resolve(null);
+    await api(f).reconferir(); await sleep(20);
+    ok(f.teclado() && (await espera(sim)) === 'cancelado', 'B1: confirmação sem resposta + voltar à aba → pede a senha e a confirmação responde "cancelado"');
+  }
+  {
+    const f = await logado('mp-retirada', async () => true);
+    const escolha = api(f).perguntarSessaoDeOutro({ processo: 'Retirada', operador: 'JOAO', itens: 1 });
+    f.ss.setItem('eko_liberado_mp-retirada', JSON.stringify({ nome: 'ANA', id: 3, ts: Date.now() - 9 * 3600 * 1000 }));
+    api(f).verificarTeto(); await sleep(20);
+    ok(f.teclado() && !f.doc.getElementById('eko-outro') && (await espera(escolha)) === 'cancelado',
+       'B1: passou de 8 h com a caixa "sessão de outro" aberta → o relógio pede a senha mesmo assim');
+  }
+
+  // B4: caixa trocada responde a velha; segurar tem teto; encerrar limpa a caixa.
+  {
+    const f = await logado('mp-retirada', async () => true);
+    const p1 = api(f).perguntarSessaoDeOutro({ processo: 'Retirada', operador: 'JOAO', itens: 1 });
+    const p2 = api(f).perguntarSessaoDeOutro({ processo: 'Retirada', operador: 'JOAO', itens: 1 });
+    ok((await espera(p1)) === 'cancelado', 'B4: caixa substituída por outra responde "cancelado" (a promessa velha não fica pendurada)');
+    f.doc.getElementById('eko-outro').querySelector('#eko-outro-continuar').onclick();
+    ok((await espera(p2)) === 'continuar' && !api(f).bloqueando(), 'B4: a caixa nova funciona e libera o leitor');
+
+    const nunca = api(f).segurar(new Promise(() => {}));
+    ok(api(f).bloqueando(), 'B4: restauração em curso → leitor bloqueado');
+    await sleep(400);
+    ok(!api(f).bloqueando(), 'B4: servidor que não responde → o leitor solta no teto (não trava a fábrica)');
+    nunca.catch(() => {});
+
+    let soltar;
+    const comCaixa = api(f).segurar(new Promise(r => { soltar = r; }));
+    const cx = api(f).perguntarSessaoDeOutro({ processo: 'Retirada', operador: 'JOAO', itens: 1 });
+    await sleep(400);
+    ok(api(f).bloqueando(), 'B4: com a caixa aberta o teto espera a resposta (a caixa segura o leitor)');
+    f.doc.getElementById('eko-outro').querySelector('#eko-outro-continuar').onclick();
+    await cx; soltar(); await comCaixa;
+    ok(!api(f).bloqueando(), 'B4: respondeu e a restauração terminou → leitor liberado');
+
+    const pend = api(f).perguntarSessaoDeOutro({ processo: 'Retirada', operador: 'JOAO', itens: 1 });
+    api(f).encerrar('mp-retirada');
+    ok(f.teclado() && !f.doc.getElementById('eko-outro') && (await espera(pend)) === 'cancelado',
+       'B4: encerrar com uma caixa aberta → só o teclado fica (a caixa vencida sai e responde "cancelado")');
+  }
+
+  // B5: o teclado abre com o foco num campo (ex.: peso bruto).
+  {
+    let blur = 0;
+    const campo = { blur: () => { blur++; } };
+    const f = await logado('mp-recebimento', async () => false);
+    f.doc.activeElement = campo;
+    await api(f).reconferir(); await sleep(20);
+    ok(f.teclado() && blur === 1, 'B5: o teclado de senha tira o foco do campo onde a pessoa estava', `(blur: ${blur})`);
+    let evitou = 0;
+    for (const fn of [...f.doc._ouvintes]) fn({ key: '7', preventDefault: () => { evitou++; } });
+    ok(evitou > 0, 'B5: o número digitado com o teclado de senha aberto não vai para o campo (preventDefault)');
+  }
+
+  // B6/F10: consulta que FALHA não é "não há processo".
+  {
+    let modo = 'vale', chamadas = 0;
+    const aindaValida = async () => { chamadas++; if (modo === 'falha') throw new Error('fora'); return modo === 'vale'; };
+    const f = await logado('mp-retorno', aindaValida);
+    modo = 'falha';
+    const c0 = chamadas;
+    await api(f).reconferir(); await sleep(20);
+    ok(!f.teclado() && api(f).liberado('mp-retorno'), 'F10: falha na consulta ao voltar à aba → mantém quem está (não pede a senha à toa)');
+    modo = 'nao';
+    api(f).verificarTeto(); await sleep(50);
+    ok(chamadas > c0 + 1 && f.teclado(), 'F10: o relógio confere de novo depois da falha; sem processo → pede a senha', `(chamadas: ${chamadas - c0})`);
+  }
+  {
+    // Ao abrir a tela a consulta falhou: pede a senha, mas a mesma pessoa não perde a sessão que continuava.
+    const ss = novoStorage();
+    ss.setItem('eko_liberado_mp-retirada', JSON.stringify({ nome: 'ANA', id: 3, ts: Date.now(), continuada: '77' }));
+    const f = novoFrame(ss, fetchFalso);
+    api(f).exigir('mp', () => {}, { chave: 'mp-retirada', aindaValida: async () => { throw new Error('fora'); } });
+    await sleep(50);
+    ok(f.teclado(), 'F10: consulta falhou ao abrir a tela → pede a senha (não se sabe quem está)');
+    f.digitar('1111'); f.entrar(); await sleep(600);
+    ok(api(f).continuada('mp-retirada') === '77', 'F10: a mesma pessoa digitou → segue a sessão que ela continuava (não pergunta de novo)');
+    const g = novoFrame(ss, fetchFalso);
+    ss.setItem('eko_liberado_mp-retorno', JSON.stringify({ nome: 'ANA', id: 3, ts: Date.now(), continuada: '88' }));
+    api(g).exigir('mp', () => {}, { chave: 'mp-retorno', aindaValida: async () => { throw new Error('fora'); } });
+    await sleep(50);
+    g.digitar('2222'); g.entrar(); await sleep(600);
+    ok(api(g).continuada('mp-retorno') === null, 'F10: OUTRA pessoa digitou → não herda a sessão continuada da Ana');
+  }
+
+  // Relógio de 1 min de verdade (o frame falso antes não tinha setInterval).
+  {
+    const timers = [];
+    const extras = { setInterval: (fn, ms) => { timers.push({ fn, ms }); return timers.length; }, clearInterval: () => {} };
+    const f = await logado('mp-retirada', async () => true, extras);
+    api(f).exigir('mp', () => {}, { chave: 'mp-retirada', aindaValida: async () => true });
+    ok(timers.length === 1 && timers[0].ms === 60 * 1000, 'relógio: liga UMA vez, de minuto em minuto, nas telas com conferência de processo', `(timers: ${JSON.stringify(timers.map(t => t.ms))})`);
+    f.ss.setItem('eko_liberado_mp-retirada', JSON.stringify({ nome: 'ANA', id: 3, ts: Date.now() - 9 * 3600 * 1000 }));
+    if (timers[0]) timers[0].fn();
+    await sleep(20);
+    ok(f.teclado(), 'relógio: o tique de 1 min pede a senha depois de 8 h');
+    const t2 = [];
+    const pa = novoFrame(novoStorage(), fetchFalso, { setInterval: (fn, ms) => { t2.push(ms); return 1; } });
+    api(pa).exigir('pa', () => {});
+    ok(t2.length === 0, 'relógio: PA (sem conferência de processo) não liga relógio nenhum');
+  }
+
+  // B2: película enquanto confere a senha guardada / restaura; sai ao abrir a caixa.
+  {
+    let soltar;
+    const f = await logado('mp-recebimento', () => new Promise(r => { soltar = r; }));
+    const p = api(f).reconferir(); await sleep(20);
+    ok(!!f.doc.getElementById('eko-pelicula'), 'B2: conferindo a senha guardada → película cobre a tela (toque não imprime no nome de quem estava)');
+    soltar(true); await p; await sleep(20);
+    ok(!f.doc.getElementById('eko-pelicula'), 'B2: conferência terminou → película sai');
+    let fim;
+    const seg = api(f).segurar(new Promise(r => { fim = r; }));
+    ok(!!f.doc.getElementById('eko-pelicula'), 'B2: restaurando a sessão depois da senha → película cobre a tela');
+    const cx = api(f).perguntarSessaoDeOutro({ processo: 'Recebimento', operador: 'JOAO', itens: 1 });
+    ok(!f.doc.getElementById('eko-pelicula') && api(f).bloqueando(), 'B2: a caixa "sessão de outro" abriu → película sai (a caixa segura o leitor)');
+    f.doc.getElementById('eko-outro').querySelector('#eko-outro-continuar').onclick();
+    await cx; fim(); await seg;
+    const nunca = api(f).segurar(new Promise(() => {}));
+    await sleep(400);
+    ok(!f.doc.getElementById('eko-pelicula'), 'B2: servidor que não responde → película sai no teto (tela nunca fica morta)');
+    nunca.catch(() => {});
+  }
+
+  // B3 (Recebimento/Retorno, função real): confirmação diz o que vai e o que é descartado.
+  const html = fs.readFileSync(path.join(PUBLIC, 'mp-recebimento-retorno.html'), 'utf8');
+  for (const aba of ['recebimento', 'retorno']) {
+    const f = novoFrame(novoStorage(), fetchFalso);
+    const key = aba === 'retorno' ? 'sessaoRetorno' : 'sessaoRecebimento';
+    const lista = [{ status: 'bipada', peso: 25 }, { status: 'consumida', peso: 24.5 }, { status: 'aguardando_bipe', peso: 25 }];
+    let finalizou = 0;
+    Object.assign(f.win, {
+      ABA_PIN: aba, CHAVE_PIN: 'mp-' + aba, showToast: () => {},
+      finalizar: async () => { finalizou++; },
+      restaurarSessoesAbertas: async () => {},
+      estado: { sessaoInfo: { [aba]: { operador: 'BRUNO', inicio: null, itens: 3 } }, [key]: 77,
+                itens: aba === 'recebimento' ? lista : [], retItens: aba === 'retorno' ? lista : [] },
+    });
+    let codigo;
+    try { codigo = ['textoEncerrarDeOutro', 'conferirSessaoDeOutro'].map(n => extrairFuncao(html, n)).join('\n'); }
+    catch (e) { codigo = extrairFuncao(html, 'conferirSessaoDeOutro'); }
+    vm.runInContext(codigo, f.win);
+    f.win.EKO_RESPONSAVEL = 'ANA';
+    const p = f.win.conferirSessaoDeOutro('AVISO DA TENTATIVA');
+    await sleep(20);
+    f.doc.getElementById('eko-outro').querySelector('#eko-outro-encerrar').onclick();
+    await sleep(20);
+    const cx = f.doc.getElementById('eko-confirma');
+    const txt = cx ? cx.innerHTML : '';
+    ok(/2 etiquetas bipadas/.test(txt) && /49\.5 kg/.test(txt), `B3 ${aba}: a confirmação diz o que vai ao Bling (2 bipadas · 49.5 kg)`, `(${txt.replace(/<[^>]+>/g, ' ').slice(0, 160)})`);
+    ok(/1 etiqueta impressa e NÃO bipada será descartada/.test(txt), `B3 ${aba}: e avisa a etiqueta não bipada que será descartada`);
+    if (cx) cx.querySelector('#eko-confirma-nao').onclick();
+    await sleep(20);
+    const volta = f.doc.getElementById('eko-outro');
+    ok(!!volta && /AVISO DA TENTATIVA/.test(volta.innerHTML), `B3 ${aba}: "Voltar" volta à pergunta com o mesmo aviso`);
+    // Descartada (voltou à aba / teto): não finaliza nada.
+    if (volta) api(f).encerrar('mp-' + aba);
+    ok((await espera(p)) !== '__sem_resposta__' && finalizou === 0, `B1 ${aba}: pergunta descartada → a tela não finaliza nem continua nada`);
+  }
+
+  // F8/B6 (Recebimento/Retorno, função real): sessão DESTE frame sem nome fica no nome de quem entrou.
+  {
+    const f = novoFrame(novoStorage(), fetchFalso);
+    const posts = [];
+    const sessoes = [
+      { id: 50, tipo: 'recebimento', operador: null, inicio: null, etiquetas: [{ seq: 1, id: 'R1', status: 'bipada', peso: 10 }] },
+      { id: 51, tipo: 'retorno', operador: '', inicio: null, etiquetas: [{ seq: 1, id: 'R2', status: 'bipada', peso: 5 }] },
+    ];
+    f.win.fetch = async (url, o) => {
+      if (String(url).startsWith('/sessoes/abertas')) return { ok: true, json: async () => ({ ok: true, sessoes }) };
+      posts.push({ url: String(url), corpo: o && o.body });
+      return { ok: true, json: async () => ({ ok: true }) };
+    };
+    Object.assign(f.win, {
+      ABA_PIN: 'recebimento', URL_SESSAO: '/sessoes', MATERIAIS: {},
+      showToast: () => {}, atualizarEstadoBlocos: () => {}, atualizarQtd: () => {}, renderHistorico: () => {}, atualizarBadgesPai: () => {},
+      estado: { sessaoInfo: {}, itens: [], retItens: [] }, EKO_RESPONSAVEL: 'ANA',
+    });
+    let codigo;
+    try { codigo = ['completarResponsavel', 'restaurarSessoesAbertas'].map(n => extrairFuncao(html, n)).join('\n'); }
+    catch (e) { codigo = extrairFuncao(html, 'restaurarSessoesAbertas'); }
+    vm.runInContext(codigo, f.win);
+    await f.win.restaurarSessoesAbertas(); await sleep(20);
+    const info = f.win.estado.sessaoInfo;
+    ok(info.recebimento && info.recebimento.operador === 'ANA', 'F8: Recebimento sem nome → fica no nome de quem entrou (não pede a senha a cada troca de aba)', `(${JSON.stringify(info.recebimento)})`);
+    ok(posts.some(p => p.url === '/sessoes/50/operador' && /ANA/.test(p.corpo)), 'F8: e grava o nome na sessão no servidor');
+    ok(!posts.some(p => /\/sessoes\/51\//.test(p.url)) && !(info.retorno && info.retorno.operador), 'F8: a sessão sem nome da OUTRA aba (Retorno) não é tomada pelo Recebimento');
+  }
+  {
+    // A tela: consulta que falha lança erro (não vira "não há processo").
+    for (const [arq, fn, tipo] of [['mp-retirada.html', 'retiradaAbertaDe', 'retirada'], ['mp-recebimento-retorno.html', 'sessaoAbertaDe', 'recebimento']]) {
+      const f = novoFrame(novoStorage(), async () => ({ ok: false, status: 503, json: async () => ({ ok: false }) }));
+      Object.assign(f.win, { ABA_PIN: tipo });
+      vm.runInContext(extrairFuncao(fs.readFileSync(path.join(PUBLIC, arq), 'utf8'), fn), f.win);
+      let lancou = false;
+      try { await f.win[fn]({ nome: 'ANA' }); } catch (e) { lancou = true; }
+      ok(lancou, `F10: ${arq}: consulta com erro do servidor LANÇA (o componente mantém e tenta de novo), não diz "sem processo"`);
+    }
+  }
+}
+
 function testeTelas() {
   console.log('\n[D] telas (conferência estática)');
   const ler = f => fs.readFileSync(path.join(PUBLIC, f), 'utf8');
@@ -470,7 +712,7 @@ function testeTelas() {
   ok(r.indexOf('async function finalizar(') > 0 && /encerrouProcesso\(\)/.test(fimR), 'Retirada: finalizar encerra a senha');
   ok((r.match(/encerrouProcesso\(\);/g) || []).length >= 2, 'Retirada: finalizar e cancelar encerram a senha');
   ok(/aindaValida: retiradaAbertaDe/.test(r), 'Retirada: a senha guardada só vale com retirada aberta da pessoa');
-  const fr = r.slice(r.indexOf('async function retiradaAbertaDe'), r.indexOf('async function retiradaAbertaDe') + 700);
+  const fr = extrairFuncao(r, 'retiradaAbertaDe');
   ok(/\(s\.etiquetas \|\| \[\]\)\.length > 0/.test(fr), 'Retirada: sessão vazia no nome da pessoa não vale como processo aberto');
   ok(/EkoAcesso\.bloqueando\(\)\) \{ _bufKey = ''; return; \}/.test(r), 'Retirada: leitor não dá baixa com o teclado de senha na tela');
   ok(!/\$\{dono\}/.test(r) && !/\$\{eu\}/.test(r), 'Retirada: nome do operador escapado no aviso (showToast monta HTML)');
@@ -482,7 +724,7 @@ function testeTelas() {
   ok(/if \(finalizou\) encerrouProcesso\(\);/.test(rr), 'Recebimento/Retorno: enviar ao Bling encerra a senha');
   ok(/if \(sessaoId\) encerrouProcesso\(\);/.test(rr), 'Recebimento/Retorno: cancelar encerra a senha');
   ok(/aindaValida: sessaoAbertaDe/.test(rr), 'Recebimento/Retorno: a senha guardada só vale com sessão aberta da pessoa');
-  const fs2 = rr.slice(rr.indexOf('async function sessaoAbertaDe'), rr.indexOf('async function sessaoAbertaDe') + 700);
+  const fs2 = extrairFuncao(rr, 'sessaoAbertaDe');
   ok(/\(s\.etiquetas \|\| \[\]\)\.length > 0/.test(fs2), 'Recebimento/Retorno: sessão vazia não vale como processo aberto');
   ok(/EkoAcesso\.bloqueando\(\)\) \{ bipeBuffer = ''; return; \}/.test(rr), 'Recebimento/Retorno: leitor parado com o teclado de senha na tela');
   const rest = rr.slice(rr.indexOf('async function restaurarSessoesAbertas'), rr.indexOf('async function restaurarSessoesAbertas') + 600);
@@ -539,6 +781,7 @@ function encerrar() {
     await testeFrames();
     await testeContinuadas();
     await testeFrameVivo();
+    await testeSegundaRevisao();
     testeTelas();
     await subirServidor();
     const h = await (await fetch(BASE + '/healthcheck')).json();

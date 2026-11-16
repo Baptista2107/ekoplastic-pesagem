@@ -39,8 +39,13 @@
       return o;
     } catch (e) { return null; }
   }
+  // A mesma pessoa digitando de novo (a consulta ao servidor falhou e a senha foi
+  // pedida por segurança, achado F10) não perde a sessão de outro que continuava.
   function gravarLiberacao(chave, dados) {
-    try { sessionStorage.setItem(chaveLib(chave), JSON.stringify({ nome: dados.nome, id: dados.id, ts: Date.now() })); } catch (e) {}
+    const velha = lerLiberacao(chave);
+    const nova = { nome: dados.nome, id: dados.id, ts: Date.now() };
+    if (velha && velha.continuada != null && velha.nome === dados.nome) nova.continuada = velha.continuada;
+    try { sessionStorage.setItem(chaveLib(chave), JSON.stringify(nova)); } catch (e) {}
   }
   // Sessão de OUTRA pessoa que esta pessoa escolheu continuar (16/11/2026,
   // Gustavo: "saiu voltou mas é a mesma operação segue no nome de quem tava").
@@ -56,31 +61,67 @@
   // Última chamada de exigir() por chave: encerrar() pede a senha de novo e
   // chama o mesmo aoEntrar (a tela já iniciada só troca o responsável).
   const PEDIDOS = {};
-  // Conferências de liberação em andamento (aindaValida): enquanto não se sabe
-  // quem está na tela, ela fica bloqueada para o leitor, como com o teclado.
-  let conferindo = 0;
-  const TETO_CONFERIR_MS = 8000;   // servidor travado: desiste e pede a senha
   function escHtml(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
   }
-  // opc.aindaValida(lib) com teto de tempo; enquanto confere, o leitor fica
-  // bloqueado. Erro ou demora = não vale (pede a senha).
-  function conferirValida(lib, opc) {
-    conferindo++;
-    let teto;
-    const limite = new Promise((_, nao) => { teto = setTimeout(() => nao(new Error('demorou')), TETO_CONFERIR_MS); });
-    return Promise.race([Promise.resolve().then(() => opc.aindaValida(lib)), limite])
-      .then(vale => !!vale, () => false)
-      .then(vale => { clearTimeout(teto); conferindo--; return vale; });
+
+  // ── Leitor bloqueado × decisão pendente (16/11/2026, 2ª revisão) ──────────
+  // São coisas diferentes e antes estavam no mesmo contador:
+  //  · LEITOR BLOQUEADO: enquanto não se sabe quem está na tela (conferindo a
+  //    senha guardada) ou a tela ainda restaura a sessão aberta. Sempre com
+  //    teto de tempo: leitor travado na fábrica não pode acontecer (achado B4).
+  //  · DECISÃO PENDENTE: caixa "sessão de outro" ou confirmação aberta. Ela é
+  //    de QUEM ENTROU. Se a pessoa sai da aba sem responder, quem volta pode
+  //    ser outra: a decisão é descartada e a senha é pedida (achado B1 — antes
+  //    o próximo respondia a caixa no nome de quem tinha entrado).
+  // Teto (ms) da conferência e da restauração. window.EKO_TETO_CONFERIR_MS só
+  // existe nos testes.
+  function tetoMs() {
+    const t = window.EKO_TETO_CONFERIR_MS;
+    return (typeof t === 'number' && t > 0) ? t : 8000;
   }
-  // Algo na tela que já pede atenção (teclado, caixa "sessão de outro" ou uma
-  // conferência em curso): não reconferir por cima.
-  function ocupado() {
-    return conferindo > 0 || !!(document.getElementById('eko-acesso') || document.getElementById('eko-outro')
-      || document.getElementById('eko-confirma'));
+  let conferindo = 0;      // conferências da senha guardada (aindaValida) em curso
+  let segurando = 0;       // restaurações seguradas pela tela (segurar)
+  let cobrindo = 0;        // restaurações que ainda cobrem a tela (até abrir a caixa)
+  const COBERTURAS = new Set();
+  const DECISOES = new Map();   // id da caixa → fim(valor)
+  const CANCELADO = 'cancelado';
+  // Película transparente sobre a tela enquanto conferindo/restaurando (achado
+  // B2): o leitor já ficava parado, mas um toque em Imprimir ou em adicionar
+  // sacos abria sessão no nome de quem estava antes. Fica ABAIXO do teclado e
+  // das caixas; sai quando a caixa de decisão abre ou no teto.
+  function pelicula() {
+    if (!document.body) return;
+    const precisa = conferindo > 0 || cobrindo > 0;
+    let el = document.getElementById('eko-pelicula');
+    if (precisa && !el) {
+      el = document.createElement('div');
+      el.id = 'eko-pelicula';
+      el.style.cssText = 'position:fixed; inset:0; z-index:99990; background:transparent; cursor:progress;';
+      document.body.appendChild(el);
+    } else if (!precisa && el) el.remove();
+  }
+  function temCaixa() {
+    return DECISOES.size > 0 || !!(document.getElementById('eko-outro') || document.getElementById('eko-confirma'));
+  }
+  function tecladoAberto() { return !!document.getElementById('eko-acesso'); }
+  // opc.aindaValida(lib) com teto de tempo → 'vale' | 'nao' (não há processo
+  // dela) | 'falha' (erro ou demora na consulta: não se sabe — achado F10).
+  function conferirValida(lib, opc) {
+    conferindo++; pelicula();
+    let teto;
+    const limite = new Promise((_, nao) => { teto = setTimeout(() => nao(new Error('demorou')), tetoMs()); });
+    return Promise.race([Promise.resolve().then(() => opc.aindaValida(lib)), limite])
+      .then(vale => (vale ? 'vale' : 'nao'), () => 'falha')
+      .then(r => { clearTimeout(teto); conferindo--; pelicula(); return r; });
+  }
+  function descartarDecisoes() {
+    for (const fim of [...DECISOES.values()]) fim(CANCELADO);
+    for (const id of ['eko-outro', 'eko-confirma']) { const el = document.getElementById(id); if (el) el.remove(); }
   }
   function pedirDeNovo(chave) {
     const p = PEDIDOS[chave];
+    descartarDecisoes();
     window.EkoAcesso.sair(chave);
     if (p) montar(p.tela, p.aoEntrar, p.opc);
   }
@@ -90,23 +131,32 @@
   // recarregar. reconferir() roda ao voltar à aba (materia-prima.html chama);
   // verificarTeto() roda de minuto em minuto. Só nas telas com aindaValida
   // (os frames da MP): PA e Resíduos seguem como antes.
-  function reconferir() {
-    const pend = [];
-    for (const chave of Object.keys(PEDIDOS)) {
-      const p = PEDIDOS[chave];
-      if (typeof p.opc.aindaValida !== 'function' || ocupado()) continue;
-      const lib = lerLiberacao(chave);   // passou de 8 h → null
-      if (!lib) { pedirDeNovo(chave); continue; }
-      pend.push(conferirValida(lib, p.opc).then(vale => { if (!vale && !ocupado()) pedirDeNovo(chave); }));
-    }
-    return Promise.all(pend);
+  const REFAZER = new Set();    // conferência que FALHOU: tenta de novo no relógio
+  function reconferirChave(chave) {
+    const p = PEDIDOS[chave];
+    if (!p || typeof p.opc.aindaValida !== 'function') return Promise.resolve();
+    if (tecladoAberto() || p.conferindo) return Promise.resolve();   // já pedindo a senha / já conferindo
+    REFAZER.delete(chave);
+    // Caixa sem resposta é de quem entrou antes (B1): quem volta digita a senha.
+    if (temCaixa()) { pedirDeNovo(chave); return Promise.resolve(); }
+    const lib = lerLiberacao(chave);   // passou de 8 h → null
+    if (!lib) { pedirDeNovo(chave); return Promise.resolve(); }
+    p.conferindo = true;
+    return conferirValida(lib, p.opc).then(r => {
+      p.conferindo = false;
+      if (tecladoAberto()) return;
+      if (r === 'falha') { REFAZER.add(chave); return; }   // não se sabe: mantém e confere no próximo minuto
+      if (r === 'nao' || temCaixa()) pedirDeNovo(chave);
+    });
   }
+  function reconferir() { return Promise.all(Object.keys(PEDIDOS).map(reconferirChave)); }
   function verificarTeto() {
     for (const chave of Object.keys(PEDIDOS)) {
       const p = PEDIDOS[chave];
-      // Caixa "sessão de outro" aberta: espera a resposta (confere no próximo minuto).
-      if (typeof p.opc.aindaValida !== 'function' || ocupado()) continue;
-      if (window.EKO_RESPONSAVEL && !lerLiberacao(chave)) pedirDeNovo(chave);
+      if (typeof p.opc.aindaValida !== 'function' || tecladoAberto()) continue;
+      // Passou de 8 h: pede a senha mesmo com uma caixa sem resposta na tela.
+      if (window.EKO_RESPONSAVEL && !lerLiberacao(chave)) { pedirDeNovo(chave); continue; }
+      if (REFAZER.has(chave)) reconferirChave(chave);
     }
   }
   let timerTeto = null;
@@ -145,6 +195,13 @@
     const chave = opc.chave || tela;
     if (document.getElementById('eko-acesso')) return;   // já aberto (clique duplo em encerrar)
     css();
+    // O teclado agora também abre com a tela em uso (voltar à aba, teto de 8 h):
+    // tira o foco do campo onde a pessoa estava (ex.: peso bruto), senão os
+    // números da senha ou de um bipe entravam também no campo (achado B5).
+    try {
+      const ativo = document.activeElement;
+      if (ativo && ativo !== document.body && typeof ativo.blur === 'function') ativo.blur();
+    } catch (e) {}
     const nomeTela = escHtml(opc.nomeTela || NOMES_TELA[tela] || tela);
     const ov = document.createElement('div');
     ov.id = 'eko-acesso';
@@ -218,6 +275,9 @@
       // Ouve só o SEU teclado: depois de encerrar, monta-se outro, e este não
       // pode mandar a senha de novo (antes, a senha ia duas vezes ao servidor).
       if (!ov.isConnected) { document.removeEventListener('keydown', ouvir); return; }
+      // A tecla é do teclado de senha: não vai para nenhum campo da tela (B5).
+      if (ev.key && (ev.key.length === 1 || ev.key === 'Enter' || ev.key === 'Backspace')
+          && typeof ev.preventDefault === 'function') ev.preventDefault();
       if (ev.key && ev.key.length === 1 && /[A-Za-z]/.test(ev.key)) { bipe = true; pin = ''; pintar(); return; }
       if (ev.key === 'Enter') {
         if (bipe) { bipe = false; pin = ''; pintar(); msg('Isso foi um bipe. Digite a sua senha primeiro.'); return; }
@@ -232,21 +292,43 @@
   // Caixa "sessão aberta por outra pessoa" (11/11/2026, Gustavo: "sim, abre a
   // opção"). O servidor nunca troca o nome gravado na sessão: quem continua,
   // continua no nome de quem abriu. A pessoa escolhe sabendo disso.
-  function perguntarSessaoDeOutro(info) {
+  // Caixa de decisão (sessão de outro / confirmação). Registrada em DECISOES:
+  // outra caixa no lugar, voltar à aba ou o teto de 8 h respondem 'cancelado'
+  // à caixa velha — a promessa nunca fica sem resposta (achado B4: o leitor
+  // ficava travado até recarregar). Abrir a caixa descobre a tela (película).
+  function abrirDecisao(id, html, botoes) {
     return new Promise(resolve => {
       css();
-      const velho = document.getElementById('eko-outro');
+      const fimVelho = DECISOES.get(id);
+      if (fimVelho) fimVelho(CANCELADO);
+      const velho = document.getElementById(id);
       if (velho) velho.remove();
+      for (const descobrir of [...COBERTURAS]) descobrir();
       const ov = document.createElement('div');
-      ov.id = 'eko-outro';
+      ov.id = id;
       ov.style.cssText = 'position:fixed; inset:0; z-index:99998; background:rgba(10,17,25,0.94);'
         + 'display:flex; align-items:center; justify-content:center; padding:20px;'
         + 'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;';
+      ov.innerHTML = html;
+      document.body.appendChild(ov);
+      const fim = valor => {
+        if (DECISOES.get(id) !== fim) return;   // já respondida
+        DECISOES.delete(id);
+        ov.remove();
+        resolve(valor);
+      };
+      DECISOES.set(id, fim);
+      for (const [sel, valor] of botoes) ov.querySelector(sel).onclick = () => fim(valor);
+    });
+  }
+
+  // Resolve 'encerrar' | 'continuar' | 'cancelado' (descartada: ver abrirDecisao).
+  function perguntarSessaoDeOutro(info) {
       const desde = info.desde ? new Date(info.desde) : null;
       const quando = desde && !isNaN(desde)
         ? desde.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
       const itens = Number(info.itens) || 0;
-      ov.innerHTML =
+      const html =
         '<div style="width:100%; max-width:440px; background:#0f1626; border:1px solid #f59e0b; border-radius:18px; padding:26px 24px; text-align:center; color:#eef4fb;">' +
           '<div style="font-size:40px; line-height:1; margin-bottom:8px;">⚠️</div>' +
           '<div style="font-size:19px; font-weight:900; margin-bottom:8px;">' + escHtml(info.processo || 'Sessão') + ' aberta por ' + escHtml(info.operador) + '</div>' +
@@ -258,28 +340,16 @@
           '<button id="eko-outro-encerrar" style="width:100%; padding:15px; border:none; border-radius:12px; background:#00ff9d; color:#052916; font-size:15px; font-weight:900; cursor:pointer; margin-bottom:10px;">Encerrar a de ' + escHtml(info.operador) + ' e começar a minha</button>' +
           '<button id="eko-outro-continuar" style="width:100%; padding:13px; border:1.5px solid #2a3a52; border-radius:12px; background:#131f30; color:#cbd5e8; font-size:14px; font-weight:800; cursor:pointer;">Continuar no nome de ' + escHtml(info.operador) + '</button>' +
         '</div>';
-      document.body.appendChild(ov);
-      const fim = escolha => { ov.remove(); resolve(escolha); };
-      ov.querySelector('#eko-outro-encerrar').onclick = () => fim('encerrar');
-      ov.querySelector('#eko-outro-continuar').onclick = () => fim('continuar');
-    });
+      return abrirDecisao('eko-outro', html, [['#eko-outro-encerrar', 'encerrar'], ['#eko-outro-continuar', 'continuar']]);
   }
 
   // Confirmação antes de encerrar a sessão de OUTRA pessoa (16/11/2026,
   // Gustavo, achado F6: no Recebimento/Retorno um toque em "Encerrar a de X"
   // mandava ao Bling, sem perguntar, o recebimento pela metade de outro; a
-  // Retirada já confirmava). Resolve true só no botão de confirmar.
+  // Retirada já confirmava). Resolve true só no botão de confirmar, false no
+  // "Voltar" e 'cancelado' quando a caixa é descartada.
   function confirmar(info) {
-    return new Promise(resolve => {
-      css();
-      const velho = document.getElementById('eko-confirma');
-      if (velho) velho.remove();
-      const ov = document.createElement('div');
-      ov.id = 'eko-confirma';
-      ov.style.cssText = 'position:fixed; inset:0; z-index:99998; background:rgba(10,17,25,0.94);'
-        + 'display:flex; align-items:center; justify-content:center; padding:20px;'
-        + 'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;';
-      ov.innerHTML =
+    const html =
         '<div style="width:100%; max-width:440px; background:#0f1626; border:1px solid #ef4444; border-radius:18px; padding:26px 24px; text-align:center; color:#eef4fb;">' +
           '<div style="font-size:40px; line-height:1; margin-bottom:8px;">📤</div>' +
           '<div style="font-size:19px; font-weight:900; margin-bottom:8px;">' + escHtml(info.titulo) + '</div>' +
@@ -287,11 +357,7 @@
           '<button id="eko-confirma-sim" style="width:100%; padding:15px; border:none; border-radius:12px; background:#ef4444; color:#fff; font-size:15px; font-weight:900; cursor:pointer; margin-bottom:10px;">' + escHtml(info.botao || 'Confirmar') + '</button>' +
           '<button id="eko-confirma-nao" style="width:100%; padding:13px; border:1.5px solid #2a3a52; border-radius:12px; background:#131f30; color:#cbd5e8; font-size:14px; font-weight:800; cursor:pointer;">Voltar</button>' +
         '</div>';
-      document.body.appendChild(ov);
-      const fim = sim => { ov.remove(); resolve(sim); };
-      ov.querySelector('#eko-confirma-sim').onclick = () => fim(true);
-      ov.querySelector('#eko-confirma-nao').onclick = () => fim(false);
-    });
+    return abrirDecisao('eko-confirma', html, [['#eko-confirma-sim', true], ['#eko-confirma-nao', false]]);
   }
 
   window.EkoAcesso = {
@@ -319,24 +385,42 @@
       // opc.aindaValida(lib) → Promise<bool>: a tela confirma que a liberação
       // ainda vale (na MP: há processo aberto no nome dessa pessoa). Sem
       // processo, a pessoa saiu sem fazer nada: pede a senha de novo — senão
-      // quem chega depois entra no nome dela. Erro na conferência = pede a senha.
+      // quem chega depois entra no nome dela. Erro na conferência (a tela
+      // acabou de abrir, não se sabe quem está ali) = pede a senha também, mas
+      // a liberação fica: se for a mesma pessoa, segue a sessão que continuava.
       if (typeof opc.aindaValida !== 'function') return seguir();
-      conferirValida(lib, opc).then(vale => {
-        if (vale) seguir(); else { window.EkoAcesso.sair(chave); pedirSenha(); }
+      conferirValida(lib, opc).then(r => {
+        if (r === 'vale') seguir();
+        else { if (r === 'nao') window.EkoAcesso.sair(chave); pedirSenha(); }
       });
     },
-    // Teclado de senha ou caixa "sessão de outro" na tela: a tela não deve
-    // aceitar bipe nem abrir sessão (ninguém está identificado ainda).
-    bloqueando() { return ocupado(); },
+    // Teclado de senha, caixa de decisão, conferência ou restauração em curso:
+    // a tela não deve aceitar bipe nem abrir sessão.
+    bloqueando() { return tecladoAberto() || temCaixa() || conferindo > 0 || segurando > 0; },
     // Segura o leitor até a promessa terminar (16/11/2026, achado F5): entre a
     // senha aceita e a caixa "sessão de outro", a tela ainda está restaurando a
     // sessão aberta; um bipe nesse intervalo abria uma sessão nova no nome de
     // quem entrou. As telas passam aqui o "restaurar + conferir sessão de outro".
+    // Teto (B4): servidor que aceita e não responde não trava o leitor — solta
+    // em tetoMs(); com caixa de decisão aberta, a própria caixa segura e o teto
+    // espera ela fechar. A película cobre a tela só até a caixa abrir.
     segurar(promessa) {
-      conferindo++;
-      const soltar = () => { conferindo--; };
+      segurando++; cobrindo++; pelicula();
+      let solto = false, descoberto = false, teto = null;
+      const descobrir = () => {
+        if (descoberto) return;
+        descoberto = true; cobrindo--; COBERTURAS.delete(descobrir); pelicula();
+      };
+      COBERTURAS.add(descobrir);
+      const soltar = () => {
+        if (solto) return;
+        solto = true; clearTimeout(teto); segurando--; descobrir();
+      };
+      const armar = () => { teto = setTimeout(() => { if (DECISOES.size) armar(); else soltar(); }, tetoMs()); };
+      armar();
       return Promise.resolve(promessa).then(v => { soltar(); return v; }, e => { soltar(); throw e; });
     },
+    CANCELADO,
     reconferir,
     verificarTeto,
     // Encerra a liberação (trocar de responsável / fim de turno).
@@ -350,6 +434,7 @@
     // liberação e mostra o teclado de novo, sem recarregar a tela (o aviso de
     // "enviado" continua visível por baixo).
     encerrar(chave) {
+      descartarDecisoes();   // caixa vencida não fica por baixo do teclado (B4)
       this.sair(chave);
       const p = PEDIDOS[chave];
       if (p) montar(p.tela, p.aoEntrar, p.opc);

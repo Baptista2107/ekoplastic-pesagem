@@ -3963,7 +3963,16 @@ async function restaurarSessoesAbertas() {
       // estado.itens / retItens usam unshift (mais recente no topo)
       // Como o servidor devolveu por seq_sessao crescente, invertemos.
       const itensTopo = itens.slice().reverse();
-      estado.sessaoInfo[s.tipo] = { operador: s.operador || null, inicio: s.inicio || null, itens: itens.length };
+      // Sessão DESTE frame sem nome (aberta antes da senha por frame, ou com o
+      // componente de acesso fora) fica no nome de quem entrou, como na
+      // Retirada (achado F8/B6): sem nome, ela nunca contava como "processo
+      // aberto" da pessoa e a senha era pedida a cada troca de aba.
+      let operador = (s.operador && String(s.operador).trim()) || null;
+      if (!operador && s.tipo === ABA_PIN && window.EKO_RESPONSAVEL) {
+        operador = window.EKO_RESPONSAVEL;
+        completarResponsavel(s);
+      }
+      estado.sessaoInfo[s.tipo] = { operador, inicio: s.inicio || null, itens: itens.length };
 
       if (s.tipo === 'recebimento') {
         estado.sessaoRecebimento = s.id;
@@ -4102,6 +4111,34 @@ function encerrouProcesso() {
   if (window.EkoAcesso && EkoAcesso.encerrar) EkoAcesso.encerrar(CHAVE_PIN);
 }
 
+// Grava quem entrou numa sessão aberta SEM nome. O servidor só preenche se
+// ainda estiver vazia — nunca troca quem já está gravado (igual à Retirada).
+async function completarResponsavel(sessao) {
+  if (!sessao || !window.EKO_RESPONSAVEL) return;
+  if (sessao.operador && String(sessao.operador).trim()) return;
+  try {
+    await fetch(URL_SESSAO + '/' + sessao.id + '/operador', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ operador: window.EKO_RESPONSAVEL }),
+    });
+  } catch (e) { console.warn('Não gravou o responsável na sessão #' + sessao.id + ':', e.message); }
+}
+
+// Texto da confirmação de "Encerrar a de X" (16/11/2026, achado B3): diz o que
+// vai ao Bling (bipadas e já retiradas, a mesma regra do finalizar) e o que
+// será DESCARTADO (impressa e não bipada) — antes mostrava só o total de itens.
+function textoEncerrarDeOutro() {
+  const lista = (ABA_PIN === 'retorno' ? estado.retItens : estado.itens) || [];
+  const vao = lista.filter(it => it.status === 'bipada' || it.status === 'consumida');
+  const descartadas = lista.filter(it => it.status === 'aguardando_bipe').length;
+  const kg = vao.reduce((s, it) => s + (Number(it.peso) || 0), 0);
+  let t = vao.length
+    ? `Vai ao Bling agora: ${vao.length} ${vao.length === 1 ? 'etiqueta bipada' : 'etiquetas bipadas'} · ${kg.toFixed(1)} kg.`
+    : 'Nenhuma etiqueta bipada: não há o que enviar ao Bling.';
+  if (descartadas) t += ` ⚠ ${descartadas} ${descartadas === 1 ? 'etiqueta impressa e NÃO bipada será descartada' : 'etiquetas impressas e NÃO bipadas serão descartadas'}.`;
+  return t + ' Depois de enviado, não dá para desfazer por aqui.';
+}
+
 // Sessão do frame aberta no nome de OUTRA pessoa (o servidor nunca troca o
 // nome gravado): continuar no nome dela ou encerrar primeiro.
 async function conferirSessaoDeOutro(aviso) {
@@ -4119,6 +4156,9 @@ async function conferirSessaoDeOutro(aviso) {
   }
   const escolha = await EkoAcesso.perguntarSessaoDeOutro({
     processo, operador: dono, desde: info.inicio, itens: info.itens, aviso });
+  // Caixa descartada (a pessoa saiu da aba sem responder; quem voltou digita a
+  // senha dele e a pergunta é refeita para ele): não faz nada aqui.
+  if (escolha === 'cancelado') return;
   if (escolha === 'continuar') {
     if (EkoAcesso.continuar) EkoAcesso.continuar(CHAVE_PIN, estado[key]);
     showToast('info', '👤', `Continuando o ${processo.toLowerCase()} de ${dono} — fica no nome dele`, 5000);
@@ -4126,15 +4166,15 @@ async function conferirSessaoDeOutro(aviso) {
   }
   // 16/11/2026 (Gustavo, achado F6): encerrar = finalizar e mandar ao Bling o
   // processo de outra pessoa. Pede confirmação, como a Retirada; desistiu,
-  // volta à pergunta "continuar ou encerrar".
+  // volta à pergunta "continuar ou encerrar" (com o mesmo aviso).
   if (EkoAcesso.confirmar) {
-    const n = Number(info.itens) || 0;
     const segue = await EkoAcesso.confirmar({
       titulo: `Encerrar o ${processo.toLowerCase()} de ${dono}?`,
-      texto: `Ele será finalizado e enviado ao Bling agora (${n} ${n === 1 ? 'item' : 'itens'}). Depois de enviado, não dá para desfazer por aqui.`,
+      texto: textoEncerrarDeOutro(),
       botao: 'Sim, encerrar e enviar ao Bling',
     });
-    if (!segue) return conferirSessaoDeOutro();
+    if (segue === 'cancelado') return;
+    if (!segue) return conferirSessaoDeOutro(aviso);
   }
   estado.encerrandoDeOutro = true;
   try { await finalizar(); } finally { estado.encerrandoDeOutro = false; }
@@ -4195,8 +4235,11 @@ function mostrarResponsavel() {
 // pessoa. Entrou e saiu sem fazer nada (foi à Extrusão): pede a senha de novo.
 async function sessaoAbertaDe(lib) {
   const r = await fetch('/sessoes/abertas?tipo=' + ABA_PIN);
-  if (!r.ok) return false;
+  // Consulta que falha NÃO é "não há processo" (achado F10): o componente
+  // mantém quem está e confere de novo no minuto seguinte.
+  if (!r.ok) throw new Error('consulta das sessões abertas: HTTP ' + r.status);
   const d = await r.json();
+  if (!d || !d.ok) throw new Error('consulta das sessões abertas falhou');
   const nome = String(lib.nome || '').trim().toUpperCase();
   // 16/11/2026 (Gustavo): escolheu continuar a sessão de outra pessoa, saiu e
   // voltou: enquanto AQUELA sessão segue aberta, a senha ainda vale.
