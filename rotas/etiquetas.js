@@ -147,7 +147,10 @@ async function rotasEtiquetas(req, res, parsed, pathname) {
 
     // Pedido de retirada do painel (06/11/2026): bag que não bate com nenhum
     // pedido aberto só sai com motivo (em produção) — ver lib/retirada-pedidos.
-    await pedidosRetirada.atualizar();
+    // SEM await (16/11/2026): daqui até a transação não pode haver espera,
+    // senão o 2º bipe do mesmo bag passa pela conferência acima enquanto o 1º
+    // espera a VPS, e os dois gravam uma S (baixa dupla no Bling).
+    pedidosRetirada.atualizarFundo();
     // Produto trocado: a retirada sai como o produto NOVO (é ele que tem
     // saldo no Bling). A etiqueta original fica como foi impressa.
     const lida = aplicarSubstituicao(orig);
@@ -166,7 +169,13 @@ async function rotasEtiquetas(req, res, parsed, pathname) {
     const idVirt = 'S' + String(seqRet).padStart(7, '0');
     const seqSessaoRet = proximoSeqSessao(sessaoIdRet);
     let bagLiberado = null;
+    let jaRetirada = null;
     const tr = makeTransaction(() => {
+      // Rede de segurança (16/11/2026): confere DENTRO da transação se o bag
+      // já tem retirada ativa — qualquer espera que volte a aparecer entre a
+      // conferência lá de cima e aqui não pode gerar 2 S do mesmo bag.
+      jaRetirada = db.prepare(`SELECT id, hora_impressao FROM etiquetas WHERE tipo='retirada' AND ref_id = ? AND status != 'cancelada' ORDER BY hora_impressao DESC LIMIT 1`).get(origId);
+      if (jaRetirada) return;
       dbStmts.insertEtiqueta.run({
         id:             idVirt,
         seq:            seqRet,
@@ -203,6 +212,11 @@ async function rotasEtiquetas(req, res, parsed, pathname) {
           .run(JSON.stringify(decisao.registro), idVirt);
     });
     tr();
+    if (jaRetirada) {
+      return jsonErr(res, 409, `Etiqueta ${origId} já foi retirada`, {
+        ja_consumida: true, etiqueta: aplicarSubstituicao(orig), consumo: jaRetirada,
+      });
+    }
     if (decisao.registro && decisao.registro.fora) {
       pedidosRetirada.enfileirarFora({
         etiqueta_id: origId, sessao_id: sessaoIdRet, operador: sessao.operador || null,

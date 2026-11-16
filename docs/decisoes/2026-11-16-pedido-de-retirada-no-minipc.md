@@ -62,6 +62,45 @@ fora do pedido abre o painel de motivo, que registra e deixa sair.
   - clique no Chromium com servidor isolado e VPS falsa, em 1366, 390 e 360:
     25 de 25 com o conserto e 18 de 25 com a regra antiga.
 
+## Revisão de 16/11 (tarde): o que mudou depois dela
+O revisor leu o ramo e achou 5 defeitos; os 5 foram confirmados no código e
+corrigidos, cada um com teste que falha sem a correção.
+
+- **Bag com duas saídas (baixa dupla no Bling).** O bipe esperava a VPS (até
+  3 s) entre "o bag já saiu?" e a gravação; o 2º bipe do mesmo bag passava pela
+  conferência e os dois gravavam uma S. Agora o bipe **não espera a VPS**: decide
+  com a lista guardada (a tela renova a cada 15 s) e a busca roda em segundo
+  plano. E, dentro da gravação, confere de novo se o bag já tem saída ativa.
+  Consequência: um pedido criado no painel vale no Mini PC quando a lista
+  renova (até ~15 s), não no bipe seguinte.
+- **Fila de motivos travada.** A tela aceitava 300 caracteres e a VPS recusa
+  acima de 200; o item recusado ficava na frente da fila e nenhum motivo seguinte
+  chegava. Agora os limites são os da VPS (200, etiqueta R/S/T, pedido em texto),
+  e a recusa permanente (400 que não seja o teto por hora) sai da fila e fica
+  guardada em `retirada_fora_recusados`, com log. Teto por hora e VPS fora
+  continuam na fila.
+- **Dois bipes seguidos, o 1º sumia.** A janela de motivo do 2º tomava o lugar da
+  do 1º, que nunca recebia resposta: o bag saía do barracão sem registro. Agora a
+  tela trata **um bipe por vez** (o 2º espera o 1º, inclusive a resposta do
+  motivo).
+- **Teste sem nenhum pedido aberto** (decisão de 16/11, o Gustavo delegou o
+  "como"): em modo teste, com a lista vazia, o bag sai como sempre saiu — **sem
+  janela de motivo e sem aviso por bag**. O aviso juntado de "retirada sem pedido"
+  da VPS (de 15 em 15 min) já conta essas saídas. A janela só abre quando há
+  pedido aberto e o bag não é de nenhum. Antes, cada bipe com a lista vazia (o
+  caso mais comum hoje) virava um Telegram ao Willian e o teto de 30 por hora
+  travava a fila. Em **produção** nada muda: sem pedido não sai.
+- **Lista estranha parava a retirada.** Pedido `null` na lista, ou o último
+  retorno guardado sem a forma certa, fazia todo bipe dar erro 500 por até
+  30 min. Agora o que não é pedido é ignorado, e qualquer erro na conta deixa o
+  bag sair sem registro (com log).
+- Menor: a conta local só lê as saídas a partir de um dia antes do pedido aberto
+  mais antigo (antes lia todas, desde sempre, 2 vezes por bipe).
+
+Testes: `testes/retirada-pedidos.js` [9]-[12] (13 falhas no código anterior,
+88 de 88 com a correção); clique no Chromium com dois bipes seguidos (vermelho
+na tela anterior, 30 de 30 com a nova).
+
 ## Em aberto (não corrigido)
 - **Relógio do Mini PC atrás do da VPS:** a VPS só conta a S impressa depois da
   criação do pedido. Se o relógio do Mini PC estiver atrasado, a VPS não conta a
@@ -70,3 +109,8 @@ fora do pedido abre o painel de motivo, que registra e deixa sair.
   atualizar `bags[].saiu`, ele entra como "fora do pedido".
 - **Junção com a senha por frame:** o ramo `ativar-pin-por-frame` também mexe em
   `public/mp-retirada.html`. A junção é feita antes de subir.
+- **Lote com troca de produto (menor):** no passo de lote, o Mini PC compara o
+  bag de origem e a VPS compara a S (produto novo); podem atribuir o bag a
+  pedidos diferentes. Afeta pouco.
+- **Régua única:** `norm` (passos de lote/produto) e `nVps`/`chaveProduto`
+  (passo de kg) ainda são duas réguas; vale juntar numa só, igual à da VPS.

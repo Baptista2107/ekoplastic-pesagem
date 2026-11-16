@@ -51,27 +51,55 @@ const lerDb = (sql, ...p) => {
 };
 
 // ── A VPS DE MENTIRA ─────────────────────────────────────────────────
-const VPS = { no_ar: true, modo: 'teste', pedidos: [], recebidos: [] };
+// Valida o "fora do pedido" como a VPS de verdade (bling-claude,
+// mp_pedido_retirada.registrar_fora_do_pedido): etiqueta [RST]+7, motivo
+// obrigatório ≤ 200, pedido_id texto ≤ 30 ou null, teto de 30 por hora,
+// idempotente pela etiqueta. Até 16/11 respondia ok para qualquer corpo, e o
+// motivo de 300 caracteres que travava a fila passava verde.
+const VPS = { no_ar: true, modo: 'teste', pedidos: [], recebidos: [], recusados: [],
+              atraso_ms: 0, teto_hora: 30, aceitos_hora: 0, ja: new Set() };
+function validarFora(b) {
+  if (typeof b.etiqueta_id !== 'string' || !/^[RST]\d{7}$/.test(b.etiqueta_id)) return 'etiqueta inválida';
+  const motivo = typeof b.motivo === 'string' ? b.motivo.trim() : '';
+  if (!motivo) return 'motivo é obrigatório';
+  if (motivo.length > 200) return 'motivo com mais de 200 caracteres';
+  if (b.pedido_id != null && (typeof b.pedido_id !== 'string' || b.pedido_id.length > 30)) return 'pedido inválido';
+  return null;
+}
 function subirVps() {
   return new Promise(resolve => {
     vps = http.createServer((r, res) => {
       let corpo = '';
       r.on('data', c => corpo += c);
-      r.on('end', () => {
+      r.on('end', async () => {
         const responder = (st, obj) => { res.writeHead(st, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); };
         if (!VPS.no_ar) return responder(503, { ok: false, erro: 'fora do ar' });
-        if (r.method === 'GET' && r.url === '/api/mp/retirada/abertos')
+        if (r.method === 'GET' && r.url === '/api/mp/retirada/abertos') {
+          if (VPS.atraso_ms) await sleep(VPS.atraso_ms);
           return responder(200, { ok: true, modo: VPS.modo, pedidos: VPS.pedidos });
+        }
         if (r.method === 'POST' && r.url === '/api/mp/retirada/fora-do-pedido') {
           let b = {}; try { b = JSON.parse(corpo); } catch (e) {}
+          const erro = validarFora(b);
+          if (erro) { VPS.recusados.push({ b, erro }); return responder(400, { ok: false, erro }); }
+          if (VPS.ja.has(b.etiqueta_id)) { VPS.recebidos.push(b); return responder(200, { ok: true, novo: false }); }
+          if (VPS.aceitos_hora >= VPS.teto_hora) return responder(400, { ok: false, erro: 'muitos registros na última hora' });
+          VPS.aceitos_hora++; VPS.ja.add(b.etiqueta_id);
           VPS.recebidos.push(b);
-          return responder(200, { ok: true });
+          return responder(200, { ok: true, novo: true });
         }
         return responder(404, { ok: false });
       });
     });
     vps.listen(0, '127.0.0.1', () => { portaVps = vps.address().port; resolve(); });
   });
+}
+// Troca a lista da VPS e renova a do Mini PC (o que a tela faz a cada 15 s):
+// desde 16/11 o bipe não espera a VPS — decide com a lista guardada.
+async function pedidosVps(lista, modo) {
+  VPS.pedidos = lista;
+  if (modo) VPS.modo = modo;
+  await req('GET', '/retirada/pedidos');
 }
 const pedido = (id, lote, n, extra = {}) => ({
   id, criado_em: '2026-11-06T10:00:00-03:00', autor_nome: 'Willian', material_key: 'GBD', cor: 'Preto',
@@ -118,7 +146,7 @@ const registro = virtId => { const l = lerDb('SELECT pedido_retirada FROM etique
     await subirServidor();
     // [0] Chave local desligada (padrão): nem pergunta à VPS, nada muda.
     await req('POST', '/config', { vps_sacoleiras_url: `http://127.0.0.1:${portaVps}/api/sacoleiras/agora` });
-    VPS.modo = 'producao'; VPS.pedidos = [];
+    VPS.modo = 'producao'; VPS.pedidos = []; await req('GET', '/retirada/pedidos');
     console.log('[0] Chave local desligada (padrão de quem atualiza o sistema)');
     const gd0 = await req('GET', '/retirada/pedidos');
     ok(gd0.status === 200 && gd0.body.desligado === true && gd0.body.pedidos.length === 0, 'a tela recebe "desligado"', gd0.body);
@@ -149,11 +177,14 @@ const registro = virtId => { const l = lerDb('SELECT pedido_retirada FROM etique
     ok(c0.status === 200, 'o bag sai normalmente', c0.body);
     ok(c0.body.etiqueta_virtual && registro(c0.body.etiqueta_virtual.id) === null, 'e a retirada fica sem registro de pedido');
 
-    console.log('\n[2] Modo TESTE, pedido de 2 bags do lote 021026');
+    console.log('\n[2] Modo TESTE, pedido de 2 bags do lote 021026 (e outro pedido aberto, P1x)');
     await req('POST', '/config', { vps_sacoleiras_url: `http://127.0.0.1:${portaVps}/api/sacoleiras/agora` });
-    VPS.pedidos = [pedido('P1', '021026', 2)];
+    // P1x fica aberto o tempo todo: com algum pedido aberto, bag que não é
+    // de nenhum pede motivo (sem nenhum aberto, em teste, sai direto — [11]).
+    VPS.pedidos = [pedido('P1', '021026', 2), pedido('P1x', '029999', 5, { criado_em: '2026-11-06T11:00:00-03:00' })]; await req('GET', '/retirada/pedidos');
     const g1 = await req('GET', '/retirada/pedidos');
-    ok(g1.body.modo === 'teste' && g1.body.pedidos.length === 1 && g1.body.pedidos[0].bags_atendidos === 0 && !g1.body.desatualizado,
+    const P1de = g => g.body.pedidos.find(p => p.id === 'P1');
+    ok(g1.body.modo === 'teste' && g1.body.pedidos.length === 2 && P1de(g1).bags_atendidos === 0 && !g1.body.desatualizado,
        'a tela recebe o pedido P1 (0 de 2)', g1.body);
     const [a1, a2, a3] = [await bag('021026'), await bag('021026'), await bag('021026')];
     const c1 = await consumir(a1, sRet, { checar_pedido: true });
@@ -161,11 +192,11 @@ const registro = virtId => { const l = lerDb('SELECT pedido_retirada FROM etique
     const g2 = await req('GET', '/retirada/pedidos');
     // A lista leva o id da S (saída), como a VPS (16/11: antes ia o R e o
     // mesmo bag contava 2x quando a VPS listava a S — ver [8]).
-    ok(g2.body.pedidos[0].bags_atendidos === 1 && g2.body.pedidos[0].etiquetas_atendidas.includes(c1.body.etiqueta_virtual.id),
-       'a lista já mostra 1 de 2 antes da VPS saber (conta local, pela S como a VPS)', g2.body.pedidos[0]);
+    ok(P1de(g2).bags_atendidos === 1 && P1de(g2).etiquetas_atendidas.includes(c1.body.etiqueta_virtual.id),
+       'a lista já mostra 1 de 2 antes da VPS saber (conta local, pela S como a VPS)', P1de(g2));
     await consumir(a2, sRet, { checar_pedido: true });
     const g3 = await req('GET', '/retirada/pedidos');
-    ok(g3.body.pedidos[0].status === 'atendido', 'com 2 de 2 o pedido fica atendido', g3.body.pedidos[0]);
+    ok(P1de(g3).status === 'atendido', 'com 2 de 2 o pedido fica atendido', P1de(g3));
     const c3 = await consumir(a3, sRet, { checar_pedido: true });
     ok(c3.status === 409 && c3.body.fora_do_pedido === true && c3.body.modo === 'teste',
        'o 3º bag do mesmo lote já é FORA do pedido: tela nova recebe 409 e abre o modal', c3.body);
@@ -184,12 +215,12 @@ const registro = virtId => { const l = lerDb('SELECT pedido_retirada FROM etique
     ok(VPS.recebidos.length === 2 && VPS.recebidos[1].etiqueta_id === b4, 'e também avisa a VPS', VPS.recebidos);
 
     console.log('\n[3] Modo PRODUÇÃO');
-    VPS.modo = 'producao'; VPS.pedidos = []; VPS.recebidos = [];
+    VPS.modo = 'producao'; VPS.pedidos = []; await req('GET', '/retirada/pedidos'); VPS.recebidos = [];
     await req('GET', '/retirada/pedidos');
     const p1 = await bag('030326');
     const cp1 = await consumir(p1, sRet);
     ok(cp1.status === 409 && cp1.body.sem_pedido === true, 'sem pedido aberto nenhum, o bag NÃO sai (409)', cp1.body);
-    VPS.pedidos = [pedido('P2', '040426', 1)];
+    VPS.pedidos = [pedido('P2', '040426', 1)]; await req('GET', '/retirada/pedidos');
     await req('GET', '/retirada/pedidos');
     const cp2 = await consumir(p1, sRet, { fora_do_pedido: {} });
     ok(cp2.status === 409 && cp2.body.fora_do_pedido === true && cp2.body.pedidos.length === 1,
@@ -234,10 +265,11 @@ const registro = virtId => { const l = lerDb('SELECT pedido_retirada FROM etique
     ok(ruim.status === 400, 'rota de reenvio sem motivo é recusada', ruim.body);
 
     console.log('\n[5] Estorno devolve a vaga do pedido');
-    VPS.modo = 'teste'; VPS.pedidos = [pedido('P3', '070726', 1)];
+    await pedidosVps([pedido('P3', '070726', 1)], 'teste');
     const e1 = await bag('070726');
     const ce = await consumir(e1, sRet, { checar_pedido: true });
-    ok(ce.status === 200, 'pedido criado agora no painel já vale no bipe seguinte (sem esperar a tela)', ce.body);
+    ok(ce.status === 200 && registro(ce.body.etiqueta_virtual.id)?.pedido_id === 'P3',
+       'pedido novo no painel vale assim que a lista renova (a tela renova a cada 15 s)', ce.body);
     ok((await req('GET', '/retirada/pedidos')).body.pedidos[0].status === 'atendido', 'bag tirado: P3 atendido');
     await req('POST', `/etiquetas/${ce.body.etiqueta_virtual.id}/estornar`);
     const ge = await req('GET', '/retirada/pedidos');
@@ -245,7 +277,7 @@ const registro = virtId => { const l = lerDb('SELECT pedido_retirada FROM etique
 
     console.log('\n[6] Pedido por PESO (10/11/2026): só o bag daquele peso conta');
     VPS.modo = 'producao'; VPS.recebidos = [];
-    VPS.pedidos = [pedido('P4', '080826', 1, { peso: 614.5 })];
+    VPS.pedidos = [pedido('P4', '080826', 1, { peso: 614.5 })]; await req('GET', '/retirada/pedidos');
     await req('GET', '/retirada/pedidos');
     const w1 = await bag('080826', 'GBD', 'Preto', 'Ecorafia', 1000);
     const cw1 = await consumir(w1, sRet, { checar_pedido: true });
@@ -259,7 +291,7 @@ const registro = virtId => { const l = lerDb('SELECT pedido_retirada FROM etique
     ok(cw2.status === 200 && registro(cw2.body.etiqueta_virtual.id)?.pedido_id === 'P4',
        'o bag de 614,5 kg sai e conta para P4', cw2.body);
     VPS.pedidos = [pedido('P5', '090926', 1),
-                   pedido('P6', '090926', 1, { peso: 360, criado_em: '2026-11-10T10:00:00-03:00' })];
+                   pedido('P6', '090926', 1, { peso: 360, criado_em: '2026-11-10T10:00:00-03:00' })]; await req('GET', '/retirada/pedidos');
     await req('GET', '/retirada/pedidos');
     const w3 = await bag('090926', 'GBD', 'Preto', 'Ecorafia', 360);
     const cw3 = await consumir(w3, sRet, { checar_pedido: true });
@@ -277,7 +309,7 @@ const registro = virtId => { const l = lerDb('SELECT pedido_retirada FROM etique
       etiquetas_atendidas: [], ...extra });
     const paraQuem = c => c.body && c.body.etiqueta_virtual && registro(c.body.etiqueta_virtual.id)?.pedido_id;
     const doPedido = async id => (await req('GET', '/retirada/pedidos')).body.pedidos.find(p => p.id === id);
-    VPS.pedidos = [pkg('K1')];
+    VPS.pedidos = [pkg('K1')]; await req('GET', '/retirada/pedidos');
     const k1 = await doPedido('K1');
     ok(k1.unidade === 'kg' && k1.kg_pedidos === 2000 && k1.kg_atendidos === 0 && k1.status === 'aberto',
        'a tela recebe o pedido em kg como veio (unidade, kg pedidos e atendidos)', k1);
@@ -301,35 +333,35 @@ const registro = virtId => { const l = lerDb('SELECT pedido_retirada FROM etique
     ok(ck4.status === 409 && ck4.body.sem_pedido === true,
        '3º palete logo depois (VPS ainda não sabe de nada): NÃO é do pedido, pede motivo (409)', ck4.body);
     // a VPS recebeu a 1ª S pelo envio ao vivo: não conta duas vezes
-    VPS.pedidos = [pkg('K1', { kg_atendidos: 1000, etiquetas_atendidas: [s1] })];
+    VPS.pedidos = [pkg('K1', { kg_atendidos: 1000, etiquetas_atendidas: [s1] })]; await req('GET', '/retirada/pedidos');
     const gk3 = await doPedido('K1');
     ok(gk3.kg_atendidos === 2000 && gk3.status === 'atendido' && gk3.etiquetas_atendidas.length === 2,
        'S que a VPS já contou não soma de novo (2.000, não 3.000)', gk3);
 
     // folga de meio saco, igual à VPS
-    VPS.pedidos = [pkg('K3', { kg_pedidos: 1000 })];
+    VPS.pedidos = [pkg('K3', { kg_pedidos: 1000 })]; await req('GET', '/retirada/pedidos');
     const ck5 = await consumir(await bag('111126', 'DESSEC', null, 'Cristal Master', 987.6), sRet, { checar_pedido: true });
     ok(ck5.status === 200 && (await doPedido('K3')).status === 'atendido',
        '987,6 de 1.000 kg (falta menos de meio saco de 25): atendido', await doPedido('K3'));
-    VPS.pedidos = [pkg('K3b', { kg_pedidos: 1000 })];
+    VPS.pedidos = [pkg('K3b', { kg_pedidos: 1000 })]; await req('GET', '/retirada/pedidos');
     await consumir(await bag('111126', 'DESSEC', null, 'Cristal Master', 987.4), sRet, { checar_pedido: true });
     ok((await doPedido('K3b')).status === 'aberto', '987,4 de 1.000 kg (falta 12,6): continua aberto', await doPedido('K3b'));
 
     // a chave é a da VPS: sem acento, espaços juntos, apelido do fornecedor
     VPS.pedidos = [pkg('K4', { material_key: 'PIG', cor: 'Verde Limão', material_nome: 'PIGMENTO VERDE LIMAO',
-                               fornecedor: 'FG RESINAS' })];
+                               fornecedor: 'FG RESINAS' })]; await req('GET', '/retirada/pedidos');
     const ck6 = await consumir(await bag('111126', 'PIG', 'VERDE  LIMAO', 'FG', 1000), sRet, { checar_pedido: true });
     ok(ck6.status === 200 && paraQuem(ck6) === 'K4',
        'palete "VERDE  LIMAO" do "FG" casa com o pedido de "Verde Limão" do "FG RESINAS"', ck6.body);
 
     // dois pedidos em kg do mesmo produto: o mais antigo primeiro (a VPS manda o mais novo antes)
-    VPS.pedidos = [pkg('K6', { criado_em: '2026-11-12T13:00:00.000Z' }), pkg('K5', { criado_em: '2026-11-12T12:00:00.000Z' })];
+    VPS.pedidos = [pkg('K6', { criado_em: '2026-11-12T13:00:00.000Z' }), pkg('K5', { criado_em: '2026-11-12T12:00:00.000Z' })]; await req('GET', '/retirada/pedidos');
     const ck7 = await consumir(await bag('111126', 'DESSEC', null, 'Cristal Master', 1000), sRet, { checar_pedido: true });
     ok(ck7.status === 200 && paraQuem(ck7) === 'K5', 'vai para o pedido mais antigo (FIFO, como a VPS)', ck7.body);
 
     // saída por SACOS (a mais comum): não passa pelo avaliar, mas conta aqui
     // como na VPS — senão o palete seguinte entrava como "do pedido"
-    VPS.pedidos = [pkg('K7', { kg_pedidos: 200 })];
+    VPS.pedidos = [pkg('K7', { kg_pedidos: 200 })]; await req('GET', '/retirada/pedidos');
     const sc = await req('POST', '/retirada/aditivo', { sessao_id: sRet, materialKey: 'DESSEC', fornecedor: 'Cristal Master', qtd_sacos: 8 });
     const k7 = await doPedido('K7');
     ok(sc.status === 200 && k7.kg_atendidos === 200 && k7.status === 'atendido' && k7.etiquetas_atendidas.includes(sc.body.etiqueta.id),
@@ -337,11 +369,11 @@ const registro = virtId => { const l = lerDb('SELECT pedido_retirada FROM etique
     const ck9 = await consumir(await bag('111126', 'DESSEC', null, 'Cristal Master', 1000), sRet, { checar_pedido: true });
     ok(ck9.status === 409 && ck9.body.sem_pedido === true, 'e o palete logo depois NÃO é do pedido (409)', ck9.body);
     // a VPS já contou esses sacos (pedido de 400 kg, ainda aberto lá): não soma de novo
-    VPS.pedidos = [pkg('K7', { kg_pedidos: 400, kg_atendidos: 200, etiquetas_atendidas: [sc.body.etiqueta.id] })];
+    VPS.pedidos = [pkg('K7', { kg_pedidos: 400, kg_atendidos: 200, etiquetas_atendidas: [sc.body.etiqueta.id] })]; await req('GET', '/retirada/pedidos');
     const k7b = await doPedido('K7');
     ok(k7b.kg_atendidos === 200 && k7b.status === 'aberto', 'a VPS contou os sacos: 200 de 400 kg, não 400 (nem fecha)', k7b);
     // sacos de antes do pedido não são dele
-    VPS.pedidos = [pkg('K8', { kg_pedidos: 200, criado_em: new Date(Date.now() + 3600e3).toISOString() })];
+    VPS.pedidos = [pkg('K8', { kg_pedidos: 200, criado_em: new Date(Date.now() + 3600e3).toISOString() })]; await req('GET', '/retirada/pedidos');
     await req('POST', '/retirada/aditivo', { sessao_id: sRet, materialKey: 'DESSEC', fornecedor: 'Cristal Master', qtd_sacos: 8 });
     const k8 = await doPedido('K8');
     ok(k8.kg_atendidos === 0 && k8.status === 'aberto', 'sacos lançados antes do pedido não contam para ele', k8);
@@ -350,7 +382,7 @@ const registro = virtId => { const l = lerDb('SELECT pedido_retirada FROM etique
     // seguinte só depois que ele fechou (a VPS manda o mais novo antes)
     const t0 = Date.now();
     VPS.pedidos = [pkg('K12', { kg_pedidos: 100, criado_em: new Date(t0 + 1).toISOString() }),
-                   pkg('K11', { kg_pedidos: 100, criado_em: new Date(t0).toISOString() })];
+                   pkg('K11', { kg_pedidos: 100, criado_em: new Date(t0).toISOString() })]; await req('GET', '/retirada/pedidos');
     const sa = await req('POST', '/retirada/aditivo', { sessao_id: sRet, materialKey: 'DESSEC', fornecedor: 'Cristal Master', qtd_sacos: 8 });
     const sb = await req('POST', '/retirada/aditivo', { sessao_id: sRet, materialKey: 'DESSEC', fornecedor: 'Cristal Master', qtd_sacos: 4 });
     const [k11, k12] = [await doPedido('K11'), await doPedido('K12')];
@@ -360,13 +392,13 @@ const registro = virtId => { const l = lerDb('SELECT pedido_retirada FROM etique
     // a VPS já deu os 8 sacos ao K11: aqui eles não sobram para o K12
     VPS.pedidos = [pkg('K12', { kg_pedidos: 400, criado_em: new Date(t0 + 1).toISOString() }),
                    pkg('K11', { kg_pedidos: 100, criado_em: new Date(t0).toISOString(), kg_atendidos: 200,
-                                status: 'atendido', etiquetas_atendidas: [sa.body.etiqueta.id] })];
+                                status: 'atendido', etiquetas_atendidas: [sa.body.etiqueta.id] })]; await req('GET', '/retirada/pedidos');
     const k12b = await doPedido('K12');
     ok(k12b.kg_atendidos === 100 && k12b.status === 'aberto',
        'sacos que a VPS já deu a outro pedido não entram neste (100 de 400, não 300)', k12b);
 
     // S de peso 0: a VPS descarta, aqui também (não vira "1 saída")
-    VPS.pedidos = [pkg('K9', { kg_pedidos: 10, criado_em: new Date().toISOString() })];   // depois dos sacos acima
+    VPS.pedidos = [pkg('K9', { kg_pedidos: 10, criado_em: new Date().toISOString() })]; await req('GET', '/retirada/pedidos');   // depois dos sacos acima
     { const db = new DatabaseSync(TMP_DB);
       try { db.prepare(`INSERT INTO etiquetas (id, seq, tipo, material_key, fornecedor, lote, peso, codigo, sku, status, hora_impressao, pedido_retirada)
                         VALUES ('S9999999', 9999999, 'retirada', 'DESSEC', 'Cristal Master', '111126', 0, 'X', 'X', 'bipada', ?, ?)`)
@@ -380,13 +412,13 @@ const registro = virtId => { const l = lerDb('SELECT pedido_retirada FROM etique
     const velho = await bag('111126', 'DESSEC', null, 'Velho', 1000);
     await req('POST', '/config', { mp_substituicoes: JSON.stringify({ 'DESSEC::Velho': 'DESSEC::Karina' }),
                                    mapa_produto_bling: JSON.stringify({ 'DESSEC::Karina': '99999' }) });
-    VPS.pedidos = [pkg('K10', { fornecedor: 'Karina' })];
+    VPS.pedidos = [pkg('K10', { fornecedor: 'Karina' })]; await req('GET', '/retirada/pedidos');
     const ck10 = await consumir(velho, sRet, { checar_pedido: true });
     ok(ck10.status === 200 && paraQuem(ck10) === 'K10' && ck10.body.etiqueta_virtual.fornecedor === 'Karina',
        'palete do produto trocado (Velho → Karina) casa com o pedido em kg de Karina', ck10.body);
     await req('POST', '/config', { mp_substituicoes: '{}', mapa_produto_bling: '{}' });
 
-    VPS.pedidos = [pkg('K2', { lote: '111126' })];
+    VPS.pedidos = [pkg('K2', { lote: '111126' })]; await req('GET', '/retirada/pedidos');
     await req('GET', '/retirada/pedidos');
     const ck8 = await consumir(await bag('121226', 'DESSEC', null, 'Cristal Master', 1000), sRet, { checar_pedido: true });
     ok(ck8.status === 200 && paraQuem(ck8) === 'K2', 'pedido em kg não olha o lote', ck8.body);
@@ -401,13 +433,13 @@ const registro = virtId => { const l = lerDb('SELECT pedido_retirada FROM etique
     const pprod = (id, n, extra = {}) => pedido(id, '', n, { material_key: 'CARBO', cor: '', material_nome: 'CARBONATO',
       fornecedor: 'Karina', lote_fmt: '', peso: null, qualquer_lote: true, unidade: 'bag', bags: [],
       criado_em: agoraIso(), ...extra });
-    VPS.pedidos = [pprod('Q1', 3)];
+    VPS.pedidos = [pprod('Q1', 3)]; await req('GET', '/retirada/pedidos');
     const q1 = await consumir(await bag('051126', 'CARBO', '', 'Karina', 1250), sRet, { checar_pedido: true });
     ok(q1.status === 200 && paraQuem(q1) === 'Q1',
        'em PRODUÇÃO, bag de Carbonato Karina de QUALQUER lote sai e conta para o pedido por produto', q1.body);
     const sQ1 = q1.body && q1.body.etiqueta_virtual && q1.body.etiqueta_virtual.id;
     // a VPS já viu essa S (envio ao vivo) e lista ela no pedido
-    VPS.pedidos = [pprod('Q1', 3, { etiquetas_atendidas: [sQ1], bags_atendidos: 1, criado_em: VPS.pedidos[0].criado_em })];
+    VPS.pedidos = [pprod('Q1', 3, { etiquetas_atendidas: [sQ1], bags_atendidos: 1, criado_em: VPS.pedidos[0].criado_em })]; await req('GET', '/retirada/pedidos');
     const gq1 = await doPedido('Q1');
     ok(gq1 && gq1.bags_atendidos === 1 && gq1.status === 'aberto',
        'o bag que a VPS já contou (S) e o daqui (mesmo bag) contam UMA vez: 1 de 3, não 2', gq1);
@@ -423,12 +455,12 @@ const registro = virtId => { const l = lerDb('SELECT pedido_retirada FROM etique
     ok(q5.status === 409, 'Carbonato de OUTRO fornecedor não é do pedido por produto', q5.body);
 
     // S que a VPS deu a OUTRO pedido não conta neste (a VPS decide a fila)
-    VPS.pedidos = [pprod('Q2', 2), pprod('Q3', 2)];
+    VPS.pedidos = [pprod('Q2', 2), pprod('Q3', 2)]; await req('GET', '/retirada/pedidos');
     const q6 = await consumir(await bag('091126', 'CARBO', '', 'Karina', 1250), sRet, { checar_pedido: true });
     const sQ6 = q6.body && q6.body.etiqueta_virtual && q6.body.etiqueta_virtual.id;
     ok(q6.status === 200 && paraQuem(q6) === 'Q2', 'com 2 pedidos do mesmo produto, o bag vai para o mais antigo', q6.body);
     VPS.pedidos = [pprod('Q2', 2, { criado_em: VPS.pedidos[0].criado_em }),
-                   pprod('Q3', 2, { criado_em: VPS.pedidos[1].criado_em, etiquetas_atendidas: [sQ6], bags_atendidos: 1 })];
+                   pprod('Q3', 2, { criado_em: VPS.pedidos[1].criado_em, etiquetas_atendidas: [sQ6], bags_atendidos: 1 })]; await req('GET', '/retirada/pedidos');
     const lq = (await req('GET', '/retirada/pedidos')).body.pedidos;
     const q2v = lq.find(p => p.id === 'Q2'), q3v = lq.find(p => p.id === 'Q3');
     ok(q2v.bags_atendidos === 0 && q3v.bags_atendidos === 1,
@@ -437,7 +469,7 @@ const registro = virtId => { const l = lerDb('SELECT pedido_retirada FROM etique
     // bag ESCOLHIDO no painel (bags: [{id}]): só ele é do pedido
     const escolhido = await bag('101126', 'CARBO', '', 'Karina', 1250);
     const outro = await bag('101126', 'CARBO', '', 'Karina', 1250);
-    VPS.pedidos = [pprod('Q4', 1, { bags: [{ id: escolhido, peso: 1250, entrada: '', saiu: false }] })];
+    VPS.pedidos = [pprod('Q4', 1, { bags: [{ id: escolhido, peso: 1250, entrada: '', saiu: false }] })]; await req('GET', '/retirada/pedidos');
     const q7 = await consumir(outro, sRet, { checar_pedido: true });
     ok(q7.status === 409, 'pedido com bag escolhido: outro bag do mesmo produto é fora do pedido', q7.body);
     const q8 = await consumir(escolhido, sRet, { checar_pedido: true });
@@ -446,10 +478,111 @@ const registro = virtId => { const l = lerDb('SELECT pedido_retirada FROM etique
     // Pedido em kg com o formato real de hoje (RM-20261116-001: cor "", lote "", sacos)
     VPS.pedidos = [pedido('K20', '', null, { material_key: 'DESSEC', cor: '', material_nome: 'DESSECANTE',
       fornecedor: 'Cristal Master', lote_fmt: '', peso: null, unidade: 'kg', kg_pedidos: 300, kg_saco: 25,
-      kg_atendidos: 0, sacos_pedidos: 12, sacos_atendidos: 0, qualquer_lote: true, bags: [], criado_em: agoraIso() })];
+      kg_atendidos: 0, sacos_pedidos: 12, sacos_atendidos: 0, qualquer_lote: true, bags: [], criado_em: agoraIso() })]; await req('GET', '/retirada/pedidos');
     const k20 = await consumir(await bag('091126', 'DESSEC', '', 'Cristal Master', 300), sRet, { checar_pedido: true });
     ok(k20.status === 200 && paraQuem(k20) === 'K20',
        'palete de Dessecante (lote 091126) casa com o pedido em kg sem lote (sem 409)', k20.body);
+    }
+
+    // ── [9] O mesmo bag bipado 2x com a VPS lenta (revisor 16/11, B1) ──
+    // Antes o /consumir esperava a VPS (até 3 s) ENTRE "o bag já saiu?" e a
+    // gravação: o 2º bipe passava pela conferência e os dois gravavam uma S.
+    console.log('\n[9] Bag bipado 2x com a VPS lenta: UMA saída só, e o bipe não espera a VPS');
+    {
+    await pedidosVps([], 'teste');
+    const dup = await bag('151126');
+    VPS.atraso_ms = 1500;
+    const t0 = Date.now();
+    const [r1, r2] = await Promise.all([consumir(dup, sRet, { checar_pedido: true }), consumir(dup, sRet, { checar_pedido: true })]);
+    const ms = Date.now() - t0;
+    VPS.atraso_ms = 0;
+    const st = [r1.status, r2.status].sort();
+    const nS = lerDb(`SELECT COUNT(*) AS n FROM etiquetas WHERE tipo='retirada' AND ref_id = ? AND status != 'cancelada'`, dup).n;
+    ok(st[0] === 200 && st[1] === 409 && [r1, r2].some(r => r.body && r.body.ja_consumida === true),
+       'dois bipes juntos do mesmo bag: um sai (200), o outro leva "já foi retirada" (409)', { r1: r1.body, r2: r2.body });
+    ok(nS === 1, 'e só existe UMA saída (S) desse bag — nada de baixa dupla no Bling', { nS });
+    ok(ms < 1200, `o bipe não esperou a VPS lenta (${ms} ms com a VPS levando 1.500 ms)`, { ms });
+    await sleep(1700);   // deixa a busca de fundo terminar
+    }
+
+    // ── [10] Fila de motivos: recusa de vez não trava a fila (B2) ────────
+    console.log('\n[10] Fila de motivos: limites iguais aos da VPS e recusa permanente não trava a fila');
+    {
+    await pedidosVps([pedido('PF', '161126', 1)], 'teste');
+    VPS.recebidos = []; VPS.recusados = [];
+    const longo = 'x'.repeat(201);
+    const rl = await req('POST', '/retirada/fora-do-pedido', { etiqueta_id: 'R0000001', motivo: longo });
+    ok(rl.status === 400, 'rota de reenvio recusa motivo com mais de 200 caracteres (a VPS recusaria)', rl.body);
+    const re = await req('POST', '/retirada/fora-do-pedido', { etiqueta_id: 'E0000001', motivo: 'teste' });
+    ok(re.status === 400, 'rota de reenvio recusa etiqueta fora de R/S/T (a VPS recusaria)', re.body);
+    // motivo de 250 pelo bipe: chega à VPS cortado em 200 (antes ia 300 e era recusado)
+    const fb = await bag('171126');
+    const cf = await consumir(fb, sRet, { fora_do_pedido: { motivo: 'm'.repeat(250), pedido_id: 'PF' } });
+    await sleep(400);
+    const chegou = VPS.recebidos.find(b => b.etiqueta_id === fb);
+    ok(cf.status === 200 && chegou && chegou.motivo.length === 200, 'motivo longo dado no bipe chega à VPS com 200 caracteres', { st: cf.status, chegou, rec: VPS.recusados });
+    // item que a VPS recusa de vez (versão antiga deixou na fila) + um bom depois
+    const cfg = (await req('GET', '/config')).body.config;
+    const filaVelha = { R0999001: { em: '2026-11-16T10:00:00.000Z', corpo: { etiqueta_id: 'R0999001', motivo: 'ok', pedido_id: 12345 } } };
+    await req('POST', '/config', { retirada_fora_fila: JSON.stringify({ ...JSON.parse(cfg.retirada_fora_fila || '{}'), ...filaVelha }) });
+    VPS.recebidos = [];
+    const bom = await bag('181126');
+    await consumir(bom, sRet, { fora_do_pedido: { motivo: 'Lote pedido acabou', pedido_id: 'PF' } });
+    await sleep(500);
+    ok(VPS.recebidos.some(b => b.etiqueta_id === bom), 'o motivo seguinte chega à VPS mesmo com um item antigo na frente', VPS.recebidos);
+    const cfg2 = (await req('GET', '/config')).body.config;
+    const fila = JSON.parse(cfg2.retirada_fora_fila || '{}');
+    ok(!fila.R0999001 || VPS.recebidos.some(b => b.etiqueta_id === 'R0999001'),
+       'o item antigo (pedido_id número) sai da fila: vai como texto e a VPS aceita', { fila, rec: VPS.recebidos });
+    // recusa permanente de verdade: etiqueta que a VPS não aceita, enfiada na fila
+    const filaRuim = { O0000009: { em: '2026-11-16T10:00:00.000Z', corpo: { etiqueta_id: 'O0000009', motivo: 'velho' } } };
+    await req('POST', '/config', { retirada_fora_fila: JSON.stringify(filaRuim) });
+    VPS.recebidos = [];
+    const bom2 = await bag('191126');
+    await consumir(bom2, sRet, { fora_do_pedido: { motivo: 'Bag do lote não achado', pedido_id: 'PF' } });
+    await sleep(500);
+    const cfg3 = (await req('GET', '/config')).body.config;
+    const fila3 = JSON.parse(cfg3.retirada_fora_fila || '{}');
+    const recus = JSON.parse(cfg3.retirada_fora_recusados || '{}');
+    ok(VPS.recebidos.some(b => b.etiqueta_id === bom2) && !fila3.O0000009 && recus.O0000009 && recus.O0000009.status === 400,
+       'recusa permanente (400) sai da fila, fica guardada à parte, e o seguinte chega', { fila3, recus, rec: VPS.recebidos });
+    // teto por hora: passageiro — fica na fila e chega quando a VPS libera
+    VPS.teto_hora = VPS.aceitos_hora; VPS.recebidos = [];
+    const bom3 = await bag('201126');
+    await consumir(bom3, sRet, { fora_do_pedido: { motivo: 'Teto', pedido_id: 'PF' } });
+    await sleep(400);
+    const fila4 = JSON.parse((await req('GET', '/config')).body.config.retirada_fora_fila || '{}');
+    ok(fila4[bom3] && VPS.recebidos.length === 0, '"muitos registros na última hora" não descarta: fica na fila', fila4);
+    VPS.teto_hora = 1000;
+    await req('GET', '/retirada/pedidos'); await sleep(400);
+    ok(VPS.recebidos.some(b => b.etiqueta_id === bom3), 'e chega quando a VPS volta a aceitar', VPS.recebidos);
+    }
+
+    // ── [11] Teste e NENHUM pedido aberto: o bag sai como sempre (B4) ────
+    console.log('\n[11] Modo TESTE sem nenhum pedido aberto: sai direto, sem janela e sem aviso por bag');
+    {
+    await pedidosVps([], 'teste');
+    VPS.recebidos = [];
+    const sb = await bag('211126');
+    const cs = await consumir(sb, sRet, { checar_pedido: true });
+    ok(cs.status === 200 && registro(cs.body.etiqueta_virtual.id) === null,
+       'em teste, sem pedido aberto, o bag sai (200) sem registro de pedido — a tela não abre a janela', cs.body);
+    await sleep(300);
+    ok(VPS.recebidos.length === 0, 'e nenhum "fora do pedido" vai à VPS (o aviso juntado de lá já cobre)', VPS.recebidos);
+    await pedidosVps([], 'producao');
+    const cp = await consumir(await bag('221126'), sRet, { checar_pedido: true });
+    ok(cp.status === 409 && cp.body.sem_pedido === true, 'em PRODUÇÃO, sem pedido aberto, continua não saindo (409)', cp.body);
+    }
+
+    // ── [12] Lista estranha da VPS não para a retirada (B5) ──────────────
+    console.log('\n[12] Pedido null / campos estranhos na lista: o bipe sai, a tela não quebra');
+    {
+    await pedidosVps([null, 'x', pedido('PN', '231126', 1, { etiquetas_atendidas: 'nao-e-lista' })], 'producao');
+    const gl = await req('GET', '/retirada/pedidos');
+    ok(gl.status === 200 && Array.isArray(gl.body.pedidos) && gl.body.pedidos.length === 1 && gl.body.pedidos[0].id === 'PN',
+       'GET /retirada/pedidos ignora o que não é pedido', gl.body);
+    const cn = await consumir(await bag('231126'), sRet, { checar_pedido: true });
+    ok(cn.status === 200 && registro(cn.body.etiqueta_virtual.id)?.pedido_id === 'PN', 'o bag do pedido sai e conta (sem erro 500)', cn.body);
     }
   } catch (e) {
     falhou++; console.log('  \x1b[31m✗ ERRO\x1b[0m', e.stack || e.message);

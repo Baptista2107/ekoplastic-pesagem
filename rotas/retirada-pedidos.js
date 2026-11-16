@@ -5,7 +5,7 @@
 // ════════════════════════════════════════════════════════════════════
 
 const { jsonErr, jsonOk, lerBodyJson, NAO_TRATADA } = require('../lib/http');
-const { enfileirarFora, enviarFila, listarPedidos } = require('../lib/retirada-pedidos');
+const { enfileirarFora, enviarFila, listarPedidos, MOTIVO_MAX } = require('../lib/retirada-pedidos');
 
 async function rotasRetiradaPedidos(req, res, parsed, pathname) {
   // GET /retirada/pedidos — pedidos abertos (cache 10 s). VPS fora: último
@@ -20,9 +20,11 @@ async function rotasRetiradaPedidos(req, res, parsed, pathname) {
   if (pathname === '/retirada/fora-do-pedido' && req.method === 'POST') {
     let b; try { b = await lerBodyJson(req); } catch (e) { return jsonErr(res, 400, e.message); }
     const etiqueta_id = String(b.etiqueta_id || '').trim();
-    const motivo = typeof b.motivo === 'string' ? b.motivo.trim().slice(0, 300) : '';
-    if (!/^[RTSEO]\d{7}$/.test(etiqueta_id)) return jsonErr(res, 400, 'etiqueta_id inválido');
+    const motivo = typeof b.motivo === 'string' ? b.motivo.trim() : '';
+    // Mesmas regras da VPS: o que ela recusaria nem entra na fila.
+    if (!/^[RST]\d{7}$/.test(etiqueta_id)) return jsonErr(res, 400, 'etiqueta_id inválido');
     if (!motivo) return jsonErr(res, 400, 'motivo obrigatório');
+    if (motivo.length > MOTIVO_MAX) return jsonErr(res, 400, `motivo com mais de ${MOTIVO_MAX} caracteres`);
     enfileirarFora({ etiqueta_id, sessao_id: b.sessao_id != null ? Number(b.sessao_id) : null,
                      operador: b.operador ? String(b.operador).slice(0, 80) : null,
                      motivo, pedido_id: b.pedido_id != null ? b.pedido_id : null });

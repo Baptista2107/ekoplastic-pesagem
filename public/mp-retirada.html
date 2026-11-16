@@ -858,7 +858,7 @@ header {
       <button type="button" data-motivo="Bag do peso pedido não está no estoque">Bag do peso pedido não está no estoque</button>
       <button type="button" data-motivo="Bag do lote pedido inacessível">Bag do lote pedido inacessível</button>
       <button type="button" data-motivo="__outro">Outro motivo…</button>
-      <textarea id="fora-outro" maxlength="300" placeholder="Escreva o motivo e toque em CONFIRMAR MOTIVO"></textarea>
+      <textarea id="fora-outro" maxlength="200" placeholder="Escreva o motivo e toque em CONFIRMAR MOTIVO"></textarea>
       <button type="button" id="fora-outro-ok" style="display:none" data-motivo="__outro_ok">CONFIRMAR MOTIVO</button>
       <button type="button" id="fora-teste" style="display:none" data-motivo="__teste">Seguir sem motivo (teste)</button>
     </div>
@@ -1112,7 +1112,18 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-async function processarBipe(raw) {
+// UM bipe por vez (16/11/2026): dois bipes seguidos com o 1º ainda no ar
+// (ou com a janela de motivo dele aberta) faziam o 2º tomar a janela do 1º —
+// o 1º nunca recebia resposta, não saía, e nada avisava. Agora o 2º espera o
+// 1º terminar (inclusive a resposta do motivo).
+let _filaBipe = Promise.resolve();
+function processarBipe(raw) {
+  const vez = _filaBipe.then(() => processarBipeAgora(raw));
+  _filaBipe = vez.catch(() => {});
+  return vez;
+}
+
+async function processarBipeAgora(raw) {
   // Aceita ID puro ('R0000005', 'T0000001', 'S0000001') ou string completa
   const m = raw.match(/[RTS]\d{7}/);
   if (!m) {
@@ -1397,6 +1408,9 @@ function renderPedidos() {
 // Modal do bag fora do pedido. → {motivo, pedido_id} | {} (teste, sem motivo) | null (cancelou)
 let _foraResolver = null;
 function perguntarFora(d) {
+  // Pergunta anterior sem resposta (não deveria, com um bipe por vez):
+  // fecha como "cancelou" — quem chamou avisa que aquele bag NÃO saiu.
+  if (_foraResolver) { const r = _foraResolver; _foraResolver = null; r(null); }
   const et = d.etiqueta || {};
   const prod = d.modo === 'producao';
   document.getElementById('fora-titulo').textContent = d.sem_pedido
