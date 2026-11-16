@@ -46,6 +46,18 @@
     const nova = { nome: dados.nome, id: dados.id, ts: Date.now() };
     if (velha && velha.continuada != null && velha.nome === dados.nome) nova.continuada = velha.continuada;
     try { sessionStorage.setItem(chaveLib(chave), JSON.stringify(nova)); } catch (e) {}
+    novaEntrada(chave);
+  }
+  // GERAÇÃO da entrada (16/11/2026, 3ª revisão): sobe a cada senha aceita e a
+  // cada saída. Um fluxo que começou antes (caixa "sessão de outro", envio ao
+  // Bling da sessão de outro) confere a geração depois de cada espera e
+  // desiste se mudou: o que a pessoa de antes deixou pela metade nunca é
+  // concluído no nome de quem chegou depois (achados B-a e B-g). A conferência
+  // adiada (REFAZER) também é da pessoa de antes: sai junto (achado B-b).
+  let geracao = 0;
+  function novaEntrada(chave) {
+    geracao++;
+    if (chave != null) REFAZER.delete(chave);
   }
   // Sessão de OUTRA pessoa que esta pessoa escolheu continuar (16/11/2026,
   // Gustavo: "saiu voltou mas é a mesma operação segue no nome de quem tava").
@@ -79,6 +91,18 @@
   function tetoMs() {
     const t = window.EKO_TETO_CONFERIR_MS;
     return (typeof t === 'number' && t > 0) ? t : 8000;
+  }
+  // Validade da caixa de decisão na MESMA aba (achado B-f): quem entrou, viu a
+  // caixa e se afastou sem responder não deixa a decisão para quem chega.
+  function validadeDecisaoMs() {
+    const t = window.EKO_VALIDADE_DECISAO_MS;
+    return (typeof t === 'number' && t > 0) ? t : 2 * 60 * 1000;
+  }
+  // Teto da película durante o envio ao Bling da sessão de outro (achado B-e):
+  // o servidor espera o Bling, que pode levar dezenas de segundos.
+  function tetoEncerrarMs() {
+    const t = window.EKO_TETO_ENCERRAR_MS;
+    return (typeof t === 'number' && t > 0) ? t : 60 * 1000;
   }
   let conferindo = 0;      // conferências da senha guardada (aindaValida) em curso
   let segurando = 0;       // restaurações seguradas pela tela (segurar)
@@ -233,12 +257,24 @@
     async function tentar() {
       if (travado || pin.length < 4) { if (pin.length && pin.length < 4) msg('A senha tem pelo menos 4 números'); return; }
       travado = true; msg('Verificando…', true);
+      // Teto (achado B-c): servidor que aceita e não responde deixava o teclado
+      // em "Verificando…" para sempre, cobrindo a tela até recarregar.
+      let teto;
+      const ctl = typeof AbortController === 'function' ? new AbortController() : null;
+      const limite = new Promise((_, nao) => {
+        teto = setTimeout(() => { try { ctl && ctl.abort(); } catch (e) {} nao(new Error('SEM_RESPOSTA')); }, tetoMs());
+      });
       try {
-        const r = await fetch('/colaboradores/entrar', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ pin, tela }),
-        });
-        const d = await r.json();
+        const d0 = await Promise.race([limite, (async () => {
+          const r = await fetch('/colaboradores/entrar', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ pin, tela }),
+            ...(ctl ? { signal: ctl.signal } : {}),
+          });
+          return { r, d: await r.json() };
+        })()]);
+        clearTimeout(teto);
+        const r = d0.r, d = d0.d;
         if (r.ok && d.ok) {
           msg('Bem-vindo, ' + d.nome, true);
           window.EKO_RESPONSAVEL = d.nome;
@@ -252,7 +288,9 @@
         }
         msg((d && d.erro) || 'Senha não confere');
       } catch (e) {
-        msg('Erro ao verificar: ' + e.message);
+        clearTimeout(teto);
+        msg(e && (e.message === 'SEM_RESPOSTA' || e.name === 'AbortError')
+          ? 'Servidor não respondeu — tente de novo' : 'Erro ao verificar: ' + (e && e.message));
       }
       pin = ''; pintar(); travado = false;
     }
@@ -296,8 +334,14 @@
   // outra caixa no lugar, voltar à aba ou o teto de 8 h respondem 'cancelado'
   // à caixa velha — a promessa nunca fica sem resposta (achado B4: o leitor
   // ficava travado até recarregar). Abrir a caixa descobre a tela (película).
-  function abrirDecisao(id, html, botoes) {
+  // 3ª revisão (16/11/2026): com o teclado de senha na tela, a caixa é de quem
+  // saiu — não abre (achado B-g: abria por baixo do teclado e quem entrava
+  // respondia a decisão do outro). Sem resposta em validadeDecisaoMs() na mesma
+  // aba, vence: responde 'cancelado' e, se a tela disse a chave, pede a senha
+  // (achado B-f).
+  function abrirDecisao(id, html, botoes, chave) {
     return new Promise(resolve => {
+      if (tecladoAberto()) { resolve(CANCELADO); return; }
       css();
       const fimVelho = DECISOES.get(id);
       if (fimVelho) fimVelho(CANCELADO);
@@ -311,14 +355,24 @@
         + 'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;';
       ov.innerHTML = html;
       document.body.appendChild(ov);
+      let vence = null;
       const fim = valor => {
         if (DECISOES.get(id) !== fim) return;   // já respondida
         DECISOES.delete(id);
+        clearTimeout(vence);
         ov.remove();
         resolve(valor);
       };
       DECISOES.set(id, fim);
-      for (const [sel, valor] of botoes) ov.querySelector(sel).onclick = () => fim(valor);
+      vence = setTimeout(() => {
+        if (DECISOES.get(id) !== fim) return;
+        fim(CANCELADO);
+        if (chave != null && PEDIDOS[chave]) pedirDeNovo(chave);
+      }, validadeDecisaoMs());
+      for (const [sel, valor] of botoes) {
+        const b = ov.querySelector(sel);
+        if (b) b.onclick = () => fim(valor);
+      }
     });
   }
 
@@ -337,10 +391,16 @@
             'Se você continuar, o que você fizer agora fica no nome de <b>' + escHtml(info.operador) + '</b>.' +
           '</div>' +
           (info.aviso ? '<div style="font-size:14px; color:#ff9b9b; font-weight:700; line-height:1.45; margin:-6px 0 16px;">' + escHtml(info.aviso) + '</div>' : '') +
-          '<button id="eko-outro-encerrar" style="width:100%; padding:15px; border:none; border-radius:12px; background:#00ff9d; color:#052916; font-size:15px; font-weight:900; cursor:pointer; margin-bottom:10px;">Encerrar a de ' + escHtml(info.operador) + ' e começar a minha</button>' +
+          // Não dá para encerrar (ex.: etiqueta impressa e não bipada — o servidor
+          // recusa com 409): a caixa diz por quê e só oferece continuar (achado B-d).
+          (info.semEncerrar
+            ? '<div id="eko-outro-motivo" style="font-size:14px; color:#fbbf24; font-weight:700; line-height:1.45; margin:-6px 0 16px;">' + escHtml(info.semEncerrar) + '</div>'
+            : '<button id="eko-outro-encerrar" style="width:100%; padding:15px; border:none; border-radius:12px; background:#00ff9d; color:#052916; font-size:15px; font-weight:900; cursor:pointer; margin-bottom:10px;">Encerrar a de ' + escHtml(info.operador) + ' e começar a minha</button>') +
           '<button id="eko-outro-continuar" style="width:100%; padding:13px; border:1.5px solid #2a3a52; border-radius:12px; background:#131f30; color:#cbd5e8; font-size:14px; font-weight:800; cursor:pointer;">Continuar no nome de ' + escHtml(info.operador) + '</button>' +
         '</div>';
-      return abrirDecisao('eko-outro', html, [['#eko-outro-encerrar', 'encerrar'], ['#eko-outro-continuar', 'continuar']]);
+      const botoes = info.semEncerrar ? [['#eko-outro-continuar', 'continuar']]
+        : [['#eko-outro-encerrar', 'encerrar'], ['#eko-outro-continuar', 'continuar']];
+      return abrirDecisao('eko-outro', html, botoes, info.chave);
   }
 
   // Confirmação antes de encerrar a sessão de OUTRA pessoa (16/11/2026,
@@ -357,7 +417,76 @@
           '<button id="eko-confirma-sim" style="width:100%; padding:15px; border:none; border-radius:12px; background:#ef4444; color:#fff; font-size:15px; font-weight:900; cursor:pointer; margin-bottom:10px;">' + escHtml(info.botao || 'Confirmar') + '</button>' +
           '<button id="eko-confirma-nao" style="width:100%; padding:13px; border:1.5px solid #2a3a52; border-radius:12px; background:#131f30; color:#cbd5e8; font-size:14px; font-weight:800; cursor:pointer;">Voltar</button>' +
         '</div>';
-    return abrirDecisao('eko-confirma', html, [['#eko-confirma-sim', true], ['#eko-confirma-nao', false]]);
+    return abrirDecisao('eko-confirma', html, [['#eko-confirma-sim', true], ['#eko-confirma-nao', false]], info.chave);
+  }
+
+  // Cobre a tela (película) e segura o leitor até a promessa terminar, com teto
+  // próprio (achado B-e: depois do "Sim, encerrar", a película já tinha saído e
+  // o leitor soltava em 8 s enquanto o servidor ainda esperava o Bling; toque
+  // ou bipe nesse meio caía na sessão do outro, já fechada).
+  function cobrirAte(promessa, ms) {
+    segurando++; cobrindo++; pelicula();
+    let solto = false, teto = null;
+    const soltar = () => {
+      if (solto) return;
+      solto = true; clearTimeout(teto); segurando--; cobrindo--; pelicula();
+    };
+    teto = setTimeout(soltar, ms);
+    return Promise.resolve(promessa).then(v => { soltar(); return v; }, e => { soltar(); throw e; });
+  }
+
+  // ── Sessão aberta no nome de OUTRA pessoa: UM fluxo para as três abas ──
+  // (16/11/2026, 3ª revisão: as duas telas tinham cópias que já divergiam — a
+  // Retirada encerrava por um modal próprio que escapava do descarte, achado
+  // B-a). A tela passa o que só ela sabe; o resto é daqui:
+  //   cfg = { chave, processo ('Retirada'…), artigo ('a'|'o'), sessaoId, dono,
+  //           desde, itens, aviso,
+  //           motivoNaoEncerrar(): texto|null  — não dá para encerrar agora,
+  //           textoConfirmar(): texto          — o que vai ao Bling,
+  //           encerrar(): Promise<bool>        — envia SEM confirmação própria;
+  //                                              true = a sessão do outro fechou,
+  //           toast(tipo, icone, texto, ms) }
+  // Resolve 'seguindo' | 'continuar' | 'encerrou' | 'falhou' | 'cancelado'.
+  // Depois de cada espera confere a geração: a pessoa saiu (trocou de aba e
+  // a senha foi pedida, venceu, trocou o responsável) → 'cancelado', e nada do
+  // que ela deixou pela metade é concluído no nome de quem chegou.
+  async function sessaoDeOutro(cfg) {
+    const g = geracao;
+    const mudou = () => g !== geracao || tecladoAberto();
+    const eu = String(window.EKO_RESPONSAVEL || '').trim();
+    const sid = cfg.sessaoId == null ? '' : String(cfg.sessaoId);
+    const toast = typeof cfg.toast === 'function' ? cfg.toast : () => {};
+    const art = cfg.artigo === 'o' ? 'o' : 'a';
+    const proc = String(cfg.processo || 'sessão');
+    if (!sid || !cfg.dono || !eu) return CANCELADO;
+    if (!cfg.aviso && window.EkoAcesso.continuada(cfg.chave) === sid) {
+      toast('info', '👤', `Seguindo ${art} ${proc.toLowerCase()} de ${cfg.dono} — fica no nome dele`, 4000);
+      return 'seguindo';
+    }
+    for (;;) {
+      const semEncerrar = typeof cfg.motivoNaoEncerrar === 'function' ? cfg.motivoNaoEncerrar() : null;
+      const escolha = await perguntarSessaoDeOutro({
+        processo: proc, operador: cfg.dono, desde: cfg.desde, itens: cfg.itens,
+        aviso: cfg.aviso, semEncerrar, chave: cfg.chave });
+      if (escolha === CANCELADO || mudou()) return CANCELADO;
+      if (escolha === 'continuar') {
+        marcarContinuada(cfg.chave, sid);
+        toast('info', '👤', `Continuando ${art} ${proc.toLowerCase()} de ${cfg.dono} — fica no nome dele`, 5000);
+        return 'continuar';
+      }
+      const segue = await confirmar({
+        titulo: `Encerrar ${art} ${proc.toLowerCase()} de ${cfg.dono}?`,
+        texto: typeof cfg.textoConfirmar === 'function' ? cfg.textoConfirmar() : '',
+        botao: 'Sim, encerrar e enviar ao Bling', chave: cfg.chave });
+      if (segue === CANCELADO || mudou()) return CANCELADO;
+      if (!segue) continue;   // "Voltar": volta à pergunta, com o mesmo aviso
+      let fechou = false;
+      try { fechou = !!(await cobrirAte(cfg.encerrar(), tetoEncerrarMs())); }
+      catch (e) { fechou = false; }
+      if (!fechou) return mudou() ? CANCELADO : 'falhou';
+      toast('sucesso', '✓', `${proc} de ${cfg.dono} encerrad${art} · ${art === 'a' ? 'a próxima' : 'o próximo'} sai no nome de ${eu}`, 5000);
+      return 'encerrou';
+    }
   }
 
   window.EkoAcesso = {
@@ -426,6 +555,7 @@
     // Encerra a liberação (trocar de responsável / fim de turno).
     sair(chave) {
       try { sessionStorage.removeItem(chaveLib(chave)); } catch (e) {}
+      novaEntrada(chave);   // fluxos e conferência adiada da pessoa que saiu param aqui
       window.EKO_RESPONSAVEL = null; window.EKO_RESPONSAVEL_ID = null;
       const tag = document.getElementById('eko-resp-tag');
       if (tag) tag.remove();
@@ -451,5 +581,8 @@
     responsavel() { return window.EKO_RESPONSAVEL || null; },
     perguntarSessaoDeOutro,
     confirmar,
+    sessaoDeOutro,
+    // Geração da entrada: muda a cada senha aceita e a cada saída.
+    geracao() { return geracao; },
   };
 })();

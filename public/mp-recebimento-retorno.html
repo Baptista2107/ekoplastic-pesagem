@@ -2800,10 +2800,13 @@ function bipar(seq, id) {
 }
 
 // ─── FINALIZAR ───
-async function finalizar() {
+// opc.deOutro (16/11/2026): encerrando a sessão de OUTRA pessoa — a confirmação
+// veio do EkoAcesso.sessaoDeOutro e quem encerrou segue logado. Devolve true se
+// o servidor fechou a sessão.
+async function finalizar(opc) {
   // Caso especial: ADITIVOS (sacos fechados + parciais)
   if (estado.modo === 'retorno' && estado.retoTipo === 'aditivos') {
-    return finalizarAditivos();
+    return finalizarAditivos(opc);
   }
 
   const lista = estado.modo === 'retorno' ? estado.retItens : estado.itens;
@@ -2836,10 +2839,10 @@ async function finalizar() {
   }
 
   // Envio ao Bling AUTOMÁTICO (sem caixa de confirmação — não tira do fullscreen).
-  await enviarSessaoParaBling(estado.modo, bipadas.length, totalKg);
+  return enviarSessaoParaBling(estado.modo, bipadas.length, totalKg, opc);
 }
 
-async function finalizarAditivos() {
+async function finalizarAditivos(opc) {
   // Os aditivos já foram persistidos como etiquetas 'T' bipadas ao "Adicionar à
   // lista" (sacos fechados) e ao imprimir saco parcial. Aqui só percorremos os
   // itens da lista e enviamos a sessão ao Bling (compra).
@@ -2851,7 +2854,7 @@ async function finalizarAditivos() {
   }
   const total = itens.reduce((s, it) => s + it.peso, 0);
   // Envio ao Bling AUTOMÁTICO (sem caixa de confirmação — não tira do fullscreen).
-  await enviarSessaoParaBling('retorno', itens.length, total);
+  return enviarSessaoParaBling('retorno', itens.length, total, opc);
 }
 
 // Imprime o relatório PARCIAL (momentâneo) sem finalizar a sessão.
@@ -2868,7 +2871,8 @@ async function relatorioAtual() {
 }
 
 // Helper único: finaliza sessão no backend e mostra resultado
-async function enviarSessaoParaBling(modo, qtdEt, totalKg) {
+async function enviarSessaoParaBling(modo, qtdEt, totalKg, opc) {
+  opc = opc || {};
   const key = modo === 'retorno' ? 'sessaoRetorno' : 'sessaoRecebimento';
   const sessaoId = estado[key];
   if (!sessaoId) {
@@ -2907,7 +2911,7 @@ async function enviarSessaoParaBling(modo, qtdEt, totalKg) {
   } catch(e) {
     beepErro();
     showToast('erro', '✗', 'Falha ao finalizar: ' + e.message);
-    return;
+    return false;
   } finally {
     estado[key] = null;       // zera referência (próxima impressão abre nova sessão)
     atualizarBadgesPai();      // some o "em andamento" na tela/aba na hora
@@ -2920,7 +2924,8 @@ async function enviarSessaoParaBling(modo, qtdEt, totalKg) {
   } else {
     resetarRecebimento();
   }
-  if (finalizou) encerrouProcesso();   // finalizou: o próximo pede a senha de novo
+  if (finalizou && !opc.deOutro) encerrouProcesso();   // finalizou a própria: o próximo pede a senha de novo
+  return finalizou;
 }
 
 function resetarAditivos() {
@@ -4107,7 +4112,6 @@ const CHAVE_PIN = 'mp-' + ABA_PIN;
 
 // Processo encerrado pela própria pessoa: a senha vale até aqui.
 function encerrouProcesso() {
-  if (estado.encerrandoDeOutro) return;   // encerrou a de outro: segue logado
   if (window.EkoAcesso && EkoAcesso.encerrar) EkoAcesso.encerrar(CHAVE_PIN);
 }
 
@@ -4124,66 +4128,60 @@ async function completarResponsavel(sessao) {
   } catch (e) { console.warn('Não gravou o responsável na sessão #' + sessao.id + ':', e.message); }
 }
 
+// Lista do frame (Recebimento: itens; Retorno: retItens).
+function listaDoFrame() {
+  return (ABA_PIN === 'retorno' ? estado.retItens : estado.itens) || [];
+}
 // Texto da confirmação de "Encerrar a de X" (16/11/2026, achado B3): diz o que
-// vai ao Bling (bipadas e já retiradas, a mesma regra do finalizar) e o que
-// será DESCARTADO (impressa e não bipada) — antes mostrava só o total de itens.
+// vai ao Bling (bipadas e já retiradas, a mesma regra do finalizar).
 function textoEncerrarDeOutro() {
-  const lista = (ABA_PIN === 'retorno' ? estado.retItens : estado.itens) || [];
-  const vao = lista.filter(it => it.status === 'bipada' || it.status === 'consumida');
-  const descartadas = lista.filter(it => it.status === 'aguardando_bipe').length;
+  const vao = listaDoFrame().filter(it => it.status === 'bipada' || it.status === 'consumida');
   const kg = vao.reduce((s, it) => s + (Number(it.peso) || 0), 0);
-  let t = vao.length
-    ? `Vai ao Bling agora: ${vao.length} ${vao.length === 1 ? 'etiqueta bipada' : 'etiquetas bipadas'} · ${kg.toFixed(1)} kg.`
-    : 'Nenhuma etiqueta bipada: não há o que enviar ao Bling.';
-  if (descartadas) t += ` ⚠ ${descartadas} ${descartadas === 1 ? 'etiqueta impressa e NÃO bipada será descartada' : 'etiquetas impressas e NÃO bipadas serão descartadas'}.`;
-  return t + ' Depois de enviado, não dá para desfazer por aqui.';
+  return `Vai ao Bling agora: ${vao.length} ${vao.length === 1 ? 'etiqueta bipada' : 'etiquetas bipadas'} · ${kg.toFixed(1)} kg.`
+    + ' Depois de enviado, não dá para desfazer por aqui.';
+}
+// Quando NÃO dá para encerrar a sessão do outro (16/11/2026, 3ª revisão,
+// achado B-d): o servidor recusa o finalizar (409) com etiqueta impressa e não
+// bipada — nada é descartado nem enviado —, e sem bipada não há o que enviar.
+// A caixa diz por quê e só oferece continuar.
+function motivoNaoEncerrarDeOutro(dono) {
+  const lista = listaDoFrame();
+  const pend = lista.filter(it => it.status === 'aguardando_bipe').length;
+  if (pend) return `Não dá para encerrar agora: ${pend} ${pend === 1 ? 'etiqueta impressa e NÃO bipada' : 'etiquetas impressas e NÃO bipadas'}. `
+    + `Continue no nome de ${dono} e bipe — ou exclua — ${pend === 1 ? 'essa etiqueta' : 'essas etiquetas'} antes de encerrar.`;
+  if (!lista.some(it => it.status === 'bipada' || it.status === 'consumida'))
+    return `Não dá para encerrar agora: nenhuma etiqueta bipada, não há o que enviar ao Bling. Continue no nome de ${dono} e bipe ou exclua as etiquetas.`;
+  return null;
 }
 
 // Sessão do frame aberta no nome de OUTRA pessoa (o servidor nunca troca o
-// nome gravado): continuar no nome dela ou encerrar primeiro.
+// nome gravado): continuar no nome dela ou encerrar primeiro. O fluxo
+// (pergunta, confirmação, envio coberto) é o EkoAcesso.sessaoDeOutro, o mesmo
+// da Retirada (16/11/2026, 3ª revisão).
 async function conferirSessaoDeOutro(aviso) {
   const info = (estado.sessaoInfo || {})[ABA_PIN];
   const dono = String((info && info.operador) || '').trim();
   const eu = String(window.EKO_RESPONSAVEL || '').trim();
   const key = ABA_PIN === 'retorno' ? 'sessaoRetorno' : 'sessaoRecebimento';
   if (!estado[key] || !dono || !eu || dono.toUpperCase() === eu.toUpperCase()) return;
-  if (!window.EkoAcesso || !EkoAcesso.perguntarSessaoDeOutro) return;
+  if (!window.EkoAcesso || !EkoAcesso.sessaoDeOutro) return;
   const processo = ABA_PIN === 'retorno' ? 'Retorno' : 'Recebimento';
-  // Já escolheu continuar ESTA sessão e só saiu e voltou: segue sem perguntar.
-  if (!aviso && EkoAcesso.continuada && EkoAcesso.continuada(CHAVE_PIN) === String(estado[key])) {
-    showToast('info', '👤', `Seguindo o ${processo.toLowerCase()} de ${dono} — fica no nome dele`, 4000);
-    return;
-  }
-  const escolha = await EkoAcesso.perguntarSessaoDeOutro({
-    processo, operador: dono, desde: info.inicio, itens: info.itens, aviso });
-  // Caixa descartada (a pessoa saiu da aba sem responder; quem voltou digita a
-  // senha dele e a pergunta é refeita para ele): não faz nada aqui.
-  if (escolha === 'cancelado') return;
-  if (escolha === 'continuar') {
-    if (EkoAcesso.continuar) EkoAcesso.continuar(CHAVE_PIN, estado[key]);
-    showToast('info', '👤', `Continuando o ${processo.toLowerCase()} de ${dono} — fica no nome dele`, 5000);
-    return;
-  }
-  // 16/11/2026 (Gustavo, achado F6): encerrar = finalizar e mandar ao Bling o
-  // processo de outra pessoa. Pede confirmação, como a Retirada; desistiu,
-  // volta à pergunta "continuar ou encerrar" (com o mesmo aviso).
-  if (EkoAcesso.confirmar) {
-    const segue = await EkoAcesso.confirmar({
-      titulo: `Encerrar o ${processo.toLowerCase()} de ${dono}?`,
-      texto: textoEncerrarDeOutro(),
-      botao: 'Sim, encerrar e enviar ao Bling',
-    });
-    if (segue === 'cancelado') return;
-    if (!segue) return conferirSessaoDeOutro(aviso);
-  }
-  estado.encerrandoDeOutro = true;
-  try { await finalizar(); } finally { estado.encerrandoDeOutro = false; }
-  // O finalizar zera a sessão local mesmo quando falha: o servidor decide.
-  await restaurarSessoesAbertas();
-  const ainda = (estado.sessaoInfo || {})[ABA_PIN];
-  if (ainda && String(ainda.operador || '').trim().toUpperCase() === dono.toUpperCase())
-    return conferirSessaoDeOutro(`Não deu para encerrar a sessão de ${dono}. Causa comum: etiqueta impressa e não bipada — bipe ou exclua, e tente de novo.`);
-  showToast('sucesso', '✓', `${processo} de ${dono} encerrado · o próximo sai no nome de ${eu}`, 5000);
+  const r = await EkoAcesso.sessaoDeOutro({
+    chave: CHAVE_PIN, processo, artigo: 'o', sessaoId: estado[key], dono,
+    desde: info.inicio, itens: info.itens, aviso,
+    motivoNaoEncerrar: () => motivoNaoEncerrarDeOutro(dono),
+    textoConfirmar: textoEncerrarDeOutro,
+    encerrar: async () => {
+      const finalizou = await finalizar({ deOutro: true });
+      // O finalizar zera a sessão local mesmo quando falha: o servidor decide.
+      await restaurarSessoesAbertas();
+      const ainda = (estado.sessaoInfo || {})[ABA_PIN];
+      return !!finalizou && !(ainda && String(ainda.operador || '').trim().toUpperCase() === dono.toUpperCase());
+    },
+    toast: showToast,
+  });
+  if (r === 'falhou')
+    return conferirSessaoDeOutro(`Não deu para encerrar a sessão de ${dono}. Tente de novo ou continue no nome dele.`);
 }
 
 // INIT — só depois que o colaborador entrar com a senha dele. O nome fica em

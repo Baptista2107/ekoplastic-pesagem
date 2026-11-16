@@ -19,6 +19,9 @@
 //
 //   F) (16/11) continuou a sessão de OUTRA pessoa, saiu e voltou: enquanto
 //      aquela sessão segue aberta, não pede a senha nem pergunta de novo.
+//   G/H/I) (16/11) achados das três revisões: frame vivo, caixa sem resposta,
+//      teto, foco, película, confirmação, conferência adiada, senha sem
+//      resposta, validade da caixa. E2) 409 do servidor real × texto da tela.
 //
 //  Como rodar:   node testes/pin-por-frame.js
 // ════════════════════════════════════════════════════════════════════
@@ -253,10 +256,17 @@ function extrairFuncao(src, nome) {
   }
   throw new Error('função ' + nome + ' sem fim');
 }
+// Só as funções que existem na tela (roda também contra o código antigo, para
+// ver o teste vermelho sem a correção).
+function presentes(src, nomes) {
+  return nomes.filter(n => new RegExp('function\\s+' + n + '\\s*\\(').test(src));
+}
+// Funções do Recebimento/Retorno usadas pela pergunta "sessão de outro".
+const FNS_RECEB_OUTRO = ['listaDoFrame', 'textoEncerrarDeOutro', 'motivoNaoEncerrarDeOutro', 'conferirSessaoDeOutro'];
 
 async function testeContinuada(cfg) {
   const html = fs.readFileSync(path.join(PUBLIC, cfg.arquivo), 'utf8');
-  const codigo = cfg.funcoes.map(n => extrairFuncao(html, n)).join('\n');
+  const codigo = presentes(html, cfg.funcoes).map(n => extrairFuncao(html, n)).join('\n');
   const ss = novoStorage();
   let abertas = [];
   const fetchFalso = async (url, o) => {
@@ -342,7 +352,7 @@ async function testeContinuadas() {
     await testeContinuada({
       nome: aba === 'retorno' ? 'Retorno' : 'Recebimento', arquivo: 'mp-recebimento-retorno.html',
       chave: 'mp-' + aba, tipo: aba,
-      funcoes: ['sessaoAbertaDe', 'conferirSessaoDeOutro'], aberta: 'sessaoAbertaDe',
+      funcoes: ['sessaoAbertaDe', ...FNS_RECEB_OUTRO], aberta: 'sessaoAbertaDe',
       globais: { ABA_PIN: aba, CHAVE_PIN: 'mp-' + aba },
       estado: id => ({ sessaoInfo: { [aba]: { operador: 'BRUNO', inicio: null, itens: 2 } },
                        [aba === 'retorno' ? 'sessaoRetorno' : 'sessaoRecebimento']: id }),
@@ -434,13 +444,13 @@ async function testeFrameVivo() {
     let finalizou = 0;
     Object.assign(f.win, {
       ABA_PIN: aba, CHAVE_PIN: 'mp-' + aba, showToast: () => {},
-      finalizar: async () => { finalizou++; f.win.estado[key] = null; f.win.estado.sessaoInfo = {}; },
+      finalizar: async () => { finalizou++; f.win.estado[key] = null; f.win.estado.sessaoInfo = {}; return true; },
       restaurarSessoesAbertas: async () => {},
-      estado: { sessaoInfo: { [aba]: { operador: 'BRUNO', inicio: null, itens: 2 } }, [key]: 77, itens: [], retItens: [] },
+      estado: { sessaoInfo: { [aba]: { operador: 'BRUNO', inicio: null, itens: 2 } }, [key]: 77,
+                itens: aba === 'recebimento' ? [{ status: 'bipada', peso: 10 }] : [],
+                retItens: aba === 'retorno' ? [{ status: 'bipada', peso: 10 }] : [] },
     });
-    const fns = ['conferirSessaoDeOutro'];
-    if (/function textoEncerrarDeOutro\s*\(/.test(html)) fns.unshift('textoEncerrarDeOutro');
-    vm.runInContext(fns.map(n => extrairFuncao(html, n)).join('\n'), f.win);
+    vm.runInContext(presentes(html, FNS_RECEB_OUTRO).map(n => extrairFuncao(html, n)).join('\n'), f.win);
     f.win.EKO_RESPONSAVEL = 'ANA';
     const p = f.win.conferirSessaoDeOutro();
     await sleep(20);
@@ -625,24 +635,23 @@ async function testeSegundaRevisao() {
     nunca.catch(() => {});
   }
 
-  // B3 (Recebimento/Retorno, função real): confirmação diz o que vai e o que é descartado.
+  // B3 (Recebimento/Retorno, função real): confirmação diz o que vai ao Bling.
+  // (3ª revisão, B-d: com etiqueta não bipada o servidor RECUSA — 409 —, então
+  // nada é "descartado": esse caso não oferece encerrar, ver seção I.)
   const html = fs.readFileSync(path.join(PUBLIC, 'mp-recebimento-retorno.html'), 'utf8');
   for (const aba of ['recebimento', 'retorno']) {
     const f = novoFrame(novoStorage(), fetchFalso);
     const key = aba === 'retorno' ? 'sessaoRetorno' : 'sessaoRecebimento';
-    const lista = [{ status: 'bipada', peso: 25 }, { status: 'consumida', peso: 24.5 }, { status: 'aguardando_bipe', peso: 25 }];
+    const lista = [{ status: 'bipada', peso: 25 }, { status: 'consumida', peso: 24.5 }];
     let finalizou = 0;
     Object.assign(f.win, {
       ABA_PIN: aba, CHAVE_PIN: 'mp-' + aba, showToast: () => {},
       finalizar: async () => { finalizou++; },
       restaurarSessoesAbertas: async () => {},
-      estado: { sessaoInfo: { [aba]: { operador: 'BRUNO', inicio: null, itens: 3 } }, [key]: 77,
+      estado: { sessaoInfo: { [aba]: { operador: 'BRUNO', inicio: null, itens: 2 } }, [key]: 77,
                 itens: aba === 'recebimento' ? lista : [], retItens: aba === 'retorno' ? lista : [] },
     });
-    let codigo;
-    try { codigo = ['textoEncerrarDeOutro', 'conferirSessaoDeOutro'].map(n => extrairFuncao(html, n)).join('\n'); }
-    catch (e) { codigo = extrairFuncao(html, 'conferirSessaoDeOutro'); }
-    vm.runInContext(codigo, f.win);
+    vm.runInContext(presentes(html, FNS_RECEB_OUTRO).map(n => extrairFuncao(html, n)).join('\n'), f.win);
     f.win.EKO_RESPONSAVEL = 'ANA';
     const p = f.win.conferirSessaoDeOutro('AVISO DA TENTATIVA');
     await sleep(20);
@@ -651,7 +660,7 @@ async function testeSegundaRevisao() {
     const cx = f.doc.getElementById('eko-confirma');
     const txt = cx ? cx.innerHTML : '';
     ok(/2 etiquetas bipadas/.test(txt) && /49\.5 kg/.test(txt), `B3 ${aba}: a confirmação diz o que vai ao Bling (2 bipadas · 49.5 kg)`, `(${txt.replace(/<[^>]+>/g, ' ').slice(0, 160)})`);
-    ok(/1 etiqueta impressa e NÃO bipada será descartada/.test(txt), `B3 ${aba}: e avisa a etiqueta não bipada que será descartada`);
+    ok(!/descartad/i.test(txt), `B3 ${aba}: e não promete descarte (o servidor não descarta nada)`);
     if (cx) cx.querySelector('#eko-confirma-nao').onclick();
     await sleep(20);
     const volta = f.doc.getElementById('eko-outro');
@@ -702,6 +711,209 @@ async function testeSegundaRevisao() {
   }
 }
 
+// ─── I) 3ª revisão (16/11/2026): B-a … B-g ───
+// B-a a confirmação da Retirada (modal próprio) escapava do descarte · B-b
+// conferência adiada sobrevivia à troca de pessoa · B-c senha sem teto travava
+// o teclado · B-d prometia descarte que o servidor recusa · B-e película saía
+// antes do envio ao Bling da sessão de outro · B-f caixa não vencia na mesma
+// aba · B-g caixa abria por baixo do teclado.
+function elementoFixo(doc, id) {
+  const el = doc.createElement('div');
+  el.id = id;
+  el.classList = { add() {}, remove() {}, contains() { return false; } };
+  doc.body.appendChild(el);
+  return el;
+}
+async function testeTerceiraRevisao() {
+  console.log('\n[I] 3ª revisão: confirmação da Retirada, conferência adiada, senha sem resposta, 409, película no envio, validade, teclado');
+  const fetchSenha = async (url, o) => {
+    const corpo = JSON.parse(o.body);
+    const nome = corpo.pin === '1111' ? 'ANA' : corpo.pin === '2222' ? 'BRUNO' : corpo.pin === '3333' ? 'CARLA' : null;
+    return { ok: !!nome, json: async () => (nome ? { ok: true, nome, id: nome.length } : { ok: false, erro: 'Senha não confere' }) };
+  };
+  const api = f => f.win.EkoAcesso;
+  const logado = async (chave, aindaValida, extras, pin) => {
+    const f = novoFrame(novoStorage(), fetchSenha, { EKO_TETO_CONFERIR_MS: 150, ...(extras || {}) });
+    f.entrou = [];
+    api(f).exigir('mp', nome => f.entrou.push(nome), { chave, aindaValida });
+    f.digitar(pin || '1111'); f.entrar();
+    await sleep(600);
+    return f;
+  };
+
+  // B-a: Retirada, funções REAIS (conferirSessaoDeOutro, finalizar, envio).
+  const htmlRet = fs.readFileSync(path.join(PUBLIC, 'mp-retirada.html'), 'utf8');
+  const telaRetirada = async () => {
+    let valida = true;
+    const f = await logado('mp-retirada', async () => valida);
+    f.setValida = v => { valida = v; };
+    const doc = f.doc;
+    elementoFixo(doc, 'btn-finalizar'); elementoFixo(doc, 'ultima-retirada');
+    f.modais = 0; f.finalizados = [];
+    const fetchSenhaFrame = f.win.fetch;
+    f.win.fetch = async (url, o) => {
+      if (/\/sessoes\/\d+\/finalizar$/.test(String(url))) {
+        f.finalizados.push(String(url));
+        return { ok: true, json: async () => ({ ok: true, bling: { ok: true, bling_id: 'X1' } }) };
+      }
+      return fetchSenhaFrame(url, o);
+    };
+    Object.assign(f.win, {
+      CHAVE_PIN: 'mp-retirada', URL_SESS: '/sessoes', showToast: () => {}, fmtKg: n => String(n),
+      renderHistorico: () => {}, atualizarBadgesPai: () => {}, beepOk: () => {}, beep: () => {}, beepErro: () => {}, beepWarn: () => {},
+      cancelarSessaoSeVazia: async () => {},
+      pedirConfirmacao: async () => { f.modais++; return true; },   // o modal PRÓPRIO da Retirada
+      estado: { sessaoId: 77, sessaoOperador: 'JOAO', sessaoInicio: null, itens: [{ peso: 500 }, { peso: 480 }] },
+    });
+    vm.runInContext(presentes(htmlRet, ['escRet', 'encerrouProcesso', 'finalizar', 'enviarRetirada', 'conferirSessaoDeOutro'])
+      .map(n => extrairFuncao(htmlRet, n)).join('\n'), f.win);
+    return f;
+  };
+  {
+    // B entrou, achou a retirada do JOAO, tocou "Encerrar"; a confirmação abriu e B saiu da aba.
+    const f = await telaRetirada();
+    const p = f.win.conferirSessaoDeOutro();
+    await sleep(20);
+    f.doc.getElementById('eko-outro').querySelector('#eko-outro-encerrar').onclick();
+    await sleep(20);
+    ok(!!f.doc.getElementById('eko-confirma') && f.modais === 0,
+       'B-a: Retirada — "Encerrar a de JOAO" confirma pela caixa do EkoAcesso (descartável), não pelo modal próprio da tela',
+       `(caixa: ${!!f.doc.getElementById('eko-confirma')}, modal próprio: ${f.modais})`);
+    // C volta à aba: a conferência diz "não" (a sessão é do JOAO) → pede a senha.
+    f.setValida(false);
+    await api(f).reconferir(); await sleep(20);
+    ok(f.teclado() && !f.doc.getElementById('eko-confirma'), 'B-a: quem volta à aba digita a senha; a confirmação de quem saiu some');
+    await espera(p);
+    ok(f.finalizados.length === 0, 'B-a: a retirada do JOAO NÃO vai ao Bling pela confirmação de quem saiu', `(finalizar: ${f.finalizados.length})`);
+  }
+  {
+    // Caminho feliz: confirmou → envia uma vez, sem o modal próprio, e quem encerrou segue logado.
+    const f = await telaRetirada();
+    const p = f.win.conferirSessaoDeOutro();
+    await sleep(20);
+    f.doc.getElementById('eko-outro').querySelector('#eko-outro-encerrar').onclick();
+    await sleep(20);
+    const cx = f.doc.getElementById('eko-confirma');
+    ok(!!cx && /2 itens/.test(cx.innerHTML) && /980/.test(cx.innerHTML), 'B-a: a confirmação da Retirada diz o que vai ao Bling (2 itens · 980 kg)',
+       `(${cx ? cx.innerHTML.replace(/<[^>]+>/g, ' ').slice(0, 140) : 'sem caixa'})`);
+    if (cx) cx.querySelector('#eko-confirma-sim').onclick();
+    await espera(p, 500);
+    ok(f.finalizados.length === 1 && f.modais === 0, 'B-a: confirmou → a retirada do JOAO vai ao Bling uma vez, sem segunda confirmação',
+       `(finalizar: ${f.finalizados.length}, modal próprio: ${f.modais})`);
+    ok(!f.teclado() && api(f).liberado('mp-retirada'), 'B-a: quem encerrou a de outro segue logado para começar a dele');
+  }
+
+  // B-b: a conferência que falhou (REFAZER) é da pessoa de antes.
+  {
+    let modo = 'vale';
+    const aindaValida = async () => { if (modo === 'falha') throw new Error('fora'); return modo === 'vale'; };
+    const f = await logado('mp-recebimento', aindaValida);
+    modo = 'falha';
+    await api(f).reconferir(); await sleep(20);
+    ok(!f.teclado(), 'B-b: falha na consulta ao voltar à aba → Ana segue (conferência adiada)');
+    api(f).encerrar('mp-recebimento');          // Ana trocou o responsável
+    f.digitar('2222'); f.entrar(); await sleep(600);
+    ok(api(f).responsavel() === 'BRUNO', 'B-b: Bruno entra');
+    modo = 'nao';                                // Bruno começou agora, ainda sem etiqueta
+    api(f).verificarTeto(); await sleep(50);
+    ok(!f.teclado(), 'B-b: o relógio NÃO refaz a conferência adiada da Ana no Bruno (sem senha no meio da pesagem dele)');
+  }
+
+  // B-c: servidor que aceita e não responde a senha.
+  {
+    const f = novoFrame(novoStorage(), async () => new Promise(() => {}), { EKO_TETO_CONFERIR_MS: 150 });
+    const entrou = [];
+    api(f).exigir('mp', n => entrou.push(n), { chave: 'mp-retorno', aindaValida: async () => true });
+    f.digitar('1111'); f.entrar();
+    await sleep(400);
+    const msg = f.doc.getElementById('eko-acesso') ? f.doc.getElementById('eko-acesso').querySelector('#eko-msg').textContent : '';
+    ok(/não respondeu/i.test(msg), 'B-c: senha sem resposta do servidor → "Servidor não respondeu — tente de novo"', `(msg: ${msg})`);
+    f.win.fetch = fetchSenha;
+    f.digitar('1111'); f.entrar(); await sleep(600);
+    ok(entrou.join() === 'ANA' && !f.teclado(), 'B-c: o teclado volta a aceitar a senha (não fica travado até recarregar)', `(entrou: ${JSON.stringify(entrou)})`);
+  }
+
+  // B-d: Recebimento/Retorno — com etiqueta impressa e não bipada (ou sem bipada) não oferece encerrar.
+  const htmlRec = fs.readFileSync(path.join(PUBLIC, 'mp-recebimento-retorno.html'), 'utf8');
+  const telaReceb = (aba, lista, extras) => {
+    const f = novoFrame(novoStorage(), fetchSenha, extras);
+    const key = aba === 'retorno' ? 'sessaoRetorno' : 'sessaoRecebimento';
+    f.finalizou = 0;
+    Object.assign(f.win, {
+      ABA_PIN: aba, CHAVE_PIN: 'mp-' + aba, showToast: () => {},
+      finalizar: async () => { f.finalizou++; return true; },
+      restaurarSessoesAbertas: async () => {},
+      estado: { sessaoInfo: { [aba]: { operador: 'JOAO', inicio: null, itens: lista.length } }, [key]: 77,
+                itens: aba === 'recebimento' ? lista : [], retItens: aba === 'retorno' ? lista : [] },
+    });
+    vm.runInContext(presentes(htmlRec, FNS_RECEB_OUTRO).map(n => extrairFuncao(htmlRec, n)).join('\n'), f.win);
+    f.win.EKO_RESPONSAVEL = 'ANA';
+    return f;
+  };
+  for (const [nome, lista, re] of [
+    ['etiqueta não bipada', [{ status: 'bipada', peso: 25 }, { status: 'aguardando_bipe', peso: 25 }], /NÃO bipada/],
+    ['nenhuma bipada', [], /nenhuma etiqueta bipada/],
+  ]) {
+    const f = telaReceb('recebimento', lista);
+    const p = f.win.conferirSessaoDeOutro();
+    await sleep(20);
+    const cx = f.doc.getElementById('eko-outro');
+    const h = cx ? cx.innerHTML : '';
+    ok(!!cx && !/id="eko-outro-encerrar"/.test(h), `B-d: ${nome} → a caixa NÃO oferece "Encerrar a de JOAO"`);
+    ok(re.test(h) && /Continue no nome de JOAO/.test(h), `B-d: ${nome} → diz por quê e o que fazer`, `(${h.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').slice(0, 200)})`);
+    if (cx) cx.querySelector('#eko-outro-continuar').onclick();
+    await espera(p);
+    ok(f.finalizou === 0, `B-d: ${nome} → nada vai ao Bling`);
+  }
+
+  // B-e: película e leitor seguros até o envio da sessão de outro terminar (com teto).
+  {
+    const f = telaReceb('recebimento', [{ status: 'bipada', peso: 25 }], { EKO_TETO_ENCERRAR_MS: 300 });
+    let soltar;
+    // O envio fecha a sessão do JOAO quando o servidor responder.
+    f.win.finalizar = () => { f.finalizou++; return new Promise(r => { soltar = v => { f.win.estado.sessaoInfo = {}; f.win.estado.sessaoRecebimento = null; r(v); }; }); };
+    const p = f.win.conferirSessaoDeOutro();
+    await sleep(20);
+    f.doc.getElementById('eko-outro').querySelector('#eko-outro-encerrar').onclick(); await sleep(20);
+    const cx = f.doc.getElementById('eko-confirma');
+    if (cx) cx.querySelector('#eko-confirma-sim').onclick();
+    await sleep(30);
+    ok(f.finalizou === 1 && !!f.doc.getElementById('eko-pelicula') && api(f).bloqueando(),
+       'B-e: enviando ao Bling a sessão do JOAO → película cobre a tela e o leitor fica parado (toque/bipe não cai na sessão fechada)');
+    if (soltar) soltar(true);
+    await espera(p, 500); await sleep(20);
+    ok(!f.doc.getElementById('eko-pelicula') && !api(f).bloqueando(), 'B-e: envio terminou → película sai e o leitor volta');
+
+    const g = telaReceb('retorno', [{ status: 'bipada', peso: 25 }], { EKO_TETO_ENCERRAR_MS: 200 });
+    g.win.finalizar = () => new Promise(() => {});
+    g.win.conferirSessaoDeOutro();
+    await sleep(20);
+    g.doc.getElementById('eko-outro').querySelector('#eko-outro-encerrar').onclick(); await sleep(20);
+    const cg = g.doc.getElementById('eko-confirma');
+    if (cg) cg.querySelector('#eko-confirma-sim').onclick();
+    await sleep(500);
+    ok(!g.doc.getElementById('eko-pelicula') && !api(g).bloqueando(), 'B-e: servidor que não responde ao envio → película sai no teto (tela nunca fica morta)');
+  }
+
+  // B-f: caixa sem resposta na MESMA aba vence.
+  {
+    const f = await logado('mp-retirada', async () => true, { EKO_VALIDADE_DECISAO_MS: 150 });
+    const p = api(f).perguntarSessaoDeOutro({ processo: 'Retirada', operador: 'JOAO', itens: 1, chave: 'mp-retirada' });
+    await sleep(400);
+    ok(!f.doc.getElementById('eko-outro') && (await espera(p)) === 'cancelado', 'B-f: "sessão de outro" sem resposta por 2 min (aqui 150 ms) → vence e responde "cancelado"');
+    ok(f.teclado() && !api(f).liberado('mp-retirada'), 'B-f: e pede a senha (quem chega depois não responde no nome de quem entrou)');
+  }
+
+  // B-g: com o teclado de senha na tela, a caixa de quem saiu não abre por baixo.
+  {
+    const f = novoFrame(novoStorage(), fetchSenha);
+    api(f).exigir('mp', () => {}, { chave: 'mp-retirada', aindaValida: async () => true });
+    ok(f.teclado(), 'B-g: teclado de senha na tela');
+    const p = api(f).perguntarSessaoDeOutro({ processo: 'Retirada', operador: 'JOAO', itens: 1, chave: 'mp-retirada' });
+    ok((await espera(p)) === 'cancelado' && !f.doc.getElementById('eko-outro'), 'B-g: a caixa "sessão de outro" não abre por baixo do teclado (responde "cancelado")');
+  }
+}
+
 function testeTelas() {
   console.log('\n[D] telas (conferência estática)');
   const ler = f => fs.readFileSync(path.join(PUBLIC, f), 'utf8');
@@ -715,13 +927,14 @@ function testeTelas() {
   const fr = extrairFuncao(r, 'retiradaAbertaDe');
   ok(/\(s\.etiquetas \|\| \[\]\)\.length > 0/.test(fr), 'Retirada: sessão vazia no nome da pessoa não vale como processo aberto');
   ok(/EkoAcesso\.bloqueando\(\)\) \{ _bufKey = ''; return; \}/.test(r), 'Retirada: leitor não dá baixa com o teclado de senha na tela');
-  ok(!/\$\{dono\}/.test(r) && !/\$\{eu\}/.test(r), 'Retirada: nome do operador escapado no aviso (showToast monta HTML)');
+  ok(/toast: \(tipo, icone, texto, ms\) => showToast\(tipo, icone, escRet\(texto\), ms\)/.test(r) && !/showToast\([^)]*\$\{(dono|eu)\}/.test(r),
+     'Retirada: nome do operador escapado no aviso (showToast monta HTML)');
   ok(/estado\.sessaoOperador = window\.EKO_RESPONSAVEL \|\| null;/.test(r), 'Retirada: quem abre a sessão fica como dono');
 
   const rr = ler('mp-recebimento-retorno.html');
   ok(/const CHAVE_PIN = 'mp-' \+ ABA_PIN;/.test(rr), 'Recebimento/Retorno: chave pela aba');
   ok(/EkoAcesso\.exigir\(tela, aoEntrar, \{ chave: CHAVE_PIN/.test(rr), 'Recebimento/Retorno passa a chave ao pedir a senha');
-  ok(/if \(finalizou\) encerrouProcesso\(\);/.test(rr), 'Recebimento/Retorno: enviar ao Bling encerra a senha');
+  ok(/if \(finalizou && !opc\.deOutro\) encerrouProcesso\(\);/.test(rr), 'Recebimento/Retorno: enviar ao Bling a própria sessão encerra a senha');
   ok(/if \(sessaoId\) encerrouProcesso\(\);/.test(rr), 'Recebimento/Retorno: cancelar encerra a senha');
   ok(/aindaValida: sessaoAbertaDe/.test(rr), 'Recebimento/Retorno: a senha guardada só vale com sessão aberta da pessoa');
   const fs2 = extrairFuncao(rr, 'sessaoAbertaDe');
@@ -770,6 +983,53 @@ async function testeFecharAgora() {
   ok(!flag, 'não grava eko-encerrar.flag (o INICIAR.bat não religaria o servidor)');
 }
 
+// B-d contra o SERVIDOR de verdade: sessão de recebimento com uma etiqueta
+// bipada e outra impressa e não bipada. O finalizar responde 409 e nada é
+// descartado nem enviado; a função real da tela, com os status que o servidor
+// devolve, não oferece encerrar e diz por quê.
+async function testeServidor409() {
+  console.log('\n[E2] servidor real: etiqueta não bipada → finalizar recusa (409), a tela não promete descarte');
+  const post = async (url, corpo) => {
+    const r = await fetch(BASE + url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corpo || {}) });
+    return { status: r.status, json: await r.json().catch(() => null) };
+  };
+  const s = await post('/sessoes', { tipo: 'recebimento', operador: 'JOAO', fornecedor: 'Piquiri' });
+  const sid = s.json && s.json.sessao_id;
+  const etq = async peso => (await post('/print/etiqueta', {
+    clientToken: `pin409-${peso}-${CARIMBO}`, tipo: 'recebimento', materialKey: 'GBD', materialNomeEt: 'BAIXA DENSIDADE',
+    cor: 'Canela', fornecedor: 'Piquiri', peso, lote: '4090', codigo: 'CAN1', sku: `GBD.CAN.PIQUIR | ${peso} | L4090`, sessao_id: sid,
+  })).json;
+  const a = await etq(1001.5), b = await etq(998.5);
+  ok(sid && a && a.ok && b && b.ok, 'E2: sessão com duas etiquetas impressas', JSON.stringify([s.json, a, b]));
+  await post(`/etiquetas/${a.id}/bipar`);
+  const fim = await post(`/sessoes/${sid}/finalizar`);
+  ok(fim.status === 409, 'E2: com etiqueta impressa e não bipada, o servidor RECUSA o finalizar (409)', `(status: ${fim.status})`);
+  const abertas = await (await fetch(BASE + '/sessoes/abertas?tipo=recebimento')).json();
+  const sess = (abertas.sessoes || []).find(x => x.id === sid);
+  const st = sess ? (sess.etiquetas || []).map(e => e.status).sort() : [];
+  ok(sess && st.join() === 'aguardando_bipe,bipada', 'E2: a sessão segue aberta com as duas etiquetas (nada descartado)', `(status: ${st.join()})`);
+
+  const html = fs.readFileSync(path.join(PUBLIC, 'mp-recebimento-retorno.html'), 'utf8');
+  const f = novoFrame(novoStorage(), async () => ({ ok: true, json: async () => ({ ok: true }) }));
+  Object.assign(f.win, {
+    ABA_PIN: 'recebimento', CHAVE_PIN: 'mp-recebimento', showToast: () => {},
+    finalizar: async () => true, restaurarSessoesAbertas: async () => {},
+    estado: { sessaoInfo: { recebimento: { operador: 'JOAO', inicio: null, itens: st.length } }, sessaoRecebimento: sid,
+              itens: (sess ? sess.etiquetas : []).map(e => ({ status: e.status, peso: e.peso })), retItens: [] },
+  });
+  vm.runInContext(presentes(html, FNS_RECEB_OUTRO).map(n => extrairFuncao(html, n)).join('\n'), f.win);
+  f.win.EKO_RESPONSAVEL = 'ANA';
+  const p = f.win.conferirSessaoDeOutro();
+  await sleep(20);
+  const cx = f.doc.getElementById('eko-outro');
+  const h = cx ? cx.innerHTML : '';
+  ok(!!cx && !/id="eko-outro-encerrar"/.test(h) && /1 etiqueta impressa e NÃO bipada/.test(h),
+     'E2: com os status do servidor, a tela não oferece encerrar e diz que há 1 etiqueta impressa e não bipada',
+     `(${h.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').slice(0, 200)})`);
+  if (cx) cx.querySelector('#eko-outro-continuar').onclick();
+  await Promise.race([p, sleep(300)]);
+}
+
 function encerrar() {
   try { servidor && servidor.kill('SIGKILL'); } catch (e) {}
   for (const f of [TMP_DB, TMP_DB + '-wal', TMP_DB + '-shm']) { try { fs.rmSync(f, { force: true }); } catch (e) {} }
@@ -782,11 +1042,13 @@ function encerrar() {
     await testeContinuadas();
     await testeFrameVivo();
     await testeSegundaRevisao();
+    await testeTerceiraRevisao();
     testeTelas();
     await subirServidor();
     const h = await (await fetch(BASE + '/healthcheck')).json();
     if (!h || h.impressao_simulada_forcada !== true) throw new Error('ABORTADO: impressão não está travada em simulação');
     await testeFecharAgora();
+    await testeServidor409();
     console.log('\n═══════════════════════════════════════════════════');
     console.log(` RESULTADO: ${passou} passaram, ${falhou} falharam`);
     if (falhou) { console.log(' FALHAS:'); falhas.forEach(f => console.log('   - ' + f)); }

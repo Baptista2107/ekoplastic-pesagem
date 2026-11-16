@@ -1455,7 +1455,17 @@ async function finalizar() {
     botao: '✓ CONFIRMAR E ENVIAR',
   });
   if (!segue) return;
+  return enviarRetirada();
+}
 
+// Envia a retirada aberta ao Bling SEM perguntar (a confirmação é de quem
+// chama). Devolve true se o servidor fechou a sessão. opc.deOutro: encerrando a
+// retirada de OUTRA pessoa (a confirmação veio do EkoAcesso.sessaoDeOutro, que
+// é descartada se quem pediu sair — 16/11/2026, achado B-a): quem encerrou
+// segue logado para começar a dele.
+async function enviarRetirada(opc) {
+  opc = opc || {};
+  if (!estado.sessaoId || estado.itens.length === 0) return false;
   document.getElementById('btn-finalizar').disabled = true;
   showToast('info', '📤', 'Enviando ao Bling...');
 
@@ -1488,11 +1498,13 @@ async function finalizar() {
     renderHistorico();
     atualizarBadgesPai();
     document.getElementById('ultima-retirada').classList.remove('ativo');
-    encerrouProcesso();   // finalizou: a próxima retirada pede a senha de novo
+    if (!opc.deOutro) encerrouProcesso();   // finalizou a própria: a próxima pede a senha de novo
+    return true;
   } catch(e) {
-    showToast('erro', '✗', 'Falha ao finalizar: ' + e.message);
+    showToast('erro', '✗', 'Falha ao finalizar: ' + escRet(e.message));
     beepErro();
     document.getElementById('btn-finalizar').disabled = false;
+    return false;
   }
 }
 
@@ -1732,38 +1744,31 @@ function comAcesso(tela, aoEntrar) {
 
 // Processo encerrado pela própria pessoa: a senha vale até aqui.
 function encerrouProcesso() {
-  if (estado.encerrandoDeOutro) return;   // encerrou a de outro: segue logado
   if (window.EkoAcesso && EkoAcesso.encerrar) EkoAcesso.encerrar(CHAVE_PIN);
 }
 
 // Sessão aberta no nome de OUTRA pessoa (o servidor nunca troca o nome
 // gravado): a pessoa escolhe continuar no nome dela ou encerrar primeiro.
 // Vazia, não há o que decidir: cancela, e a próxima abre no nome de quem entrou.
-async function conferirSessaoDeOutro() {
+// O fluxo (pergunta, confirmação, envio coberto) é o EkoAcesso.sessaoDeOutro,
+// o mesmo do Recebimento/Retorno (16/11/2026, 3ª revisão, achado B-a).
+async function conferirSessaoDeOutro(aviso) {
   const dono = String(estado.sessaoOperador || '').trim();
   const eu = String(window.EKO_RESPONSAVEL || '').trim();
   if (!estado.sessaoId || !dono || !eu || dono.toUpperCase() === eu.toUpperCase()) return;
   if (estado.itens.length === 0) { await cancelarSessaoSeVazia(); return; }
-  if (!window.EkoAcesso || !EkoAcesso.perguntarSessaoDeOutro) return;
-  // Já escolheu continuar ESTA sessão e só saiu e voltou: segue sem perguntar.
-  if (EkoAcesso.continuada && EkoAcesso.continuada(CHAVE_PIN) === String(estado.sessaoId)) {
-    showToast('info', '👤', `Seguindo a retirada de ${escRet(dono)} — fica no nome dele`, 4000);
-    return;
-  }
-  const escolha = await EkoAcesso.perguntarSessaoDeOutro({
-    processo: 'Retirada', operador: dono, desde: estado.sessaoInicio, itens: estado.itens.length });
-  // Caixa descartada (saiu da aba sem responder; quem voltou digita a senha e
-  // a pergunta é refeita para ele): não faz nada aqui.
-  if (escolha === 'cancelado') return;
-  if (escolha === 'continuar') {
-    if (EkoAcesso.continuar) EkoAcesso.continuar(CHAVE_PIN, estado.sessaoId);
-    showToast('info', '👤', `Continuando a retirada de ${escRet(dono)} — fica no nome dele`, 5000);
-    return;
-  }
-  estado.encerrandoDeOutro = true;
-  try { await finalizar(); } finally { estado.encerrandoDeOutro = false; }
-  if (estado.sessaoId) return conferirSessaoDeOutro();   // desistiu ou falhou: pergunta de novo
-  showToast('sucesso', '✓', `Retirada de ${escRet(dono)} encerrada · a próxima sai no nome de ${escRet(eu)}`, 5000);
+  if (!window.EkoAcesso || !EkoAcesso.sessaoDeOutro) return;
+  const n = estado.itens.length;
+  const kg = estado.itens.reduce((s, it) => s + (Number(it.peso) || 0), 0);
+  const r = await EkoAcesso.sessaoDeOutro({
+    chave: CHAVE_PIN, processo: 'Retirada', artigo: 'a', sessaoId: estado.sessaoId, dono,
+    desde: estado.sessaoInicio, itens: n, aviso,
+    textoConfirmar: () => `Vai ao Bling agora (Pedido de Venda): ${n} ${n === 1 ? 'item' : 'itens'} · ${fmtKg(kg)} kg. Depois de enviado, não dá para desfazer por aqui.`,
+    encerrar: () => enviarRetirada({ deOutro: true }),
+    toast: (tipo, icone, texto, ms) => showToast(tipo, icone, escRet(texto), ms),
+  });
+  if (r === 'falhou' && estado.sessaoId)
+    return conferirSessaoDeOutro(`Não deu para encerrar a retirada de ${dono}. Tente de novo ou continue no nome dele.`);
 }
 
 // INIT — só depois que o colaborador entrar com a senha dele. Depois de
