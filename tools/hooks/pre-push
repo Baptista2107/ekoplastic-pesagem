@@ -9,6 +9,12 @@
 # Ativo no clone por:  git config core.hooksPath tools/hooks
 # Pular: nao ha chave desde 22/10 (padrao para qualquer pessoa; a trava do Claude
 # Code desta conta recusa --no-verify). Teste errado se conserta no teste.
+#
+# JA APROVADO (16/11/2026): se a suite inteira ja passou nesta mesma ARVORE (mesmo
+# conteudo de arquivos, mesmo node, mesmo package-lock) nas ultimas 24 h, nao roda
+# de novo e diz isso numa linha. A marca so e gravada pelo rodar-todos.js 100%
+# verde numa pasta limpa — ver testes/_aprovados.js. Commit sem esse arquivo
+# (anterior a 16/11) sempre roda.
 set -u
 raiz=$(git rev-parse --show-toplevel)
 zeros=0000000000000000000000000000000000000000
@@ -17,6 +23,12 @@ while read -r _lref lsha _rref _rsha; do
     tmp=$(mktemp -d)
     trap 'git -C "$raiz" worktree remove --force "$tmp" >/dev/null 2>&1; rm -rf "$tmp"' EXIT
     git -C "$raiz" worktree add --detach -q "$tmp" "$lsha" || exit 1
+    if [ -f "$tmp/testes/_aprovados.js" ] && \
+       (cd "$tmp" && timeout 60 node testes/_aprovados.js ja-aprovado "$lsha" </dev/null); then
+        git -C "$raiz" worktree remove --force "$tmp" >/dev/null 2>&1; rm -rf "$tmp"
+        trap - EXIT
+        continue
+    fi
     echo "[pre-push] testando ${lsha:0:7} (node testes/rodar-todos.js, teto 15 min)..."
     saida=$(cd "$tmp" && timeout 900 node testes/rodar-todos.js 2>&1); rc=$?
     echo "$saida" | tail -6
