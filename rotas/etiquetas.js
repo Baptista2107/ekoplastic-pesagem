@@ -21,6 +21,7 @@ const {
 } = require('../lib/negocio');
 const { enviarBlingIndividualExtrusao } = require('../lib/turnos');
 const { TARAS_EIXO } = require('../lib/bobinas');
+const pedidosRetirada = require('../lib/retirada-pedidos');
 const { liberarBagNaRetirada } = require('../lib/enderecamento');
 const { avisarMudanca: avisarMapa } = require('../lib/mapa-vps');
 const { adicionarOperadorExtrusao, operadoresExtrusao, removerOperadorExtrusao } = require('../lib/operadores');
@@ -144,16 +145,37 @@ async function rotasEtiquetas(req, res, parsed, pathname) {
     }
     // status === 'aguardando_bipe' ou 'bipada' — pode consumir
 
+    // Pedido de retirada do painel (06/11/2026): bag que não bate com nenhum
+    // pedido aberto só sai com motivo (em produção) — ver lib/retirada-pedidos.
+    // SEM await (16/11/2026): daqui até a transação não pode haver espera,
+    // senão o 2º bipe do mesmo bag passa pela conferência acima enquanto o 1º
+    // espera a VPS, e os dois gravam uma S (baixa dupla no Bling).
+    pedidosRetirada.atualizarFundo();
     // Produto trocado: a retirada sai como o produto NOVO (é ele que tem
     // saldo no Bling). A etiqueta original fica como foi impressa.
     const lida = aplicarSubstituicao(orig);
+    const decisao = pedidosRetirada.avaliar(orig, body, lida);
+    if (!decisao.pode) {
+      return jsonErr(res, decisao.http,
+        decisao.corpo.sem_pedido ? 'Não há pedido de retirada aberto no painel'
+          : decisao.corpo.peso_diferente
+            ? `Bag ${origId} é do lote pedido, mas o peso (${orig.peso} kg) não é o do pedido`
+            : `Bag ${origId} não é de nenhum pedido aberto (material/lote diferente)`,
+        { ...decisao.corpo, etiqueta: aplicarSubstituicao(orig) });
+    }
 
     // Cria etiqueta virtual de retirada
     const seqRet = getProximoSeq('retirada');
     const idVirt = 'S' + String(seqRet).padStart(7, '0');
     const seqSessaoRet = proximoSeqSessao(sessaoIdRet);
     let bagLiberado = null;
+    let jaRetirada = null;
     const tr = makeTransaction(() => {
+      // Rede de segurança (16/11/2026): confere DENTRO da transação se o bag
+      // já tem retirada ativa — qualquer espera que volte a aparecer entre a
+      // conferência lá de cima e aqui não pode gerar 2 S do mesmo bag.
+      jaRetirada = db.prepare(`SELECT id, hora_impressao FROM etiquetas WHERE tipo='retirada' AND ref_id = ? AND status != 'cancelada' ORDER BY hora_impressao DESC LIMIT 1`).get(origId);
+      if (jaRetirada) return;
       dbStmts.insertEtiqueta.run({
         id:             idVirt,
         seq:            seqRet,
@@ -185,8 +207,22 @@ async function rotasEtiquetas(req, res, parsed, pathname) {
       // Mapa do galpão (06/11/2026): o bag saiu — a posição dele fica livre
       // na mesma transação (sem baixa automática o mapa envelhece calado).
       bagLiberado = liberarBagNaRetirada(origId, `retirada sessao ${sessaoIdRet}`);
+      if (decisao.registro)
+        db.prepare('UPDATE etiquetas SET pedido_retirada = ? WHERE id = ?')
+          .run(JSON.stringify(decisao.registro), idVirt);
     });
     tr();
+    if (jaRetirada) {
+      return jsonErr(res, 409, `Etiqueta ${origId} já foi retirada`, {
+        ja_consumida: true, etiqueta: aplicarSubstituicao(orig), consumo: jaRetirada,
+      });
+    }
+    if (decisao.registro && decisao.registro.fora) {
+      pedidosRetirada.enfileirarFora({
+        etiqueta_id: origId, sessao_id: sessaoIdRet, operador: sessao.operador || null,
+        motivo: decisao.registro.motivo || '(teste) seguiu sem motivo', pedido_id: decisao.registro.pedido_id });
+      pedidosRetirada.enviarFila().catch(() => {});
+    }
     if (bagLiberado) avisarMapa();
     if (bagLiberado) logI('enderecamento', `Bag ${origId} saiu de ${bagLiberado.posicao} (retirada sessão #${sessaoIdRet})`);
     logI('retirada', `Consumida ${origId} → ${idVirt} (sessão #${sessaoIdRet})`

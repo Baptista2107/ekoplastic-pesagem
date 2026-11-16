@@ -509,7 +509,8 @@ header {
 .toast-wrap {
   position: fixed; bottom: 24px; right: 24px;
   display: flex; flex-direction: column; gap: 8px;
-  z-index: 1000;
+  z-index: 2100;   /* acima das janelas (2000): o aviso "bipe esperando" tem de aparecer com a janela aberta */
+  pointer-events: none;
 }
 .toast {
   background: var(--panel);
@@ -592,6 +593,56 @@ header {
 }
 .modal .btn-fechar:hover { filter: brightness(1.1); }
 
+/* ─── PEDIDOS DO PAINEL (06/11/2026; arrumado 10/11 — cartão por pedido) ─── */
+.pedidos-painel { border: 1.5px solid var(--border); border-radius: 10px; padding: 12px; background: var(--surface);
+  display: flex; flex-direction: column; gap: 10px; }
+.pedidos-painel .pp-titulo { display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+.pedidos-painel .pp-titulo .pp-nome { font-size: 12px; letter-spacing: 1.5px; font-weight: 800; color: var(--text); text-transform: uppercase; }
+.pedidos-painel .pp-conta { font-size: 11px; font-weight: 800; padding: 2px 8px; border-radius: 10px; background: var(--panel-hi); color: var(--muted); }
+.pedidos-painel .pp-conta.tem { background: rgba(250,204,21,0.15); color: #facc15; }
+.pedidos-painel .pp-modo { margin-left: auto; font-size: 10px; font-weight: 800; letter-spacing: 1px; padding: 2px 8px; border-radius: 10px;
+  border: 1px solid var(--warn); color: var(--warn); text-transform: uppercase; }
+.pedidos-painel .pp-modo.producao { border-color: var(--danger); color: var(--danger); }
+.pedidos-painel .pp-faixa { font-size: 12px; color: var(--warn); padding: 6px 10px; border-radius: 8px; background: rgba(255,170,0,0.08); }
+.pedidos-painel .pp-vazio { font-size: 13px; color: var(--muted); padding: 4px 2px; }
+.pp-lista { display: flex; flex-direction: column; gap: 8px; }
+.pp-item { display: grid; grid-template-columns: 34px 1fr; gap: 10px; align-items: start;
+  padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border); border-left: 4px solid #facc15; background: var(--panel); }
+.pp-item.atendido { border-left-color: var(--devol); }
+/* "meio apagado" enquanto não sai bag (decisão de 06/11): só o corpo; o sinal fica aceso */
+.pp-item.pendente .pp-corpo { opacity: 0.6; }
+.pp-item.andando .pp-corpo { opacity: 0.85; }
+.pp-sinal { width: 30px; height: 27px; display: flex; align-items: flex-end; justify-content: center; margin-top: 1px; }
+.pp-sinal.pendente { background: #facc15; color: #111827; clip-path: polygon(50% 0, 100% 100%, 0 100%);
+  font-weight: 900; font-size: 16px; line-height: 1; padding-bottom: 2px; }
+.pp-sinal.ok { color: #22c55e; font-weight: 900; font-size: 28px; line-height: 1; align-items: center; }
+.pp-corpo { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.pp-linha1 { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.pp-mat { font-weight: 800; font-size: 15px; color: var(--text); min-width: 0; overflow-wrap: anywhere; }
+.pp-qtd { flex: 0 0 auto; font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: var(--muted); }
+.pp-qtd b { font-size: 18px; color: var(--text); }
+.pp-item.atendido .pp-qtd b { color: var(--devol); }
+.pp-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.pp-chip { font-size: 12px; padding: 3px 8px; border-radius: 6px; background: var(--panel-hi); color: var(--text); white-space: nowrap; }
+.pp-chip i { font-style: normal; color: var(--muted); margin-right: 4px; font-size: 10px; letter-spacing: 1px; text-transform: uppercase; }
+.pp-bags { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
+.pp-bag { width: 18px; height: 18px; border-radius: 4px; border: 1.5px solid var(--muted); display: inline-flex; align-items: center;
+  justify-content: center; font-size: 11px; font-weight: 800; }
+.pp-bag.ok { background: var(--devol); border-color: var(--devol); color: #000; }
+/* pedido em kg (produto por saco, 12/11/2026): barra no lugar dos quadradinhos */
+.pp-barra { flex: 1 1 100%; height: 8px; border-radius: 4px; background: var(--panel-hi); overflow: hidden; }
+.pp-barra span { display: block; height: 100%; background: var(--devol); }
+.pp-rodape { font-size: 11px; color: var(--muted); overflow-wrap: anywhere; }
+.pp-rodape .pp-onde { color: var(--entrada); }
+.modal.fora { border-color: var(--warn); max-width: 560px; }
+.modal.fora .titulo { color: var(--warn); }
+.fora-motivos { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.fora-motivos button { padding: 14px; border-radius: 8px; border: 1.5px solid var(--warn); background: rgba(255,170,0,0.08);
+  color: var(--text); font-size: 15px; font-weight: 800; cursor: pointer; text-align: left; }
+.fora-motivos textarea { width: 100%; min-height: 60px; background: var(--panel); color: var(--text); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px; font-size: 14px; display: none; }
+
 /* ── Teclado na tela (touch, sem teclado físico) ── */
 .kp-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.78); display:none; align-items:center; justify-content:center; z-index:9999; }
 .kp-overlay.ativo { display:flex; }
@@ -672,6 +723,10 @@ header {
         </div>
         <button class="btn-simular" onclick="simularBipe()">⌨ Digitar código</button>
         <button class="btn-simular" onclick="reimprimirEtiqueta()">🖨 Reimprimir etiqueta</button>
+      </div>
+      <div class="pedidos-painel" id="pedidos-painel">
+        <div class="pp-titulo"><span class="pp-nome">📋 Pedidos de retirada</span><span class="pp-conta" id="pp-conta"></span><span class="pp-modo" id="pp-modo" style="display:none"></span></div>
+        <div class="pp-lista" id="pp-lista"><div class="pp-vazio">carregando…</div></div>
       </div>
       <div class="ultima-retirada" id="ultima-retirada">
         <div class="ok-ico">✓</div>
@@ -788,6 +843,27 @@ header {
     <div style="font-size:13px;color:var(--muted)">Esta matéria-prima já foi enviada para a extrusão anteriormente. Não pode ser retirada novamente.</div>
     <div class="info-bloco" id="bloq-info"></div>
     <button class="btn-fechar" onclick="fecharBloqueio()">FECHAR · CONTINUAR</button>
+  </div>
+</div>
+
+<!-- MODAL: BAG FORA DO PEDIDO DO PAINEL (06/11/2026) -->
+<div class="modal-overlay" id="modal-fora">
+  <div class="modal fora">
+    <div class="icone-grande">⚠️</div>
+    <div class="titulo" id="fora-titulo">SAINDO BAG DIFERENTE DO SOLICITADO</div>
+    <div style="font-size:13px;color:var(--muted)" id="fora-texto"></div>
+    <div class="info-bloco" id="fora-info"></div>
+    <div class="fora-motivos" id="fora-motivos">
+      <button type="button" data-motivo="Bag do lote pedido não está no estoque">Bag do lote pedido não está no estoque</button>
+      <button type="button" data-motivo="Lote pedido acabou">Lote pedido acabou</button>
+      <button type="button" data-motivo="Bag do peso pedido não está no estoque">Bag do peso pedido não está no estoque</button>
+      <button type="button" data-motivo="Bag do lote pedido inacessível">Bag do lote pedido inacessível</button>
+      <button type="button" data-motivo="__outro">Outro motivo…</button>
+      <textarea id="fora-outro" maxlength="200" placeholder="Escreva o motivo e toque em CONFIRMAR MOTIVO"></textarea>
+      <button type="button" id="fora-outro-ok" style="display:none" data-motivo="__outro_ok">CONFIRMAR MOTIVO</button>
+      <button type="button" id="fora-teste" style="display:none" data-motivo="__teste">Seguir sem motivo (teste)</button>
+    </div>
+    <button class="btn-fechar" style="background:transparent;border:1.5px solid var(--border);color:var(--text)" onclick="fecharFora(null)">CANCELAR · NÃO RETIRAR</button>
   </div>
 </div>
 
@@ -986,12 +1062,7 @@ setInterval(checarServidor, 5000);
 async function garantirSessao() {
   if (estado.sessaoId) return estado.sessaoId;
   try {
-    const r = await fetch(URL_SESS, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tipo: 'retirada', operador: (window.EKO_RESPONSAVEL || null) }),
-    });
-    const d = await r.json();
+    const { d } = await postJsonComTeto(URL_SESS, { tipo: 'retirada', operador: (window.EKO_RESPONSAVEL || null) });
     if (!d.ok) throw new Error(d.erro || 'falha ao abrir sessão');
     estado.sessaoId = d.sessao_id;
     estado.sessaoOperador = window.EKO_RESPONSAVEL || null;   // quem abriu é o dono
@@ -1018,30 +1089,134 @@ function setFluxo(f) {
   document.getElementById('fluxo-sacos').style.display   = (f === 'sacos')   ? 'flex' : 'none';
 }
 
-// Captura global de teclado: o leitor Comtac HS-960 envia caracteres + Enter como teclado USB.
-// Só captura na aba BIPAGEM e fora de inputs editáveis.
+// ENTRADA ÚNICA DO LEITOR (16/11/2026, 2ª revisão dos cartões do pedido).
+// O leitor Comtac HS-960 manda os caracteres + Enter como teclado USB, em
+// poucos milissegundos entre teclas. Regras:
+//  · janela aberta (motivo, "já foi retirada", confirmação): o bipe NÃO some —
+//    vai para a fila e sai depois da resposta. Antes, um `return` jogava fora o
+//    código e o bag saía do barracão sem S e sem baixa no Bling;
+//  · o Enter do leitor nunca chega ao botão em foco (nem atrás da janela);
+//  · na caixa "Outro motivo…" o código bipado não fica no texto: uma sequência
+//    no ritmo do leitor que fecha um código R/S/T + Enter sai da caixa e vira bipe.
+const LEITOR_MAX_MS = 60;        // entre teclas do leitor; gente digitando passa disso
+const LEITOR_REINICIO_MS = 1000; // pausa longa: o que estava no buffer era lixo
+const RX_CODIGO = /[RTS]\d{7}/;
 let _bufKey = '';
-document.addEventListener('keydown', (e) => {
+let _bufRapido = '';             // só teclas no ritmo do leitor (caixa de motivo)
+let _tUltTecla = 0;
+function janelaAberta() {
+  return ['modal-bloqueado', 'modal-fora', 'modal-confirmar']
+    .some(id => { const el = document.getElementById(id); return !!(el && el.classList.contains('ativo')); });
+}
+function teclaDoLeitor(e) {
   if (estado.fluxo !== 'bipagem') return;
-  const tag = (e.target.tagName || '').toUpperCase();
-  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-  if (document.getElementById('modal-bloqueado').classList.contains('ativo')) return;
   if (document.getElementById('keypad-modal').classList.contains('ativo')) return;
-  // Teclado de senha ou "sessão de outro" na tela: ninguém identificado ainda.
-  // Bipe aqui abriria sessão sem nome e daria baixa no bag por trás do teclado.
+  const agora = Date.now();
+  const intervalo = agora - _tUltTecla;
+  _tUltTecla = agora;
+  if (intervalo > LEITOR_REINICIO_MS) _bufKey = '';
+  if (intervalo > LEITOR_MAX_MS) _bufRapido = '';
+  const alvo = e.target || {};
+  const tag = (alvo.tagName || '').toUpperCase();
+  if (alvo.id === 'fora-outro') {
+    // Caixa do motivo: o texto é de quem digita; o código do leitor é bipe.
+    if (e.key === 'Enter') {
+      e.preventDefault();                       // motivo é uma linha só
+      const m = _bufRapido.length >= 8 && _bufRapido.match(/[RTS]\d{7}$/);
+      if (m) {
+        if (alvo.value.endsWith(m[0])) alvo.value = alvo.value.slice(0, -m[0].length);
+        processarBipe(m[0]);
+      }
+      _bufRapido = '';
+    } else if (e.key.length === 1 && /^[A-Za-z0-9]$/.test(e.key)) {
+      _bufRapido += e.key;
+    } else {
+      _bufRapido = '';
+    }
+    return;
+  }
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+  // Teclado de senha / "sessão de outro" na tela (componente de acesso): ninguém
+  // identificado ainda — o bipe não pode abrir sessão por trás do teclado.
   if (window.EkoAcesso && EkoAcesso.bloqueando && EkoAcesso.bloqueando()) { _bufKey = ''; return; }
   if (e.key === 'Enter') {
-    if (_bufKey.length > 0) {
-      processarBipe(_bufKey);
-      _bufKey = '';
-    }
-    e.preventDefault();
+    e.preventDefault();       // nunca "clica" o botão em foco, com ou sem janela aberta
+    e.stopPropagation();
+    // Vale o ÚLTIMO código do buffer: se o Enter de um bipe se perdeu, o
+    // buffer fica "R0000005R0000009" e o que o leitor acabou de ler é o fim.
+    // (A sobra sem Enter some sozinha: 1 s sem tecla zera o buffer.)
+    const todos = _bufKey.match(/[RTS]\d{7}/g);
+    if (_bufKey.length > 0) { processarBipe(todos ? todos[todos.length - 1] : _bufKey); _bufKey = ''; }
   } else if (e.key.length === 1 && /^[A-Za-z0-9]$/.test(e.key)) {
     _bufKey += e.key;
   }
-});
+}
+document.addEventListener('keydown', teclaDoLeitor, true);
 
-async function processarBipe(raw) {
+// UM bipe por vez (16/11/2026): o 2º espera o 1º terminar, inclusive a resposta
+// da janela de motivo. Bipe que chega com janela aberta ou com outro bipe em
+// andamento AVISA (som + mensagem) que está esperando — ninguém leva o bag
+// achando que saiu.
+let _filaBipe = Promise.resolve();
+let _bipesNaFila = 0;
+function processarBipe(raw) {
+  const m = String(raw || '').match(RX_CODIGO);
+  const vezDele = { comecou: false };
+  const avisarEspera = () => {
+    showToast('warn', '⏳', `${m ? m[0] : 'Bipe'} lido — espera você responder a janela aberta`, 6000);
+    beepWarn();
+  };
+  if (janelaAberta()) avisarEspera();
+  else if (_bipesNaFila > 0) {
+    // Atrás de um bipe ainda no ar: se ele abrir uma janela, este avisa que espera.
+    setTimeout(() => { if (!vezDele.comecou && janelaAberta()) avisarEspera(); }, 700);
+  }
+  _bipesNaFila++;
+  const vez = _filaBipe
+    .then(() => esperarJanelasFechadas())
+    .then(() => { vezDele.comecou = true; return processarBipeAgora(raw); })
+    .finally(() => { _bipesNaFila--; });
+  _filaBipe = vez.catch(() => {});
+  return vez;
+}
+// "Já foi retirada" e as confirmações de finalizar/cancelar não seguram a fila
+// por si: o bipe seguinte espera a pessoa fechar a janela.
+function esperarJanelasFechadas() {
+  if (!janelaAberta()) return Promise.resolve();
+  return new Promise(res => {
+    const t = setInterval(() => { if (!janelaAberta()) { clearInterval(t); res(); } }, 150);
+  });
+}
+
+// Teto nas chamadas ao servidor local (16/11/2026): com a fila de um bipe por
+// vez, uma resposta que nunca vem travaria TODOS os bipes seguintes em silêncio.
+const TETO_FETCH_MS = Number(window.EKO_TETO_FETCH_MS) || 15000;   // teste de navegador encurta
+async function postJsonComTeto(url, corpo, ms) {
+  const teto = ms || TETO_FETCH_MS;
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), teto);
+  try {
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(corpo),
+      signal: ctl.signal,
+    });
+    const d = await r.json();
+    return { r, d };
+  } catch (e) {
+    if (e && e.name === 'AbortError') {
+      const err = new Error(`o servidor não respondeu em ${Math.round(teto / 1000)} s`);
+      err.teto = true;
+      throw err;
+    }
+    throw e;
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+async function processarBipeAgora(raw) {
   // Aceita ID puro ('R0000005', 'T0000001', 'S0000001') ou string completa
   const m = raw.match(/[RTS]\d{7}/);
   if (!m) {
@@ -1055,17 +1230,21 @@ async function processarBipe(raw) {
   const sessaoId = await garantirSessao();
   if (!sessaoId) return;
 
-  // 2) Tenta consumir
+  // 2) Tenta consumir. checar_pedido: bag fora dos pedidos do painel volta
+  // 409 fora_do_pedido (inclusive em teste) para a tela perguntar o motivo.
   try {
-    const r = await fetch(`${URL_ETIQ}/${id}/consumir`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sessao_id: sessaoId }),
-    });
-    const d = await r.json();
+    let { r, d } = await postJsonComTeto(`${URL_ETIQ}/${id}/consumir`, { sessao_id: sessaoId, checar_pedido: true });
+
+    if (r.status === 409 && d.fora_do_pedido) {
+      beepWarn();
+      const escolha = await perguntarFora(d);
+      if (!escolha) { showToast('warn', '↩', `${id} NÃO foi retirado`); return; }
+      ({ r, d } = await postJsonComTeto(`${URL_ETIQ}/${id}/consumir`, { sessao_id: sessaoId, fora_do_pedido: escolha }));
+    }
 
     if (r.status === 409 && d.ja_consumida) {
-      // Etiqueta já consumida — abre modal de bloqueio
+      // Etiqueta já consumida — abre modal de bloqueio. O bipe seguinte espera
+      // a janela fechar (esperarJanelasFechadas).
       mostrarBloqueio(d.etiqueta, d.consumo);
       beepErro();
       return;
@@ -1094,9 +1273,16 @@ async function processarBipe(raw) {
     renderHistorico();
     mostrarUltimaRetirada(itemLocal);
     beepOk();
+    carregarPedidos();
 
   } catch(e) {
-    showToast('erro', '✗', 'Erro de comunicação: ' + e.message);
+    if (e && e.teto) {
+      // Pode ter saído ou não: bipar de novo resolve — se saiu, aparece
+      // "JÁ FOI RETIRADA"; se não, sai agora. A fila segue.
+      showToast('erro', '⚠', `${id}: ${e.message} — confira se saiu: bipe de novo (se já saiu, aparece JÁ FOI RETIRADA)`, 8000);
+    } else {
+      showToast('erro', '✗', 'Erro de comunicação: ' + e.message);
+    }
     beepErro();
   }
 }
@@ -1190,6 +1376,180 @@ function fecharBloqueio() {
   document.getElementById('modal-bloqueado').classList.remove('ativo');
   _bufKey = '';                                       // limpa buffer de digitação acumulada
 }
+
+// ════════════════════════════════════════════════════════════════════
+//   PEDIDOS DO PAINEL (06/11/2026, Gustavo)
+//   O Willian pede no painel fornecedor + material + peso (ou qualquer
+//   peso) + lote + nº de bags (peso desde 10/11/2026). Aqui cada
+//   pedido aberto aparece meio apagado e vai acendendo a cada bag que sai.
+//   Quem decide se o bag pode sair é o servidor (POST consumir); a lista
+//   vem do servidor do Mini PC, que pergunta à VPS.
+// ════════════════════════════════════════════════════════════════════
+const URL_PEDIDOS = URL_BASE + '/retirada/pedidos';
+/* <pedidos-render> — testes/retirada-tela.js roda este trecho isolado (node:vm) */
+const escP = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+const pesoTxt = p => (p == null || p === '' || !isFinite(Number(p))) ? ''
+  : Number(p).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' kg';
+// Pedido de produto que sai por saco (Pigmento, Dessecante, Auxiliar de
+// Fluxo, Compatibilizante): em kg em 12/11; desde 13/11 em SACOS (Gustavo:
+// "kg vira unidade, não usaremos mais kg nos aditivos"). A VPS segue mandando
+// unidade 'kg' + kg_pedidos (o atendimento é pelo peso) e, desde 13/11,
+// sacos_pedidos/sacos_atendidos; sem eles, kg ÷ kg do saco (= VPS _sacos_de).
+const emKg = p => !!p && String(p.unidade || '').toLowerCase() === 'kg';
+const kgNum = v => (v == null || v === '' || typeof v === 'boolean' || !isFinite(Number(v))) ? 0 : Number(v);
+function sacosDe(p, atendidos) {
+  const v = atendidos ? p.sacos_atendidos : p.sacos_pedidos;
+  if (Number.isInteger(v) && v >= 0) return v;
+  return Math.floor(kgNum(atendidos ? p.kg_atendidos : p.kg_pedidos) / (kgNum(p.kg_saco) || 25) + 0.5);
+}
+const nSacos = n => n + ' saco' + (n === 1 ? '' : 's');
+// Uma linha por pedido (lista do modal de bag fora do pedido).
+function linhaPedido(p) {
+  const base = `${escP(p.material_nome || p.material_key)}${p.cor ? ' · ' + escP(p.cor) : ''} · ${escP(p.fornecedor)}`;
+  if (emKg(p)) return `${base} · ${sacosDe(p, true)} de ${nSacos(sacosDe(p, false))}`;
+  // lote vazio = pedido por produto (qualquer lote), o da VPS desde 11/11
+  const lote = p.lote ? `Lote ${escP(p.lote)}` : 'qualquer lote';
+  return `${base} · ${lote}${pesoTxt(p.peso) ? ' · ' + escP(pesoTxt(p.peso)) : ''} (${Number(p.bags_atendidos) || 0} de ${Number(p.bags_pedidos) || 0})`;
+}
+function horaPedido(iso) {
+  const d = new Date(iso);
+  return isNaN(d) ? '' : d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
+// Um cartão por pedido (Gustavo 10/11): no canto esquerdo, triângulo amarelo
+// com "!" enquanto não foi feito; V verde quando todos os bags saíram. Todo
+// texto vem da VPS/Mini PC: sempre escP.
+function htmlPedido(p) {
+  const kg = emKg(p);
+  const n = kg ? kgNum(p.kg_pedidos) : (Number(p.bags_pedidos) || 0);
+  const a = kg ? kgNum(p.kg_atendidos) : Math.min(Number(p.bags_atendidos) || 0, n);
+  const feito = p.status === 'atendido';
+  let bags = '';
+  if (kg) bags = `<div class="pp-barra"><span style="width:${n > 0 ? Math.min(100, Math.round(a / n * 100)) : 0}%"></span></div>`;
+  else for (let i = 0; i < n; i++) bags += `<span class="pp-bag${i < a ? ' ok' : ''}">${i < a ? '✓' : ''}</span>`;
+  const estado = feito ? 'atendido' : (a > 0 ? 'andando' : 'pendente');
+  const sinal = feito
+    ? `<div class="pp-sinal ok" data-sinal="ok" title="Feito: todos os bags saíram">✓</div>`
+    : `<div class="pp-sinal pendente" data-sinal="pendente" title="Ainda não foi feito">!</div>`;
+  const mat = String(p.material_nome || p.material_key || '');
+  const cor = p.cor && !mat.toUpperCase().includes(String(p.cor).toUpperCase()) ? ' · ' + escP(p.cor) : '';
+  const peso = pesoTxt(p.peso);
+  const onde = Array.isArray(p.enderecos) && p.enderecos.length
+    ? ` · <span class="pp-onde">📍 ${p.enderecos.slice(0, 6).map(escP).join(', ')}${p.enderecos.length > 6 ? ' e mais ' + (p.enderecos.length - 6) : ''}</span>` : '';
+  return `<div class="pp-item ${estado}" data-pedido="${escP(p.id)}" data-status="${feito ? 'atendido' : 'aberto'}">
+    ${sinal}
+    <div class="pp-corpo">
+      <div class="pp-linha1"><span class="pp-mat">${escP(mat)}${cor}</span><span class="pp-qtd">${kg
+        ? `<b>${sacosDe(p, true)}</b> de ${nSacos(sacosDe(p, false))}` : `<b>${a}</b> de ${n} bag${n === 1 ? '' : 's'}`}</span></div>
+      <div class="pp-chips">
+        <span class="pp-chip"><i>Fornecedor</i>${escP(p.fornecedor)}</span>${kg ? `
+        <span class="pp-chip"><i>Lote</i>qualquer</span>` : `
+        <span class="pp-chip"><i>Peso</i>${peso ? escP(peso) : 'qualquer'}</span>
+        <span class="pp-chip"><i>Lote</i>${(p.lote_fmt || p.lote) ? escP(p.lote_fmt || p.lote) : 'qualquer'}</span>`}
+      </div>
+      <div class="pp-bags">${bags}</div>
+      <div class="pp-rodape">${escP(p.id)} · pedido por ${escP(p.autor_nome || '—')}${p.criado_em ? ' · ' + escP(horaPedido(p.criado_em)) : ''}${onde}</div>
+    </div>
+  </div>`;
+}
+// → { lista: html, conta: texto do contador, temAberto }
+function htmlPedidos(d) {
+  let h = '';
+  if (d.indisponivel) h += `<div class="pp-faixa">⚠ Pedidos indisponíveis (sem conexão com o painel). A retirada segue normal.</div>`;
+  else if (d.desatualizado) h += `<div class="pp-faixa">⚠ Sem conexão com o painel — lista de ${Math.round((Number(d.idade_s) || 0) / 60)} min atrás.</div>`;
+  const abertos = (d.pedidos || []).filter(p => p.status === 'aberto');
+  const atendidos = (d.pedidos || []).filter(p => p.status === 'atendido');
+  if (!abertos.length && !d.indisponivel) h += `<div class="pp-vazio">Nenhum pedido aberto.</div>`;
+  for (const p of [...abertos, ...atendidos]) h += htmlPedido(p);
+  return { lista: h, conta: abertos.length ? `${abertos.length} aberto${abertos.length === 1 ? '' : 's'}` : 'nenhum aberto',
+           temAberto: abertos.length > 0 };
+}
+/* </pedidos-render> */
+let _pedidos = { modo: null, pedidos: [] };
+
+async function carregarPedidos() {
+  try {
+    const r = await fetch(URL_PEDIDOS);
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.erro || 'falha');
+    _pedidos = d;
+  } catch (e) {
+    _pedidos = { ..._pedidos, desatualizado: true, erro: e.message };
+  }
+  renderPedidos();
+}
+
+function renderPedidos() {
+  const d = _pedidos;
+  // Chave local desligada: o bloco nem aparece (retirada como sempre foi).
+  document.getElementById('pedidos-painel').style.display = d.desligado ? 'none' : '';
+  const modo = document.getElementById('pp-modo');
+  if (d.modo) {
+    modo.style.display = '';
+    modo.textContent = d.modo === 'producao' ? 'PRODUÇÃO · só sai o pedido' : 'TESTE · nada trava';
+    modo.className = 'pp-modo' + (d.modo === 'producao' ? ' producao' : '');
+  } else modo.style.display = 'none';
+  const r = htmlPedidos(d);
+  const conta = document.getElementById('pp-conta');
+  conta.textContent = r.conta;
+  conta.className = 'pp-conta' + (r.temAberto ? ' tem' : '');
+  document.getElementById('pp-lista').innerHTML = r.lista;
+}
+
+// Modal do bag fora do pedido. → {motivo, pedido_id} | {} (teste, sem motivo) | null (cancelou)
+let _foraResolver = null;
+function perguntarFora(d) {
+  // Pergunta anterior sem resposta (não deveria, com um bipe por vez):
+  // fecha como "cancelou" — quem chamou avisa que aquele bag NÃO saiu.
+  if (_foraResolver) { const r = _foraResolver; _foraResolver = null; r(null); }
+  const et = d.etiqueta || {};
+  const prod = d.modo === 'producao';
+  document.getElementById('fora-titulo').textContent = d.sem_pedido
+    ? 'NÃO HÁ PEDIDO ABERTO NO PAINEL' : 'SAINDO BAG DIFERENTE DO SOLICITADO';
+  document.getElementById('fora-texto').textContent = d.sem_pedido
+    ? 'Nenhum pedido do painel está aberto. Para retirar, diga o motivo.'
+    : d.peso_diferente
+      ? 'Este bag é do lote pedido, mas o PESO não é o do pedido. Para retirar, diga o motivo.'
+      : 'Este bag não é de nenhum pedido aberto (material ou lote diferente). Para retirar, diga o motivo.';
+  const ped = (d.pedidos || []).map(linhaPedido);
+  document.getElementById('fora-info').innerHTML = `
+    <div><span class="lbl">Bag bipado</span><span class="val">${escP(et.id)} · ${escP(et.material_nome || et.material_key)}${et.cor ? ' · ' + escP(et.cor) : ''} · ${escP(et.fornecedor)} · Lote ${escP(et.lote)}${pesoTxt(et.peso) ? ' · ' + escP(pesoTxt(et.peso)) : ''}</span></div>
+    <div><span class="lbl">Pedidos abertos</span><span class="val">${ped.length ? ped.join('<br>') : '—'}</span></div>`;
+  document.getElementById('fora-teste').style.display = prod ? 'none' : '';
+  document.getElementById('fora-outro').style.display = 'none';
+  document.getElementById('fora-outro-ok').style.display = 'none';
+  document.getElementById('fora-outro').value = '';
+  document.getElementById('modal-fora').dataset.pedido = (d.pedidos && d.pedidos.length === 1) ? String(d.pedidos[0].id) : '';
+  document.getElementById('modal-fora').classList.add('ativo');
+  return new Promise(res => { _foraResolver = res; });
+}
+function fecharFora(escolha) {
+  document.getElementById('modal-fora').classList.remove('ativo');
+  _bufKey = '';
+  const r = _foraResolver; _foraResolver = null;
+  if (r) r(escolha);
+}
+document.getElementById('fora-motivos').addEventListener('click', ev => {
+  const b = ev.target.closest('button[data-motivo]');
+  if (!b) return;
+  const m = b.dataset.motivo;
+  const pedido_id = document.getElementById('modal-fora').dataset.pedido || null;
+  if (m === '__outro') {
+    document.getElementById('fora-outro').style.display = 'block';
+    document.getElementById('fora-outro-ok').style.display = '';
+    document.getElementById('fora-outro').focus();
+    return;
+  }
+  if (m === '__outro_ok') {
+    const t = document.getElementById('fora-outro').value.trim();
+    if (!t) { showToast('warn', '⚠', 'Escreva o motivo'); return; }
+    return fecharFora({ motivo: t, pedido_id });
+  }
+  if (m === '__teste') return fecharFora({});
+  fecharFora({ motivo: m, pedido_id });
+});
+
+carregarPedidos();
+setInterval(carregarPedidos, 15000);
 
 // ════════════════════════════════════════════════════════════════════
 //   SUB-FLUXO: SACOS (PIG / DESSEC)
