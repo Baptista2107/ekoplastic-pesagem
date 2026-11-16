@@ -1306,7 +1306,9 @@ const nSacos = n => n + ' saco' + (n === 1 ? '' : 's');
 function linhaPedido(p) {
   const base = `${escP(p.material_nome || p.material_key)}${p.cor ? ' · ' + escP(p.cor) : ''} · ${escP(p.fornecedor)}`;
   if (emKg(p)) return `${base} · ${sacosDe(p, true)} de ${nSacos(sacosDe(p, false))}`;
-  return `${base} · Lote ${escP(p.lote)}${pesoTxt(p.peso) ? ' · ' + escP(pesoTxt(p.peso)) : ''} (${Number(p.bags_atendidos) || 0} de ${Number(p.bags_pedidos) || 0})`;
+  // lote vazio = pedido por produto (qualquer lote), o da VPS desde 11/11
+  const lote = p.lote ? `Lote ${escP(p.lote)}` : 'qualquer lote';
+  return `${base} · ${lote}${pesoTxt(p.peso) ? ' · ' + escP(pesoTxt(p.peso)) : ''} (${Number(p.bags_atendidos) || 0} de ${Number(p.bags_pedidos) || 0})`;
 }
 function horaPedido(iso) {
   const d = new Date(iso);
@@ -1341,7 +1343,7 @@ function htmlPedido(p) {
         <span class="pp-chip"><i>Fornecedor</i>${escP(p.fornecedor)}</span>${kg ? `
         <span class="pp-chip"><i>Lote</i>qualquer</span>` : `
         <span class="pp-chip"><i>Peso</i>${peso ? escP(peso) : 'qualquer'}</span>
-        <span class="pp-chip"><i>Lote</i>${escP(p.lote_fmt || p.lote)}</span>`}
+        <span class="pp-chip"><i>Lote</i>${(p.lote_fmt || p.lote) ? escP(p.lote_fmt || p.lote) : 'qualquer'}</span>`}
       </div>
       <div class="pp-bags">${bags}</div>
       <div class="pp-rodape">${escP(p.id)} · pedido por ${escP(p.autor_nome || '—')}${p.criado_em ? ' · ' + escP(horaPedido(p.criado_em)) : ''}${onde}</div>

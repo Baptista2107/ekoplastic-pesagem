@@ -159,8 +159,10 @@ const registro = virtId => { const l = lerDb('SELECT pedido_retirada FROM etique
     const c1 = await consumir(a1, sRet, { checar_pedido: true });
     ok(c1.status === 200 && registro(c1.body.etiqueta_virtual.id)?.pedido_id === 'P1', 'bag do lote pedido sai e conta para P1', c1.body);
     const g2 = await req('GET', '/retirada/pedidos');
-    ok(g2.body.pedidos[0].bags_atendidos === 1 && g2.body.pedidos[0].etiquetas_atendidas.includes(a1),
-       'a lista já mostra 1 de 2 antes da VPS saber (conta local)', g2.body.pedidos[0]);
+    // A lista leva o id da S (saída), como a VPS (16/11: antes ia o R e o
+    // mesmo bag contava 2x quando a VPS listava a S — ver [8]).
+    ok(g2.body.pedidos[0].bags_atendidos === 1 && g2.body.pedidos[0].etiquetas_atendidas.includes(c1.body.etiqueta_virtual.id),
+       'a lista já mostra 1 de 2 antes da VPS saber (conta local, pela S como a VPS)', g2.body.pedidos[0]);
     await consumir(a2, sRet, { checar_pedido: true });
     const g3 = await req('GET', '/retirada/pedidos');
     ok(g3.body.pedidos[0].status === 'atendido', 'com 2 de 2 o pedido fica atendido', g3.body.pedidos[0]);
@@ -388,6 +390,67 @@ const registro = virtId => { const l = lerDb('SELECT pedido_retirada FROM etique
     await req('GET', '/retirada/pedidos');
     const ck8 = await consumir(await bag('121226', 'DESSEC', null, 'Cristal Master', 1000), sRet, { checar_pedido: true });
     ok(ck8.status === 200 && paraQuem(ck8) === 'K2', 'pedido em kg não olha o lote', ck8.body);
+
+    // ── [8] Pedido POR PRODUTO (lote vazio, o único que a tela da VPS cria
+    // desde 11/11) e a conta sem dobrar (16/11/2026). Formato copiado do que
+    // a VPS manda hoje (RM-20261116-002: CARBONATO Karina, 3 bags, lote "").
+    console.log('\n[8] Pedido por PRODUTO (qualquer lote) e bag contado uma vez só');
+    {
+    VPS.modo = 'producao'; VPS.recebidos = [];
+    const agoraIso = () => new Date(Date.now() - 1000).toISOString();
+    const pprod = (id, n, extra = {}) => pedido(id, '', n, { material_key: 'CARBO', cor: '', material_nome: 'CARBONATO',
+      fornecedor: 'Karina', lote_fmt: '', peso: null, qualquer_lote: true, unidade: 'bag', bags: [],
+      criado_em: agoraIso(), ...extra });
+    VPS.pedidos = [pprod('Q1', 3)];
+    const q1 = await consumir(await bag('051126', 'CARBO', '', 'Karina', 1250), sRet, { checar_pedido: true });
+    ok(q1.status === 200 && paraQuem(q1) === 'Q1',
+       'em PRODUÇÃO, bag de Carbonato Karina de QUALQUER lote sai e conta para o pedido por produto', q1.body);
+    const sQ1 = q1.body && q1.body.etiqueta_virtual && q1.body.etiqueta_virtual.id;
+    // a VPS já viu essa S (envio ao vivo) e lista ela no pedido
+    VPS.pedidos = [pprod('Q1', 3, { etiquetas_atendidas: [sQ1], bags_atendidos: 1, criado_em: VPS.pedidos[0].criado_em })];
+    const gq1 = await doPedido('Q1');
+    ok(gq1 && gq1.bags_atendidos === 1 && gq1.status === 'aberto',
+       'o bag que a VPS já contou (S) e o daqui (mesmo bag) contam UMA vez: 1 de 3, não 2', gq1);
+    const q2 = await consumir(await bag('061126', 'CARBO', '', 'Karina', 1300), sRet, { checar_pedido: true });
+    ok(q2.status === 200 && paraQuem(q2) === 'Q1', '2º bag (outro lote) também é do pedido', q2.body);
+    const q3 = await consumir(await bag('071126', 'CARBO', '', 'Karina', 1280), sRet, { checar_pedido: true });
+    ok(q3.status === 200 && paraQuem(q3) === 'Q1',
+       '3º bag de um pedido de 3 ainda é do pedido (antes, a conta dobrada fechava no 2º e o 3º levava 409)', q3.body);
+    ok((await doPedido('Q1')).status === 'atendido', 'com 3 de 3 o pedido fica atendido', await doPedido('Q1'));
+    const q4 = await consumir(await bag('081126', 'CARBO', '', 'Karina', 1250), sRet, { checar_pedido: true });
+    ok(q4.status === 409 && q4.body.fora_do_pedido === true, '4º bag já é fora do pedido (409)', q4.body);
+    const q5 = await consumir(await bag('051126', 'CARBO', '', 'Ecorafia', 1250), sRet, { checar_pedido: true });
+    ok(q5.status === 409, 'Carbonato de OUTRO fornecedor não é do pedido por produto', q5.body);
+
+    // S que a VPS deu a OUTRO pedido não conta neste (a VPS decide a fila)
+    VPS.pedidos = [pprod('Q2', 2), pprod('Q3', 2)];
+    const q6 = await consumir(await bag('091126', 'CARBO', '', 'Karina', 1250), sRet, { checar_pedido: true });
+    const sQ6 = q6.body && q6.body.etiqueta_virtual && q6.body.etiqueta_virtual.id;
+    ok(q6.status === 200 && paraQuem(q6) === 'Q2', 'com 2 pedidos do mesmo produto, o bag vai para o mais antigo', q6.body);
+    VPS.pedidos = [pprod('Q2', 2, { criado_em: VPS.pedidos[0].criado_em }),
+                   pprod('Q3', 2, { criado_em: VPS.pedidos[1].criado_em, etiquetas_atendidas: [sQ6], bags_atendidos: 1 })];
+    const lq = (await req('GET', '/retirada/pedidos')).body.pedidos;
+    const q2v = lq.find(p => p.id === 'Q2'), q3v = lq.find(p => p.id === 'Q3');
+    ok(q2v.bags_atendidos === 0 && q3v.bags_atendidos === 1,
+       'a VPS pôs a S no Q3: aqui ela sai do Q2 (não conta em dois pedidos)', { q2v, q3v });
+
+    // bag ESCOLHIDO no painel (bags: [{id}]): só ele é do pedido
+    const escolhido = await bag('101126', 'CARBO', '', 'Karina', 1250);
+    const outro = await bag('101126', 'CARBO', '', 'Karina', 1250);
+    VPS.pedidos = [pprod('Q4', 1, { bags: [{ id: escolhido, peso: 1250, entrada: '', saiu: false }] })];
+    const q7 = await consumir(outro, sRet, { checar_pedido: true });
+    ok(q7.status === 409, 'pedido com bag escolhido: outro bag do mesmo produto é fora do pedido', q7.body);
+    const q8 = await consumir(escolhido, sRet, { checar_pedido: true });
+    ok(q8.status === 200 && paraQuem(q8) === 'Q4', 'o bag escolhido sai e conta para o pedido', q8.body);
+
+    // Pedido em kg com o formato real de hoje (RM-20261116-001: cor "", lote "", sacos)
+    VPS.pedidos = [pedido('K20', '', null, { material_key: 'DESSEC', cor: '', material_nome: 'DESSECANTE',
+      fornecedor: 'Cristal Master', lote_fmt: '', peso: null, unidade: 'kg', kg_pedidos: 300, kg_saco: 25,
+      kg_atendidos: 0, sacos_pedidos: 12, sacos_atendidos: 0, qualquer_lote: true, bags: [], criado_em: agoraIso() })];
+    const k20 = await consumir(await bag('091126', 'DESSEC', '', 'Cristal Master', 300), sRet, { checar_pedido: true });
+    ok(k20.status === 200 && paraQuem(k20) === 'K20',
+       'palete de Dessecante (lote 091126) casa com o pedido em kg sem lote (sem 409)', k20.body);
+    }
   } catch (e) {
     falhou++; console.log('  \x1b[31m✗ ERRO\x1b[0m', e.stack || e.message);
   } finally {

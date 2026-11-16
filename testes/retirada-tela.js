@@ -89,5 +89,14 @@ ok(T2.linhaPedido(ped()) === 'AMARELO BAIXA DENSIDADE · Amarelo · Aliana · Lo
 const hKx = T2.htmlPedido(pkg({ fornecedor: mau, kg_saco: mau, kg_pedidos: mau }));
 ok(!/<img/i.test(hKx) && T2.linhaPedido(pkg({ fornecedor: mau })).includes('&lt;img'), 'kg: texto de fora escapado', hKx);
 
+console.log('\n[5] Pedido por PRODUTO (lote vazio — o que a VPS cria desde 11/11; 16/11/2026)');
+const pprod = (extra = {}) => ped({ material_key: 'CARBO', cor: '', material_nome: 'CARBONATO', fornecedor: 'Karina',
+  lote: '', lote_fmt: '', peso: null, bags_pedidos: 3, qualquer_lote: true, unidade: 'bag', bags: [], ...extra });
+const hP = T2.htmlPedido(pprod());
+ok(/<i>Lote<\/i>qualquer/.test(hP) && /<b>0<\/b> de 3 bags/.test(hP),
+   'cartão: lote "qualquer" (não um campo em branco) e "0 de 3 bags"', hP);
+ok(T2.linhaPedido(pprod({ bags_atendidos: 1 })) === 'CARBONATO · Karina · qualquer lote (1 de 3)',
+   'modal: "qualquer lote" em vez de "Lote " vazio', T2.linhaPedido(pprod({ bags_atendidos: 1 })));
+
 console.log(`\n ${passou} passaram, ${falhou} falharam`);
 process.exit(falhou ? 1 : 0);
