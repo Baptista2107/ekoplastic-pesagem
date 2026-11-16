@@ -242,6 +242,10 @@ const ultimaLeitura = {};
 // limpeza não pode apagar o que ele acabou de ler. O contador é o que
 // distingue "ninguém mexeu" de "já tem coisa nova aqui".
 let GERACAO = 0;
+// O recado na tela é a confirmação de algo JÁ GRAVADO ("✓ … guardada em …").
+// Fica para ler, mas some na próxima leitura boa — senão o "✓" verde aparece
+// ao lado de um par novo ainda não confirmado (16/11).
+let RECADO_CONF = false;
 
 /* ══════════════ utilidades ══════════════ */
 const $ = id => document.getElementById(id);
@@ -255,6 +259,7 @@ function beep(f, d) {
 }
 function vibrar(p) { try { navigator.vibrate && navigator.vibrate(p); } catch (e) {} }
 function dizer(tipo, txt, ms) {
+  RECADO_CONF = false;
   $('msg').innerHTML = '<div class="aviso ' + tipo + '">' + txt + '</div>';
   if (ms) setTimeout(() => { if ($('msg').textContent.replace(/\s/g,'') === String(txt).replace(/<[^>]+>/g,'').replace(/\s/g,'')) $('msg').innerHTML = ''; }, ms);
 }
@@ -493,6 +498,7 @@ async function onLeu(texto) {
   }
   beep(880, .09); vibrar(40);
   GERACAO++;
+  if (RECADO_CONF) { $('msg').innerHTML = ''; RECADO_CONF = false; }
 
   if (MODO === 'saida') {
     // Na saída tanto faz o que foi lido — os dois resolvem o endereço.
@@ -621,11 +627,11 @@ async function confirmar() {
         + (dsE ? `<span class="desc-conf">${esc(dsE)}</span>` : '')
         + (d.aviso ? '<br>' + esc(d.aviso) : ''), 0);
     }
-    const geracao = ++GERACAO;
-    // Limpa só os quadros para a próxima leitura; o recado com a descrição
-    // fica na tela até a próxima leitura (16/11: sumia em 2,2 s, sem dar tempo
-    // de ler no coletor).
-    setTimeout(() => { if (GERACAO === geracao) limparSlots(); }, 2200);
+    // Quadros limpos NA HORA (antes: 2,2 s depois, e um bipe rápido deixava o
+    // endereço já ocupado no quadro). O recado com a descrição fica para ler e
+    // some na próxima leitura boa (16/11).
+    limparSlots();
+    RECADO_CONF = true;
     carregarHistorico();
   } catch (err) {
     beep(320, .25); vibrar([120, 60, 120]);
