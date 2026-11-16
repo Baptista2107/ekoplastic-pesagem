@@ -620,6 +620,23 @@ function dizerResultado(tipo, html, ger0, msg0) {
   RECADO_SOME_NA_PROXIMA = true;
 }
 
+// POST do confirmar com teto: com o Wi-Fi do coletor pendurado, o botão
+// ficava cinza por minutos sem aviso (revisão do 764f792). Passado o teto o
+// servidor PODE ter gravado — a mensagem manda conferir antes de repetir.
+async function postConfirmar(url, corpo, ms = window.TETO_CONFIRMAR_MS || 15000) {
+  const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), ms);
+  try {
+    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                 body: JSON.stringify(corpo), signal: ctl.signal });
+    try { return await r.json(); }
+    catch (e) { throw new Error(`resposta inválida do servidor (código ${r.status}). Confira o mapa antes de repetir.`); }
+  } catch (e) {
+    if (e && e.name === 'AbortError')
+      throw new Error(`o servidor não respondeu em ${Math.round(ms / 1000)} s. Confira o mapa antes de repetir — pode ter gravado.`);
+    throw e;
+  } finally { clearTimeout(t); }
+}
+
 async function confirmar() {
   if (CONFIRMANDO) return;
   const e = ESCOLHA.end, g = ESCOLHA.gai;
@@ -628,10 +645,8 @@ async function confirmar() {
   $('btn-confirmar').disabled = true;
   try {
     if (MODO === 'saida') {
-      const r = await fetch(URL_BASE + '/enderecamento/liberar', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ posicao: e.codigo, operador: window.EKO_RESPONSAVEL || null }) });
-      const d = await r.json();
+      const d = await postConfirmar(URL_BASE + '/enderecamento/liberar',
+        { posicao: e.codigo, operador: window.EKO_RESPONSAVEL || null });
       if (!d.ok) throw new Error(d.erro || 'falha');
       beep(1100, .15); vibrar([50, 40, 50]);
       const dsS = descCurta(d.ocupacao);
@@ -639,12 +654,10 @@ async function confirmar() {
       dizerResultado('ok', `✓ ${esc(d.gaiola_id)} retirada de <b>${esc(d.posicao)}</b>. Endereço livre.`
         + (dsS ? `<span class="desc-conf">${esc(dsS)}</span>` : ''), ger0, msg0);
     } else {
-      const r = await fetch(URL_BASE + '/enderecamento/ocupar', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ posicao: e.codigo, gaiola_id: g.id, formato: g.formato,
-                               cor: g.cor, fardos: g.fardos, kg: g.kg, tipo_gaiola: g.tipo_gaiola,
-                               operador: window.EKO_RESPONSAVEL || null }) });
-      const d = await r.json();
+      const d = await postConfirmar(URL_BASE + '/enderecamento/ocupar',
+        { posicao: e.codigo, gaiola_id: g.id, formato: g.formato,
+          cor: g.cor, fardos: g.fardos, kg: g.kg, tipo_gaiola: g.tipo_gaiola,
+          operador: window.EKO_RESPONSAVEL || null });
       if (!d.ok) throw new Error(d.erro || 'falha');
       beep(1100, .15); vibrar([50, 40, 50]);
       const dsE = descCurta(d.ocupacao);

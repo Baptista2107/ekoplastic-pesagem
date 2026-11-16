@@ -247,6 +247,18 @@ with sync_playwright() as p:
         ve6 = pg.inner_text("#v-end")
         ok("01-02-012" not in ve6, f"RETIRAR: rebipar o mesmo endereço não deixa o que saiu no quadro ({ve6!r})")
         pg.evaluate("window.fetch = window.__fetchOrig")
+        # servidor PENDURADO no liberar: passado o teto, aviso + botão volta (não fica cinza sem fim)
+        pg.evaluate("""window.TETO_CONFIRMAR_MS = 1500; window.fetch = (u, o) =>
+          String(u).includes('/enderecamento/liberar')
+            ? new Promise((_, rej) => o && o.signal && o.signal.addEventListener('abort',
+                () => rej(Object.assign(new Error('abortado'), { name: 'AbortError' }))))
+            : window.__fetchOrig(u, o)""")
+        pg.evaluate(anti); pg.evaluate("onLeu('01-02-012')"); pg.wait_for_timeout(300)
+        pg.click("#btn-confirmar"); pg.wait_for_timeout(2200)
+        mt7 = pg.inner_text("#msg")
+        ok("não respondeu" in mt7, f"servidor pendurado: aviso depois do teto ({mt7[:90]!r})")
+        ok(pg.is_enabled("#btn-confirmar"), "servidor pendurado: CONFIRMAR volta depois do teto")
+        pg.evaluate("window.fetch = window.__fetchOrig; delete window.TETO_CONFIRMAR_MS")
         pg.evaluate("irModo('entrada')")
         ok(not erros, f"sem erro de JS ({erros[:2]})")
         pg.evaluate("irAba('mapa')"); pg.wait_for_timeout(200)
