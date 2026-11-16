@@ -509,7 +509,8 @@ header {
 .toast-wrap {
   position: fixed; bottom: 24px; right: 24px;
   display: flex; flex-direction: column; gap: 8px;
-  z-index: 1000;
+  z-index: 2100;   /* acima das janelas (2000): o aviso "bipe esperando" tem de aparecer com a janela aberta */
+  pointer-events: none;
 }
 .toast {
   background: var(--panel);
@@ -1061,12 +1062,7 @@ setInterval(checarServidor, 5000);
 async function garantirSessao() {
   if (estado.sessaoId) return estado.sessaoId;
   try {
-    const r = await fetch(URL_SESS, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tipo: 'retirada', operador: (window.EKO_RESPONSAVEL || null) }),
-    });
-    const d = await r.json();
+    const { d } = await postJsonComTeto(URL_SESS, { tipo: 'retirada', operador: (window.EKO_RESPONSAVEL || null) });
     if (!d.ok) throw new Error(d.erro || 'falha ao abrir sessão');
     estado.sessaoId = d.sessao_id;
     console.log('Sessão de retirada aberta: #' + d.sessao_id);
@@ -1091,36 +1087,131 @@ function setFluxo(f) {
   document.getElementById('fluxo-sacos').style.display   = (f === 'sacos')   ? 'flex' : 'none';
 }
 
-// Captura global de teclado: o leitor Comtac HS-960 envia caracteres + Enter como teclado USB.
-// Só captura na aba BIPAGEM e fora de inputs editáveis.
+// ENTRADA ÚNICA DO LEITOR (16/11/2026, 2ª revisão dos cartões do pedido).
+// O leitor Comtac HS-960 manda os caracteres + Enter como teclado USB, em
+// poucos milissegundos entre teclas. Regras:
+//  · janela aberta (motivo, "já foi retirada", confirmação): o bipe NÃO some —
+//    vai para a fila e sai depois da resposta. Antes, um `return` jogava fora o
+//    código e o bag saía do barracão sem S e sem baixa no Bling;
+//  · o Enter do leitor nunca chega ao botão em foco (nem atrás da janela);
+//  · na caixa "Outro motivo…" o código bipado não fica no texto: uma sequência
+//    no ritmo do leitor que fecha um código R/S/T + Enter sai da caixa e vira bipe.
+const LEITOR_MAX_MS = 60;        // entre teclas do leitor; gente digitando passa disso
+const LEITOR_REINICIO_MS = 1000; // pausa longa: o que estava no buffer era lixo
+const RX_CODIGO = /[RTS]\d{7}/;
 let _bufKey = '';
-document.addEventListener('keydown', (e) => {
+let _bufRapido = '';             // só teclas no ritmo do leitor (caixa de motivo)
+let _tUltTecla = 0;
+function janelaAberta() {
+  return ['modal-bloqueado', 'modal-fora', 'modal-confirmar']
+    .some(id => { const el = document.getElementById(id); return !!(el && el.classList.contains('ativo')); });
+}
+function teclaDoLeitor(e) {
   if (estado.fluxo !== 'bipagem') return;
-  const tag = (e.target.tagName || '').toUpperCase();
-  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-  if (document.getElementById('modal-bloqueado').classList.contains('ativo')) return;
-  if (document.getElementById('modal-fora').classList.contains('ativo')) return;
   if (document.getElementById('keypad-modal').classList.contains('ativo')) return;
-  if (e.key === 'Enter') {
-    if (_bufKey.length > 0) {
-      processarBipe(_bufKey);
-      _bufKey = '';
+  const agora = Date.now();
+  const intervalo = agora - _tUltTecla;
+  _tUltTecla = agora;
+  if (intervalo > LEITOR_REINICIO_MS) _bufKey = '';
+  if (intervalo > LEITOR_MAX_MS) _bufRapido = '';
+  const alvo = e.target || {};
+  const tag = (alvo.tagName || '').toUpperCase();
+  if (alvo.id === 'fora-outro') {
+    // Caixa do motivo: o texto é de quem digita; o código do leitor é bipe.
+    if (e.key === 'Enter') {
+      e.preventDefault();                       // motivo é uma linha só
+      const m = _bufRapido.length >= 8 && _bufRapido.match(/[RTS]\d{7}$/);
+      if (m) {
+        if (alvo.value.endsWith(m[0])) alvo.value = alvo.value.slice(0, -m[0].length);
+        processarBipe(m[0]);
+      }
+      _bufRapido = '';
+    } else if (e.key.length === 1 && /^[A-Za-z0-9]$/.test(e.key)) {
+      _bufRapido += e.key;
+    } else {
+      _bufRapido = '';
     }
-    e.preventDefault();
+    return;
+  }
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+  // Teclado de senha / "sessão de outro" na tela (componente de acesso): ninguém
+  // identificado ainda — o bipe não pode abrir sessão por trás do teclado.
+  if (window.EkoAcesso && EkoAcesso.bloqueando && EkoAcesso.bloqueando()) { _bufKey = ''; return; }
+  if (e.key === 'Enter') {
+    e.preventDefault();       // nunca "clica" o botão em foco, com ou sem janela aberta
+    e.stopPropagation();
+    // Vale o ÚLTIMO código do buffer: se o Enter de um bipe se perdeu, o
+    // buffer fica "R0000005R0000009" e o que o leitor acabou de ler é o fim.
+    // (A sobra sem Enter some sozinha: 1 s sem tecla zera o buffer.)
+    const todos = _bufKey.match(/[RTS]\d{7}/g);
+    if (_bufKey.length > 0) { processarBipe(todos ? todos[todos.length - 1] : _bufKey); _bufKey = ''; }
   } else if (e.key.length === 1 && /^[A-Za-z0-9]$/.test(e.key)) {
     _bufKey += e.key;
   }
-});
+}
+document.addEventListener('keydown', teclaDoLeitor, true);
 
-// UM bipe por vez (16/11/2026): dois bipes seguidos com o 1º ainda no ar
-// (ou com a janela de motivo dele aberta) faziam o 2º tomar a janela do 1º —
-// o 1º nunca recebia resposta, não saía, e nada avisava. Agora o 2º espera o
-// 1º terminar (inclusive a resposta do motivo).
+// UM bipe por vez (16/11/2026): o 2º espera o 1º terminar, inclusive a resposta
+// da janela de motivo. Bipe que chega com janela aberta ou com outro bipe em
+// andamento AVISA (som + mensagem) que está esperando — ninguém leva o bag
+// achando que saiu.
 let _filaBipe = Promise.resolve();
+let _bipesNaFila = 0;
 function processarBipe(raw) {
-  const vez = _filaBipe.then(() => processarBipeAgora(raw));
+  const m = String(raw || '').match(RX_CODIGO);
+  const vezDele = { comecou: false };
+  const avisarEspera = () => {
+    showToast('warn', '⏳', `${m ? m[0] : 'Bipe'} lido — espera você responder a janela aberta`, 6000);
+    beepWarn();
+  };
+  if (janelaAberta()) avisarEspera();
+  else if (_bipesNaFila > 0) {
+    // Atrás de um bipe ainda no ar: se ele abrir uma janela, este avisa que espera.
+    setTimeout(() => { if (!vezDele.comecou && janelaAberta()) avisarEspera(); }, 700);
+  }
+  _bipesNaFila++;
+  const vez = _filaBipe
+    .then(() => esperarJanelasFechadas())
+    .then(() => { vezDele.comecou = true; return processarBipeAgora(raw); })
+    .finally(() => { _bipesNaFila--; });
   _filaBipe = vez.catch(() => {});
   return vez;
+}
+// "Já foi retirada" e as confirmações de finalizar/cancelar não seguram a fila
+// por si: o bipe seguinte espera a pessoa fechar a janela.
+function esperarJanelasFechadas() {
+  if (!janelaAberta()) return Promise.resolve();
+  return new Promise(res => {
+    const t = setInterval(() => { if (!janelaAberta()) { clearInterval(t); res(); } }, 150);
+  });
+}
+
+// Teto nas chamadas ao servidor local (16/11/2026): com a fila de um bipe por
+// vez, uma resposta que nunca vem travaria TODOS os bipes seguintes em silêncio.
+const TETO_FETCH_MS = Number(window.EKO_TETO_FETCH_MS) || 15000;   // teste de navegador encurta
+async function postJsonComTeto(url, corpo, ms) {
+  const teto = ms || TETO_FETCH_MS;
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), teto);
+  try {
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(corpo),
+      signal: ctl.signal,
+    });
+    const d = await r.json();
+    return { r, d };
+  } catch (e) {
+    if (e && e.name === 'AbortError') {
+      const err = new Error(`o servidor não respondeu em ${Math.round(teto / 1000)} s`);
+      err.teto = true;
+      throw err;
+    }
+    throw e;
+  } finally {
+    clearTimeout(t);
+  }
 }
 
 async function processarBipeAgora(raw) {
@@ -1140,27 +1231,18 @@ async function processarBipeAgora(raw) {
   // 2) Tenta consumir. checar_pedido: bag fora dos pedidos do painel volta
   // 409 fora_do_pedido (inclusive em teste) para a tela perguntar o motivo.
   try {
-    let r = await fetch(`${URL_ETIQ}/${id}/consumir`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sessao_id: sessaoId, checar_pedido: true }),
-    });
-    let d = await r.json();
+    let { r, d } = await postJsonComTeto(`${URL_ETIQ}/${id}/consumir`, { sessao_id: sessaoId, checar_pedido: true });
 
     if (r.status === 409 && d.fora_do_pedido) {
       beepWarn();
       const escolha = await perguntarFora(d);
       if (!escolha) { showToast('warn', '↩', `${id} NÃO foi retirado`); return; }
-      r = await fetch(`${URL_ETIQ}/${id}/consumir`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessao_id: sessaoId, fora_do_pedido: escolha }),
-      });
-      d = await r.json();
+      ({ r, d } = await postJsonComTeto(`${URL_ETIQ}/${id}/consumir`, { sessao_id: sessaoId, fora_do_pedido: escolha }));
     }
 
     if (r.status === 409 && d.ja_consumida) {
-      // Etiqueta já consumida — abre modal de bloqueio
+      // Etiqueta já consumida — abre modal de bloqueio. O bipe seguinte espera
+      // a janela fechar (esperarJanelasFechadas).
       mostrarBloqueio(d.etiqueta, d.consumo);
       beepErro();
       return;
@@ -1192,7 +1274,13 @@ async function processarBipeAgora(raw) {
     carregarPedidos();
 
   } catch(e) {
-    showToast('erro', '✗', 'Erro de comunicação: ' + e.message);
+    if (e && e.teto) {
+      // Pode ter saído ou não: bipar de novo resolve — se saiu, aparece
+      // "JÁ FOI RETIRADA"; se não, sai agora. A fila segue.
+      showToast('erro', '⚠', `${id}: ${e.message} — confira se saiu: bipe de novo (se já saiu, aparece JÁ FOI RETIRADA)`, 8000);
+    } else {
+      showToast('erro', '✗', 'Erro de comunicação: ' + e.message);
+    }
     beepErro();
   }
 }

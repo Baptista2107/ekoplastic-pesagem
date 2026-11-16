@@ -101,6 +101,41 @@ Testes: `testes/retirada-pedidos.js` [9]-[12] (13 falhas no código anterior,
 88 de 88 com a correção); clique no Chromium com dois bipes seguidos (vermelho
 na tela anterior, 30 de 30 com a nova).
 
+## 2ª revisão de 16/11: o leitor com janela aberta
+- **Bipe com janela aberta sumia (grave).** Com a janela de motivo (ou a de
+  "JÁ FOI RETIRADA") aberta, o leitor jogava o código fora sem som nem aviso:
+  quem bipava o 2º bag sem olhar a tela levava o bag sem S e sem baixa no
+  Bling. Agora a tela tem UMA entrada do leitor: o bipe sempre entra na fila,
+  toca o aviso, mostra "R… lido — espera você responder a janela aberta" (o
+  aviso passou para cima das janelas) e sai depois da resposta. As janelas de
+  "já foi retirada" e de confirmar finalizar/cancelar também seguram a fila.
+- **Fila sem teto.** Com um bipe por vez, uma resposta que nunca vinha travava
+  todos os bipes seguintes em silêncio. `/consumir` e a abertura da sessão têm
+  teto de 15 s; passado o teto, a tela avisa "confira se saiu: bipe de novo (se
+  já saiu, aparece JÁ FOI RETIRADA)" e a fila anda.
+- **Enter do leitor clicava o botão em foco** (Digitar código, Reimprimir,
+  Relatório) atrás da janela: o Enter do leitor nunca chega a botão.
+- **"Outro motivo…"**: o código bipado entrava no texto do motivo. A caixa
+  separa pelo ritmo: 8 teclas seguidas a menos de 60 ms + Enter fecham um
+  código R/S/T → sai da caixa e vira bipe na fila; o resto é de quem digita.
+  Enter na caixa não pula linha (motivo é uma linha).
+- **Buffer do leitor:** 1 s sem tecla zera o que sobrou (leitura cortada,
+  sem Enter); com o Enter de um bipe perdido, o buffer "R0000005R0000009"
+  vale o ÚLTIMO código (o que o leitor acabou de ler), não o primeiro.
+- **Fila de motivos:** item que a VPS responde 5xx cinco vezes seguidas vai
+  para os recusados (antes travava a fila para sempre); recusados guardam só
+  os 200 mais recentes.
+- **Fica como decidido em 06/11 (não muda):** em teste, com pedido aberto, bag
+  que não é de nenhum pedido abre a janela de motivo e o motivo vai à VPS
+  (Telegram ao Willian, teto de 30 por hora na VPS). Sem nenhum pedido aberto,
+  sai direto (decisão de hoje, acima).
+
+Testes: `testes/retirada-pedidos.js` [13] (4 falhas no código anterior);
+teste de navegador `testes/navegador/retirada_leitor.py` (fora do rodar-todos;
+na tela anterior, 14 falhas nos 7 itens; as duas proteções do buffer também provadas por mutação):
+
+    cd ~/bling-claude && venv/bin/python -B <repo>/testes/navegador/retirada_leitor.py <repo>/public /tmp/prints
+
 ## Em aberto (não corrigido)
 - **Relógio do Mini PC atrás do da VPS:** a VPS só conta a S impressa depois da
   criação do pedido. Se o relógio do Mini PC estiver atrasado, a VPS não conta a
@@ -108,7 +143,12 @@ na tela anterior, 30 de 30 com a nova).
 - **Bag escolhido que sai, é estornado e é bipado de novo:** enquanto a VPS não
   atualizar `bags[].saiu`, ele entra como "fora do pedido".
 - **Junção com a senha por frame:** o ramo `ativar-pin-por-frame` também mexe em
-  `public/mp-retirada.html`. A junção é feita antes de subir.
+  `public/mp-retirada.html` (no mesmo ouvinte do leitor). A entrada única já
+  traz a guarda `EkoAcesso.bloqueando()` daquele ramo; a junção é feita antes de
+  subir.
+- **Teto na abertura da sessão:** se o servidor abrir a sessão mas a resposta
+  passar dos 15 s, a tela abre outra no bipe seguinte; a vazia é cancelada na
+  restauração. Só com o Mini PC muito lento.
 - **Lote com troca de produto (menor):** no passo de lote, o Mini PC compara o
   bag de origem e a VPS compara a S (produto novo); podem atribuir o bag a
   pedidos diferentes. Afeta pouco.

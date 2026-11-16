@@ -274,7 +274,9 @@ function testeTelas() {
     const h = fs.readFileSync(path.join(ROOT, 'public', arq), 'utf8');
     ok(/<script src="\/acesso-colaborador\.js"><\/script>/.test(h), `${arq}: carrega acesso-colaborador.js`);
     ok(/comAcesso\('mp',\s*\w+\);/.test(h), `${arq}: a tela só inicia depois do PIN (comAcesso('mp', …))`);
-    const re = new RegExp(`JSON\\.stringify\\(\\{ tipo: '${tipo}', operador: \\(window\\.EKO_RESPONSAVEL \\|\\| null\\) \\}\\)`);
+    // O corpo do POST /sessoes (JSON.stringify direto, ou via postJsonComTeto
+    // na Retirada desde 16/11) leva operador = EKO_RESPONSAVEL.
+    const re = new RegExp(`(JSON\\.stringify\\(|postJsonComTeto\\(URL_SESS, )\\{ tipo: '${tipo}', operador: \\(window\\.EKO_RESPONSAVEL \\|\\| null\\) \\}\\)`);
     ok(re.test(h), `${arq}: abre a sessão com operador = EKO_RESPONSAVEL`);
     ok(/completarResponsavel\(/.test(h.split('async function restaurarSessaoAberta')[1] || ''),
        `${arq}: sessão restaurada sem nome recebe o responsável`);

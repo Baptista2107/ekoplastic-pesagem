@@ -57,7 +57,7 @@ const lerDb = (sql, ...p) => {
 // idempotente pela etiqueta. Até 16/11 respondia ok para qualquer corpo, e o
 // motivo de 300 caracteres que travava a fila passava verde.
 const VPS = { no_ar: true, modo: 'teste', pedidos: [], recebidos: [], recusados: [],
-              atraso_ms: 0, teto_hora: 30, aceitos_hora: 0, ja: new Set() };
+              atraso_ms: 0, teto_hora: 30, aceitos_hora: 0, ja: new Set(), erro500: new Set() };
 function validarFora(b) {
   if (typeof b.etiqueta_id !== 'string' || !/^[RST]\d{7}$/.test(b.etiqueta_id)) return 'etiqueta inválida';
   const motivo = typeof b.motivo === 'string' ? b.motivo.trim() : '';
@@ -80,6 +80,7 @@ function subirVps() {
         }
         if (r.method === 'POST' && r.url === '/api/mp/retirada/fora-do-pedido') {
           let b = {}; try { b = JSON.parse(corpo); } catch (e) {}
+          if (VPS.erro500.has(b.etiqueta_id)) return responder(500, { ok: false, erro: 'erro interno' });
           const erro = validarFora(b);
           if (erro) { VPS.recusados.push({ b, erro }); return responder(400, { ok: false, erro }); }
           if (VPS.ja.has(b.etiqueta_id)) { VPS.recebidos.push(b); return responder(200, { ok: true, novo: false }); }
@@ -583,6 +584,41 @@ const registro = virtId => { const l = lerDb('SELECT pedido_retirada FROM etique
        'GET /retirada/pedidos ignora o que não é pedido', gl.body);
     const cn = await consumir(await bag('231126'), sRet, { checar_pedido: true });
     ok(cn.status === 200 && registro(cn.body.etiqueta_virtual.id)?.pedido_id === 'PN', 'o bag do pedido sai e conta (sem erro 500)', cn.body);
+    }
+
+    // ── [13] Fila de motivos: 5xx repetido não trava, recusados têm teto ─
+    console.log('\n[13] Item que a VPS devolve 500 sempre sai da fila na 5ª vez; recusados guardam só os 200 últimos');
+    {
+    await pedidosVps([], 'teste');
+    VPS.recebidos = []; VPS.teto_hora = 100000;
+    // 205 recusados antigos já guardados
+    const velhos = {};
+    for (let i = 0; i < 205; i++) {
+      const id = 'R08' + String(i).padStart(5, '0');
+      velhos[id] = { em: '2026-11-01T00:00:00.000Z', corpo: { etiqueta_id: id, motivo: 'x' },
+                     recusado_em: '2026-11-01T00:00:' + String(i % 60).padStart(2, '0') + '.' + String(i).padStart(3, '0') + 'Z', status: 400 };
+    }
+    VPS.erro500.add('R0999500');
+    const fila = {
+      R0999500: { em: '2026-11-16T10:00:00.000Z', corpo: { etiqueta_id: 'R0999500', motivo: 'quebra a VPS' } },
+      R0999501: { em: '2026-11-16T10:00:01.000Z', corpo: { etiqueta_id: 'R0999501', motivo: 'normal' } },
+    };
+    await req('POST', '/config', { retirada_fora_fila: JSON.stringify(fila), retirada_fora_recusados: JSON.stringify(velhos) });
+    for (let i = 0; i < 4; i++) { await req('GET', '/retirada/pedidos'); await sleep(250); }
+    let cfg = (await req('GET', '/config')).body.config;
+    let f = JSON.parse(cfg.retirada_fora_fila || '{}');
+    ok(f.R0999500 && f.R0999500.falhas_5xx === 4 && !VPS.recebidos.some(b => b.etiqueta_id === 'R0999501'),
+       'até a 4ª falha 5xx o item fica na fila (passageiro) e conta as falhas', f);
+    await req('GET', '/retirada/pedidos'); await sleep(400);
+    cfg = (await req('GET', '/config')).body.config;
+    f = JSON.parse(cfg.retirada_fora_fila || '{}');
+    const rec = JSON.parse(cfg.retirada_fora_recusados || '{}');
+    ok(!f.R0999500 && rec.R0999500 && rec.R0999500.status === 500,
+       'na 5ª falha 5xx sai da fila e vai para os recusados', { f, r: rec.R0999500 });
+    ok(VPS.recebidos.some(b => b.etiqueta_id === 'R0999501'), 'e o item seguinte chega à VPS', VPS.recebidos);
+    ok(Object.keys(rec).length === 200 && !rec.R0800000 && rec.R0800204,
+       'recusados guardam só os 200 mais recentes (o mais velho sai)', Object.keys(rec).length);
+    VPS.erro500.clear();
     }
   } catch (e) {
     falhou++; console.log('  \x1b[31m✗ ERRO\x1b[0m', e.stack || e.message);
