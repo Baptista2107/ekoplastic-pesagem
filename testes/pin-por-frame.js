@@ -90,10 +90,14 @@ function novoElemento(tag, doc) {
 }
 function novoFrame(sessionStorage, fetchFalso, extras) {
   const doc = {
-    _ids: {}, _ouvintes: [], readyState: 'complete',
+    _ids: {}, _ouvintes: [], _captura: {}, readyState: 'complete',
     getElementById(id) { return this._ids[id] || null; },
     createElement(tag) { return novoElemento(tag, doc); },
-    addEventListener(tipo, fn) { if (tipo === 'keydown') this._ouvintes.push(fn); },
+    // Em captura fica à parte (rodam ANTES dos ouvintes da tela; ver tecla()).
+    addEventListener(tipo, fn, cap) {
+      if (cap === true || (cap && cap.capture)) (this._captura[tipo] = this._captura[tipo] || []).push(fn);
+      else if (tipo === 'keydown') this._ouvintes.push(fn);
+    },
     removeEventListener(tipo, fn) { this._ouvintes = this._ouvintes.filter(f => f !== fn); },
   };
   doc.head = novoElemento('head', doc);
@@ -107,6 +111,15 @@ function novoFrame(sessionStorage, fetchFalso, extras) {
     teclado: () => !!doc.getElementById('eko-acesso'),
     digitar(txt) { for (const ch of txt) for (const f of [...doc._ouvintes]) f({ key: ch }); },
     entrar() { for (const f of [...doc._ouvintes]) f({ key: 'Enter' }); },
+    // Tecla como o navegador: primeiro os ouvintes em CAPTURA; se nenhum parou
+    // a propagação, os da tela. Devolve o evento (impedido? parado?).
+    tecla(key) {
+      const ev = { key, impedido: false, parado: false,
+        preventDefault() { this.impedido = true; }, stopPropagation() { this.parado = true; } };
+      for (const f of [...(doc._captura.keydown || [])]) f(ev);
+      if (!ev.parado) for (const f of [...doc._ouvintes]) f(ev);
+      return ev;
+    },
   };
 }
 
@@ -1036,6 +1049,117 @@ function encerrar() {
   try { fs.rmSync(TMP_LOGS, { recursive: true, force: true }); } catch (e) {}
 }
 
+async function testeQuartaRevisao() {
+  console.log('\n[J] 4ª revisão: dono ao abrir sessão (M2), teclado parado na película (B1), consulta velha (B4), aviso (B5)');
+  const fetchSenha = async (url, o) => {
+    const corpo = JSON.parse(o.body);
+    const nome = corpo.pin === '1111' ? 'ANA' : corpo.pin === '2222' ? 'BRUNO' : null;
+    return { ok: !!nome, json: async () => (nome ? { ok: true, nome, id: nome.length } : { ok: false, erro: 'Senha não confere' }) };
+  };
+  const api = f => f.win.EkoAcesso;
+  const logado = async (chave, aindaValida, extras, pin) => {
+    const f = novoFrame(novoStorage(), fetchSenha, { EKO_TETO_CONFERIR_MS: 150, ...(extras || {}) });
+    f.entrou = [];
+    api(f).exigir('mp', nome => f.entrou.push(nome), { chave, aindaValida });
+    f.digitar(pin || '1111'); f.entrar();
+    await sleep(600);
+    return f;
+  };
+
+  // M2: Recebimento — ANA abre a sessão (garantirSessao REAL), toca "trocar",
+  // BRUNO entra e a restauração FALHA (/sessoes/abertas em erro). BRUNO tem de
+  // ver a caixa "sessão de outro"; antes trabalhava na sessão da ANA sem ela.
+  {
+    const htmlRec = fs.readFileSync(path.join(PUBLIC, 'mp-recebimento-retorno.html'), 'utf8');
+    const f = await logado('mp-recebimento', async () => true, null, '2222');
+    const fetchSenhaFrame = f.win.fetch;
+    f.win.fetch = async (url, o) => (String(url) === '/sessoes'
+      ? { ok: true, json: async () => ({ ok: true, sessao_id: 55 }) }
+      : fetchSenhaFrame(url, o));
+    Object.assign(f.win, {
+      ABA_PIN: 'recebimento', CHAVE_PIN: 'mp-recebimento', URL_SESSAO: '/sessoes', showToast: () => {},
+      finalizar: async () => true,
+      restaurarSessoesAbertas: async () => {},   // /sessoes/abertas em erro: não sabe de ninguém
+      estado: { itens: [{ status: 'bipada', peso: 25 }], retItens: [] },
+    });
+    vm.runInContext(['garantirSessao', ...FNS_RECEB_OUTRO].map(n => extrairFuncao(htmlRec, n)).join('\n'), f.win);
+    const quem = f.win.EKO_RESPONSAVEL;
+    f.win.EKO_RESPONSAVEL = 'ANA';
+    await f.win.garantirSessao('recebimento');      // ANA imprime a 1ª etiqueta
+    f.win.EKO_RESPONSAVEL = quem;                   // "trocar": BRUNO entrou
+    const p = f.win.conferirSessaoDeOutro();
+    await sleep(30);
+    const cx = f.doc.getElementById('eko-outro');
+    ok(!!cx && /ANA/.test(cx.innerHTML), 'M2: sessão aberta pela ANA nesta tela + restauração em erro → BRUNO vê a caixa "sessão de ANA"',
+       `(caixa: ${!!cx}; sessaoInfo: ${JSON.stringify(f.win.estado.sessaoInfo)})`);
+    if (cx) cx.querySelector('#eko-outro-continuar').onclick();
+    await espera(p);
+  }
+
+  // B1: Enter do leitor com película/caixa não chega à tela (não clica o
+  // último botão tocado); fora disso e com o teclado de senha, segue normal.
+  {
+    const f = await logado('mp-retirada', async () => true);
+    const livre = f.tecla('Enter');
+    ok(!livre.impedido && !livre.parado, 'B1: tela livre → Enter segue normal');
+    let soltar;
+    api(f).segurar(new Promise(r => { soltar = r; }));
+    const sob = f.tecla('Enter');
+    ok(sob.impedido && sob.parado, 'B1: película/restauração → Enter do leitor é segurado em captura (não clica botão com foco)',
+       `(impedido ${sob.impedido}, parado ${sob.parado})`);
+    soltar(); await sleep(20);
+    const p = api(f).perguntarSessaoDeOutro({ processo: 'Retirada', operador: 'JOAO', itens: 1, chave: 'mp-retirada' });
+    await sleep(20);
+    const cx = f.tecla('Enter');
+    ok(cx.impedido && cx.parado, 'B1: caixa "sessão de outro" aberta → Enter segurado (não responde a caixa nem clica a tela)');
+    const b = f.doc.getElementById('eko-outro'); if (b) b.querySelector('#eko-outro-continuar').onclick();
+    await espera(p);
+    // Teclado de senha: a captura não o cala.
+    const g = novoFrame(novoStorage(), fetchSenha);
+    const entrou = [];
+    api(g).exigir('mp', n => entrou.push(n), { chave: 'mp-retirada', aindaValida: async () => true });
+    for (const ch of '1111') g.tecla(ch);
+    const ent = g.tecla('Enter');
+    await sleep(700);
+    ok(!ent.parado && entrou.join() === 'ANA', 'B1: teclado de senha aberto → as teclas chegam a ele (ANA entra)', `(entrou: ${JSON.stringify(entrou)})`);
+  }
+
+  // B4: consulta da pessoa de ANTES volta depois que outra entrou → não a derruba.
+  {
+    let resolver;
+    const f = await logado('mp-retirada', () => new Promise(r => { resolver = r; }), { EKO_TETO_CONFERIR_MS: 3000 });
+    const p = api(f).reconferir();              // consulta da ANA em curso
+    await sleep(20);
+    api(f).encerrar('mp-retirada');             // ANA encerrou → teclado
+    f.digitar('2222'); f.entrar();              // BRUNO entra
+    await sleep(700);
+    const antes = f.win.EKO_RESPONSAVEL;
+    const tecAntes = f.teclado();
+    resolver(false);                            // a consulta da ANA responde "sem processo"
+    await espera(p, 500); await sleep(30);
+    ok(antes === 'BRUNO' && !f.teclado() && f.win.EKO_RESPONSAVEL === 'BRUNO',
+       'B4: resposta velha da consulta da ANA não pede a senha do BRUNO, que acabou de entrar',
+       `(antes ${antes}, teclado antes ${tecAntes}, teclado ${f.teclado()}, agora ${f.win.EKO_RESPONSAVEL})`);
+  }
+
+  // B5: trocou a pessoa durante o envio → sem aviso "sai no nome de" quem saiu.
+  {
+    const f = await logado('mp-retirada', async () => true);
+    const avisos = [];
+    const p = api(f).sessaoDeOutro({
+      chave: 'mp-retirada', processo: 'Retirada', artigo: 'a', sessaoId: 9, dono: 'JOAO', itens: 1,
+      textoConfirmar: () => 'x', toast: (t, i, txt) => avisos.push(txt),
+      encerrar: async () => { api(f).sair('mp-retirada'); return true; },
+    });
+    await sleep(20);
+    f.doc.getElementById('eko-outro').querySelector('#eko-outro-encerrar').onclick(); await sleep(20);
+    const cf = f.doc.getElementById('eko-confirma'); if (cf) cf.querySelector('#eko-confirma-sim').onclick();
+    await espera(p, 500);
+    ok(!avisos.some(a => /sai no nome de/.test(a)), 'B5: a pessoa saiu durante o envio → nenhum aviso "a próxima sai no nome de" quem saiu',
+       `(avisos: ${JSON.stringify(avisos)})`);
+  }
+}
+
 (async () => {
   try {
     await testeFrames();
@@ -1043,6 +1167,7 @@ function encerrar() {
     await testeFrameVivo();
     await testeSegundaRevisao();
     await testeTerceiraRevisao();
+    await testeQuartaRevisao();
     testeTelas();
     await subirServidor();
     const h = await (await fetch(BASE + '/healthcheck')).json();

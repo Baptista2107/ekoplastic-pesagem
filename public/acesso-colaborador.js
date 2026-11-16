@@ -166,8 +166,12 @@
     const lib = lerLiberacao(chave);   // passou de 8 h → null
     if (!lib) { pedirDeNovo(chave); return Promise.resolve(); }
     p.conferindo = true;
+    const g = geracao;
     return conferirValida(lib, p.opc).then(r => {
       p.conferindo = false;
+      // A resposta é da pessoa de ANTES: alguém saiu ou entrou enquanto a
+      // consulta corria (4ª revisão, achado B4) — não derruba quem entrou.
+      if (g !== geracao) return;
       if (tecladoAberto()) return;
       if (r === 'falha') { REFAZER.add(chave); return; }   // não se sabe: mantém e confere no próximo minuto
       if (r === 'nao' || temCaixa()) pedirDeNovo(chave);
@@ -484,7 +488,9 @@
       try { fechou = !!(await cobrirAte(cfg.encerrar(), tetoEncerrarMs())); }
       catch (e) { fechou = false; }
       if (!fechou) return mudou() ? CANCELADO : 'falhou';
-      toast('sucesso', '✓', `${proc} de ${cfg.dono} encerrad${art} · ${art === 'a' ? 'a próxima' : 'o próximo'} sai no nome de ${eu}`, 5000);
+      // Trocou a pessoa durante o envio: o aviso "sai no nome de X" seria de
+      // quem já saiu (4ª revisão, B5).
+      if (!mudou()) toast('sucesso', '✓', `${proc} de ${cfg.dono} encerrad${art} · ${art === 'a' ? 'a próxima' : 'o próximo'} sai no nome de ${eu}`, 5000);
       return 'encerrou';
     }
   }
@@ -585,4 +591,17 @@
     // Geração da entrada: muda a cada senha aceita e a cada saída.
     geracao() { return geracao; },
   };
+
+  // Teclado parado durante película e caixa (16/11/2026, 4ª revisão, achado
+  // B1): os leitores das telas já ignoravam o bipe, mas o Enter do leitor
+  // ainda CLICAVA o último botão tocado (Finalizar, + saco). Em captura, antes
+  // de qualquer ouvinte da tela. O teclado de senha fica de fora: ele mesmo
+  // segura as teclas (e parar a propagação aqui o calaria).
+  function seguraTecla(ev) {
+    if (tecladoAberto()) return;
+    if (!(temCaixa() || conferindo > 0 || segurando > 0 || cobrindo > 0)) return;
+    if (typeof ev.preventDefault === 'function') ev.preventDefault();
+    if (typeof ev.stopPropagation === 'function') ev.stopPropagation();
+  }
+  for (const tipo of ['keydown', 'keypress', 'keyup']) document.addEventListener(tipo, seguraTecla, true);
 })();

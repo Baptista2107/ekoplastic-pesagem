@@ -1808,6 +1808,11 @@ async function garantirSessao(tipo, fornecedor) {
     const d = await r.json();
     if (!d.ok) throw new Error(d.erro || 'falha ao abrir sessão');
     estado[key] = d.sessao_id;
+    // Quem abriu é o dono, como na Retirada (16/11/2026, 4ª revisão, achado
+    // M2): o dono só vinha da restauração; com /sessoes/abertas em erro depois
+    // do "trocar", quem entrava trabalhava na sessão de outro sem a caixa.
+    estado.sessaoInfo = estado.sessaoInfo || {};
+    estado.sessaoInfo[tipo] = { operador: window.EKO_RESPONSAVEL || null, inicio: new Date().toISOString(), itens: 0 };
     console.log(`Sessão ${tipo} aberta: #${d.sessao_id}`);
     return d.sessao_id;
   } catch(e) {
@@ -4168,7 +4173,7 @@ async function conferirSessaoDeOutro(aviso) {
   const processo = ABA_PIN === 'retorno' ? 'Retorno' : 'Recebimento';
   const r = await EkoAcesso.sessaoDeOutro({
     chave: CHAVE_PIN, processo, artigo: 'o', sessaoId: estado[key], dono,
-    desde: info.inicio, itens: info.itens, aviso,
+    desde: info.inicio, itens: listaDoFrame().length || info.itens, aviso,
     motivoNaoEncerrar: () => motivoNaoEncerrarDeOutro(dono),
     textoConfirmar: textoEncerrarDeOutro,
     encerrar: async () => {
