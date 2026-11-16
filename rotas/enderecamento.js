@@ -14,12 +14,17 @@ const { jsonErr, jsonOk, lerBodyJson, NAO_TRATADA } = require('../lib/http');
 // ruas do PA, UM por posição). O retrato vem da etiqueta de recebimento —
 // nada do QR é confiado. Só bag que ainda está no estoque (status 'bipada'):
 // R consumida já saiu numa retirada; cancelada nunca existiu.
+// 16/11/2026 (Bruno): o bag que VOLTOU da produção (etiqueta de retorno
+// T0000101, Piquiri preto 834,5 kg) também mora nas ruas e não era lido —
+// R = recebimento, T = retorno, mesmas travas.
+const BAG_RE = /^[RT]\d{7}$/;
+const TIPO_DO_BAG = { R: 'recebimento', T: 'retorno' };
 function ocuparBag(res, cod, rid, body) {
   const et = db.prepare(
     `SELECT id, tipo, status, material_key, material_nome, cor, fornecedor, lote, peso
        FROM etiquetas WHERE id = ?`).get(rid);
-  if (!et || et.tipo !== 'recebimento')
-    return jsonErr(res, 404, `Etiqueta ${rid} não é de recebimento de MP nesta estação.`);
+  if (!et || et.tipo !== TIPO_DO_BAG[rid[0]])
+    return jsonErr(res, 404, `Etiqueta ${rid} não é de ${rid[0] === 'T' ? 'retorno' : 'recebimento'} de MP nesta estação.`);
   if (et.status === 'consumida')
     return jsonErr(res, 409, `O bag ${rid} já saiu numa retirada — não está mais no estoque.`, { consumida: true });
   if (et.status !== 'bipada')
@@ -93,9 +98,9 @@ async function rotasEnderecamento(req, res, parsed, pathname) {
     let gaiola = null;
     try { gaiola = (JSON.parse(configGet('gaiolas_pa', '{}')))[id] || null; } catch(e) {}
     // Big bag de MP (06/11/2026): o retrato vem da etiqueta de recebimento.
-    const bag = /^R\d{7}$/.test(id)
+    const bag = BAG_RE.test(id)
       ? (db.prepare(`SELECT id, status, material_key, material_nome, cor, fornecedor, lote, peso
-                       FROM etiquetas WHERE id = ? AND tipo = 'recebimento'`).get(id) || null)
+                       FROM etiquetas WHERE id = ? AND tipo = ?`).get(id, TIPO_DO_BAG[id[0]]) || null)
       : null;
     return jsonOk(res, { gaiola_id: id, atual: atual || null, historico, gaiola, bag });
   }
@@ -113,9 +118,9 @@ async function rotasEnderecamento(req, res, parsed, pathname) {
     // Gaiola de produto acabado (G…) ou, desde 06/11/2026, BIG BAG de MP
     // pela etiqueta de recebimento (R…). Bobina (E…) e o resto é engano —
     // melhor recusar do que endereçar a coisa errada.
-    if (/^R\d{7}$/.test(gid)) return ocuparBag(res, cod, gid, body);
+    if (BAG_RE.test(gid)) return ocuparBag(res, cod, gid, body);
     if (!/^G\d+$/.test(gid)) {
-      return jsonErr(res, 400, `"${gid || '(vazio)'}" não é etiqueta de gaiola (G…) nem de big bag (R…).`);
+      return jsonErr(res, 400, `"${gid || '(vazio)'}" não é etiqueta de gaiola (G…) nem de big bag (R… ou T…).`);
     }
 
     // Gaiola ENCERRADA: já saiu numa separação. Se a etiqueta antiga

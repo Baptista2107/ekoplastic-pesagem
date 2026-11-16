@@ -46,6 +46,7 @@ def rota(route):
         return J({"ok": bool(q), "posicao": q, "atual": None, "erro": None if q else "não existe"})
     if p.startswith("/enderecamento/gaiola/"):
         g = p.rsplit("/", 1)[1]
+        if g.startswith("T"): return J({"ok": True, "gaiola": None, "atual": None, "bag": {"status": "bipada", "material_nome": "BAIXA DENSIDADE", "cor": "Preto", "peso": 834.5, "fornecedor": "Piquiri", "lote": "S/L"}})
         if g.startswith("R"): return J({"ok": True, "gaiola": None, "atual": None, "bag": {"status": "bipada", "material_nome": "CANELA BD", "cor": "CANELA", "peso": 1000, "fornecedor": "ECORAFIA", "lote": "120926"}})
         return J({"ok": True, "gaiola": {"formato": "50x60", "fardos": 40, "kg": 1000}, "atual": None})
     if route.request.method == "POST":
@@ -94,6 +95,10 @@ with sync_playwright() as p:
         pg.evaluate("limparSlot('gai')"); pg.evaluate("onLeu('R0001234')"); pg.wait_for_timeout(250)
         ok(pg.inner_text("#v-gai") == "R0001234" and "BIG BAG" in pg.inner_text("#e-gai"), f"big bag reconhecido ({pg.inner_text('#e-gai')})")
         pg.screenshot(path=str(OUT / f"{nome}-bag.png"), full_page=False)
+        # bag de RETORNO (T…) pelo leitor "teclado" — 16/11/2026, o Bruno bipou T0000101 e não foi lido
+        pg.evaluate("limparSlot('gai')"); bipar(pg, "T0000101"); pg.wait_for_timeout(300)
+        ok(pg.inner_text("#v-gai") == "T0000101" and "BIG BAG" in pg.inner_text("#e-gai") and "Piquiri" in pg.inner_text("#e-gai"),
+           f"bag de retorno T0000101 reconhecido pelo leitor ({pg.inner_text('#e-gai')} | msg={pg.inner_text('#msg')[:90]})")
         # busca do mapa: texto comum + Enter continua busca; etiqueta bipada vira leitura
         pg.evaluate("irAba('mapa')"); pg.click("#busca")
         pg.keyboard.type("50x60"); pg.keyboard.press("Enter"); pg.wait_for_timeout(200)

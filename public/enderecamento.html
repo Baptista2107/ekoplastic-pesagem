@@ -457,7 +457,9 @@ function interpretar(texto) {
   if (/^G\d+$/i.test(t)) return { tipo: 'gaiola', id: t.toUpperCase() };
   // Big bag de MP (06/11/2026): a etiqueta de recebimento R0001234 — o mesmo
   // código que a tela de Retirada lê. Ocupa o quadro do "morador".
-  const mR = t.toUpperCase().match(/\bR\d{7}\b/);
+  // 16/11/2026 (Bruno): o bag que voltou da produção tem etiqueta de
+  // RETORNO (T0000101) — também é big bag no estoque.
+  const mR = t.toUpperCase().match(/\b[RT]\d{7}\b/);
   if (mR) return { tipo: 'gaiola', bag: true, id: mR[0] };
   return { tipo: null, bruto: t };
 }
@@ -517,7 +519,7 @@ async function detalharGaiola() {
     const d = await r.json();
     if (d.ok) {
       if (g.bag) {
-        if (!d.bag) { dizer('err', `A etiqueta ${esc(g.id)} não é de recebimento de MP.`, 6000); ESCOLHA.gai = null; return; }
+        if (!d.bag) { dizer('err', `A etiqueta ${esc(g.id)} não é de ${g.id[0] === 'T' ? 'retorno' : 'recebimento'} de MP.`, 6000); ESCOLHA.gai = null; return; }
         if (d.bag.status !== 'bipada') {
           dizer('err', `O bag ${esc(g.id)} não está no estoque (${d.bag.status === 'consumida' ? 'já saiu numa retirada' : esc(d.bag.status)}).`, 7000);
           ESCOLHA.gai = null; return;
@@ -615,8 +617,8 @@ async function confirmar() {
 
 async function digitar() {
   const v = prompt(MODO === 'saida'
-    ? 'Digite o endereço (01-02-007), a gaiola (G0000123) ou o big bag (R0001234):'
-    : 'Digite o endereço (01-02-007), a gaiola (G0000123) ou o big bag (R0001234):');
+    ? 'Digite o endereço (01-02-007), a gaiola (G0000123) ou o big bag (R0001234 / T0000123):'
+    : 'Digite o endereço (01-02-007), a gaiola (G0000123) ou o big bag (R0001234 / T0000123):');
   if (!v) return;
   delete ultimaLeitura[v.trim()];
   await onLeu(v.trim().toUpperCase());
