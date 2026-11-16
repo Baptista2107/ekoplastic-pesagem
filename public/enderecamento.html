@@ -112,8 +112,17 @@ header .sp{flex:1;min-width:0}
 .aviso.ok{background:rgba(46,230,166,.12);border:1px solid rgba(46,230,166,.4);color:var(--accent)}
 .aviso.at{background:rgba(255,170,0,.12);border:1px solid rgba(255,170,0,.4);color:var(--warn)}
 .hist{margin-top:16px}
-.hist-item{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:12.5px}
-.hist-item span:last-child{color:var(--muted);white-space:nowrap;font-family:'IBM Plex Mono',monospace}
+/* 16/11/2026 (Gustavo): cada ➕/➖ mostra O QUE entrou/saiu — uma linha
+   curta sempre visível e, no toque, a ficha completa. Toque grande (≥ 48px). */
+.hist-item{padding:10px 4px;border-bottom:1px solid var(--border);font-size:13px;cursor:pointer;min-height:48px;-webkit-tap-highlight-color:transparent}
+.hist-item:active{background:rgba(255,255,255,.04)}
+.hist-top{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.hist-top span:last-child{color:var(--muted);white-space:nowrap;font-family:'IBM Plex Mono',monospace;font-size:12px}
+.hist-desc{color:var(--muted);font-size:12.5px;margin-top:3px;line-height:1.4;overflow-wrap:anywhere}
+.hist-det{margin-top:8px;padding:9px 11px;border-radius:9px;background:rgba(255,255,255,.04);border:1px solid var(--border);font-size:13px;line-height:1.6}
+.hist-det div{display:flex;gap:8px}
+.hist-det b{min-width:86px;color:var(--muted);font-weight:700}
+.desc-conf{display:block;margin-top:4px;font-weight:700}
 .dica{font-size:12px;color:var(--muted);line-height:1.55;margin-top:10px}
 
 /* COLOCAR / RETIRAR de ponta a ponta (12/11/2026, Gustavo) */
@@ -550,7 +559,9 @@ async function pintarSaida(info) {
     ESCOLHA.end = { codigo: ocup.posicao, ocupacao: ocup };
     ESCOLHA.gai = { id: ocup.gaiola_id, formato: ocup.formato, cor: ocup.cor, fardos: ocup.fardos, kg: ocup.kg };
     pintar();
-    dizer('ok', `Vai retirar <b>${esc(ocup.gaiola_id)}</b> de <b>${esc(ocup.posicao)}</b>. Confirme.`, 0);
+    const ds = descCurta(ocup);
+    dizer('ok', `Vai retirar <b>${esc(ocup.gaiola_id)}</b> de <b>${esc(ocup.posicao)}</b>. Confirme.`
+      + (ds ? `<span class="desc-conf">${esc(ds)}</span>` : ''), 0);
   } catch (e) { dizer('err', 'Erro: ' + esc(e.message), 5000); }
 }
 
@@ -592,7 +603,9 @@ async function confirmar() {
       const d = await r.json();
       if (!d.ok) throw new Error(d.erro || 'falha');
       beep(1100, .15); vibrar([50, 40, 50]);
-      dizer('ok', `✓ ${esc(d.gaiola_id)} retirada de <b>${esc(d.posicao)}</b>. Endereço livre.`, 0);
+      const dsS = descCurta(d.ocupacao);
+      dizer('ok', `✓ ${esc(d.gaiola_id)} retirada de <b>${esc(d.posicao)}</b>. Endereço livre.`
+        + (dsS ? `<span class="desc-conf">${esc(dsS)}</span>` : ''), 0);
     } else {
       const r = await fetch(URL_BASE + '/enderecamento/ocupar', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -602,8 +615,11 @@ async function confirmar() {
       const d = await r.json();
       if (!d.ok) throw new Error(d.erro || 'falha');
       beep(1100, .15); vibrar([50, 40, 50]);
+      const dsE = descCurta(d.ocupacao);
       dizer(d.aviso ? 'at' : 'ok',
-        `✓ <b>${esc(g.id)}</b> guardada em <b>${esc(e.codigo)}</b>.` + (d.aviso ? '<br>' + esc(d.aviso) : ''), 0);
+        `✓ <b>${esc(g.id)}</b> guardada em <b>${esc(e.codigo)}</b>.`
+        + (dsE ? `<span class="desc-conf">${esc(dsE)}</span>` : '')
+        + (d.aviso ? '<br>' + esc(d.aviso) : ''), 0);
     }
     const geracao = ++GERACAO;
     setTimeout(() => { if (GERACAO === geracao) limparTudo(); }, 2200);
@@ -624,18 +640,73 @@ async function digitar() {
   await onLeu(v.trim().toUpperCase());
 }
 
+/* ── Descrição do que foi alocado/retirado (16/11/2026, Gustavo) ──
+   Tudo vem da OCUPAÇÃO gravada no servidor (para o bag, o retrato da
+   etiqueta R/T; para a gaiola, o registro dela) — nada do QR. */
+function kgBR(v) {
+  const n = Number(v);
+  return (v != null && v !== '' && isFinite(n) && n > 0) ? n.toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' kg' : '';
+}
+function ehBag(m) { return !!m && (m.tipo_item === 'bag' || /^[RT]\d{7}$/.test(m.gaiola_id || '')); }
+function dataHora(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return isNaN(d) ? '' : d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
+function descCurta(m) {
+  if (!m) return '';
+  const partes = ehBag(m)
+    ? [[m.material_nome || m.material_key, m.cor].filter(Boolean).join(' '), m.fornecedor, kgBR(m.kg)]
+    : [[m.formato, m.cor].filter(Boolean).join(' '),
+       (m.fardos != null && m.fardos !== '') ? m.fardos + ' fardos' : '', kgBR(m.kg)];
+  return partes.filter(Boolean).join(' · ');
+}
+function descFicha(m) {
+  const lin = (rot, val) => val ? `<div><b>${esc(rot)}</b><span>${esc(val)}</span></div>` : '';
+  const quem = (iso, op, extra) => [dataHora(iso), op ? 'por ' + op : '', extra || ''].filter(Boolean).join(' · ');
+  return (ehBag(m)
+      ? lin('Big bag', m.gaiola_id) + lin('Material', m.material_nome || m.material_key) + lin('Cor', m.cor)
+        + lin('Fornecedor', m.fornecedor) + lin('Lote', m.lote) + lin('Peso', kgBR(m.kg))
+      : lin('Gaiola', m.gaiola_id) + lin('Formato', m.formato) + lin('Cor', m.cor)
+        + lin('Fardos', (m.fardos != null && m.fardos !== '') ? String(m.fardos) : '') + lin('Peso', kgBR(m.kg))
+        + lin('Tipo', m.tipo_gaiola))
+    + lin('Endereço', m.posicao)
+    + lin('Entrou', quem(m.entrada, m.operador_e))
+    + lin('Saiu', m.saida ? quem(m.saida, m.operador_s, m.motivo_saida) : '');
+}
+// Linhas abertas sobrevivem ao redesenho (o histórico recarrega a cada movimento).
+const HIST_ABERTO = new Set();
+let HIST = [];
 async function carregarHistorico() {
   try {
     const d = await (await fetch(URL_BASE + '/enderecamento/historico?limit=12')).json();
     const ms = (d.movimentos || []);
+    HIST = ms;
     if (!ms.length) { $('hist').innerHTML = '<div class="vazio">Nenhum movimento ainda.</div>'; return; }
-    $('hist').innerHTML = ms.map(m => {
+    $('hist').innerHTML = ms.map((m, i) => {
       const saiu = !!m.saida;
-      const q = new Date(saiu ? m.saida : m.entrada).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
-      return `<div class="hist-item"><span>${saiu ? '➖' : '➕'} ${esc(m.gaiola_id)} ${saiu ? 'saiu de' : 'em'} <b>${esc(m.posicao)}</b></span><span>${esc(q)}</span></div>`;
+      const aberto = HIST_ABERTO.has(String(m.id));
+      const curta = descCurta(m);
+      return `<div class="hist-item" role="button" data-i="${i}" aria-expanded="${aberto}">`
+        + `<div class="hist-top"><span>${saiu ? '➖' : '➕'} ${esc(m.gaiola_id)} ${saiu ? 'saiu de' : 'em'} <b>${esc(m.posicao)}</b></span><span>${esc(dataHora(saiu ? m.saida : m.entrada))}</span></div>`
+        + (curta ? `<div class="hist-desc">${esc(curta)}</div>` : '')
+        + `<div class="hist-det"${aberto ? '' : ' hidden'}>${descFicha(m)}</div></div>`;
     }).join('');
   } catch (e) {}
 }
+function alternarHist(el) {
+  const m = HIST[Number(el.dataset.i)];
+  if (!m) return;
+  const det = el.querySelector('.hist-det');
+  const abrir = det.hidden;
+  det.hidden = !abrir;
+  el.setAttribute('aria-expanded', String(abrir));
+  if (abrir) HIST_ABERTO.add(String(m.id)); else HIST_ABERTO.delete(String(m.id));
+}
+document.addEventListener('click', ev => {
+  const el = ev.target.closest && ev.target.closest('#hist .hist-item');
+  if (el) alternarHist(el);
+});
 
 /* ══════════════ câmera ══════════════
    Mesma receita do inventário, que já roda no celular do galpão:

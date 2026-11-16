@@ -236,6 +236,10 @@ async function testeLiberar() {
   const porEndereco = await req('POST', '/enderecamento/liberar', { posicao: '01-02-003', operador: 'Teste', motivo: 'carregamento' });
   ok(porEndereco.json.ok, 'liberar pelo endereço funciona');
   eq(porEndereco.json.gaiola_id, GAIOLA_A.id, 'devolvendo qual gaiola saiu');
+  // 16/11/2026: a tela mostra a descrição do que saiu — vem da ocupação.
+  const oc = porEndereco.json.ocupacao || {};
+  ok(oc.gaiola_id === GAIOLA_A.id && oc.formato === '50x60' && !!oc.saida && oc.operador_s === 'Teste',
+     'e a ocupação que saiu, com retrato, hora e quem tirou', JSON.stringify(oc).slice(0, 160));
 
   const d = await mapa();
   eq(d.resumo.ocupadas, antes - 1, 'o mapa tem uma ocupada a menos');
