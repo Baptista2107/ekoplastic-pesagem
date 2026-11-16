@@ -14,9 +14,15 @@
 //  o node:sqlite e o fetch mudam com ela. O package-lock entra por extenso,
 //  a pedido, mesmo já estando na árvore.
 //
-//  GRAVA (rodar-todos.js): só com 100% verde E a pasta limpa no começo e no
-//  fim (git status sem nada, nem arquivo novo fora do .gitignore) E o mesmo
-//  HEAD do começo ao fim. Arquivo solto = o que passou não é o commit.
+//  GRAVA (rodar-todos.js): SÓ quando quem chama é o pre-push, na pasta
+//  temporária que ele acabou de criar a partir do commit (EKO_APROVADOS_GRAVAR
+//  = o commit), com 100% verde, a pasta limpa no começo e no fim (git status
+//  sem nada, nem arquivo novo fora do .gitignore) e o mesmo HEAD do começo
+//  ao fim. Rodado à mão no clone NÃO grava, nem limpo: no clone há arquivo
+//  ignorado que a pasta do commit não tem (cert/, *.db, logs/), bit de
+//  skip-worktree que o git status esconde e outra sessão editando no meio —
+//  nos três casos a suíte passaria no clone com código que não é o commit
+//  (achado do revisor de 210cd40, reproduzido nos três).
 //  APROVEITA (pre-push): só numa pasta limpa cujo HEAD é o commit perguntado
 //  — o pre-push pergunta de dentro da pasta temporária do commit, sempre limpa.
 //  Vale 24 h (o mesmo prazo do bling): teste que depende de data/hora volta a
@@ -24,8 +30,9 @@
 //
 //  Repetir: gravar de novo a mesma chave só renova o prazo (gravação por
 //  rename, duas suítes juntas não deixam arquivo pela metade).
-//  Sem git (Windows do escritório sem git no PATH) ou fora de um repositório:
-//  não grava nem aproveita, calado — a suíte roda como sempre.
+//  Fora do pre-push (RODAR-TESTES.bat, ENVIAR-ATUALIZACAO.bat, npm test à
+//  mão) nem chama o git: a suíte roda como sempre. Sem git ou fora de um
+//  repositório: não grava nem aproveita, calado.
 //
 //  Uso pela linha de comando (pre-push):
 //    node testes/_aprovados.js ja-aprovado <commit>   → 0 e uma linha se sim
@@ -44,13 +51,16 @@ function pasta() {
          path.join(os.homedir(), '.cache', 'ekoplastic-pesagem-testes-ok');
 }
 
-// git SEMPRE sobre esta pasta: dentro de um hook o git exporta GIT_DIR/
-// GIT_INDEX_FILE etc., que apontariam para o clone e não para a pasta
-// temporária do commit. Por isso tira todo GIT_* do ambiente.
+// git SEMPRE sobre esta pasta: um GIT_DIR/GIT_INDEX_FILE herdado apontaria
+// para outro repositório e não para a pasta temporária do commit (o git 2.43
+// no pre-push só exporta GIT_EXEC_PATH/GIT_PREFIX, mas não dependemos disso).
+// Por isso tira todo GIT_* do ambiente. --no-optional-locks: o git status não
+// segura o .git/index.lock (um commit de outra sessão no mesmo repositório
+// não falha por causa da consulta).
 function git(args) {
   const env = {};
   for (const [k, v] of Object.entries(process.env)) if (!k.startsWith('GIT_')) env[k] = v;
-  return execFileSync('git', args, { cwd: ROOT, env, encoding: 'utf8',
+  return execFileSync('git', ['--no-optional-locks', ...args], { cwd: ROOT, env, encoding: 'utf8',
                                      stdio: ['ignore', 'pipe', 'ignore'], timeout: 60000 }).trim();
 }
 
@@ -76,10 +86,19 @@ function chaveDoCommit(commit) {
   return chave({ arvore, node: process.version, lock });
 }
 
-// rodar-todos.js: grava se começo e fim batem (mesmo HEAD, limpa nos dois).
+// O pre-push passa o commit que acabou de pôr na pasta temporária.
+function pedidoPeloHook() {
+  return process.env.EKO_APROVADOS_GRAVAR || '';
+}
+
+// rodar-todos.js: grava se foi o pre-push que pediu para ESTE commit e começo
+// e fim batem (mesmo HEAD, limpa nos dois).
 function gravar(inicio, fim) {
-  if (!inicio || !fim || !inicio.limpa || !fim.limpa || inicio.head !== fim.head ||
-      inicio.chave !== fim.chave) return false;
+  const pedido = pedidoPeloHook();
+  if (!pedido || !inicio || !fim || !inicio.limpa || !fim.limpa ||
+      inicio.head !== fim.head) return false;
+  try { if (git(['rev-parse', `${pedido}^{commit}`]) !== fim.head) return false; }
+  catch (e) { return false; }
   try {
     fs.mkdirSync(pasta(), { recursive: true });
     const tmp = path.join(pasta(), `.${fim.chave}.${process.pid}`);
@@ -113,7 +132,7 @@ function limparVencidas() {
   } catch (e) { /* pasta ainda não existe */ }
 }
 
-module.exports = { chave, estado, gravar, jaAprovado, limparVencidas, pasta };
+module.exports = { chave, estado, gravar, jaAprovado, limparVencidas, pasta, pedidoPeloHook };
 
 if (require.main === module) {
   const [cmd, commit] = process.argv.slice(2);

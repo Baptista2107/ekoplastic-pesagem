@@ -9,7 +9,10 @@
 //   - arquivo mudado → roda de novo;
 //   - suíte vermelha → push recusado, marca NÃO gravada, e o push repetido
 //     roda de novo (não aproveita nada);
-//   - pasta com arquivo solto → passa mas NÃO grava, e não aproveita;
+//   - rodado à mão no clone NÃO grava (arquivo ignorado só do clone e
+//     skip-worktree: verde no clone, e o push testa o commit e recusa);
+//   - pedido do hook com arquivo solto → passa mas NÃO grava, e não aproveita;
+//   - GIT_DIR herdado não desvia a consulta; dois refs num push só;
 //   - marca com mais de 24 h → roda de novo;
 //   - outra versão do node → outra chave.
 //  Só na VPS (Linux): o pre-push é bash e só existe no caminho da VPS.
@@ -111,34 +114,78 @@ try {
   ok(r.rc !== 0 && /testando/.test(r.out) && vezes() === 4,
      `vermelho repetido roda de novo e recusa de novo (rodou ${vezes()})`, r.out);
 
-  // 5. pasta com arquivo solto: passa, mas não grava nem aproveita
+  // 5. fora do pre-push (rodado à mão no clone) NÃO grava, nem com a pasta
+  //    limpa: o clone tem arquivo ignorado / skip-worktree que o commit não tem
   escrever('resultado.txt', 'passa\n'); escrever('arquivo.txt', 'v3\n'); commit('c4');
+  r = sh('node', ['testes/rodar-todos.js']);
+  ok(r.rc === 0 && nMarcas() === 2 && !/marca de aprovado/.test(r.out),
+     `à mão no clone limpo: verde, NÃO grava e não fala de marca (há ${nMarcas()})`, r.out);
+  //    arquivo IGNORADO que só existe no clone: verde no clone, vermelho no commit
+  escrever('testes/falso.js', fs.readFileSync(path.join(repo, 'testes/falso.js'), 'utf8')
+    .replace("==='passa'", "==='passa'||require('fs').existsSync(__dirname+'/../ignorado.txt')"));
+  escrever('resultado.txt', 'precisa do ignorado\n'); commit('c5 depende de arquivo ignorado');
+  escrever('ignorado.txt', 'só no clone\n');
+  r = sh('node', ['testes/rodar-todos.js']);
+  ok(r.rc === 0 && nMarcas() === 2, `arquivo ignorado no clone: verde à mão e NÃO grava (há ${nMarcas()})`, r.out);
+  r = push();
+  ok(r.rc !== 0 && /push RECUSADO/.test(r.out), 'e o push testa o commit de verdade: recusado', r.out);
+  //    skip-worktree: o commit diz falha, o disco diz passa e o git status cala
+  fs.rmSync(path.join(repo, 'ignorado.txt'));
+  escrever('resultado.txt', 'falha\n'); commit('c6 vermelho');
+  g('update-index', '--skip-worktree', 'resultado.txt');
+  escrever('resultado.txt', 'passa\n');
+  ok(g('status', '--porcelain').out.trim() === '', '(montagem: git status não mostra o skip-worktree)');
+  r = sh('node', ['testes/rodar-todos.js']);
+  ok(r.rc === 0 && nMarcas() === 2, `skip-worktree: verde à mão e NÃO grava (há ${nMarcas()})`, r.out);
+  r = push();
+  ok(r.rc !== 0 && /push RECUSADO/.test(r.out), 'e o push com skip-worktree é recusado', r.out);
+  g('update-index', '--no-skip-worktree', 'resultado.txt');
+
+  //    o mesmo pedido do hook (EKO_APROVADOS_GRAVAR) com a pasta suja: não grava
+  escrever('resultado.txt', 'passa\n'); escrever('arquivo.txt', 'v4\n'); commit('c7');
+  const head = g('rev-parse', 'HEAD').out.trim();
+  const comoHook = (extra = {}) => spawnSync('node', ['testes/rodar-todos.js'],
+    { cwd: repo, env: { ...env, EKO_APROVADOS_GRAVAR: head, ...extra }, encoding: 'utf8', timeout: 120000 });
   escrever('solto.txt', 'não commitado\n');
-  escrever('ignorado.txt', 'no .gitignore: não conta\n');
-  r = sh('node', ['testes/rodar-todos.js']);
-  ok(r.rc === 0 && nMarcas() === 2 && /NÃO gravada/.test(r.out),
-     `arquivo solto: verde mas NÃO grava (há ${nMarcas()})`, r.out);
+  r = comoHook();
+  ok(r.status === 0 && nMarcas() === 2 && /NÃO gravada/.test(r.stdout),
+     `pedido do hook + arquivo solto: verde mas NÃO grava (há ${nMarcas()})`, r.stdout);
   fs.rmSync(path.join(repo, 'solto.txt'));
-  r = sh('node', ['testes/rodar-todos.js']);
-  ok(r.rc === 0 && nMarcas() === 3 && /marca de aprovado gravada/.test(r.out),
-     `pasta limpa (arquivo do .gitignore não conta): grava (há ${nMarcas()})`, r.out);
+  r = comoHook({ EKO_APROVADOS_GRAVAR: g('rev-parse', 'HEAD~1').out.trim() });
+  ok(r.status === 0 && nMarcas() === 2, `pedido do hook para OUTRO commit: NÃO grava (há ${nMarcas()})`, r.stdout);
+  escrever('ignorado.txt', 'no .gitignore: não conta\n');
+  r = comoHook();
+  ok(r.status === 0 && nMarcas() === 3 && /marca de aprovado gravada/.test(r.stdout),
+     `pedido do hook + pasta limpa (arquivo do .gitignore não conta): grava (há ${nMarcas()})`, r.stdout);
+  fs.rmSync(path.join(repo, 'ignorado.txt'));
   ok(sh('node', ['testes/_aprovados.js', 'ja-aprovado', 'HEAD']).rc === 0, 'árvore aprovada + pasta limpa: aproveita');
   escrever('solto.txt', 'não commitado\n');
   ok(sh('node', ['testes/_aprovados.js', 'ja-aprovado', 'HEAD']).rc === 1, 'árvore aprovada + arquivo solto: NÃO aproveita');
-  escrever('arquivo.txt', 'v3 editado sem commit\n'); fs.rmSync(path.join(repo, 'solto.txt'));
+  escrever('arquivo.txt', 'v4 editado sem commit\n'); fs.rmSync(path.join(repo, 'solto.txt'));
   ok(sh('node', ['testes/_aprovados.js', 'ja-aprovado', 'HEAD']).rc === 1, 'árvore aprovada + arquivo editado: NÃO aproveita');
   g('checkout', '-q', '--', 'arquivo.txt');
   ok(sh('node', ['testes/_aprovados.js', 'ja-aprovado', 'HEAD~1']).rc === 1, 'pergunta por outro commit que não o HEAD da pasta: NÃO aproveita');
+  const comGitDir = spawnSync('node', ['testes/_aprovados.js', 'ja-aprovado', 'HEAD'],
+    { cwd: repo, env: { ...env, GIT_DIR: path.join(base, 'nao-existe'), GIT_INDEX_FILE: path.join(base, 'nao-existe-idx') } });
+  ok(comGitDir.status === 0, 'GIT_DIR/GIT_INDEX_FILE herdados não desviam a consulta para outro repositório');
   const antes = vezes();
   r = push();
-  ok(r.rc === 0 && /ja aprovado/.test(r.out) && vezes() === antes, 'push da árvore aprovada à mão (pasta limpa) pula', r.out);
+  ok(r.rc === 0 && /ja aprovado/.test(r.out) && vezes() === antes, 'push da árvore aprovada pula', r.out);
+
+  //    dois refs num push só: o aprovado pula, o vermelho roda e recusa
+  const verde = head;
+  escrever('resultado.txt', 'falha\n'); commit('c8 vermelho');
+  r = g('push', 'origin', `${verde}:refs/heads/verde`, 'HEAD:refs/heads/vermelho');
+  ok(r.rc !== 0 && /ja aprovado/.test(r.out) && /push RECUSADO/.test(r.out) && vezes() === antes + 1,
+     'dois refs num push: o aprovado pula e o vermelho é testado e recusado', r.out);
+  g('reset', '-q', '--hard', verde);
 
   // 6. marca vencida (> 24 h) → roda
   const velho = new Date(Date.now() - 25 * 3600 * 1000);
   for (const f of fs.readdirSync(marcas)) fs.utimesSync(path.join(marcas, f), velho, velho);
-  commit('c4 de novo', '--allow-empty');
+  commit('c7 de novo', '--allow-empty');
   r = push();
-  ok(r.rc === 0 && /testando/.test(r.out) && vezes() === antes + 1, 'marca com mais de 24 h: roda de novo', r.out);
+  ok(r.rc === 0 && /testando/.test(r.out) && vezes() === antes + 2, 'marca com mais de 24 h: roda de novo', r.out);
   ok(nMarcas() === 1, `marcas vencidas são apagadas e a nova fica (há ${nMarcas()})`);
 
   // 7. a chave muda com o node e com o package-lock

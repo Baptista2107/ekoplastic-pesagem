@@ -17,10 +17,12 @@ const arquivos = fs.readdirSync(__dirname)
   .filter(f => f.endsWith('.js') && !f.startsWith('_') && f !== path.basename(__filename))
   .sort((a, b) => (a === 'piso-testes.js' ? -1 : b === 'piso-testes.js' ? 1 : a.localeCompare(b)));
 
-// Fotografia da pasta ANTES de rodar: a marca só vale se a pasta estava limpa
-// e continua igual no fim (ver testes/_aprovados.js).
-aprovados.limparVencidas();
-const inicio = aprovados.estado();
+// Só quando o pre-push pede (pasta temporária do commit): fotografia da pasta
+// ANTES de rodar — a marca só vale se estava limpa e continua igual no fim
+// (ver testes/_aprovados.js). Fora do pre-push nem chama o git.
+const peloHook = !!aprovados.pedidoPeloHook();
+if (peloHook) aprovados.limparVencidas();
+const inicio = peloHook ? aprovados.estado() : null;
 
 const falhas = [];
 for (const f of arquivos) {
@@ -32,11 +34,11 @@ for (const f of arquivos) {
 console.log('\n═══════════════════════════════════════════════════');
 console.log(` ${arquivos.length - falhas.length} de ${arquivos.length} arquivos de teste passaram`);
 for (const f of falhas) console.log(`   ✗ ${f}`);
-if (!falhas.length) {
+if (!falhas.length && peloHook) {
   if (aprovados.gravar(inicio, aprovados.estado()))
     console.log(' marca de aprovado gravada para esta árvore (o pre-push não repete por 24 h)');
-  else if (inicio)
-    console.log(' pasta com arquivo não commitado (ou mudou durante a suíte): marca de aprovado NÃO gravada');
+  else
+    console.log(' marca de aprovado NÃO gravada (pasta com arquivo não commitado, mudou durante a suíte, ou não deu para gravar)');
 }
 console.log('═══════════════════════════════════════════════════');
 process.exit(falhas.length ? 1 : 0);
