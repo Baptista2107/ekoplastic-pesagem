@@ -155,7 +155,8 @@ function testeTela() {
   ok(/class="peso-grade"/.test(bloco) && /\.peso-grade \{ display: grid; grid-template-columns: 1fr 34%;[^}]*align-items: stretch/.test(h),
      'botão VARREDURA ao lado, esticado na altura da coluna');
   ok(/id="btn-varredura"[^>]*onclick="alternarVarredura\(\)"/.test(bloco) && />VARREDURA</.test(bloco), 'botão escrito VARREDURA');
-  ok(/subTipo: \(!comp && estado\.varredura\) \? 'varredura' : null/.test(h), 'botão aceso marca a pesagem (não a contagem por sacos)');
+  // 16/11/2026: aditivo pesado na balança também não é varredura (a nota é de grão).
+  ok(/subTipo: \(!isComposto\(estado\.material\) && estado\.varredura\) \? 'varredura' : null/.test(h), 'botão aceso marca a pesagem de grão (aditivo nunca)');
   for (const fn of ['selMat', 'resetarRecebimento', 'trocarModo']) {
     const corpo = h.slice(h.indexOf(`function ${fn}(`), h.indexOf(`function ${fn}(`) + 300);
     ok(/marcarVarredura\(false\)/.test(corpo), `${fn}: o botão apaga (a nota não passa adiante)`);

@@ -267,6 +267,13 @@ header {
 .btn-varredura .vr-sub { font-size: 10px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; }
 .btn-varredura:hover { border-color: var(--warn); color: var(--warn); }
 .btn-varredura.ativo { background: var(--warn); color: #241600; border: 2px solid var(--warn); }
+/* Aditivo: contar sacos × pesar na balança (16/11/2026) */
+.comp-modo { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.comp-modo .cm-lbl { font-size: 12px; font-weight: 800; color: var(--muted); letter-spacing: 0.5px; text-transform: uppercase; }
+.comp-modo .cm-op { flex: 1; min-width: 150px; padding: 12px 10px; border-radius: 10px; cursor: pointer;
+  font-family: 'Nunito', sans-serif; font-size: 15px; font-weight: 900;
+  background: var(--bg); color: var(--muted); border: 2px solid var(--border); }
+.comp-modo .cm-op.sel { background: rgba(0,212,255,0.12); border-color: var(--entrada); color: var(--entrada); }
 .item .tag-varr { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 4px;
   background: var(--warn); color: #241600; font-size: 10px; font-weight: 900; letter-spacing: 0.8px; }
 .btn-bal {
@@ -1257,7 +1264,18 @@ body.modo-retorno #btn-corrigir { display: none; }
       <div class="opcoes" id="grid-cor"></div>
     </div>
 
-    <!-- BLOCO 4-PESO (GBD/POLI) -->
+    <!-- 16/11/2026 (Gustavo): aditivo (Carbonato, Pigmento, Dessecante...)
+         também pode ser PESADO na balança. Veio bag de dessecante da Karina
+         com peso real que não é múltiplo de 25 kg (3.023 kg) e a tela só
+         deixava contar sacos. Padrão continua "Contar sacos"; a escolha vale
+         até trocar o material. -->
+    <div class="comp-modo" id="comp-modo" style="display:none">
+      <span class="cm-lbl">Como lançar:</span>
+      <button type="button" class="cm-op sel" id="cm-sacos" onclick="setCompPesar(false)">🧮 Contar sacos</button>
+      <button type="button" class="cm-op" id="cm-balanca" onclick="setCompPesar(true)">⚖ Pesar na balança</button>
+    </div>
+
+    <!-- BLOCO 4-PESO (GBD/POLI; aditivo quando "Pesar na balança") -->
     <div class="bloco locked" id="bloco-peso">
       <div class="bloco-head">
         <div class="bloco-num">4</div>
@@ -1719,6 +1737,13 @@ function buscarCodigo(matKey, cor, fornecedor) {
 }
 
 const isComposto = mat => COMPOSTOS.includes(mat);
+// O item do RECEBIMENTO sai por sacos? Aditivo, a não ser que o operador tenha
+// escolhido "Pesar na balança" (16/11/2026, Gustavo): aí segue o caminho do
+// grão — peso da balança, estabilidade, retirar o bag antes da próxima.
+const porSacosAgora = () => isComposto(estado.material) && !estado.compPesar;
+// Peso no SKU: inteiro, como sempre; o aditivo PESADO leva 1 casa, para o
+// SKU bater com o PESO da etiqueta (3.023,4 kg não vira "3023").
+const pesoSku = (mat, peso, comp) => Number(peso).toFixed(isComposto(mat) && !comp ? 1 : 0);
 // Peso do saco DO material. Os aditivos de sempre são de 25 kg; material
 // cadastrado pela tela traz o dele (o Compatibilizante PA/PE é de 20 kg).
 const COMPOSTOS_FIXOS = COMPOSTOS.slice();
@@ -1747,6 +1772,7 @@ let estado = {
   // — Recebimento —
   material: null, fornecedor: null, cor: null,
   pesoBruto: 0, tara: 0, qtdSacos: 0,
+  compPesar: false,               // aditivo pesado na balança em vez de contar sacos (16/11/2026)
   balancaConectada: false,
   itens: [],
   // SEQ separado por modo (carregado do servidor ao iniciar)
@@ -1933,9 +1959,39 @@ function renderCores() {
 }
 
 function alternarBlocoPesagem() {
-  const comp = isComposto(estado.material);
+  const comp = porSacosAgora();
   document.getElementById('bloco-peso').style.display = comp ? 'none' : 'block';
   document.getElementById('bloco-qtd').style.display  = comp ? 'block' : 'none';
+  const aditivo = isComposto(estado.material);
+  const cm = document.getElementById('comp-modo');
+  if (cm) cm.style.display = aditivo ? 'flex' : 'none';
+  const bS = document.getElementById('cm-sacos'), bB = document.getElementById('cm-balanca');
+  if (bS) bS.classList.toggle('sel', !estado.compPesar);
+  if (bB) bB.classList.toggle('sel', !!estado.compPesar);
+  // Varredura é nota de grão: some no aditivo, mesmo pesado.
+  const bV = document.getElementById('btn-varredura');
+  if (bV) bV.style.display = aditivo ? 'none' : '';
+  const gr = document.querySelector('#bloco-peso .peso-grade');
+  if (gr) gr.style.gridTemplateColumns = aditivo ? '1fr' : '';   // sem o botão, o peso ocupa a linha
+}
+// "Contar sacos" × "Pesar na balança" (só aditivo). Trocar zera o que estava
+// digitado no outro jeito, para não imprimir sacos com peso de balança.
+// Bag recém-pesado ainda na balança: não troca. Contar sacos não espera a
+// balança zerar, então trocar ali imprimiria o mesmo bag outra vez.
+function setCompPesar(v) {
+  v = !!v;
+  if (!isComposto(estado.material) || estado.compPesar === v) return;
+  if (mp_aguardandoZero) {
+    showToast('warn', '⏳', 'RETIRE O BIG BAG / PALETE da balança antes de trocar o jeito de lançar');
+    beepErro();
+    return;
+  }
+  estado.compPesar = v;
+  estado.qtdSacos = 0;
+  document.getElementById('qtd-input').value = 0;
+  document.getElementById('peso-bruto').value = '';
+  beepCk();
+  atualizarLiquido(); atualizarQtd();
 }
 
 function setBloco(id, est) {
@@ -1948,7 +2004,7 @@ function atualizarEstadoBlocos() {
   const m = estado.material ? MATERIAIS[estado.material] : null;
   const temCor = m && m.cores.length > 0;
   const fornFixo = estado.itens.length > 0;
-  const comp = isComposto(estado.material);
+  const comp = porSacosAgora();
 
   setBloco('bloco-mat', estado.material ? 'done' : 'active');
   document.getElementById('val-mat').textContent = m ? m.popular : 'selecione';
@@ -2109,7 +2165,7 @@ function atualizarEtiqueta() {
     }
   } else {
     const m = estado.material ? MATERIAIS[estado.material] : null;
-    const comp = isComposto(estado.material);
+    const comp = porSacosAgora();
     const peso = comp ? estado.qtdSacos * kgSacoDe(estado.material) : estado.pesoBruto;
     dados = {
       materialKey: estado.material,
@@ -2137,7 +2193,9 @@ function atualizarEtiqueta() {
   document.getElementById('etiqueta-vazia').style.display = baseOk ? 'none' : 'flex';
   document.getElementById('btn-imprimir').disabled       = !completo;
   const btnImp = document.getElementById('btn-imprimir');
-  if (baseOk && estado.modo === 'recebimento' && !dados.comp && mp_aguardandoZero) {
+  // Sem baseOk: depois de imprimir o peso zera e o campo só volta quando a
+  // balança zera — antes disso o aviso ficava escondido (revisão do 196a614, B5).
+  if (estado.modo === 'recebimento' && !dados.comp && mp_aguardandoZero) {
     btnImp.textContent = '⏳ RETIRE O BIG BAG / PALETE';
   } else if (baseOk && estado.modo === 'recebimento' && !dados.comp && !bal_estavel) {
     btnImp.textContent = '⏳ AGUARDANDO ESTABILIDADE...';
@@ -2176,7 +2234,7 @@ function atualizarEtiqueta() {
     // SKU
     const skuCor = temCor ? '.' + (m.corLabel[dados.cor] || dados.cor.substring(0,3).toUpperCase()) : '';
     const skuForn = '.' + dados.fornecedor.replace(/[^A-Za-z0-9]/g,'').substring(0, 6).toUpperCase();
-    document.getElementById('et-sku').textContent  = `${dados.materialKey}${skuCor}${skuForn} | ${dados.peso.toFixed(0)} | L${dados.lote}`;
+    document.getElementById('et-sku').textContent  = `${dados.materialKey}${skuCor}${skuForn} | ${pesoSku(dados.materialKey, dados.peso, dados.comp)} | L${dados.lote}`;
 
     // Barcode CODE128 com prefixo R (recebimento) ou T (retorno) + SEQ 7 dígitos
     const prefix = estado.modo === 'retorno' ? 'T' : 'R';
@@ -2230,9 +2288,11 @@ function selMat(k) {
     estado.qtdSacos = 0;
     document.getElementById('qtd-input').value = 0;
   }
+  // Trocou o material: volta ao padrão "Contar sacos" (16/11/2026).
+  if (k !== estado.material) estado.compPesar = false;
   estado.material = k;
   estado.cor = null;
-  if (isComposto(k)) {
+  if (porSacosAgora()) {
     estado.pesoBruto = 0;
     document.getElementById('peso-bruto').value = '';
   } else {
@@ -2511,7 +2571,7 @@ async function imprimir() {
       };
     }
   } else {
-    const comp = isComposto(estado.material);
+    const comp = porSacosAgora();
     dadosImpr = {
       materialKey: estado.material,
       cor: estado.cor,
@@ -2520,7 +2580,8 @@ async function imprimir() {
       peso: comp ? estado.qtdSacos * kgSacoDe(estado.material) : estado.pesoBruto,
       comp: comp,
       qtdSacos: comp ? estado.qtdSacos : null,
-      subTipo: (!comp && estado.varredura) ? 'varredura' : null,   // por sacos não é varredura
+      // varredura é nota de grão: aditivo (por sacos ou pesado) nunca é
+      subTipo: (!isComposto(estado.material) && estado.varredura) ? 'varredura' : null,
     };
   }
 
@@ -2548,7 +2609,7 @@ async function imprimir() {
   // Monta SKU
   const skuCor = (m.cores.length > 0 && dadosImpr.cor) ? '.' + (m.corLabel[dadosImpr.cor] || dadosImpr.cor.substring(0,3).toUpperCase()) : '';
   const skuForn = '.' + dadosImpr.fornecedor.replace(/[^A-Za-z0-9]/g,'').substring(0, 6).toUpperCase();
-  const sku = `${dadosImpr.materialKey}${skuCor}${skuForn} | ${dadosImpr.peso.toFixed(0)} | L${dadosImpr.lote}`;
+  const sku = `${dadosImpr.materialKey}${skuCor}${skuForn} | ${pesoSku(dadosImpr.materialKey, dadosImpr.peso, dadosImpr.comp)} | L${dadosImpr.lote}`;
 
   const item = {
     n: estado.seq[estado.modo],
@@ -2598,6 +2659,7 @@ async function imprimir() {
         lote: dadosImpr.lote,
         codigo: codigo,
         sku: sku,
+        qtdSacos: item.qtdSacos,                         // só por sacos; pesado vai null
         sessao_id: sessaoId,                              // vincula à sessão
         ref_id: item.origId || null,                      // se retorno: lote original
         sub_tipo: item.subTipo === 'varredura' ? 'varredura' : undefined,   // nota de varredura
@@ -3043,6 +3105,7 @@ function resetarRecebimento() {
   marcarVarredura(false);   // nova sessão começa sem a nota
   estado.material = null; estado.fornecedor = null; estado.cor = null;
   estado.pesoBruto = 0; estado.tara = 0; estado.qtdSacos = 0;
+  estado.compPesar = false;
   estado.itens = [];
   document.getElementById('peso-bruto').value = '';
   document.getElementById('qtd-input').value = 0;
@@ -3176,7 +3239,9 @@ function corrDados() {
   const skuCor = (m.cores.length && cor) ? '.' + (m.corLabel[cor] || cor.substring(0,3).toUpperCase()) : '';
   const skuForn = '.' + forn.replace(/[^A-Za-z0-9]/g,'').substring(0,6).toUpperCase();
   const peso = Number(corrEtiqueta.peso);
-  const sku = `${k}${skuCor}${skuForn} | ${peso.toFixed(0)} | L${corrEtiqueta.lote}`;
+  // As etiquetas de aditivo de antes de 16/11 não guardam qtd_sacos: aqui
+  // "pesado" é só o peso quebrado (o contado é sempre múltiplo do saco).
+  const sku = `${k}${skuCor}${skuForn} | ${pesoSku(k, peso, Number.isInteger(peso))} | L${corrEtiqueta.lote}`;
   return { k, m, cor, forn, codigo, sku };
 }
 function corrCalc() {
