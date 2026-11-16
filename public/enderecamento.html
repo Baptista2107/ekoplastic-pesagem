@@ -622,7 +622,10 @@ async function confirmar() {
         + (d.aviso ? '<br>' + esc(d.aviso) : ''), 0);
     }
     const geracao = ++GERACAO;
-    setTimeout(() => { if (GERACAO === geracao) limparTudo(); }, 2200);
+    // Limpa só os quadros para a próxima leitura; o recado com a descrição
+    // fica na tela até a próxima leitura (16/11: sumia em 2,2 s, sem dar tempo
+    // de ler no coletor).
+    setTimeout(() => { if (GERACAO === geracao) limparSlots(); }, 2200);
     carregarHistorico();
   } catch (err) {
     beep(320, .25); vibrar([120, 60, 120]);

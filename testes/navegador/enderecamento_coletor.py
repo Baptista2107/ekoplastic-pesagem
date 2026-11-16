@@ -171,6 +171,9 @@ with sync_playwright() as p:
         ok("guardada" in mt and "40 fardos" in mt and "1.000 kg" in mt, f"COLOCAR confirma com a descrição ({mt[:120]!r})")
         # RETIRAR: antes de confirmar e depois, a descrição do que sai
         pg.wait_for_timeout(2400)
+        # passado o "limpa a tela" de 2,2 s, a descrição continua para ler (16/11)
+        mt2 = pg.inner_text("#msg")
+        ok("40 fardos" in mt2, f"descrição do COLOCAR continua na tela depois de 2,4 s ({mt2[:80]!r})")
         pg.evaluate("irModo('saida'); for (const k of Object.keys(ultimaLeitura)) delete ultimaLeitura[k]")
         pg.evaluate("onLeu('01-02-012')"); pg.wait_for_timeout(300)
         mt = pg.inner_text("#msg")
