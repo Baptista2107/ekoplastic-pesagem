@@ -181,6 +181,18 @@ with sync_playwright() as p:
         pg.evaluate("onLeu('01-01-021')"); pg.wait_for_timeout(300)
         mt3 = pg.inner_text("#msg")
         ok("guardada" not in mt3, f"próxima leitura apaga o ✓ guardada ({mt3[:60]!r})")
+        ok("01-01-021" in pg.inner_text("#v-end"), "a leitura que apagou o ✓ é a do endereço livre (não um erro)")
+        # bipe DURANTE o confirmar (servidor lento): a resposta não apaga a leitura nova
+        pg.evaluate("""(() => { const f = window.fetch; window.__fetchOrig = f;
+          window.fetch = (u, o) => String(u).includes('/enderecamento/ocupar')
+            ? new Promise(r => setTimeout(() => r(f(u, o)), 800)) : f(u, o); })()""")
+        pg.evaluate("for (const k of Object.keys(ultimaLeitura)) delete ultimaLeitura[k]")
+        pg.evaluate("onLeu('EKOPA|G0000125|50x60|BC|40|1000|PEQUENA')"); pg.wait_for_timeout(300)
+        pg.click("#btn-confirmar"); pg.wait_for_timeout(150)
+        pg.evaluate("onLeu('01-01-022')"); pg.wait_for_timeout(1500)
+        ve2 = pg.inner_text("#v-end")
+        ok("01-01-022" in ve2, f"bipe durante o confirmar fica no quadro ({ve2!r})")
+        pg.evaluate("window.fetch = window.__fetchOrig")
         pg.evaluate("irModo('saida'); for (const k of Object.keys(ultimaLeitura)) delete ultimaLeitura[k]")
         pg.evaluate("onLeu('01-02-012')"); pg.wait_for_timeout(300)
         mt = pg.inner_text("#msg")

@@ -629,13 +629,18 @@ async function confirmar() {
     }
     // Quadros limpos NA HORA (antes: 2,2 s depois, e um bipe rápido deixava o
     // endereço já ocupado no quadro). O recado com a descrição fica para ler e
-    // some na próxima leitura boa (16/11).
-    limparSlots();
+    // some na próxima leitura boa (16/11). Limpa SÓ o que foi confirmado: se
+    // o operador já bipou o próximo enquanto o servidor respondia, a leitura
+    // nova fica no quadro.
+    if (ESCOLHA.end === e) ESCOLHA.end = null;
+    if (ESCOLHA.gai === g) ESCOLHA.gai = null;
+    pintar();
     RECADO_CONF = true;
     carregarHistorico();
   } catch (err) {
     beep(320, .25); vibrar([120, 60, 120]);
     dizer('err', esc(err.message), 0);
+    RECADO_CONF = true;   // o erro também some na próxima leitura boa
     $('btn-confirmar').disabled = false;
   }
 }
