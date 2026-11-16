@@ -286,19 +286,32 @@ async function rotasEtiquetas(req, res, parsed, pathname) {
       return jsonErr(res, 409, `${virtId} é da retirada #${s.id}, que já foi ${como} — não dá para remover por aqui`,
         { sessao_fechada: true, sessao_id: s.id });
     }
-    const original = v.ref_id ? dbStmts.getEtiqueta.get(v.ref_id) : null;
+    // Já estornada (X repetido — o 2º toque na fila, ou a tela velha): responde
+    // ok SEM mexer na original (16/11/2026, 7ª revisão, B1). Antes devolvia o R
+    // a 'bipada' sempre que ele estava 'consumida' — mesmo consumido de novo por
+    // OUTRA retirada ativa (X do S1, bipe do mesmo R → S2, X do S1 outra vez):
+    // o R voltava ao estoque com o S2 no ar, e podia sair 2x no Bling.
+    if (v.status === 'cancelada') {
+      return jsonOk(res, { estornada: virtId, ja_estava: true, original_liberada: null,
+                           original: v.ref_id ? dbStmts.getEtiqueta.get(v.ref_id) : null });
+    }
+    let liberou = false;
     const tr = makeTransaction(() => {
       // Cancela a virtual (some da retirada e do Bling)
-      if (v.status !== 'cancelada') {
-        db.prepare(`UPDATE etiquetas SET status = 'cancelada' WHERE id = ?`).run(virtId);
-      }
-      // Devolve a etiqueta original consumida para 'bipada' (apta a bipar)
+      db.prepare(`UPDATE etiquetas SET status = 'cancelada' WHERE id = ? AND status != 'cancelada'`).run(virtId);
+      // Devolve a etiqueta original consumida para 'bipada' (apta a bipar) — só
+      // se nenhuma OUTRA retirada ativa a consome.
       if (v.ref_id) {
-        db.prepare(`UPDATE etiquetas SET status = 'bipada', hora_bipagem = NULL WHERE id = ? AND status = 'consumida'`).run(v.ref_id);
+        const outra = db.prepare(`SELECT id FROM etiquetas WHERE tipo = 'retirada' AND ref_id = ?
+                                    AND id != ? AND status != 'cancelada' LIMIT 1`).get(v.ref_id, virtId);
+        if (!outra) {
+          liberou = db.prepare(`UPDATE etiquetas SET status = 'bipada', hora_bipagem = NULL WHERE id = ? AND status = 'consumida'`)
+            .run(v.ref_id).changes > 0;
+        }
       }
     });
     tr();
-    logI('retirada', `Estorno ${virtId}${v.ref_id ? ' → liberou ' + v.ref_id : ''} (sessão #${v.sessao_id})`);
+    logI('retirada', `Estorno ${virtId}${v.ref_id ? (liberou ? ' → liberou ' : ' → NÃO liberou (outra retirada ativa) ') + v.ref_id : ''} (sessão #${v.sessao_id})`);
     // O estorno NÃO devolve o bag ao endereço de onde saiu: ninguém sabe se
     // ele voltou para o mesmo vão. Quem guardar de novo bipa no Endereçamento.
     if (v.ref_id) {
@@ -308,7 +321,7 @@ async function rotasEtiquetas(req, res, parsed, pathname) {
     }
     return jsonOk(res, {
       estornada:          virtId,
-      original_liberada:  v.ref_id || null,
+      original_liberada:  liberou ? v.ref_id : null,
       original:           v.ref_id ? dbStmts.getEtiqueta.get(v.ref_id) : null,
     });
   }

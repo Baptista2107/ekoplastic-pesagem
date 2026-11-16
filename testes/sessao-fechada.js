@@ -175,7 +175,16 @@ const contar = (sql, ...p) => lerDb(sql, ...p).n;
     const es5 = await req('POST', `/etiquetas/${c5.body.etiqueta_virtual.id}/estornar`);
     ok(es5.status === 200 && es5.body.original_liberada === b5, 'estorno em retirada aberta funciona', es5.body);
     ok(lerDb('SELECT status FROM etiquetas WHERE id = ?', b5).status === 'bipada', 'e o bag volta ao estoque', null);
-    ok((await consumir(b5, sD)).status === 200, 'e pode sair de novo', null);
+    const c5b = await consumir(b5, sD);
+    ok(c5b.status === 200, 'e pode sair de novo', null);
+    // 7ª revisão, B1: o X repetido da 1ª saída (tela velha, ou o 2º toque que
+    // ficou na fila) não pode soltar o bag que já saiu de novo pela 2ª.
+    const es5b = await req('POST', `/etiquetas/${c5.body.etiqueta_virtual.id}/estornar`);
+    ok(es5b.status === 200 && es5b.body.ja_estava && !es5b.body.original_liberada,
+       'X repetido da 1ª saída responde ok sem liberar nada', es5b.body);
+    ok(lerDb('SELECT status FROM etiquetas WHERE id = ?', b5).status === 'consumida',
+       'o bag segue consumido pela 2ª saída (não volta ao estoque)', lerDb('SELECT status FROM etiquetas WHERE id = ?', b5));
+    ok((await consumir(b5, sD)).status !== 200, 'e não sai uma 3ª vez', null);
     const ad2 = await req('POST', '/retirada/aditivo', { sessao_id: sD, materialKey: 'DESSEC', fornecedor: 'Karina', qtd_sacos: 2 });
     ok(ad2.status === 200, 'sacos em retirada aberta saem', ad2.body);
 

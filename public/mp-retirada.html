@@ -1313,7 +1313,7 @@ async function processarBipeAgora(raw) {
   // Bipe que esperou na fila enquanto a pessoa finalizava: agora a tela pede a
   // senha (o processo dela acabou). Sem dono, o bag não sai — e avisa alto.
   if (window.EkoAcesso && EkoAcesso.bloqueando && EkoAcesso.bloqueando()) {
-    showToast('erro', '⛔', `${id} NÃO saiu — a retirada foi encerrada. Entre com a senha e bipe de novo`, 8000);
+    showToast('erro', '⛔', `${id} NÃO saiu — a tela está pedindo a senha. Entre com a senha e bipe de novo`, 8000);
     beepErro();
     return;
   }
@@ -1624,6 +1624,7 @@ function perguntarFora(d) {
   // Pergunta anterior sem resposta (não deveria, com um bipe por vez):
   // fecha como "cancelou" — quem chamou avisa que aquele bag NÃO saiu.
   if (_foraResolver) { const r = _foraResolver; _foraResolver = null; r(null); }
+  _teclasCaixa = [];   // código sem Enter de uma janela anterior não vaza para esta (7ª revisão, B2)
   const et = d.etiqueta || {};
   const prod = d.modo === 'producao';
   document.getElementById('fora-titulo').textContent = d.sem_pedido
@@ -1648,6 +1649,7 @@ function perguntarFora(d) {
 function fecharFora(escolha) {
   document.getElementById('modal-fora').classList.remove('ativo');
   _bufKey = '';
+  _teclasCaixa = [];
   const r = _foraResolver; _foraResolver = null;
   if (r) r(escolha);
 }
@@ -1820,7 +1822,11 @@ function zerarContadorAditivo() {
 // Erro no lançamento: o contador volta ao que foi tocado, se a pessoa não
 // começou outro lançamento do mesmo material nesse meio-tempo.
 function devolverContadorAditivo(lanc) {
-  if (estado.tipo !== lanc.matKey || estado.sacos > 0 || (estado.pesoAvulso || 0) > 0) return;
+  // Mesmo material, fornecedor e cor do toque (7ª revisão, B3): trocou o
+  // fornecedor enquanto esperava na fila, a quantidade não volta no outro.
+  if (estado.tipo !== lanc.matKey || estado.fornecedor !== lanc.forn
+      || (estado.cor || null) !== (lanc.cor || null)
+      || estado.sacos > 0 || (estado.pesoAvulso || 0) > 0) return;
   estado.sacos = lanc.qtd;
   estado.pesoAvulso = lanc.avulso;
   document.getElementById('sacos-input').value = lanc.qtd;
@@ -1834,7 +1840,7 @@ async function adicionarAditivoAgora(lanc) {
   // senha. Sem dono não lança (igual ao bipe) — e o contador volta.
   if (window.EkoAcesso && EkoAcesso.bloqueando && EkoAcesso.bloqueando()) {
     devolverContadorAditivo(lanc);
-    showToast('erro', '⛔', `${(ADITIVOS[matKey] || {}).label || matKey} NÃO foi lançado — a retirada foi encerrada. Entre com a senha e lance de novo`, 8000);
+    showToast('erro', '⛔', `${(ADITIVOS[matKey] || {}).label || matKey} NÃO foi lançado — a tela está pedindo a senha. Entre com a senha e lance de novo`, 8000);
     beepErro();
     return;
   }
@@ -1976,9 +1982,22 @@ function fecharConfirmacao(ok) {
   if (_resolverConfirmacao) { const r = _resolverConfirmacao; _resolverConfirmacao = null; r(!!ok); }
 }
 
+// Item ainda na fila do leitor (bipe, aditivo ou X esperando ou no ar): o
+// Finalizar/Cancelar espera ela esvaziar (16/11/2026, 7ª revisão, médio). Antes
+// o X que estava na fila perdia para o Finalizar: a confirmação contava o item
+// que a pessoa quis tirar e ele ia no Pedido de Venda. A fila sempre anda (teto
+// de 15 s em tudo), então é só tocar de novo.
+function filaOcupada() {
+  const n = _itensNaFila;
+  if (n <= 0) return false;
+  showToast('warn', '⏳', `Espere ${n} ${n === 1 ? 'item' : 'itens'} na fila terminar e toque de novo`, 5000);
+  beepWarn();
+  return true;
+}
 async function finalizar() {
   if (!estado.sessaoId || estado.itens.length === 0) return;
   if (estado.fechando) return;
+  if (filaOcupada()) return;
   estado.fechando = true;
   try { return await finalizarAgora(); } finally { estado.fechando = false; }
 }
@@ -2056,6 +2075,7 @@ async function enviarRetiradaAgora(opc) {
 async function cancelar() {
   if (!estado.sessaoId || estado.itens.length === 0) return;
   if (estado.fechando) return;
+  if (filaOcupada()) return;
   estado.fechando = true;
   try { return await cancelarAgora(); } finally { estado.fechando = false; }
 }

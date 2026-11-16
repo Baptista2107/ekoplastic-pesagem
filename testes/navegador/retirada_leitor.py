@@ -91,7 +91,7 @@ OUTRA = {"ligada": False}   # /sessoes/abertas passa a ter uma retirada mais nov
 SEGURAR = {"ligado": False, "rotas": []}   # finalizar fica no ar até o teste soltar
 PENDURADAS = []          # rotas que ficaram sem resposta de propósito
 GRAVADOS_NO_TETO = []    # (id, corpo) dos /consumir pendurados: gravados no servidor
-ADITIVO = {"pendurar": 0, "seq": 500}   # pendurar: quantos /retirada/aditivo ficam sem resposta
+ADITIVO = {"pendurar": 0, "seq": 500, "erro": 0}   # pendurar: quantos ficam sem resposta; erro: quantos dão 500
 ADITIVOS_RECEBIDOS = []  # corpos dos /retirada/aditivo que deram saída
 falhas = []
 
@@ -185,6 +185,9 @@ def rota(route):
         if corpo.get("sessao_id") in FECHADAS:
             return J({"ok": False, "sessao_fechada": True, "sessao_id": corpo.get("sessao_id"),
                       "erro": "sessão já fechada"}, 409)
+        if ADITIVO["erro"] > 0:
+            ADITIVO["erro"] -= 1
+            return J({"ok": False, "erro": "falha de teste"}, 500)
         ADITIVOS_RECEBIDOS.append(corpo)
         ADITIVO["seq"] += 1
         return J({"ok": True, "etiqueta": {"id": f"S0000{ADITIVO['seq']}", "material_key": corpo.get("materialKey"),
@@ -550,6 +553,7 @@ with sync_playwright() as p:
     SEGURAR["rotas"].clear()
     ate(pg, lambda: "R0000450 NÃO saiu" in toasts(pg) or "R0000450" in ids())
     ok("R0000450" not in ids() and "NÃO saiu" in toasts(pg), "terminado o envio, a tela pede a senha e avisa que não saiu")
+    ok("foi encerrada" not in toasts(pg), f"o aviso não afirma que a retirada foi encerrada (vale também na reconferência) ({toasts(pg)[-120:]})")
     pg.evaluate("window._bloq = false")
 
     def tocar_aditivo(pg, sacos=2):
@@ -579,29 +583,25 @@ with sync_playwright() as p:
         ok("confira na lista" in toasts(pg), f"e o aditivo avisa para conferir na lista ({toasts(pg)[-160:]})")
 
     fechar_tudo(pg)
-    print("== 14. aditivo na fila quando confirmam o FINALIZAR")
-    CONSUMIDOS.clear(); EVENTOS.clear(); limpar_toasts(pg)
+    print("== 14. Finalizar com item na fila: espera a fila esvaziar")
+    CONSUMIDOS.clear(); EVENTOS.clear(); ADITIVOS_RECEBIDOS.clear(); limpar_toasts(pg)
     sid = pg.evaluate("estado.sessaoId")
     ok(sid is not None and pg.evaluate("estado.itens.length > 0"), f"retirada aberta com itens (#{sid})")
-    SEGURAR["ligado"] = True
     bipar(pg, "R0000480")                           # bipe no ar (resposta demora 1,5 s)
     ate(pg, lambda: len(ATRASADAS) > 0)
     tocar_aditivo(pg)                               # aditivo na fila atrás dele
     clicar(pg, "#btn-finalizar", esperar=0)
+    ok(ate(pg, lambda: "na fila terminar" in toasts(pg)), f"o Finalizar avisa que espera a fila ({toasts(pg)[-160:]})")
+    ok(not ativo(pg, "modal-confirmar"), "e não abre a confirmação (ela contaria o que ainda está na fila)")
+    ok(ate(pg, lambda: "R0000480" in ids() and len(ADITIVOS_RECEBIDOS) >= 1), "o bipe e o aditivo saem")
+    ok(all(e[2] == sid for e in EVENTOS if e[0] in ("aditivo", "consumir")) and not [e for e in EVENTOS if e[0] == "fechar"],
+       f"na retirada aberta #{sid}, sem envio ao Bling no meio ({EVENTOS})")
+    fechar_tudo(pg)
+    clicar(pg, "#btn-finalizar", esperar=0)
+    ok(ate(pg, lambda: ativo(pg, "modal-confirmar")), "com a fila vazia o Finalizar abre a confirmação")
     clicar(pg, "#conf-ok", esperar=0)
-    ok(ate(pg, lambda: len(SEGURAR["rotas"]) > 0), "o envio ao Bling chegou ao servidor (e fica no ar)")
-    pg.wait_for_timeout(500)
-    na_fechada = [e for e in EVENTOS if e[0] == "aditivo" and e[2] == sid]
-    ok(not na_fechada, f"o aditivo NÃO foi na sessão #{sid}, que estava fechando ({EVENTOS})")
-    SEGURAR["ligado"] = False
-    for r in SEGURAR["rotas"]:
-        r.fulfill(status=200, content_type="application/json",
-                  body=json.dumps({"ok": True, "bling": {"ok": True, "modo": "simulacao"}}))
-    SEGURAR["rotas"].clear()
-    ok(ate(pg, lambda: "NÃO foi lançado" in toasts(pg)),
-       f"com a senha pedida depois, o aditivo não é lançado e avisa ({toasts(pg)[-160:]})")
-    ok(not [e for e in EVENTOS if e[0] == "aditivo"], f"nenhum aditivo foi ao servidor ({EVENTOS})")
-    ok(pg.evaluate("estado.sacos") == 2, f"e o contador volta para 2 ({pg.evaluate('estado.sacos')})")
+    ok(ate(pg, lambda: ("fechar", sid) in EVENTOS), "e envia")
+    ate(pg, lambda: pg.evaluate("estado.sessaoId") is None)
     pg.evaluate("window._bloq = false")
 
     fechar_tudo(pg)
@@ -637,6 +637,47 @@ with sync_playwright() as p:
     clicar(pg, "#fora-outro-ok")
     ok(ate(pg, lambda: len(ids()) >= 3) and ids() == ["R0000106", "R0000416", "R0000417"],
        f"e saíram depois do motivo, na ordem ({ids()})")
+
+    fechar_tudo(pg)
+    print("== 17. aditivo que dá erro: o contador volta só no mesmo fornecedor")
+    CONSUMIDOS.clear(); ADITIVOS_RECEBIDOS.clear(); limpar_toasts(pg)
+    ADITIVO["erro"] = 1
+    tocar_aditivo(pg, 2)
+    ok(ate(pg, lambda: "falha de teste" in toasts(pg)) and pg.evaluate("estado.sacos") == 2,
+       f"erro com o mesmo fornecedor: o contador volta para 2 ({pg.evaluate('estado.sacos')})")
+    pg.evaluate("document.getElementById('sacos-input').value = 0; ajustarSacos(0)")
+    fechar_tudo(pg); limpar_toasts(pg)
+    ADITIVO["erro"] = 1
+    bipar(pg, "R0000105")                           # janela de motivo segura a fila
+    ok(ate(pg, lambda: ativo(pg, "modal-fora")), "janela de motivo aberta (R0000105)")
+    tocar_aditivo(pg, 2)                            # Karina, na fila
+    pg.evaluate("estado.fornecedor = 'FG'")         # a pessoa troca o fornecedor enquanto espera
+    responder_motivo(pg)
+    ok(ate(pg, lambda: "falha de teste" in toasts(pg)), "o aditivo deu erro na vez dele")
+    ok(pg.evaluate("estado.sacos") == 0, f"trocou o fornecedor: os 2 sacos NÃO voltam no FG ({pg.evaluate('estado.sacos')})")
+    pg.evaluate("estado.fornecedor = 'Karina'; document.getElementById('sacos-input').value = 0; ajustarSacos(0)")
+
+    fechar_tudo(pg)
+    print("== 18. código sem Enter numa janela não vaza para a próxima")
+    CONSUMIDOS.clear(); limpar_toasts(pg)
+    bipar(pg, "R0000101")
+    ate(pg, lambda: ativo(pg, "modal-fora"))
+    clicar(pg, "#fora-motivos button[data-motivo='__outro']")
+    ate(pg, lambda: pg.evaluate("document.activeElement && document.activeElement.id === 'fora-outro'"))
+    leitor(pg, "R0000418", enter=False)             # Enter perdido; a pessoa desiste da janela
+    pg.evaluate("fecharFora(null)")
+    fechar_tudo(pg); limpar_toasts(pg)
+    bipar(pg, "R0000102")
+    ate(pg, lambda: ativo(pg, "modal-fora"))
+    clicar(pg, "#fora-motivos button[data-motivo='__outro']")
+    ate(pg, lambda: pg.evaluate("document.activeElement && document.activeElement.id === 'fora-outro'"))
+    pg.keyboard.type("sem etiqueta", delay=200)
+    leitor(pg, "R0000419")
+    ok(lido(pg, "R0000419"), f"o código da 2ª janela é lido ({toasts(pg)[-160:]})")
+    ok("R0000418 lido" not in toasts(pg) and "R0000418" not in ids(), "o da janela anterior não sai atrasado")
+    val = pg.evaluate("document.getElementById('fora-outro').value")
+    ok(val == "sem etiqueta", f"e nada ficou no motivo ({val!r})")
+    clicar(pg, "#fora-outro-ok")
 
     ok(not erros, f"sem erro de JavaScript ({erros[:2]})")
     pg.screenshot(path=str(OUT / "retirada_leitor_fim.png"))
