@@ -1186,14 +1186,17 @@ let _bipeEmCurso = Promise.resolve();   // o bipe que está no ar agora (finaliz
 function processarBipe(raw) {
   const m = String(raw || '').match(RX_CODIGO);
   const vezDele = { comecou: false };
+  // Espera também durante o envio ao Bling (estado.fechando), que pode passar
+  // de 1 minuto sem janela nenhuma na tela (3ª revisão, item 1).
   const avisarEspera = () => {
-    showToast('warn', '⏳', `${m ? m[0] : 'Bipe'} lido — espera você responder a janela aberta`, 6000);
+    const porque = janelaAberta() ? 'espera você responder a janela aberta' : 'espera o envio ao Bling terminar';
+    showToast('warn', '⏳', `${m ? m[0] : 'Bipe'} lido — ${porque}`, 6000);
     beepWarn();
   };
-  if (janelaAberta()) avisarEspera();
+  if (!podeSeguir()) avisarEspera();
   else if (_bipesNaFila > 0) {
     // Atrás de um bipe ainda no ar: se ele abrir uma janela, este avisa que espera.
-    setTimeout(() => { if (!vezDele.comecou && janelaAberta()) avisarEspera(); }, 700);
+    setTimeout(() => { if (!vezDele.comecou && !podeSeguir()) avisarEspera(); }, 700);
   }
   _bipesNaFila++;
   const vez = _filaBipe
@@ -1272,32 +1275,42 @@ async function processarBipeAgora(raw) {
   let sessaoId = await garantirSessao();
   if (!sessaoId) return;
 
-  // 2) Tenta consumir. checar_pedido: bag fora dos pedidos do painel volta
-  // 409 fora_do_pedido (inclusive em teste) para a tela perguntar o motivo.
-  try {
-    let { r, d } = await postJsonComTeto(`${URL_ETIQ}/${id}/consumir`, { sessao_id: sessaoId, checar_pedido: true });
-    if (r.status === 409 && d.sessao_fechada) {
-      // A sessão desta tela já fechou (outra aba, fim automático): a lista
-      // local é de uma sessão que não existe mais. Começa outra e repete UMA vez.
+  // /consumir na sessão desta tela. Se ela já fechou (outra aba, fim
+  // automático), a lista local é de uma sessão que não existe mais: começa
+  // outra e repete UMA vez. Vale para os dois /consumir (com e sem motivo).
+  const consumirNaSessao = async corpo => {
+    let res = await postJsonComTeto(`${URL_ETIQ}/${id}/consumir`, { ...corpo, sessao_id: sessaoId });
+    if (res.r.status === 409 && res.d.sessao_fechada) {
       showToast('warn', '↩', `A retirada #${sessaoId} já tinha sido fechada — ${id} vai numa nova`, 5000);
       estado.sessaoId = null; estado.itens = []; renderHistorico(); atualizarBadgesPai();
       sessaoId = await garantirSessao();
-      if (!sessaoId) return;
-      ({ r, d } = await postJsonComTeto(`${URL_ETIQ}/${id}/consumir`, { sessao_id: sessaoId, checar_pedido: true }));
+      if (!sessaoId) return null;
+      res = await postJsonComTeto(`${URL_ETIQ}/${id}/consumir`, { ...corpo, sessao_id: sessaoId });
     }
+    return res;
+  };
+
+  // 2) Tenta consumir. checar_pedido: bag fora dos pedidos do painel volta
+  // 409 fora_do_pedido (inclusive em teste) para a tela perguntar o motivo.
+  try {
+    let res = await consumirNaSessao({ checar_pedido: true });
+    if (!res) return;
+    let { r, d } = res;
 
     if (r.status === 409 && d.fora_do_pedido) {
       beepWarn();
       const escolha = await perguntarFora(d);
       if (!escolha) { showToast('warn', '↩', `${id} NÃO foi retirado`); return; }
-      ({ r, d } = await postJsonComTeto(`${URL_ETIQ}/${id}/consumir`, { sessao_id: sessaoId, fora_do_pedido: escolha }));
+      res = await consumirNaSessao({ fora_do_pedido: escolha });
+      if (!res) return;
+      ({ r, d } = res);
     }
 
     if (r.status === 409 && d.ja_consumida && d.consumo && d.consumo.sessao_id != null
         && String(d.consumo.sessao_id) === String(sessaoId)) {
       // Já saiu NESTA retirada (o 1º bipe passou do teto e o servidor gravou
       // sem a tela saber — revisão M3): não é bloqueio, é a lista atrasada.
-      await restaurarSessaoAberta();
+      await relerLista();
       showToast('sucesso', '✓', `${id} já está nesta retirada`, 5000);
       beepOk();
       return;
@@ -1342,7 +1355,7 @@ async function processarBipeAgora(raw) {
       // é relida do servidor ao fundo (revisão M3: a S gravada sem a tela saber
       // deixava Finalizar/Cancelar mudos e a contagem errada).
       showToast('erro', '⚠', `${id}: ${e.message} — confira se saiu: bipe de novo`, 8000);
-      restaurarSessaoAberta();
+      await relerLista();
     } else {
       showToast('erro', '✗', 'Erro de comunicação: ' + e.message);
     }
@@ -2044,6 +2057,46 @@ async function estornarItem(virtId) {
 // Quando o operador sai da tela sem finalizar (ex: vai pesar bobina na
 // extrusão e volta depois), ao reabrir a tela retomamos exatamente o
 // que estava — sessão + itens. Servidor é fonte de verdade (banco).
+// Item da lista local a partir da etiqueta S do servidor.
+function itemDaEtiqueta(e) {
+  const hora = e.hora_impressao
+    ? new Date(e.hora_impressao).toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})
+    : '--:--';
+  return {
+    virtId:       e.id,
+    origId:       e.ref_id,
+    tipo:         e.sub_tipo === 'aditivo-saida' ? 'aditivo' : 'bipagem',
+    materialKey:  e.material_key,
+    materialNome: e.material_nome || e.material_key,
+    cor:          e.cor,
+    fornecedor:   e.fornecedor,
+    lote:         e.lote,
+    peso:         e.peso,
+    qtdSacos:     e.qtd_sacos,
+    hora:         hora,
+  };
+}
+
+// Relê do servidor a lista da sessão DESTA tela (3ª revisão, item 3): a
+// restauração pega a retirada aberta mais recente, que pode ser de outra
+// pessoa. Usada no meio do trabalho (depois do teto, "já está nesta
+// retirada"). Teto de 5 s; falhou, a lista fica como estava.
+async function relerLista() {
+  const sid = estado.sessaoId;
+  if (!sid) return;
+  try {
+    const r = await fetch(`${URL_SESS}/${sid}`, { signal: AbortSignal.timeout(5000) });
+    const d = await r.json();
+    if (!d.ok || !d.sessao || d.sessao.fim || estado.sessaoId !== sid) return;
+    estado.itens = (d.etiquetas || []).filter(e => e.tipo === 'retirada').map(itemDaEtiqueta).reverse();
+    renderHistorico();
+    document.getElementById('btn-finalizar').disabled = estado.itens.length === 0;
+    document.getElementById('btn-cancelar').disabled  = estado.itens.length === 0;
+  } catch (e) {
+    console.warn('Falha ao reler a lista da retirada:', e.message);
+  }
+}
+
 async function restaurarSessaoAberta() {
   try {
     const r = await fetch('/sessoes/abertas?tipo=retirada');
@@ -2057,25 +2110,8 @@ async function restaurarSessaoAberta() {
     estado.sessaoOperador = (sessao.operador && String(sessao.operador).trim()) || window.EKO_RESPONSAVEL || null;
     estado.sessaoInicio = sessao.inicio || null;
     completarResponsavel(sessao);
-    estado.itens = (sessao.etiquetas || []).map(e => {
-      const isAditivo = e.sub_tipo === 'aditivo-saida';
-      const hora = e.hora_impressao
-        ? new Date(e.hora_impressao).toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})
-        : '--:--';
-      return {
-        virtId:       e.id,
-        origId:       e.ref_id,
-        tipo:         isAditivo ? 'aditivo' : 'bipagem',
-        materialKey:  e.material_key,
-        materialNome: e.material_nome || e.material_key,
-        cor:          e.cor,
-        fornecedor:   e.fornecedor,
-        lote:         e.lote,
-        peso:         e.peso,
-        qtdSacos:     e.qtd_sacos,
-        hora:         hora,
-      };
-    }).reverse();   // unshift inverte; pra manter ordem cronológica reversa, invertemos
+    estado.itens = (sessao.etiquetas || []).map(itemDaEtiqueta)
+      .reverse();   // unshift inverte; pra manter ordem cronológica reversa, invertemos
     renderHistorico();
     document.getElementById('btn-finalizar').disabled = estado.itens.length === 0;
     document.getElementById('btn-cancelar').disabled  = estado.itens.length === 0;

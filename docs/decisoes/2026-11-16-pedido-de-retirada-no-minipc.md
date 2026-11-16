@@ -183,6 +183,24 @@ código anterior). `testes/retirada-pedidos.js` [13] (2 falhas no anterior).
 5dd9c56). O finalizar falso demora 0,8 s, e na tela anterior o bipe ia na
 sessão que estava fechando.
 
+Revisão desse conserto (16/11, 4ª):
+- **Bipe durante o envio ao Bling** ficava parado sem som e sem mensagem. O
+  envio pode passar de 1 minuto. Agora avisa "espera o envio ao Bling terminar".
+- **Fila de motivos:** VPS sem resposta não zera mais a conta de 5xx. Antes,
+  com o Wi-Fi caindo, um item defeituoso nunca chegava aos recusados e travava
+  os motivos de trás.
+- **A lista é relida da sessão desta tela** (`GET /sessoes/<id>`). Antes a
+  restauração pegava a retirada aberta mais nova, que podia ser de outra pessoa.
+- **Sessão fechada também no /consumir com motivo:** abre sessão nova e repete,
+  igual ao primeiro.
+- **Recebimento/Retorno:** se não der para abrir a sessão nova, não imprime sem
+  sessão (antes a etiqueta nunca iria ao Bling).
+
+Testes: `retirada_leitor.py` cenários 10-12 e 11b (5 falhas na tela do
+6a68c22); `retirada-pedidos.js` (rede caída, 1 falha sem o conserto);
+`sessao-fechada.js` [8]: outras pesagens seguem aceitas e o mesmo clientToken
+devolve a mesma etiqueta. Uma mutação que tira o filtro de tipo faz o [8] falhar.
+
 ## Em aberto (não corrigido)
 - **Relógio do Mini PC atrás do da VPS:** a VPS só conta a S impressa depois da
   criação do pedido. Se o relógio do Mini PC estiver atrasado, a VPS não conta a
@@ -193,6 +211,13 @@ sessão que estava fechando.
   passar dos 15 s, a tela abre outra no bipe seguinte. A sessão vazia que ficou
   para trás continua aberta: a restauração só pega a mais recente. Só acontece
   com o Mini PC muito lento.
+- **Contagem da confirmação:** o texto do Finalizar usa a contagem de antes
+  de o bipe que estava no ar terminar. O Bling recebe o que o servidor tem, e
+  isso está certo; só o número mostrado pode estar 1 abaixo.
+- **Leitura sem Enter seguida de outra mais de 1 s depois:** a primeira some
+  sem aviso, porque o leitor nem mandou o Enter.
+- **Número S com buraco:** a recusa por sessão fechada já reservou o número.
+  Fica um buraco na sequência das S, sem efeito no Bling.
 - **Lote com troca de produto (menor):** no passo de lote, o Mini PC compara o
   bag de origem e a VPS compara a S (produto novo); podem atribuir o bag a
   pedidos diferentes. Afeta pouco.

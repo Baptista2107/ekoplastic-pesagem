@@ -29,8 +29,13 @@ O leitor manda os caracteres + Enter como teclado USB. Confere, em 1366x768:
      o botão tocado por último, e o bipe avisa que NÃO saiu (revisão M2);
  10. depois do teto a lista é relida do servidor; "já foi retirada" NESTA
      sessão não abre bloqueio (revisão M3);
- 11. servidor responde sessao_fechada: abre outra sessão e repete uma vez.
-Na tela de antes (c302b11) falha nos itens 1-7; no 5dd9c56, em 7-11. Sai 1 se falhar."""
+ 11. servidor responde sessao_fechada: abre outra sessão e repete uma vez —
+     também no /consumir com o motivo de fora do pedido (3ª revisão, item 4);
+ 12. bipe durante o envio ao Bling (sem janela na tela): avisa que espera o
+     envio (3ª revisão, item 1).
+O item 10 relê a sessão DESTA tela, nunca adota a retirada aberta mais nova
+de outra pessoa (3ª revisão, item 3).
+Na tela de antes (c302b11) falha nos itens 1-7; no 5dd9c56, em 7-12. Sai 1 se falhar."""
 import json, sys, time, urllib.parse
 from pathlib import Path
 sys.path.insert(0, "/home/ekoplastic/bling-claude")
@@ -52,7 +57,9 @@ CONSUMIDOS = []          # (id, corpo) dos /consumir que deram saída
 FECHADAS = set()         # sessões que o servidor falso já fechou
 SESS = {"prox": 777}
 EVENTOS = []             # ('consumir', id, sessao) / ('fechar', sessao) na ordem em que chegaram
-CHAMADAS = {"abertas": 0}
+CHAMADAS = {"abertas": 0, "sessao": 0}
+OUTRA = {"ligada": False}   # /sessoes/abertas passa a ter uma retirada mais nova de OUTRA pessoa
+SEGURAR = {"ligado": False, "rotas": []}   # finalizar fica no ar até o teste soltar
 PENDURADAS = []          # rotas que ficaram sem resposta de propósito
 falhas = []
 
@@ -85,9 +92,20 @@ def rota(route):
         return J({"ok": True, "sessao_id": sid})
     if p.startswith("/sessoes/abertas"):
         CHAMADAS["abertas"] += 1
+        if OUTRA["ligada"]:
+            return J({"ok": True, "sessoes": [{"id": 999, "tipo": "retirada", "operador": "OUTRA PESSOA",
+                      "inicio": "2026-11-16T12:00:00-03:00", "etiquetas": [dict(etiq("R0000999"), id="S0000999", ref_id="R0000999", tipo="retirada")]}]})
         return J({"ok": True, "sessoes": []})
+    if req.method == "GET" and p.startswith("/sessoes/") and p.split("/")[2].isdigit() and p.count("/") == 2:
+        CHAMADAS["sessao"] += 1
+        sid = int(p.split("/")[2])
+        ets = [dict(etiq(i), id="S" + i[1:], ref_id=i, tipo="retirada") for i, c in CONSUMIDOS if c.get("sessao_id") == sid]
+        return J({"ok": True, "sessao": {"id": sid, "fim": None}, "etiquetas": ets})
     if p.startswith("/sessoes/") and (p.endswith("/finalizar") or p.endswith("/cancelar")):
         sid = int(p.split("/")[2]); FECHADAS.add(sid); EVENTOS.append(("fechar", sid))
+        if SEGURAR["ligado"]:
+            SEGURAR["rotas"].append(route)    # o teste solta depois
+            return None
         # O envio ao Bling demora: na tela de antes, o bipe que esperava a
         # confirmação saía NESTE meio-tempo, ainda com o número desta sessão.
         time.sleep(0.8)
@@ -161,6 +179,15 @@ def clicar(pg, sel, esperar=350):
     pg.wait_for_timeout(esperar)
 
 
+def ate(pg, cond, ms=3000):
+    """Espera cond() virar verdade (até ms): com a VPS carregada a fila leva
+    mais que os 500 ms fixos — o teste não pode depender do relógio da máquina."""
+    fim = time.time() + ms / 1000
+    while not cond() and time.time() < fim:
+        pg.wait_for_timeout(100)
+    return cond()
+
+
 def responder_motivo(pg):
     clicar(pg, "#fora-motivos button[data-motivo='Bag do lote pedido não está no estoque']")
 
@@ -205,8 +232,8 @@ with sync_playwright() as p:
     ok(ativo(pg, "modal-bloqueado"), "janela JÁ FOI RETIRADA aberta")
     bipar(pg, "R0000402", 400)
     ok("R0000402" not in ids(), "bipe com ela aberta espera")
-    clicar(pg, "#modal-bloqueado .btn-fechar", 500)
-    ok("R0000402" in ids(), "fechou a janela: o bipe saiu")
+    clicar(pg, "#modal-bloqueado .btn-fechar", 300)
+    ok(ate(pg, lambda: "R0000402" in ids()), "fechou a janela: o bipe saiu")
 
     fechar_tudo(pg)
     print("== 4. Enter do leitor com botão em foco")
@@ -311,11 +338,16 @@ with sync_playwright() as p:
 
     fechar_tudo(pg)
     print("== 10. depois do teto a lista é relida; já retirado NESTA sessão")
+    bipar(pg, "R0000460", 600)                      # garante uma retirada aberta nesta tela
     CONSUMIDOS.clear()
-    antes = CHAMADAS["abertas"]
+    antes = CHAMADAS["sessao"]
+    sid10 = pg.evaluate("estado.sessaoId")
+    ok(sid10 is not None, f"retirada aberta nesta tela (#{sid10})")
+    OUTRA["ligada"] = True                          # outra pessoa abriu uma retirada mais nova
     bipar(pg, "R0000301", 0)
     pg.wait_for_timeout(3200)
-    ok(CHAMADAS["abertas"] > antes, "passado o teto, a tela relê a sessão do servidor")
+    ok(CHAMADAS["sessao"] > antes, "passado o teto, a tela relê a sessão DELA do servidor")
+    ok(pg.evaluate("estado.sessaoId") == sid10, f"e não adota a retirada da outra pessoa (#{pg.evaluate('estado.sessaoId')})")
     bipar(pg, "R0000202", 700)
     ok(not ativo(pg, "modal-bloqueado"), "já saiu nesta retirada: sem janela de bloqueio")
     ok("já está nesta retirada" in toasts(pg), f"avisa que já está na lista ({toasts(pg)[:120]})")
@@ -330,6 +362,36 @@ with sync_playwright() as p:
     ok(cons and cons[0][1].get("sessao_id") not in FECHADAS,
        f"abriu outra sessão e o bag saiu nela ({cons})")
     ok("já tinha sido fechada" in toasts(pg), "e avisa que a anterior tinha fechado")
+    OUTRA["ligada"] = False
+
+    fechar_tudo(pg)
+    print("== 11b. sessão fecha enquanto a janela de motivo está aberta")
+    CONSUMIDOS.clear()
+    bipar(pg, "R0000102", 600)
+    ok(ativo(pg, "modal-fora"), "janela de motivo aberta")
+    sid = pg.evaluate("estado.sessaoId"); FECHADAS.add(sid)     # outra aba fechou a sessão
+    responder_motivo(pg); pg.wait_for_timeout(600)
+    cons = [c for c in CONSUMIDOS if c[0] == "R0000102"]
+    ok(cons and cons[0][1].get("sessao_id") not in FECHADAS and cons[0][1].get("fora_do_pedido"),
+       f"com o motivo, saiu numa sessão nova ({cons})")
+
+    fechar_tudo(pg)
+    print("== 12. bipe durante o envio ao Bling, sem janela na tela")
+    CONSUMIDOS.clear()
+    SEGURAR["ligado"] = True
+    clicar(pg, "#btn-finalizar", 400)
+    clicar(pg, "#conf-ok", 400)                   # o envio fica no ar
+    bipar(pg, "R0000450", 600)
+    ok("espera o envio ao Bling" in toasts(pg), f"avisa que espera o envio ({toasts(pg)[-160:]})")
+    ok("R0000450" not in ids(), "e não sai enquanto o envio está no ar")
+    SEGURAR["ligado"] = False
+    for r in SEGURAR["rotas"]:
+        r.fulfill(status=200, content_type="application/json",
+                  body=json.dumps({"ok": True, "bling": {"ok": True, "modo": "simulacao"}}))
+    SEGURAR["rotas"].clear()
+    pg.wait_for_timeout(800)
+    ok("R0000450" not in ids() and "NÃO saiu" in toasts(pg), "terminado o envio, a tela pede a senha e avisa que não saiu")
+    pg.evaluate("window._bloq = false")
 
     ok(not erros, f"sem erro de JavaScript ({erros[:2]})")
     pg.screenshot(path=str(OUT / "retirada_leitor_fim.png"))

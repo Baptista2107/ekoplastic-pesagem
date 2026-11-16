@@ -1862,6 +1862,8 @@ async function enviarNaSessao(tipo, fornecedor, enviar) {
     if (tipo === 'retorno') estado.retItens = []; else estado.itens = [];
     try { renderHistorico(); atualizarBadgesPai(); } catch (e) {}
     sid = await garantirSessao(tipo, fornecedor);
+    // Sem sessão nova não repete: o item sairia sem sessão e nunca iria ao Bling.
+    if (!sid) throw new Error('não deu para abrir uma sessão nova — tente de novo');
     resp = await enviar(sid);
     d = await resp.json();
   }

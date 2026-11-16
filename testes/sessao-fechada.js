@@ -161,6 +161,26 @@ const contar = (sql, ...p) => lerDb(sql, ...p).n;
     ok((await consumir(b5, sD)).status === 200, 'bipe em retirada aberta sai', null);
     const ad2 = await req('POST', '/retirada/aditivo', { sessao_id: sD, materialKey: 'DESSEC', fornecedor: 'Karina', qtd_sacos: 2 });
     ok(ad2.status === 200, 'sacos em retirada aberta saem', ad2.body);
+
+    console.log('\n[8] Fora da MP nada muda; repetir a MESMA impressão devolve a mesma etiqueta');
+    // "Outras pesagens" (e a extrusão) seguem aceitando item em sessão fechada:
+    // a bobina impressa depois do fim de turno automático ainda vai ao Bling no bipe.
+    const sO = await sessao('outras');
+    await req('POST', `/sessoes/${sO}/cancelar`);
+    const po = await imprimir('outras', sO);
+    ok(po.status === 200 && po.body.id, '/print/etiqueta de OUTRAS em sessão fechada segue aceito', po);
+    const bo = await req('POST', `/etiquetas/${po.body.id}/bipar`);
+    ok(bo.status === 200, 'e o bipe dela também', bo);
+    // Idempotência: a resposta perdeu-se, a tela repete com o mesmo token
+    // depois que a sessão fechou — volta a etiqueta já feita, não 409 nem outra.
+    const sI = await sessao('recebimento', { fornecedor: 'Ecorafia' });
+    const corpoI = { clientToken: `sf-${C}-idem`, tipo: 'recebimento', materialKey: 'GBD', materialNomeEt: 'GRÃO BAIXA DENSIDADE',
+      cor: 'Preto', fornecedor: 'Ecorafia', peso: 900, lote: '161126', codigo: 'X1', sku: 'GBD.PRE.ECORAF | 900 | L161126', sessao_id: sI };
+    const i1 = await req('POST', '/print/etiqueta', corpoI);
+    await req('POST', `/etiquetas/${i1.body.id}/bipar`);
+    await req('POST', `/sessoes/${sI}/finalizar`);
+    const i2 = await req('POST', '/print/etiqueta', corpoI);
+    ok(i2.status === 200 && i2.body.id === i1.body.id, 'mesmo clientToken depois de fechar devolve a mesma etiqueta', { i1: i1.body, i2: i2.body });
   } catch (e) {
     falhou++; console.log('  \x1b[31m✗ ERRO\x1b[0m', e.stack || e.message);
   } finally {

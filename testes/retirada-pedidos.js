@@ -637,6 +637,17 @@ const registro = virtId => { const l = lerDb('SELECT pedido_retirada FROM etique
     ok(f.R0999502 && !f.R0999502.falhas_5xx && !f.R0999502.falhas_5xx_desde,
        'resposta sem 5xx no meio (teto por hora) zera a conta de falhas', f);
     VPS.teto_hora = 100000;
+    // VPS SEM RESPOSTA (rede caiu) não diz nada do item: a conta de 5xx fica.
+    // Zerar aqui deixava um item defeituoso travar a fila com o Wi-Fi caindo.
+    const desde = new Date(Date.now() - 2 * 3600 * 1000).toISOString();
+    const fr = { R0999503: { em: '2026-11-16T10:00:03.000Z', corpo: { etiqueta_id: 'R0999503', motivo: 'rede caiu' },
+                             falhas_5xx: 3, falhas_5xx_desde: desde } };
+    await req('POST', '/config', { retirada_fora_fila: JSON.stringify(fr), vps_sacoleiras_url: 'http://127.0.0.1:9/api/sacoleiras/agora' });
+    await req('GET', '/retirada/pedidos'); await sleep(600);
+    f = JSON.parse((await req('GET', '/config')).body.config.retirada_fora_fila || '{}');
+    ok(f.R0999503 && f.R0999503.falhas_5xx === 3 && f.R0999503.falhas_5xx_desde === desde,
+       'VPS sem resposta não zera a conta de falhas 5xx', f);
+    await req('POST', '/config', { vps_sacoleiras_url: `http://127.0.0.1:${portaVps}/api/sacoleiras/agora` });
     }
   } catch (e) {
     falhou++; console.log('  \x1b[31m✗ ERRO\x1b[0m', e.stack || e.message);
