@@ -11,6 +11,7 @@
 //    · R já consumida, R cancelada e etiqueta que não é recebimento são
 //      recusadas no endereçamento;
 //    · o estorno da retirada NÃO devolve o bag ao mapa;
+//    · bag de RETORNO (T…) entra e sai do mapa como o R (16/11/2026);
 //    · o retrato vai para a VPS (de mentira) e só de novo quando muda;
 //      sem endereço da VPS configurado, nada é enviado.
 // ════════════════════════════════════════════════════════════════════
@@ -189,6 +190,32 @@ const posicao = async cod => (await req('GET', '/enderecamento/mapa')).body.posi
     ok(!p1c.ocupada, '01-01-007 continua livre (bag volta ao estoque, mas sem endereço)', p1c);
     const o6 = await ocupar('01-01-010', b1);
     ok(o6.status === 200, 'o bag estornado pode ser endereçado de novo', o6.body);
+
+    console.log('\n[7] Bag de RETORNO (T…) também é endereçado (16/11/2026, Bruno: T0000101 não era lido)');
+    const sRetorno = (await req('POST', '/sessoes', { tipo: 'retorno', operador: 'Teste' })).body.sessao_id;
+    const rT = await req('POST', '/etiquetas', {
+      clientToken: `mb-${C}-${++nTok}`, tipo: 'retorno', materialKey: 'GBD', materialNomeEt: 'BAIXA DENSIDADE',
+      cor: 'Preto', fornecedor: 'Piquiri', peso: 834.5, lote: 'S/L', codigo: 'PT4', sku: 'GBD.PTO.PIQUIR | 835 | LS/L', sessao_id: sRetorno });
+    const t1 = rT.body && rT.body.id;
+    ok(/^T\d{7}$/.test(t1 || ''), `etiqueta de retorno criada (${t1})`, rT.body);
+    await req('POST', `/etiquetas/${t1}/bipar`);
+    const gT = (await req('GET', `/enderecamento/gaiola/${t1}`)).body;
+    ok(gT.bag && gT.bag.status === 'bipada' && gT.bag.fornecedor === 'Piquiri' && gT.bag.peso === 834.5,
+       'a consulta do T traz o retrato do bag (Piquiri, 834,5 kg)', gT);
+    const oT = await ocupar('01-01-011', t1);
+    ok(oT.status === 200 && oT.body.bag === true, `bag de retorno ${t1} guardado em 01-01-011`, oT.body);
+    const pT = await posicao('01-01-011');
+    ok(pT.ocupada && pT.gaiola.item === 'bag' && pT.gaiola.id === t1 && pT.gaiola.kg === 834.5 && pT.gaiola.fornecedor === 'Piquiri',
+       'o mapa mostra o bag de retorno', pT);
+    ok((await ocupar('01-01-012', t1)).status === 409, 'o mesmo T em outro endereço é recusado');
+    const cT = await req('POST', `/etiquetas/${t1}/consumir`, { sessao_id: sRet });
+    ok(cT.status === 200, 'retirada do T ok', cT.body);
+    ok(!(await posicao('01-01-011')).ocupada, '01-01-011 fica livre sozinha quando o T sai na retirada');
+    const oT2 = await ocupar('01-01-011', t1);
+    ok(oT2.status === 409 && oT2.body.consumida === true, 'T já consumido é recusado', oT2.body);
+    ok((await ocupar('01-01-011', 'T9999999')).status === 404, 'T que não existe nesta estação é recusado');
+    const oE = await ocupar('01-01-011', 'E0001234');
+    ok(oE.status === 400 && /R… ou T…/.test((oE.body && oE.body.erro) || ''), 'bobina (E…) recusada e a mensagem fala de R… ou T…', oE.body);
   } catch (e) {
     falhou++; console.log('  \x1b[31m✗\x1b[0m exceção:', e.stack || e.message);
   } finally {
