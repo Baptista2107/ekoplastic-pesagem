@@ -241,7 +241,11 @@ async function rotasEnderecamento(req, res, parsed, pathname) {
     avisarMudanca();
     logI('enderecamento', `Endereço ${ocup.posicao} liberado (${ocup.gaiola_id})`
       + (body.motivo ? ` — ${body.motivo}` : '') + (body.operador ? ` — ${body.operador}` : ''));
-    return jsonOk(res, { liberado: true, posicao: ocup.posicao, gaiola_id: ocup.gaiola_id });
+    // 16/11/2026 (Gustavo): a tela mostra a descrição do que saiu (bag:
+    // material/cor/fornecedor/lote/kg; gaiola: formato/cor/fardos/kg) —
+    // devolve a ocupação inteira, já com a saída gravada.
+    const saiu = db.prepare('SELECT * FROM ocupacoes WHERE id = ?').get(ocup.id);
+    return jsonOk(res, { liberado: true, posicao: ocup.posicao, gaiola_id: ocup.gaiola_id, ocupacao: saiu });
   }
 
   // GET /enderecamento/historico?limit=
