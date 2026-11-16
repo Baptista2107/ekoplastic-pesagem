@@ -44,11 +44,15 @@ O leitor manda os caracteres + Enter como teclado USB. Confere, em 1366x768:
      zera o contador no toque e lança o que estava na tela NO TOQUE (achado C);
  16. "Outro motivo…" com o Enter do 1º código perdido: os dois códigos saem,
      na ordem, e nenhum fica no texto do motivo (achado D).
+ 19. X tira o ÚLTIMO item e o servidor não responde o cancelar da sessão
+     vazia: o bipe seguinte sai assim mesmo (revisão do da8007b: o fetch sem
+     teto dentro da fila travava todos os bipes seguintes).
 O item 10 relê a sessão DESTA tela, nunca adota a retirada aberta mais nova
 de outra pessoa (3ª revisão, item 3).
 Na tela de antes (c302b11) falha nos itens 1-7; no 5dd9c56, em 7-12. Sai 1 se falhar.
 No 47c434e falha no 1 (o 2º espera calado) e no 5b (soluço: o código fica no motivo).
 No 9410234 falha em 13-16 (com PULAR=13, 14-16 falham cada um por si).
+No 42f5e71 falha no 19 (a fila fica presa no cancelar sem resposta).
 
 O LEITOR aqui é uma rajada com o carimbo de hora de cada tecla 4 ms depois da
 outra (CDP Input.dispatchKeyEvent com timestamp), como o HS-960 — o ritmo é da
@@ -89,6 +93,7 @@ EVENTOS = []             # ('consumir', id, sessao) / ('fechar', sessao) na orde
 CHAMADAS = {"abertas": 0, "sessao": 0}
 OUTRA = {"ligada": False}   # /sessoes/abertas passa a ter uma retirada mais nova de OUTRA pessoa
 SEGURAR = {"ligado": False, "rotas": []}   # finalizar fica no ar até o teste soltar
+CANCELAR_PENDURA = {"ligado": False}       # /cancelar grava no servidor, mas a resposta nunca chega (19)
 PENDURADAS = []          # rotas que ficaram sem resposta de propósito
 GRAVADOS_NO_TETO = []    # (id, corpo) dos /consumir pendurados: gravados no servidor
 ADITIVO = {"pendurar": 0, "seq": 500, "erro": 0}   # pendurar: quantos ficam sem resposta; erro: quantos dão 500
@@ -136,6 +141,9 @@ def rota(route):
         return J({"ok": True, "sessao": {"id": sid, "fim": None}, "etiquetas": ets})
     if p.startswith("/sessoes/") and (p.endswith("/finalizar") or p.endswith("/cancelar")):
         sid = int(p.split("/")[2]); FECHADAS.add(sid); EVENTOS.append(("fechar", sid))
+        if CANCELAR_PENDURA["ligado"] and p.endswith("/cancelar"):
+            PENDURADAS.append(route)          # nunca responde
+            return None
         if SEGURAR["ligado"]:
             SEGURAR["rotas"].append(route)    # o teste solta depois
             return None
@@ -678,6 +686,25 @@ with sync_playwright() as p:
     val = pg.evaluate("document.getElementById('fora-outro').value")
     ok(val == "sem etiqueta", f"e nada ficou no motivo ({val!r})")
     clicar(pg, "#fora-outro-ok")
+
+    fechar_tudo(pg)
+    print("== 19. X tira o último item e o servidor não responde o cancelar")
+    limpar_toasts(pg)
+    if not pg.evaluate("estado.itens.length"):
+        bipar(pg, "R0000491"); ate(pg, lambda: "R0000491" in ids())
+        fechar_tudo(pg)
+    pg.evaluate("estado.itens.slice(1).forEach(it => estornarItem(it.virtId))")   # deixa um só
+    fechar_tudo(pg)
+    ok(ate(pg, lambda: pg.evaluate("estado.itens.length") == 1), "sobrou um item só na lista")
+    CONSUMIDOS.clear(); limpar_toasts(pg)
+    n0 = len(PENDURADAS)
+    CANCELAR_PENDURA["ligado"] = True
+    clicar(pg, "button.item-x", esperar=0)          # o X do último item
+    ok(ate(pg, lambda: len(PENDURADAS) > n0), "o cancelar da sessão vazia chegou ao servidor e ficou sem resposta")
+    bipar(pg, "R0000492")
+    ok(ate(pg, lambda: "R0000492" in ids(), ms=ESPERA_MS + 8000),
+       f"o bipe seguinte sai mesmo assim (a fila não trava) ({toasts(pg)[-160:]})")
+    CANCELAR_PENDURA["ligado"] = False
 
     ok(not erros, f"sem erro de JavaScript ({erros[:2]})")
     pg.screenshot(path=str(OUT / "retirada_leitor_fim.png"))

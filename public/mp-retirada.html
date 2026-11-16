@@ -2117,7 +2117,10 @@ function atualizarBadgesPai() {
 async function cancelarSessaoSeVazia() {
   if (estado.itens.length > 0) return;
   if (estado.sessaoId) {
-    try { await fetch(`${URL_SESS}/${estado.sessaoId}/cancelar`, { method: 'POST' }); } catch(e) {}
+    // Com teto: roda dentro da fila (estorno do último item). Sem teto, um
+    // servidor que não responde travava a fila e os bipes seguintes (16/11).
+    // Pior caso do teto: a sessão vazia fica aberta no servidor.
+    try { await postJsonComTeto(`${URL_SESS}/${estado.sessaoId}/cancelar`, {}, 5000); } catch(e) {}
     estado.sessaoId = null;
   }
   document.getElementById('ultima-retirada').classList.remove('ativo');
