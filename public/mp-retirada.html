@@ -1713,9 +1713,12 @@ async function retiradaAbertaDe(lib) {
   if (!r.ok) return false;
   const d = await r.json();
   const nome = String(lib.nome || '').trim().toUpperCase();
+  // 16/11/2026 (Gustavo): escolheu continuar a retirada de outra pessoa, saiu e
+  // voltou: enquanto AQUELA sessão segue aberta, a senha ainda vale.
+  const cont = lib.continuada != null ? String(lib.continuada) : null;
   // Sessão VAZIA não conta (1º bipe que falhou deixa sessão aberta sem item).
   return !!(d.ok && (d.sessoes || []).some(s => s.tipo === 'retirada' && (s.etiquetas || []).length > 0
-    && String(s.operador || '').trim().toUpperCase() === nome));
+    && (String(s.operador || '').trim().toUpperCase() === nome || (cont !== null && String(s.id) === cont))));
 }
 function comAcesso(tela, aoEntrar) {
   if (window.EkoAcesso && typeof EkoAcesso.exigir === 'function')
@@ -1739,9 +1742,15 @@ async function conferirSessaoDeOutro() {
   if (!estado.sessaoId || !dono || !eu || dono.toUpperCase() === eu.toUpperCase()) return;
   if (estado.itens.length === 0) { await cancelarSessaoSeVazia(); return; }
   if (!window.EkoAcesso || !EkoAcesso.perguntarSessaoDeOutro) return;
+  // Já escolheu continuar ESTA sessão e só saiu e voltou: segue sem perguntar.
+  if (EkoAcesso.continuada && EkoAcesso.continuada(CHAVE_PIN) === String(estado.sessaoId)) {
+    showToast('info', '👤', `Seguindo a retirada de ${escRet(dono)} — fica no nome dele`, 4000);
+    return;
+  }
   const escolha = await EkoAcesso.perguntarSessaoDeOutro({
     processo: 'Retirada', operador: dono, desde: estado.sessaoInicio, itens: estado.itens.length });
   if (escolha === 'continuar') {
+    if (EkoAcesso.continuar) EkoAcesso.continuar(CHAVE_PIN, estado.sessaoId);
     showToast('info', '👤', `Continuando a retirada de ${escRet(dono)} — fica no nome dele`, 5000);
     return;
   }

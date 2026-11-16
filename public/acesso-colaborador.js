@@ -42,6 +42,17 @@
   function gravarLiberacao(chave, dados) {
     try { sessionStorage.setItem(chaveLib(chave), JSON.stringify({ nome: dados.nome, id: dados.id, ts: Date.now() })); } catch (e) {}
   }
+  // Sessão de OUTRA pessoa que esta pessoa escolheu continuar (16/11/2026,
+  // Gustavo: "saiu voltou mas é a mesma operação segue no nome de quem tava").
+  // Fica junto da liberação do frame: enquanto AQUELA sessão seguir aberta, quem
+  // sai e volta não digita a senha de novo nem responde de novo à pergunta. O
+  // teto de 8 h conta do login (o ts não muda); encerrar/trocar apaga tudo.
+  function marcarContinuada(chave, sessaoId) {
+    const lib = lerLiberacao(chave);
+    if (!lib || sessaoId == null || sessaoId === '') return;
+    lib.continuada = String(sessaoId);
+    try { sessionStorage.setItem(chaveLib(chave), JSON.stringify(lib)); } catch (e) {}
+  }
   // Última chamada de exigir() por chave: encerrar() pede a senha de novo e
   // chama o mesmo aoEntrar (a tela já iniciada só troca o responsável).
   const PEDIDOS = {};
@@ -262,6 +273,13 @@
       if (p) montar(p.tela, p.aoEntrar, p.opc);
     },
     liberado(chave) { return !!lerLiberacao(chave); },
+    // Escolheu "Continuar no nome de X": guarda o id da sessão continuada.
+    continuar(chave, sessaoId) { marcarContinuada(chave, sessaoId); },
+    // Id (texto) da sessão de outro que esta liberação continua, ou null.
+    continuada(chave) {
+      const lib = lerLiberacao(chave);
+      return lib && lib.continuada != null ? String(lib.continuada) : null;
+    },
     // Nome do responsável logado (para mandar como `operador` na sessão).
     responsavel() { return window.EKO_RESPONSAVEL || null; },
     perguntarSessaoDeOutro,

@@ -17,6 +17,9 @@
 //   E) POST /sistema/encerrar fecha só a tela: o servidor segue respondendo
 //      e não grava eko-encerrar.flag (o INICIAR.bat não religaria).
 //
+//   F) (16/11) continuou a sessão de OUTRA pessoa, saiu e voltou: enquanto
+//      aquela sessão segue aberta, não pede a senha nem pergunta de novo.
+//
 //  Como rodar:   node testes/pin-por-frame.js
 // ════════════════════════════════════════════════════════════════════
 
@@ -236,6 +239,117 @@ async function testeFrames() {
   ok(pa.teclado(), 'PA sem chave: a liberação das abas da MP não vale para o PA');
 }
 
+// ─── F) continuar a sessão de OUTRA pessoa, sair e voltar (16/11/2026) ───
+// Gustavo: "saiu voltou mas é a mesma operação segue no nome de quem tava".
+// Roda as funções REAIS da tela (tiradas do HTML) junto do acesso-colaborador.js
+// real: Ana entra, acha a sessão do Bruno, escolhe continuar, sai e volta.
+function extrairFuncao(src, nome) {
+  const m = new RegExp('(async\\s+)?function\\s+' + nome + '\\s*\\(').exec(src);
+  if (!m) throw new Error('função ' + nome + ' não achada na tela');
+  let i = src.indexOf('{', src.indexOf(')', m.index)), prof = 0;
+  for (let j = i; j < src.length; j++) {
+    if (src[j] === '{') prof++;
+    else if (src[j] === '}' && --prof === 0) return src.slice(m.index, j + 1);
+  }
+  throw new Error('função ' + nome + ' sem fim');
+}
+
+async function testeContinuada(cfg) {
+  const html = fs.readFileSync(path.join(PUBLIC, cfg.arquivo), 'utf8');
+  const codigo = cfg.funcoes.map(n => extrairFuncao(html, n)).join('\n');
+  const ss = novoStorage();
+  let abertas = [];
+  const fetchFalso = async (url, o) => {
+    if (String(url).startsWith('/sessoes/abertas')) return { ok: true, json: async () => ({ ok: true, sessoes: abertas }) };
+    const corpo = JSON.parse(o.body);
+    const nome = corpo.pin === '1111' ? 'ANA' : null;
+    return { ok: !!nome, json: async () => (nome ? { ok: true, nome, id: 3 } : { ok: false, erro: 'Senha não confere' }) };
+  };
+  const abrirTela = () => {
+    const f = novoFrame(ss, fetchFalso);
+    Object.assign(f.win, cfg.globais, {
+      showToast: () => {}, finalizar: async () => {}, cancelarSessaoSeVazia: async () => {},
+      restaurarSessoesAbertas: async () => {}, estado: cfg.estado(77),
+    });
+    vm.runInContext(codigo, f.win, { filename: cfg.arquivo });
+    f.entrou = [];
+    f.win.EkoAcesso.exigir('mp', nome => f.entrou.push(nome), { chave: cfg.chave, aindaValida: f.win[cfg.aberta] });
+    f.caixa = () => f.doc.getElementById('eko-outro');
+    // Roda conferirSessaoDeOutro; se a caixa abrir, escolhe "continuar".
+    f.conferir = async () => {
+      const p = f.win.conferirSessaoDeOutro();
+      await sleep(20);
+      const viu = !!f.caixa();
+      if (viu) f.caixa().querySelector('#eko-outro-continuar').onclick();
+      await p;
+      return viu;
+    };
+    return f;
+  };
+  const doBruno = id => ({ id, tipo: cfg.tipo, operador: 'BRUNO', etiquetas: [{}, {}] });
+
+  // 1) Ana entra e acha a sessão #77 do Bruno aberta: pergunta, ela continua.
+  abertas = [doBruno(77)];
+  const a = abrirTela();
+  await sleep(50);
+  ok(a.teclado(), `${cfg.nome}: Ana sem senha guardada → teclado`);
+  a.digitar('1111'); a.entrar();
+  await sleep(600);
+  ok(a.entrou.join() === 'ANA', `${cfg.nome}: Ana entra com a senha dela`);
+  ok(await a.conferir(), `${cfg.nome}: sessão do Bruno aberta → pergunta "continuar ou encerrar"`);
+
+  // 2) Sai (Extrusão) e volta com a MESMA sessão aberta: sem senha, sem pergunta.
+  const b = abrirTela();
+  await sleep(50);
+  ok(b.entrou.join() === 'ANA' && !b.teclado(),
+     `${cfg.nome}: continuou a sessão do Bruno, saiu e voltou → NÃO pede a senha de novo`, `(entrou: ${JSON.stringify(b.entrou)}, teclado: ${b.teclado()})`);
+  if (!b.teclado()) ok(!(await b.conferir()), `${cfg.nome}: e NÃO pergunta de novo "continuar ou encerrar" para a mesma sessão`);
+  else ok(false, `${cfg.nome}: e NÃO pergunta de novo "continuar ou encerrar" para a mesma sessão`, '(nem entrou)');
+
+  // 3) A sessão do Bruno foi encerrada: volta a regra normal (pede a senha).
+  abertas = [];
+  const c = abrirTela();
+  await sleep(50);
+  ok(c.entrou.length === 0 && c.teclado(), `${cfg.nome}: sessão continuada encerrada → pede a senha de novo`);
+
+  // 4) Outra sessão do Bruno (não a que ela continuou): pede a senha.
+  ss.setItem('eko_liberado_' + cfg.chave, JSON.stringify({ nome: 'ANA', id: 3, ts: Date.now(), continuada: '77' }));
+  abertas = [doBruno(78)];
+  const d = abrirTela();
+  await sleep(50);
+  ok(d.entrou.length === 0 && d.teclado(), `${cfg.nome}: outra sessão do Bruno (não a continuada) → pede a senha`);
+
+  // 5) Teto de 8 h segue valendo, e encerrar/trocar apaga o "continuada".
+  ss.setItem('eko_liberado_' + cfg.chave, JSON.stringify({ nome: 'ANA', id: 3, ts: Date.now() - 9 * 3600 * 1000, continuada: '77' }));
+  abertas = [doBruno(77)];
+  const e = abrirTela();
+  await sleep(50);
+  ok(e.entrou.length === 0 && e.teclado(), `${cfg.nome}: passou de 8 h → pede a senha mesmo com a sessão continuada aberta`);
+  ss.setItem('eko_liberado_' + cfg.chave, JSON.stringify({ nome: 'ANA', id: 3, ts: Date.now(), continuada: '77' }));
+  e.win.EkoAcesso.encerrar(cfg.chave);
+  ok(e.win.EkoAcesso.continuada(cfg.chave) === null, `${cfg.nome}: encerrar apaga a sessão continuada junto com a senha`);
+}
+
+async function testeContinuadas() {
+  console.log('\n[F] continuou a sessão de outro, saiu e voltou (funções reais das telas)');
+  await testeContinuada({
+    nome: 'Retirada', arquivo: 'mp-retirada.html', chave: 'mp-retirada', tipo: 'retirada',
+    funcoes: ['escRet', 'retiradaAbertaDe', 'conferirSessaoDeOutro'], aberta: 'retiradaAbertaDe',
+    globais: { CHAVE_PIN: 'mp-retirada' },
+    estado: id => ({ sessaoId: id, sessaoOperador: 'BRUNO', sessaoInicio: null, itens: [1, 2] }),
+  });
+  for (const aba of ['recebimento', 'retorno']) {
+    await testeContinuada({
+      nome: aba === 'retorno' ? 'Retorno' : 'Recebimento', arquivo: 'mp-recebimento-retorno.html',
+      chave: 'mp-' + aba, tipo: aba,
+      funcoes: ['sessaoAbertaDe', 'conferirSessaoDeOutro'], aberta: 'sessaoAbertaDe',
+      globais: { ABA_PIN: aba, CHAVE_PIN: 'mp-' + aba },
+      estado: id => ({ sessaoInfo: { [aba]: { operador: 'BRUNO', inicio: null, itens: 2 } },
+                       [aba === 'retorno' ? 'sessaoRetorno' : 'sessaoRecebimento']: id }),
+    });
+  }
+}
+
 function testeTelas() {
   console.log('\n[D] telas (conferência estática)');
   const ler = f => fs.readFileSync(path.join(PUBLIC, f), 'utf8');
@@ -313,6 +427,7 @@ function encerrar() {
 (async () => {
   try {
     await testeFrames();
+    await testeContinuadas();
     testeTelas();
     await subirServidor();
     const h = await (await fetch(BASE + '/healthcheck')).json();

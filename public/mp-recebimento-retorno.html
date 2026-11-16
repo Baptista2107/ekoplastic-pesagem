@@ -4061,9 +4061,15 @@ async function conferirSessaoDeOutro(aviso) {
   if (!estado[key] || !dono || !eu || dono.toUpperCase() === eu.toUpperCase()) return;
   if (!window.EkoAcesso || !EkoAcesso.perguntarSessaoDeOutro) return;
   const processo = ABA_PIN === 'retorno' ? 'Retorno' : 'Recebimento';
+  // Já escolheu continuar ESTA sessão e só saiu e voltou: segue sem perguntar.
+  if (!aviso && EkoAcesso.continuada && EkoAcesso.continuada(CHAVE_PIN) === String(estado[key])) {
+    showToast('info', '👤', `Seguindo o ${processo.toLowerCase()} de ${dono} — fica no nome dele`, 4000);
+    return;
+  }
   const escolha = await EkoAcesso.perguntarSessaoDeOutro({
     processo, operador: dono, desde: info.inicio, itens: info.itens, aviso });
   if (escolha === 'continuar') {
+    if (EkoAcesso.continuar) EkoAcesso.continuar(CHAVE_PIN, estado[key]);
     showToast('info', '👤', `Continuando o ${processo.toLowerCase()} de ${dono} — fica no nome dele`, 5000);
     return;
   }
@@ -4123,9 +4129,12 @@ async function sessaoAbertaDe(lib) {
   if (!r.ok) return false;
   const d = await r.json();
   const nome = String(lib.nome || '').trim().toUpperCase();
+  // 16/11/2026 (Gustavo): escolheu continuar a sessão de outra pessoa, saiu e
+  // voltou: enquanto AQUELA sessão segue aberta, a senha ainda vale.
+  const cont = lib.continuada != null ? String(lib.continuada) : null;
   // Sessão VAZIA não conta (órfã: a própria restauração a cancela em seguida).
   return !!(d.ok && (d.sessoes || []).some(s => s.tipo === ABA_PIN && (s.etiquetas || []).length > 0
-    && String(s.operador || '').trim().toUpperCase() === nome));
+    && (String(s.operador || '').trim().toUpperCase() === nome || (cont !== null && String(s.id) === cont))));
 }
 function comAcesso(tela, aoEntrar) {
   if (window.EkoAcesso && typeof EkoAcesso.exigir === 'function')
