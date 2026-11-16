@@ -237,15 +237,17 @@ let MODO = 'entrada';
 const ESCOLHA = { end: null, gai: null };
 let scanner = null, camLigada = false, CAMERA_ID = null;
 const ultimaLeitura = {};
-// Conta as leituras. Depois de confirmar, a tela se limpa sozinha em 2,2 s
-// — mas se nesse meio tempo o operador já leu a PRÓXIMA etiqueta, a
-// limpeza não pode apagar o que ele acabou de ler. O contador é o que
-// distingue "ninguém mexeu" de "já tem coisa nova aqui".
+// Conta as leituras e limpezas. O confirmar guarda o valor no toque: se ao
+// voltar a resposta do servidor ele mudou, o operador já leu a PRÓXIMA
+// etiqueta no meio — o ✓ não pode apagar o aviso dessa leitura (16/11).
 let GERACAO = 0;
-// O recado na tela é a confirmação de algo JÁ GRAVADO ("✓ … guardada em …").
-// Fica para ler, mas some na próxima leitura boa — senão o "✓" verde aparece
-// ao lado de um par novo ainda não confirmado (16/11).
-let RECADO_CONF = false;
+// O recado na tela é o RESULTADO de um confirmar ("✓ … guardada em …" ou o
+// erro dele). Fica para ler, mas some na próxima leitura boa — senão o "✓"
+// verde aparece ao lado de um par novo ainda não confirmado (16/11).
+let RECADO_SOME_NA_PROXIMA = false;
+// POST do confirmar no ar: o botão fica desligado mesmo que um bipe no meio
+// repinte os quadros (senão um 2º toque mandava o par misturado).
+let CONFIRMANDO = false;
 
 /* ══════════════ utilidades ══════════════ */
 const $ = id => document.getElementById(id);
@@ -259,7 +261,7 @@ function beep(f, d) {
 }
 function vibrar(p) { try { navigator.vibrate && navigator.vibrate(p); } catch (e) {} }
 function dizer(tipo, txt, ms) {
-  RECADO_CONF = false;
+  RECADO_SOME_NA_PROXIMA = false;
   $('msg').innerHTML = '<div class="aviso ' + tipo + '">' + txt + '</div>';
   if (ms) setTimeout(() => { if ($('msg').textContent.replace(/\s/g,'') === String(txt).replace(/<[^>]+>/g,'').replace(/\s/g,'')) $('msg').innerHTML = ''; }, ms);
 }
@@ -498,7 +500,7 @@ async function onLeu(texto) {
   }
   beep(880, .09); vibrar(40);
   GERACAO++;
-  if (RECADO_CONF) { $('msg').innerHTML = ''; RECADO_CONF = false; }
+  if (RECADO_SOME_NA_PROXIMA) { $('msg').innerHTML = ''; RECADO_SOME_NA_PROXIMA = false; }
 
   if (MODO === 'saida') {
     // Na saída tanto faz o que foi lido — os dois resolvem o endereço.
@@ -588,7 +590,7 @@ function pintar() {
                                 .filter(Boolean).join(' · ') : '';
 
   const pronto = MODO === 'saida' ? !!e : (!!e && !!g);
-  $('btn-confirmar').disabled = !pronto;
+  $('btn-confirmar').disabled = !pronto || CONFIRMANDO;
   $('btn-confirmar').textContent = MODO === 'saida' ? '✓ CONFIRMAR RETIRADA' : '✓ CONFIRMAR';
 }
 
@@ -598,8 +600,31 @@ function limparSlot(qual) { ESCOLHA[qual] = null; GERACAO++; pintar(); }
 function limparSlots() { ESCOLHA.end = null; ESCOLHA.gai = null; GERACAO++; pintar(); }
 function limparTudo() { $('msg').innerHTML = ''; limparSlots(); }
 
+// Depois do confirmar, tira dos quadros SÓ o que foi confirmado, pelo CÓDIGO
+// (cada leitura cria um objeto novo — rebipar o mesmo endereço no meio do
+// confirmar não pode deixar no quadro o que acabou de ser ocupado/liberado).
+// O que o operador leu de diferente no meio fica.
+function limparConfirmado(e, g) {
+  if (ESCOLHA.end && e && ESCOLHA.end.codigo === e.codigo) ESCOLHA.end = null;
+  if (ESCOLHA.gai && g && ESCOLHA.gai.id === g.id) ESCOLHA.gai = null;
+}
+
+// Escreve o resultado do confirmar. Se uma leitura feita DURANTE o confirmar
+// deixou um aviso que ainda vale (o par dela continua no quadro), o aviso
+// fica embaixo do resultado em vez de ser apagado.
+function dizerResultado(tipo, html, ger0, msg0) {
+  const avisoNovo = (GERACAO !== ger0 && $('msg').innerHTML !== msg0 && (ESCOLHA.end || ESCOLHA.gai))
+    ? $('msg').innerHTML : '';
+  dizer(tipo, html, 0);
+  if (avisoNovo) $('msg').insertAdjacentHTML('beforeend', avisoNovo);   // já veio escapado do dizer
+  RECADO_SOME_NA_PROXIMA = true;
+}
+
 async function confirmar() {
+  if (CONFIRMANDO) return;
   const e = ESCOLHA.end, g = ESCOLHA.gai;
+  const ger0 = GERACAO, msg0 = $('msg').innerHTML;
+  CONFIRMANDO = true;
   $('btn-confirmar').disabled = true;
   try {
     if (MODO === 'saida') {
@@ -610,8 +635,9 @@ async function confirmar() {
       if (!d.ok) throw new Error(d.erro || 'falha');
       beep(1100, .15); vibrar([50, 40, 50]);
       const dsS = descCurta(d.ocupacao);
-      dizer('ok', `✓ ${esc(d.gaiola_id)} retirada de <b>${esc(d.posicao)}</b>. Endereço livre.`
-        + (dsS ? `<span class="desc-conf">${esc(dsS)}</span>` : ''), 0);
+      limparConfirmado(e, g);
+      dizerResultado('ok', `✓ ${esc(d.gaiola_id)} retirada de <b>${esc(d.posicao)}</b>. Endereço livre.`
+        + (dsS ? `<span class="desc-conf">${esc(dsS)}</span>` : ''), ger0, msg0);
     } else {
       const r = await fetch(URL_BASE + '/enderecamento/ocupar', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -622,26 +648,22 @@ async function confirmar() {
       if (!d.ok) throw new Error(d.erro || 'falha');
       beep(1100, .15); vibrar([50, 40, 50]);
       const dsE = descCurta(d.ocupacao);
-      dizer(d.aviso ? 'at' : 'ok',
+      limparConfirmado(e, g);
+      dizerResultado(d.aviso ? 'at' : 'ok',
         `✓ <b>${esc(g.id)}</b> guardada em <b>${esc(e.codigo)}</b>.`
         + (dsE ? `<span class="desc-conf">${esc(dsE)}</span>` : '')
-        + (d.aviso ? '<br>' + esc(d.aviso) : ''), 0);
+        + (d.aviso ? '<br>' + esc(d.aviso) : ''), ger0, msg0);
     }
     // Quadros limpos NA HORA (antes: 2,2 s depois, e um bipe rápido deixava o
     // endereço já ocupado no quadro). O recado com a descrição fica para ler e
-    // some na próxima leitura boa (16/11). Limpa SÓ o que foi confirmado: se
-    // o operador já bipou o próximo enquanto o servidor respondia, a leitura
-    // nova fica no quadro.
-    if (ESCOLHA.end === e) ESCOLHA.end = null;
-    if (ESCOLHA.gai === g) ESCOLHA.gai = null;
-    pintar();
-    RECADO_CONF = true;
+    // some na próxima leitura boa (16/11).
     carregarHistorico();
   } catch (err) {
     beep(320, .25); vibrar([120, 60, 120]);
-    dizer('err', esc(err.message), 0);
-    RECADO_CONF = true;   // o erro também some na próxima leitura boa
-    $('btn-confirmar').disabled = false;
+    dizerResultado('err', esc(err.message), ger0, msg0);   // o erro também some na próxima leitura boa
+  } finally {
+    CONFIRMANDO = false;
+    pintar();   // o botão segue o que está nos quadros (não "liga" sozinho)
   }
 }
 

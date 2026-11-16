@@ -37,6 +37,7 @@ OC_BAG = {"id": 7, "posicao": "01-02-012", "gaiola_id": "T0000101", "tipo_item":
 OC_GAI = {"id": 6, "posicao": "01-01-020", "gaiola_id": "G0000124", "tipo_item": "gaiola", "formato": "50x60", "cor": "BC",
           "fardos": 40, "kg": 1000, "tipo_gaiola": "PEQUENA", "entrada": "2026-11-16T16:00:00Z", "operador_e": "ADNILSON",
           "saida": "2026-11-16T17:00:00Z", "operador_s": "BRUNO", "motivo_saida": "carregamento"}
+OC_BAG2 = dict(OC_BAG, id=8, posicao="01-02-013", gaiola_id="T0000102", kg=900)
 HIST = [dict(OC_BAG, saida="2026-11-16T17:20:00Z", operador_s="BRUNO"), OC_GAI]
 
 def ok(cond, msg):
@@ -54,7 +55,8 @@ def rota(route):
     if p == "/enderecamento/historico": return J({"ok": True, "movimentos": HIST})
     if p.startswith("/enderecamento/posicao/"):
         c = p.rsplit("/", 1)[1]; q = next((x for x in POS if x["codigo"] == c), None)
-        return J({"ok": bool(q), "posicao": q, "atual": OC_BAG if c == "01-02-012" else None, "erro": None if q else "não existe"})
+        atual = OC_BAG if c == "01-02-012" else (OC_BAG2 if c == "01-02-013" else None)
+        return J({"ok": bool(q), "posicao": q, "atual": atual, "erro": None if q else "não existe"})
     if p.startswith("/enderecamento/gaiola/"):
         g = p.rsplit("/", 1)[1]
         if g.startswith("T"): return J({"ok": True, "gaiola": None, "atual": None, "bag": {"status": "bipada", "material_nome": "BAIXA DENSIDADE", "cor": "Preto", "peso": 834.5, "fornecedor": "Piquiri", "lote": "S/L"}})
@@ -182,17 +184,44 @@ with sync_playwright() as p:
         mt3 = pg.inner_text("#msg")
         ok("guardada" not in mt3, f"próxima leitura apaga o ✓ guardada ({mt3[:60]!r})")
         ok("01-01-021" in pg.inner_text("#v-end"), "a leitura que apagou o ✓ é a do endereço livre (não um erro)")
-        # bipe DURANTE o confirmar (servidor lento): a resposta não apaga a leitura nova
-        pg.evaluate("""(() => { const f = window.fetch; window.__fetchOrig = f;
-          window.fetch = (u, o) => String(u).includes('/enderecamento/ocupar')
-            ? new Promise(r => setTimeout(() => r(f(u, o)), 800)) : f(u, o); })()""")
-        pg.evaluate("for (const k of Object.keys(ultimaLeitura)) delete ultimaLeitura[k]")
+        # ── bipe DURANTE o confirmar (servidor lento, 800 ms) — revisões de a2ae15e e d93d8fd
+        LENTO = """(rota) => { if (!window.__fetchOrig) window.__fetchOrig = window.fetch; const f = window.__fetchOrig;
+          window.__resposta = null;
+          window.fetch = (u, o) => {
+            if (!String(u).includes(rota)) return f(u, o);
+            const fake = window.__resposta;
+            return new Promise(r => setTimeout(() => r(fake
+              ? new Response(JSON.stringify(fake), {headers: {'Content-Type': 'application/json'}}) : f(u, o)), 800)); }; }"""
+        anti = "for (const k of Object.keys(ultimaLeitura)) delete ultimaLeitura[k]"
+        pg.evaluate(LENTO, "/enderecamento/ocupar")
+        pg.evaluate(anti)
         pg.evaluate("onLeu('EKOPA|G0000125|50x60|BC|40|1000|PEQUENA')"); pg.wait_for_timeout(300)
         pg.click("#btn-confirmar"); pg.wait_for_timeout(150)
-        pg.evaluate("onLeu('01-01-022')"); pg.wait_for_timeout(1500)
-        ve2 = pg.inner_text("#v-end")
-        ok("01-01-022" in ve2, f"bipe durante o confirmar fica no quadro ({ve2!r})")
-        pg.evaluate("window.fetch = window.__fetchOrig")
+        pg.evaluate("onLeu('01-02-012')"); pg.wait_for_timeout(300)      # endereço que JÁ TEM gaiola → aviso
+        ok(pg.is_disabled("#btn-confirmar"), "CONFIRMAR desligado com o POST no ar, mesmo com bipe no meio")
+        pg.wait_for_timeout(1300)
+        ve2, vg2, mt4 = pg.inner_text("#v-end"), pg.inner_text("#v-gai"), pg.inner_text("#msg")
+        ok("01-02-012" in ve2, f"bipe durante o confirmar fica no quadro ({ve2!r})")
+        ok("G0000125" not in vg2, f"a gaiola confirmada sai do quadro depois do confirmar lento ({vg2!r})")
+        ok("guardada" in mt4 and "já tem" in mt4, f"o ✓ não apaga o aviso da leitura feita no meio ({mt4[:140]!r})")
+        # rebipar o MESMO endereço durante o confirmar não deixa no quadro o que acabou de ser ocupado
+        pg.evaluate(anti); pg.evaluate("onLeu('01-01-022')"); pg.wait_for_timeout(300)
+        pg.evaluate("onLeu('EKOPA|G0000126|50x60|BC|40|1000|PEQUENA')"); pg.wait_for_timeout(300)
+        pg.click("#btn-confirmar"); pg.wait_for_timeout(150)
+        pg.evaluate(anti); pg.evaluate("onLeu('01-01-022')"); pg.wait_for_timeout(1500)
+        ve3 = pg.inner_text("#v-end")
+        ok("01-01-022" not in ve3, f"rebipar o mesmo endereço no confirmar não deixa o ocupado no quadro ({ve3!r})")
+        # erro do confirmar: aparece, o botão segue os quadros, e some na próxima leitura boa
+        pg.evaluate("window.__resposta = {ok: false, erro: 'ERRO-TESTE-X'}")
+        pg.evaluate(anti); pg.evaluate("onLeu('01-01-023')"); pg.wait_for_timeout(300)
+        pg.evaluate("onLeu('EKOPA|G0000127|50x60|BC|40|1000|PEQUENA')"); pg.wait_for_timeout(300)
+        pg.click("#btn-confirmar"); pg.wait_for_timeout(1300)
+        ok("ERRO-TESTE-X" in pg.inner_text("#msg"), "erro do confirmar aparece")
+        ok(pg.is_enabled("#btn-confirmar"), "depois do erro o CONFIRMAR volta (o par continua no quadro)")
+        pg.evaluate(anti); pg.evaluate("onLeu('01-01-024')"); pg.wait_for_timeout(300)
+        ok("ERRO-TESTE-X" not in pg.inner_text("#msg"), "o erro do confirmar some na próxima leitura boa")
+        pg.evaluate("window.fetch = window.__fetchOrig; window.__resposta = null")
+        pg.evaluate("limparTudo()")
         pg.evaluate("irModo('saida'); for (const k of Object.keys(ultimaLeitura)) delete ultimaLeitura[k]")
         pg.evaluate("onLeu('01-02-012')"); pg.wait_for_timeout(300)
         mt = pg.inner_text("#msg")
@@ -200,6 +229,24 @@ with sync_playwright() as p:
         pg.click("#btn-confirmar"); pg.wait_for_timeout(300)
         mt = pg.inner_text("#msg")
         ok("retirada de" in mt and "BAIXA DENSIDADE Preto" in mt and "Piquiri" in mt, f"RETIRAR confirma com a descrição ({mt[:120]!r})")
+        # RETIRAR com bipe durante o liberar lento: o endereço novo fica, o que saiu não
+        pg.evaluate(LENTO, "/enderecamento/liberar")
+        pg.evaluate(anti); pg.evaluate("onLeu('01-02-012')"); pg.wait_for_timeout(300)
+        pg.click("#btn-confirmar"); pg.wait_for_timeout(150)
+        pg.evaluate(anti); pg.evaluate("onLeu('01-02-013')"); pg.wait_for_timeout(300)
+        ok(pg.is_disabled("#btn-confirmar"), "RETIRAR: botão desligado com o POST no ar")
+        pg.wait_for_timeout(1300)
+        ve5, mt5 = pg.inner_text("#v-end"), pg.inner_text("#msg")
+        ok("01-02-013" in ve5, f"RETIRAR: bipe durante o liberar fica no quadro ({ve5!r})")
+        ok("retirada de" in mt5 and "Vai retirar" in mt5 and "T0000102" in mt5,
+           f"RETIRAR: o ✓ não apaga o 'Vai retirar' da leitura do meio ({mt5[:140]!r})")
+        # rebipar o mesmo endereço no liberar: o que acabou de sair não fica no quadro
+        pg.evaluate(anti); pg.evaluate("onLeu('01-02-012')"); pg.wait_for_timeout(300)
+        pg.click("#btn-confirmar"); pg.wait_for_timeout(150)
+        pg.evaluate(anti); pg.evaluate("onLeu('01-02-012')"); pg.wait_for_timeout(1500)
+        ve6 = pg.inner_text("#v-end")
+        ok("01-02-012" not in ve6, f"RETIRAR: rebipar o mesmo endereço não deixa o que saiu no quadro ({ve6!r})")
+        pg.evaluate("window.fetch = window.__fetchOrig")
         pg.evaluate("irModo('entrada')")
         ok(not erros, f"sem erro de JS ({erros[:2]})")
         pg.evaluate("irAba('mapa')"); pg.wait_for_timeout(200)
