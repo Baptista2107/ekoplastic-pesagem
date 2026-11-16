@@ -11,6 +11,19 @@
 const { spawnSync } = require('node:child_process');
 const fs   = require('node:fs');
 const path = require('node:path');
+const os   = require('node:os');
+
+// 16/11/2026 (VPS): teste roda ATRÁS da produção — CPU nice 19 e disco ionice
+// best-effort 7. Na VPS a carga passou de 6-10 à tarde com 3 suítes juntas e
+// a produção (extrusao_viva, painel, crons, nice 0) disputava núcleo com teste.
+// Os arquivos de teste, o server.js que cada um sobe e o Chrome dos testes de
+// navegador são filhos deste processo e herdam. Disco best-effort 7, não idle
+// (idle deixou a suíte do bling-claude atrás dos crons por mais de 10 min).
+// Só Linux: no Mini PC (Windows) nada muda. Prova: testes/prioridade-baixa.js.
+if (process.platform === 'linux') {
+  try { os.setPriority(19); } catch { /* sem permissão: segue na prioridade atual */ }
+  spawnSync('ionice', ['-c2', '-n7', '-p', String(process.pid)], { stdio: 'ignore', timeout: 10000 });
+}
 
 const arquivos = fs.readdirSync(__dirname)
   .filter(f => f.endsWith('.js') && !f.startsWith('_') && f !== path.basename(__filename))
