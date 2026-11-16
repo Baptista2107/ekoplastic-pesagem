@@ -1741,6 +1741,9 @@ const isComposto = mat => COMPOSTOS.includes(mat);
 // escolhido "Pesar na balança" (16/11/2026, Gustavo): aí segue o caminho do
 // grão — peso da balança, estabilidade, retirar o bag antes da próxima.
 const porSacosAgora = () => isComposto(estado.material) && !estado.compPesar;
+// Peso no SKU: inteiro, como sempre; o aditivo PESADO leva 1 casa, para o
+// SKU bater com o PESO da etiqueta (3.023,4 kg não vira "3023").
+const pesoSku = (mat, peso, comp) => Number(peso).toFixed(isComposto(mat) && !comp ? 1 : 0);
 // Peso do saco DO material. Os aditivos de sempre são de 25 kg; material
 // cadastrado pela tela traz o dele (o Compatibilizante PA/PE é de 20 kg).
 const COMPOSTOS_FIXOS = COMPOSTOS.slice();
@@ -1952,9 +1955,16 @@ function alternarBlocoPesagem() {
 }
 // "Contar sacos" × "Pesar na balança" (só aditivo). Trocar zera o que estava
 // digitado no outro jeito, para não imprimir sacos com peso de balança.
+// Bag recém-pesado ainda na balança: não troca. Contar sacos não espera a
+// balança zerar, então trocar ali imprimiria o mesmo bag outra vez.
 function setCompPesar(v) {
   v = !!v;
   if (!isComposto(estado.material) || estado.compPesar === v) return;
+  if (mp_aguardandoZero) {
+    showToast('warn', '⏳', 'RETIRE O BIG BAG / PALETE da balança antes de trocar o jeito de lançar');
+    beepErro();
+    return;
+  }
   estado.compPesar = v;
   estado.qtdSacos = 0;
   document.getElementById('qtd-input').value = 0;
@@ -2162,7 +2172,9 @@ function atualizarEtiqueta() {
   document.getElementById('etiqueta-vazia').style.display = baseOk ? 'none' : 'flex';
   document.getElementById('btn-imprimir').disabled       = !completo;
   const btnImp = document.getElementById('btn-imprimir');
-  if (baseOk && estado.modo === 'recebimento' && !dados.comp && mp_aguardandoZero) {
+  // Sem baseOk: depois de imprimir o peso zera e o campo só volta quando a
+  // balança zera — antes disso o aviso ficava escondido (revisão do 196a614, B5).
+  if (estado.modo === 'recebimento' && !dados.comp && mp_aguardandoZero) {
     btnImp.textContent = '⏳ RETIRE O BIG BAG / PALETE';
   } else if (baseOk && estado.modo === 'recebimento' && !dados.comp && !bal_estavel) {
     btnImp.textContent = '⏳ AGUARDANDO ESTABILIDADE...';
@@ -2201,7 +2213,7 @@ function atualizarEtiqueta() {
     // SKU
     const skuCor = temCor ? '.' + (m.corLabel[dados.cor] || dados.cor.substring(0,3).toUpperCase()) : '';
     const skuForn = '.' + dados.fornecedor.replace(/[^A-Za-z0-9]/g,'').substring(0, 6).toUpperCase();
-    document.getElementById('et-sku').textContent  = `${dados.materialKey}${skuCor}${skuForn} | ${dados.peso.toFixed(0)} | L${dados.lote}`;
+    document.getElementById('et-sku').textContent  = `${dados.materialKey}${skuCor}${skuForn} | ${pesoSku(dados.materialKey, dados.peso, dados.comp)} | L${dados.lote}`;
 
     // Barcode CODE128 com prefixo R (recebimento) ou T (retorno) + SEQ 7 dígitos
     const prefix = estado.modo === 'retorno' ? 'T' : 'R';
@@ -2576,7 +2588,7 @@ async function imprimir() {
   // Monta SKU
   const skuCor = (m.cores.length > 0 && dadosImpr.cor) ? '.' + (m.corLabel[dadosImpr.cor] || dadosImpr.cor.substring(0,3).toUpperCase()) : '';
   const skuForn = '.' + dadosImpr.fornecedor.replace(/[^A-Za-z0-9]/g,'').substring(0, 6).toUpperCase();
-  const sku = `${dadosImpr.materialKey}${skuCor}${skuForn} | ${dadosImpr.peso.toFixed(0)} | L${dadosImpr.lote}`;
+  const sku = `${dadosImpr.materialKey}${skuCor}${skuForn} | ${pesoSku(dadosImpr.materialKey, dadosImpr.peso, dadosImpr.comp)} | L${dadosImpr.lote}`;
 
   const item = {
     n: estado.seq[estado.modo],
@@ -2627,6 +2639,7 @@ async function imprimir() {
         lote: dadosImpr.lote,
         codigo: codigo,
         sku: sku,
+        qtdSacos: item.qtdSacos,                         // só por sacos; pesado vai null
         sessao_id: sessaoId,                              // vincula à sessão
         ref_id: item.origId || null,                      // se retorno: lote original
         sub_tipo: item.subTipo === 'varredura' ? 'varredura' : undefined,   // nota de varredura
@@ -3197,7 +3210,9 @@ function corrDados() {
   const skuCor = (m.cores.length && cor) ? '.' + (m.corLabel[cor] || cor.substring(0,3).toUpperCase()) : '';
   const skuForn = '.' + forn.replace(/[^A-Za-z0-9]/g,'').substring(0,6).toUpperCase();
   const peso = Number(corrEtiqueta.peso);
-  const sku = `${k}${skuCor}${skuForn} | ${peso.toFixed(0)} | L${corrEtiqueta.lote}`;
+  // As etiquetas de aditivo de antes de 16/11 não guardam qtd_sacos: aqui
+  // "pesado" é só o peso quebrado (o contado é sempre múltiplo do saco).
+  const sku = `${k}${skuCor}${skuForn} | ${pesoSku(k, peso, Number.isInteger(peso))} | L${corrEtiqueta.lote}`;
   return { k, m, cor, forn, codigo, sku };
 }
 function corrCalc() {
