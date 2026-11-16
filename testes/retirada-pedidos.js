@@ -647,7 +647,7 @@ const registro = virtId => { const l = lerDb('SELECT pedido_retirada FROM etique
     // Prova de que a fila TENTOU (senão "a conta ficou em 3" também seria o
     // estado de quem nem rodou): o log diz que o item não chegou à VPS.
     const tentou = () => { try { return fs.readdirSync(TMP_LOGS).filter(n => n.endsWith('.log'))
-      .some(n => /R0999503/.test(fs.readFileSync(path.join(TMP_LOGS, n), 'utf8'))); } catch (e) { return false; } };
+      .some(n => /fora do pedido NÃO chegou à VPS \(fica na fila\): R0999503\b/.test(fs.readFileSync(path.join(TMP_LOGS, n), 'utf8'))); } catch (e) { return false; } };
     for (let i = 0; i < 40 && !tentou(); i++) await sleep(150);
     ok(tentou(), 'a fila tentou mandar o item com a VPS fora (log)', null);
     f = JSON.parse((await req('GET', '/config')).body.config.retirada_fora_fila || '{}');

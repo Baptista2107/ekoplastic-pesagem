@@ -1109,7 +1109,28 @@ const LEITOR_REINICIO_MS = 1000; // pausa longa: o que estava no buffer era lixo
 const RX_CODIGO = /[RTS]\d{7}/;
 const TECLAS_MODIFICADORAS = new Set(['Shift', 'CapsLock', 'Control', 'Alt', 'AltGraph', 'Meta']);
 let _bufKey = '';
-let _teclasCaixa = [];           // últimas 8 teclas da caixa de motivo, com o carimbo
+let _teclasCaixa = [];           // últimas teclas da caixa de motivo, com o carimbo
+const TECLAS_CAIXA_MAX = 64;     // até 8 códigos seguidos sem Enter
+// Códigos do leitor no fim do que foi teclado na caixa, na ordem. O último
+// fecha no Enter (rajada até ele em LEITOR_RAJADA_MS). Os anteriores são de um
+// Enter perdido (6ª revisão, achado D): o leitor apitou neles, mas o Enter não
+// chegou — antes só saía o último e o anterior ficava gravado no texto do
+// motivo. Cada um conta se as 8 teclas dele vieram em rajada de leitor; o que
+// vem antes de um bloco que não é rajada é texto de gente e fica.
+function codigosDoLeitorNaCaixa(teclas, tEnter) {
+  const cods = [];
+  let fim = teclas.length;
+  while (fim >= 8) {
+    const bloco = teclas.slice(fim - 8, fim);
+    const cod = bloco.map(x => x.k).join('');
+    if (!/^[RTS]\d{7}$/.test(cod)) break;
+    const ate = cods.length === 0 ? tEnter : bloco[7].t;
+    if (ate - bloco[0].t > LEITOR_RAJADA_MS) break;
+    cods.unshift(cod);
+    fim -= 8;
+  }
+  return cods;
+}
 let _tUltTecla = 0;
 function janelaAberta() {
   return ['modal-bloqueado', 'modal-fora', 'modal-confirmar']
@@ -1146,16 +1167,16 @@ function teclaDoLeitor(e) {
     // Caixa do motivo: o texto é de quem digita; o código do leitor é bipe.
     if (e.key === 'Enter') {
       e.preventDefault();                       // motivo é uma linha só
-      const ult = _teclasCaixa;
-      const cod = ult.map(x => x.k).join('');
-      if (ult.length === 8 && /^[RTS]\d{7}$/.test(cod) && agora - ult[0].t <= LEITOR_RAJADA_MS) {
-        if (alvo.value.endsWith(cod)) alvo.value = alvo.value.slice(0, -cod.length);
-        processarBipe(cod);
+      const cods = codigosDoLeitorNaCaixa(_teclasCaixa, agora);
+      if (cods.length) {
+        const junto = cods.join('');
+        if (alvo.value.endsWith(junto)) alvo.value = alvo.value.slice(0, -junto.length);
+        cods.forEach(c => processarBipe(c));
       }
       _teclasCaixa = [];
     } else if (ehTecla) {
       _teclasCaixa.push({ k: e.key, t: agora });
-      if (_teclasCaixa.length > 8) _teclasCaixa.shift();
+      if (_teclasCaixa.length > TECLAS_CAIXA_MAX) _teclasCaixa.shift();
     } else if (!TECLAS_MODIFICADORAS.has(e.key)) {
       _teclasCaixa = [];                        // espaço, apagar, setas: não é o leitor
     }
@@ -1187,40 +1208,55 @@ document.addEventListener('keydown', teclaDoLeitor, true);
 // andamento AVISA (som + mensagem) que está esperando — ninguém leva o bag
 // achando que saiu.
 let _filaBipe = Promise.resolve();
-let _bipesNaFila = 0;
-let _bipeEmCurso = Promise.resolve();   // o bipe que está no ar agora (finalizar espera ele)
-function processarBipe(raw) {
-  const m = String(raw || '').match(RX_CODIGO);
+let _itensNaFila = 0;                   // bipes, aditivos e estornos esperando ou no ar
+let _bipeEmCurso = Promise.resolve();   // o item da fila que está no ar agora (finalizar espera ele)
+// Põe uma ação na fila do leitor (bipe, aditivo, estorno). Ela só começa com a
+// janela fechada e fora do Finalizar/Cancelar (estado.fechando), e o Finalizar
+// espera a que estiver no ar — qualquer uma, não só bipe (6ª revisão, achado B:
+// aditivo na fila corria contra o envio ao Bling e ia para a sessão fechada ou
+// para uma nova, órfã). Quem espera AVISA (som + mensagem): janela aberta, envio
+// ao Bling, ou outra ação demorando (achado A: aditivo sem resposta segurava o
+// bipe seguinte calado).
+const AVISO_FILA_MS = 2000;
+function naFila(nome, fn) {
   const vezDele = { comecou: false };
-  // Espera também durante o envio ao Bling (estado.fechando), que pode passar
-  // de 1 minuto sem janela nenhuma na tela (3ª revisão, item 1).
+  let avisou = false;
   const avisarEspera = () => {
-    const porque = janelaAberta() ? 'espera você responder a janela aberta' : 'espera o envio ao Bling terminar';
-    showToast('warn', '⏳', `${m ? m[0] : 'Bipe'} lido — ${porque}`, 6000);
+    if (avisou) return;
+    avisou = true;
+    const porque = janelaAberta() ? 'espera você responder a janela aberta'
+      : estado.fechando ? 'espera o envio ao Bling terminar'
+      : 'espera o item anterior terminar';
+    showToast('warn', '⏳', `${nome} — ${porque}`, 6000);
     beepWarn();
   };
   if (!podeSeguir()) avisarEspera();
-  else if (_bipesNaFila > 0) {
-    // Atrás de um bipe ainda no ar: se ele abrir uma janela, este avisa que
-    // espera. Vigia até a vez dele, e não só aos 700 ms: com o Mini PC lento o
-    // /consumir do 1º passava disso, a janela abria depois e o 2º esperava calado.
+  else if (_itensNaFila > 0) {
+    // Atrás de outra ação ainda no ar: avisa se ela abrir uma janela, ou se a
+    // vez demorar. Vigia até a vez dele (com o Mini PC lento o /consumir do 1º
+    // passava de 700 ms, a janela abria depois e o 2º esperava calado).
+    const desde = Date.now();
     const vigia = setInterval(() => {
       if (vezDele.comecou) { clearInterval(vigia); return; }
-      if (!podeSeguir()) { clearInterval(vigia); avisarEspera(); }
+      if (!podeSeguir() || Date.now() - desde >= AVISO_FILA_MS) { clearInterval(vigia); avisarEspera(); }
     }, 200);
   }
-  _bipesNaFila++;
+  _itensNaFila++;
   const vez = _filaBipe
     .then(() => esperarJanelasFechadas())
     .then(() => {
       vezDele.comecou = true;
-      const p = processarBipeAgora(raw);
+      const p = Promise.resolve().then(fn);
       _bipeEmCurso = p.catch(() => {});
       return p;
     })
-    .finally(() => { _bipesNaFila--; });
+    .finally(() => { _itensNaFila--; });
   _filaBipe = vez.catch(() => {});
   return vez;
+}
+function processarBipe(raw) {
+  const m = String(raw || '').match(RX_CODIGO);
+  return naFila(`${m ? m[0] : 'Bipe'} lido`, () => processarBipeAgora(raw));
 }
 // "Já foi retirada" e as confirmações de finalizar/cancelar não seguram a fila
 // por si: o bipe seguinte espera a pessoa fechar a janela. E espera também o
@@ -1757,44 +1793,71 @@ function atualizarBotaoAdd() {
 // Aditivo e estorno mexem na lista local: passam pela MESMA fila do leitor
 // (5ª revisão, item a), senão a releitura da lista de um bipe que passou do teto
 // apagava o aditivo recém-lançado ou trazia de volta o item estornado.
-function naFilaDoLeitor(fn) {
-  const vez = _filaBipe.then(fn);
-  _filaBipe = vez.catch(() => {});
-  return vez;
+// O aditivo vale o que estava na tela NO TOQUE (6ª revisão, achado C): antes
+// lia material e sacos quando chegava a vez, e o que a pessoa mexesse no meio
+// (outro material, contador zerado) ia no lugar. O contador zera no toque — o
+// botão desliga e um 2º toque não lança o mesmo de novo; deu erro, volta.
+function adicionarAditivo() {
+  const lanc = {
+    matKey: estado.tipo, cor: estado.cor, forn: estado.fornecedor,
+    qtd: estado.sacos, avulso: estado.pesoAvulso || 0,
+  };
+  // Mesma regra do botão (atualizarBotaoAdd): incompleto não entra na fila.
+  if (!lanc.matKey || !lanc.forn || !(lanc.qtd > 0 || lanc.avulso > 0)
+      || (lanc.matKey === 'PIG' && !lanc.cor)) return Promise.resolve();
+  zerarContadorAditivo();
+  return naFila(`${(ADITIVOS[lanc.matKey] || {}).label || lanc.matKey} na fila`,
+    () => adicionarAditivoAgora(lanc));
 }
-function adicionarAditivo() { return naFilaDoLeitor(adicionarAditivoAgora); }
-async function adicionarAditivoAgora() {
+function zerarContadorAditivo() {
+  estado.sacos = 0;
+  estado.pesoAvulso = 0;
+  document.getElementById('sacos-input').value = 0;
+  const avEl = document.getElementById('avulso-input');
+  if (avEl) avEl.value = '';
+  ajustarSacos(0);
+}
+// Erro no lançamento: o contador volta ao que foi tocado, se a pessoa não
+// começou outro lançamento do mesmo material nesse meio-tempo.
+function devolverContadorAditivo(lanc) {
+  if (estado.tipo !== lanc.matKey || estado.sacos > 0 || (estado.pesoAvulso || 0) > 0) return;
+  estado.sacos = lanc.qtd;
+  estado.pesoAvulso = lanc.avulso;
+  document.getElementById('sacos-input').value = lanc.qtd;
+  const avEl = document.getElementById('avulso-input');
+  if (avEl && lanc.avulso > 0) avEl.value = String(lanc.avulso).replace('.', ',');
+  ajustarSacos(0);
+}
+async function adicionarAditivoAgora(lanc) {
+  const { matKey, cor, forn, qtd, avulso } = lanc;
+  // Esperou na fila enquanto a retirada era finalizada: agora a tela pede a
+  // senha. Sem dono não lança (igual ao bipe) — e o contador volta.
+  if (window.EkoAcesso && EkoAcesso.bloqueando && EkoAcesso.bloqueando()) {
+    devolverContadorAditivo(lanc);
+    showToast('erro', '⛔', `${(ADITIVOS[matKey] || {}).label || matKey} NÃO foi lançado — a retirada foi encerrada. Entre com a senha e lance de novo`, 8000);
+    beepErro();
+    return;
+  }
   let sessaoId = await garantirSessao();
-  if (!sessaoId) return;
-  const matKey = estado.tipo;
-  const cor    = estado.cor;
-  const forn   = estado.fornecedor;
-  const qtd    = estado.sacos;
-  const avulso = estado.pesoAvulso || 0;
+  if (!sessaoId) { devolverContadorAditivo(lanc); return; }
 
   try {
-    const enviar = sid => fetch(URL_ADITV, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        sessao_id:   sid,
-        materialKey: matKey,
-        cor:         cor,
-        fornecedor:  forn,
-        qtd_sacos:   qtd,
-        peso_avulso: estado.pesoAvulso || 0,
-      }),
+    const enviar = sid => postJsonComTeto(URL_ADITV, {
+      sessao_id:   sid,
+      materialKey: matKey,
+      cor:         cor,
+      fornecedor:  forn,
+      qtd_sacos:   qtd,
+      peso_avulso: avulso,
     });
-    let r = await enviar(sessaoId);
-    let d = await r.json();
+    let { r, d } = await enviar(sessaoId);
     if (r.status === 409 && d.sessao_fechada) {
       // Sessão desta tela já fechou (16/11/2026): começa outra e repete uma vez.
       showToast('warn', '↩', `A retirada #${sessaoId} já tinha sido fechada — começando uma nova`, 5000);
       estado.sessaoId = null; estado.itens = []; renderHistorico(); atualizarBadgesPai();
       sessaoId = await garantirSessao();
-      if (!sessaoId) return;
-      r = await enviar(sessaoId);
-      d = await r.json();
+      if (!sessaoId) { devolverContadorAditivo(lanc); return; }
+      ({ r, d } = await enviar(sessaoId));
     }
     if (!d.ok) throw new Error(d.erro || 'falha');
 
@@ -1820,16 +1883,18 @@ async function adicionarAditivoAgora() {
       + (qtd > 0 && avulso > 0 ? ' + ' : '')
       + (avulso > 0 ? `${String(avulso).replace('.', ',')} kg avulso` : '')
       + ` · ${String(ev.peso).replace('.', ',')} kg`);
-
-    // Reseta contador e o peso avulso (mantém tipo/cor/fornecedor para
-    // continuar adicionando rápido)
-    estado.sacos = 0;
-    estado.pesoAvulso = 0;
-    document.getElementById('sacos-input').value = 0;
-    const avEl = document.getElementById('avulso-input');
-    if (avEl) avEl.value = '';
-    ajustarSacos(0);
+    // O contador já zerou no toque (mantém tipo/cor/fornecedor para continuar
+    // adicionando rápido).
   } catch(e) {
+    if (e.teto) {
+      // Passou do teto: o servidor pode ter gravado sem a tela saber. Não
+      // devolve o contador (um 2º toque lançaria de novo) — relê a lista.
+      showToast('erro', '✗', `Aditivo: ${e.message} — confira na lista antes de lançar de novo`, 8000);
+      beepErro();
+      await relerLista();
+      return;
+    }
+    devolverContadorAditivo(lanc);
     showToast('erro', '✗', 'Erro: ' + e.message);
     beepErro();
   }
@@ -2042,11 +2107,21 @@ async function cancelarSessaoSeVazia() {
 // Remove UM item da retirada (botão X). Estorna no servidor: cancela a etiqueta
 // virtual e devolve a etiqueta ORIGINAL para 'bipada' (apta a ser bipada de
 // novo). Depois tira o item da lista local.
-function estornarItem(virtId) { return naFilaDoLeitor(() => estornarItemAgora(virtId)); }
+function estornarItem(virtId) { return naFila(`Remover ${virtId}`, () => estornarItemAgora(virtId)); }
 async function estornarItemAgora(virtId) {
   try {
-    const r = await fetch(`${URL_ETIQ}/${virtId}/estornar`, { method: 'POST' });
-    const d = await r.json();
+    let resp;
+    try {
+      resp = await postJsonComTeto(`${URL_ETIQ}/${virtId}/estornar`, {});
+    } catch (e) {
+      if (!e.teto) throw e;
+      // Passou do teto: o estorno pode ter ido. A lista do servidor diz.
+      showToast('erro', '✗', `Remover ${virtId}: ${e.message} — confira na lista`, 8000);
+      beepErro();
+      await relerLista();
+      return;
+    }
+    const { d } = resp;
     if (!d.ok) throw new Error(d.erro || 'falha ao remover');
     const idx = estado.itens.findIndex(it => it.virtId === virtId);
     if (idx >= 0) estado.itens.splice(idx, 1);

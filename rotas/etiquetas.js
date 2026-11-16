@@ -275,6 +275,17 @@ async function rotasEtiquetas(req, res, parsed, pathname) {
     const v = dbStmts.getEtiqueta.get(virtId);
     if (!v) return jsonErr(res, 404, `Item ${virtId} não encontrado`);
     if (v.tipo !== 'retirada') return jsonErr(res, 400, `Item ${virtId} não é uma retirada (tipo=${v.tipo})`);
+    // Sessão fechada não perde item (16/11/2026, 6ª revisão, achado B): o X
+    // tocado com um bipe no ar e o Finalizar logo depois estornava, na vez dele,
+    // um item que já tinha ido no Pedido de Venda — o bag voltava a 'bipada'
+    // com a baixa feita no Bling.
+    if (v.status !== 'cancelada' && sessaoEstaFechada(v.sessao_id)) {
+      const s = dbStmts.getSessao.get(v.sessao_id);
+      const como = s.bling_status === 'cancelada' ? 'cancelada' : 'finalizada';
+      logW('retirada', `Estorno recusado: ${virtId} é da sessão #${s.id}, já ${como}`);
+      return jsonErr(res, 409, `${virtId} é da retirada #${s.id}, que já foi ${como} — não dá para remover por aqui`,
+        { sessao_fechada: true, sessao_id: s.id });
+    }
     const original = v.ref_id ? dbStmts.getEtiqueta.get(v.ref_id) : null;
     const tr = makeTransaction(() => {
       // Cancela a virtual (some da retirada e do Bling)

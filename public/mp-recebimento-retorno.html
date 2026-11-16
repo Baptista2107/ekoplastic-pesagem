@@ -1843,7 +1843,7 @@ async function garantirSessao(tipo, fornecedor) {
     return d.sessao_id;
   } catch(e) {
     console.warn('Erro ao abrir sessão:', e.message);
-    return null;   // sistema continua, mas a sessão não será vinculada
+    return null;   // quem chama não envia o item sem sessão (enviarNaSessao → semSessao)
   }
 }
 
@@ -1852,7 +1852,7 @@ async function garantirSessao(tipo, fornecedor) {
 // revisão dos cartões), a lista local é de uma sessão que não existe mais:
 // zera, abre outra e repete UMA vez. enviar(sid) devolve o fetch.
 function semSessao() {
-  const e = new Error('não deu para abrir a sessão — nada foi impresso; confira a conexão e tente de novo');
+  const e = new Error('não deu para abrir a sessão — nada foi gravado nem impresso; confira a conexão e tente de novo');
   e.semSessao = true;
   return e;
 }
@@ -3833,7 +3833,7 @@ async function adicionarRetoAditivo() {
     beepOk();
     showToast('sucesso', '✓', `${e.id} adicionado · ${MATERIAIS[mat].popular}${cor ? ' ' + cor : ''} · ${e.peso} kg`);
   } catch(err) {
-    showToast('erro', '✗', 'Falha ao adicionar: ' + err.message);
+    showToast('erro', '✗', err.semSessao ? err.message : 'Falha ao adicionar: ' + err.message);
     beepErro();
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = '➕ ADICIONAR À LISTA'; }
@@ -4000,7 +4000,7 @@ async function imprimirEtiquetaSacoParcial() {
   } catch(e) {
     btn.disabled = false;
     btn.textContent = '⎙ Imprimir Etiqueta';
-    showToast('erro', '✗', 'Falha na impressão: ' + e.message);
+    showToast('erro', '✗', e.semSessao ? e.message : 'Falha na impressão: ' + e.message);
     beepErro();
     return;
   }

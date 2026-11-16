@@ -35,10 +35,20 @@ O leitor manda os caracteres + Enter como teclado USB. Confere, em 1366x768:
      também no /consumir com o motivo de fora do pedido (3ª revisão, item 4);
  12. bipe durante o envio ao Bling (sem janela na tela): avisa que espera o
      envio (3ª revisão, item 1).
+ 13. aditivo com a rede pendurada: o bipe seguinte avisa que espera e sai
+     depois do teto (6ª revisão, achado A: o fetch sem teto travava a fila);
+ 14. aditivo na fila quando confirmam o FINALIZAR: não vai na sessão que está
+     fechando; com a senha pedida depois, não é lançado, avisa e o contador
+     volta (achado B);
+ 15. aditivo tocado com a janela de motivo aberta: avisa que está na fila,
+     zera o contador no toque e lança o que estava na tela NO TOQUE (achado C);
+ 16. "Outro motivo…" com o Enter do 1º código perdido: os dois códigos saem,
+     na ordem, e nenhum fica no texto do motivo (achado D).
 O item 10 relê a sessão DESTA tela, nunca adota a retirada aberta mais nova
 de outra pessoa (3ª revisão, item 3).
 Na tela de antes (c302b11) falha nos itens 1-7; no 5dd9c56, em 7-12. Sai 1 se falhar.
 No 47c434e falha no 1 (o 2º espera calado) e no 5b (soluço: o código fica no motivo).
+No 9410234 falha em 13-16 (com PULAR=13, 14-16 falham cada um por si).
 
 O LEITOR aqui é uma rajada com o carimbo de hora de cada tecla 4 ms depois da
 outra (CDP Input.dispatchKeyEvent com timestamp), como o HS-960 — o ritmo é da
@@ -68,7 +78,8 @@ FORA = {"R0000101", "R0000102", "R0000103", "R0000105", "R0000106"}   # bag fora
 JA = {"R0000201"}                                                      # já foi retirado
 TRAVA = {"R0000301"}                                                   # /consumir nunca responde
 JA_AQUI = {"R0000202"}                                                 # já saiu NESTA sessão
-LENTO = {"R0000101": 1.2}   # /consumir que demora (s): o Mini PC ocupado; passa dos 700 ms do aviso antigo
+LENTO = {"R0000101": 1.2,   # /consumir que demora (s): o Mini PC ocupado; passa dos 700 ms do aviso antigo
+         "R0000480": 1.5}   # bipe no ar quando tocam o aditivo e o Finalizar (14)
 ATRASADAS = []           # (hora de soltar, rota) das respostas LENTO
 ATRASO_FEITO = set()
 CONSUMIDOS = []          # (id, corpo) dos /consumir que deram saída
@@ -80,6 +91,8 @@ OUTRA = {"ligada": False}   # /sessoes/abertas passa a ter uma retirada mais nov
 SEGURAR = {"ligado": False, "rotas": []}   # finalizar fica no ar até o teste soltar
 PENDURADAS = []          # rotas que ficaram sem resposta de propósito
 GRAVADOS_NO_TETO = []    # (id, corpo) dos /consumir pendurados: gravados no servidor
+ADITIVO = {"pendurar": 0, "seq": 500}   # pendurar: quantos /retirada/aditivo ficam sem resposta
+ADITIVOS_RECEBIDOS = []  # corpos dos /retirada/aditivo que deram saída
 falhas = []
 
 
@@ -162,22 +175,40 @@ def rota(route):
         CONSUMIDOS.append((i, corpo))
         ev = dict(etiq(i)); ev.update({"id": "S" + i[1:], "ref_id": i})
         return J({"ok": True, "etiqueta_virtual": ev})
+    if p == "/retirada/aditivo" and req.method == "POST":
+        corpo = json.loads(req.post_data or "{}")
+        EVENTOS.append(("aditivo", corpo.get("materialKey"), corpo.get("sessao_id")))
+        if ADITIVO["pendurar"] > 0:
+            ADITIVO["pendurar"] -= 1
+            PENDURADAS.append(route)          # rede pendurada: nunca responde
+            return None
+        if corpo.get("sessao_id") in FECHADAS:
+            return J({"ok": False, "sessao_fechada": True, "sessao_id": corpo.get("sessao_id"),
+                      "erro": "sessão já fechada"}, 409)
+        ADITIVOS_RECEBIDOS.append(corpo)
+        ADITIVO["seq"] += 1
+        return J({"ok": True, "etiqueta": {"id": f"S0000{ADITIVO['seq']}", "material_key": corpo.get("materialKey"),
+                  "material_nome": "CARBONATO", "cor": None, "fornecedor": corpo.get("fornecedor"), "lote": "SACOS",
+                  "peso": 25 * (corpo.get("qtd_sacos") or 0), "qtd_sacos": corpo.get("qtd_sacos")}})
     if p == "/catalogo-mp":
         return J({"ok": True, "materiais": []})
     return J({"ok": True})
 
 
 CPU_LENTA = float(os.environ.get("CPU_LENTA") or 1)
+PULAR = set((os.environ.get("PULAR") or "").split(","))   # cenários a pular (só para provar a tela antiga)
 ESPERA_MS = int(8000 * max(1, CPU_LENTA / 2))     # teto de cada espera por estado
 CDP = {}
 
 
-def leitor(pg, codigo, enter=True, soluco=None):
+def leitor(pg, codigo, enter=True, soluco=None, t0=None):
     """Leitor: rajada com carimbo de 4 ms entre teclas (o do HS-960) + Enter.
     O carimbo é da fonte: com a página lenta as teclas chegam atrasadas ao
     JavaScript, mas o e.timeStamp continua sendo o da rajada. soluco=(k, s):
-    o Windows segurou a rajada s segundos antes da tecla k."""
-    cdp = CDP["s"]; t0 = time.time()
+    o Windows segurou a rajada s segundos antes da tecla k. t0: carimbo da 1ª
+    tecla (para emendar no bipe anterior sem depender de quanto o CDP demorou
+    para mandar o anterior com a VPS carregada). Devolve o carimbo da última."""
+    cdp = CDP["s"]; t0 = time.time() if t0 is None else t0
     if soluco:
         time.sleep(soluco[1])   # o carimbo não pode ficar no futuro
         t0 -= soluco[1]
@@ -188,12 +219,14 @@ def leitor(pg, codigo, enter=True, soluco=None):
                                             "windowsVirtualKeyCode": ord(ch.upper()), "timestamp": t})
         cdp.send("Input.dispatchKeyEvent", {"type": "keyUp", "key": ch,
                                             "windowsVirtualKeyCode": ord(ch.upper()), "timestamp": t + 0.001})
+    t = t0 + (len(codigo) - 1) * 0.004 + extra(len(codigo) - 1)
     if enter:
         t = t0 + len(codigo) * 0.004 + extra(len(codigo))
         cdp.send("Input.dispatchKeyEvent", {"type": "keyDown", "key": "Enter", "code": "Enter", "text": "\r",
                                             "unmodifiedText": "\r", "windowsVirtualKeyCode": 13, "timestamp": t})
         cdp.send("Input.dispatchKeyEvent", {"type": "keyUp", "key": "Enter", "code": "Enter",
                                             "windowsVirtualKeyCode": 13, "timestamp": t + 0.001})
+    return t
 
 
 bipar = leitor
@@ -209,7 +242,11 @@ def fechar_tudo(pg):
           if (id === 'modal-fora' && window.fecharFora) fecharFora(null);
           else if (id === 'modal-bloqueado' && window.fecharBloqueio) fecharBloqueio();
           else el.classList.remove('ativo'); } }); }""")
-    pg.wait_for_timeout(600)
+    # Espera a fila do leitor esvaziar (o que ficou para trás não vaza para o
+    # próximo cenário), em vez de um tempo fixo.
+    ate(pg, lambda: pg.evaluate("""(typeof _itensNaFila !== 'undefined' ? _itensNaFila
+                                     : (typeof _bipesNaFila !== 'undefined' ? _bipesNaFila : 0)) === 0"""))
+    pg.wait_for_timeout(100)
 
 
 def ids():
@@ -395,8 +432,8 @@ with sync_playwright() as p:
     ate(pg, lambda: "R0000407" in ids()); pg.wait_for_timeout(200)
     ok(ids() == ["R0000407"], f"sobra sem Enter descartada: saiu só o bipe novo ({ids()})")
     CONSUMIDOS.clear()
-    leitor(pg, "R0000408", enter=False)              # Enter deste bipe se perdeu
-    bipar(pg, "R0000409")                            # e logo vem o próximo
+    t = leitor(pg, "R0000408", enter=False)          # Enter deste bipe se perdeu
+    bipar(pg, "R0000409", t0=t + 0.3)                # e 0,3 s depois (pelo carimbo) vem o próximo
     ate(pg, lambda: len(ids()) >= 2)
     ok(ids() == ["R0000408", "R0000409"], f"Enter perdido: os dois códigos saem, na ordem ({ids()})")
 
@@ -514,6 +551,92 @@ with sync_playwright() as p:
     ate(pg, lambda: "R0000450 NÃO saiu" in toasts(pg) or "R0000450" in ids())
     ok("R0000450" not in ids() and "NÃO saiu" in toasts(pg), "terminado o envio, a tela pede a senha e avisa que não saiu")
     pg.evaluate("window._bloq = false")
+
+    def tocar_aditivo(pg, sacos=2):
+        """Pessoa escolhe Dessecante/Karina, põe N sacos e toca ADICIONAR."""
+        pg.evaluate(f"""() => {{ estado.tipo = 'DESSEC'; estado.fornecedor = 'Karina'; estado.cor = null;
+            document.getElementById('sacos-input').value = {sacos}; ajustarSacos(0); adicionarAditivo(); }}""")
+
+    def limpar_toasts(pg):
+        pg.evaluate("document.querySelectorAll('#toast-wrap .toast').forEach(t => t.remove())")
+
+    fechar_tudo(pg)
+    if "13" in PULAR:
+        # Na tela antiga o 13 trava a fila para sempre e derruba 14-16 em
+        # cascata; PULAR=13 prova cada um deles por conta própria.
+        bipar(pg, "R0000470"); ate(pg, lambda: "R0000470" in ids())
+    else:
+        print("== 13. aditivo com a rede pendurada e um bipe logo atrás")
+        CONSUMIDOS.clear(); limpar_toasts(pg)
+        n0 = len(PENDURADAS)
+        ADITIVO["pendurar"] = 1
+        tocar_aditivo(pg)
+        ok(ate(pg, lambda: len(PENDURADAS) > n0), "o aditivo chegou ao servidor e ficou sem resposta")
+        bipar(pg, "R0000470")
+        ok(ate(pg, lambda: "R0000470 lido" in toasts(pg) and "espera" in toasts(pg)),
+           f"o bipe atrás do aditivo avisa que espera ({toasts(pg)[-140:]})")
+        ok(ate(pg, lambda: "R0000470" in ids()), "passado o teto do aditivo, o bipe sai (a fila não trava)")
+        ok("confira na lista" in toasts(pg), f"e o aditivo avisa para conferir na lista ({toasts(pg)[-160:]})")
+
+    fechar_tudo(pg)
+    print("== 14. aditivo na fila quando confirmam o FINALIZAR")
+    CONSUMIDOS.clear(); EVENTOS.clear(); limpar_toasts(pg)
+    sid = pg.evaluate("estado.sessaoId")
+    ok(sid is not None and pg.evaluate("estado.itens.length > 0"), f"retirada aberta com itens (#{sid})")
+    SEGURAR["ligado"] = True
+    bipar(pg, "R0000480")                           # bipe no ar (resposta demora 1,5 s)
+    ate(pg, lambda: len(ATRASADAS) > 0)
+    tocar_aditivo(pg)                               # aditivo na fila atrás dele
+    clicar(pg, "#btn-finalizar", esperar=0)
+    clicar(pg, "#conf-ok", esperar=0)
+    ok(ate(pg, lambda: len(SEGURAR["rotas"]) > 0), "o envio ao Bling chegou ao servidor (e fica no ar)")
+    pg.wait_for_timeout(500)
+    na_fechada = [e for e in EVENTOS if e[0] == "aditivo" and e[2] == sid]
+    ok(not na_fechada, f"o aditivo NÃO foi na sessão #{sid}, que estava fechando ({EVENTOS})")
+    SEGURAR["ligado"] = False
+    for r in SEGURAR["rotas"]:
+        r.fulfill(status=200, content_type="application/json",
+                  body=json.dumps({"ok": True, "bling": {"ok": True, "modo": "simulacao"}}))
+    SEGURAR["rotas"].clear()
+    ok(ate(pg, lambda: "NÃO foi lançado" in toasts(pg)),
+       f"com a senha pedida depois, o aditivo não é lançado e avisa ({toasts(pg)[-160:]})")
+    ok(not [e for e in EVENTOS if e[0] == "aditivo"], f"nenhum aditivo foi ao servidor ({EVENTOS})")
+    ok(pg.evaluate("estado.sacos") == 2, f"e o contador volta para 2 ({pg.evaluate('estado.sacos')})")
+    pg.evaluate("window._bloq = false")
+
+    fechar_tudo(pg)
+    print("== 15. aditivo tocado com a janela de motivo aberta")
+    CONSUMIDOS.clear(); ADITIVOS_RECEBIDOS.clear(); limpar_toasts(pg)
+    pg.evaluate("document.getElementById('sacos-input').value = 0; ajustarSacos(0)")
+    bipar(pg, "R0000103")
+    ok(ate(pg, lambda: ativo(pg, "modal-fora")), "janela de motivo aberta (R0000103)")
+    tocar_aditivo(pg, 2)
+    ok(ate(pg, lambda: "Dessecante na fila" in toasts(pg)), f"o aditivo avisa que está na fila ({toasts(pg)[-140:]})")
+    ok(pg.evaluate("estado.sacos") == 0, "o contador zerou no toque (2º toque não lança de novo)")
+    pg.evaluate("document.getElementById('sacos-input').value = 5; ajustarSacos(0)")   # pessoa mexe no contador
+    responder_motivo(pg)
+    ok(ate(pg, lambda: len(ADITIVOS_RECEBIDOS) >= 1), "o aditivo foi lançado depois da janela")
+    q = ADITIVOS_RECEBIDOS[0].get("qtd_sacos") if ADITIVOS_RECEBIDOS else None
+    ok(q == 2, f"com os sacos do TOQUE (2), não os de agora (5) ({q})")
+    pg.evaluate("document.getElementById('sacos-input').value = 0; ajustarSacos(0)")
+
+    fechar_tudo(pg)
+    print("== 16. 'Outro motivo…' com o Enter do 1º código perdido")
+    CONSUMIDOS.clear(); limpar_toasts(pg)
+    bipar(pg, "R0000106")
+    ate(pg, lambda: ativo(pg, "modal-fora"))
+    clicar(pg, "#fora-motivos button[data-motivo='__outro']")
+    ate(pg, lambda: pg.evaluate("document.activeElement && document.activeElement.id === 'fora-outro'"))
+    pg.keyboard.type("lote errado", delay=200)
+    leitor(pg, "R0000416", enter=False)              # o Enter deste se perdeu
+    pg.wait_for_timeout(300)                         # a pessoa pega o próximo bag
+    leitor(pg, "R0000417")
+    ok(lido(pg, "R0000416") and lido(pg, "R0000417"), f"os dois códigos foram lidos ({toasts(pg)[-160:]})")
+    val = pg.evaluate("document.getElementById('fora-outro').value")
+    ok(val == "lote errado", f"nenhum ficou no motivo ({val!r})")
+    clicar(pg, "#fora-outro-ok")
+    ok(ate(pg, lambda: len(ids()) >= 3) and ids() == ["R0000106", "R0000416", "R0000417"],
+       f"e saíram depois do motivo, na ordem ({ids()})")
 
     ok(not erros, f"sem erro de JavaScript ({erros[:2]})")
     pg.screenshot(path=str(OUT / "retirada_leitor_fim.png"))

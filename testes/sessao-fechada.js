@@ -129,6 +129,18 @@ const contar = (sql, ...p) => lerDb(sql, ...p).n;
     ok(contar(`SELECT COUNT(*) n FROM etiquetas WHERE sessao_id = ? AND sub_tipo = 'aditivo-saida'`, sA) === 0,
        'nada gravado na sessão finalizada', null);
 
+    console.log('\n[4b] Estorno (X) de item de retirada já FINALIZADA');
+    // O X tocado com um bipe no ar e o Finalizar logo depois estornava, na vez
+    // dele, o item que já tinha ido no Pedido de Venda (6ª revisão, achado B).
+    const sA1 = c1.body.etiqueta_virtual && c1.body.etiqueta_virtual.id;
+    const es = await req('POST', `/etiquetas/${sA1}/estornar`);
+    ok(es.status === 409 && es.body.sessao_fechada && es.body.sessao_id === sA,
+       'estorno de item da sessão finalizada → 409 sessao_fechada', es);
+    ok(lerDb('SELECT status FROM etiquetas WHERE id = ?', sA1).status !== 'cancelada',
+       'o item finalizado não foi cancelado', null);
+    ok(lerDb('SELECT status FROM etiquetas WHERE id = ?', b1).status === 'consumida',
+       'e o bag segue consumido (a baixa está no Bling)', null);
+
     console.log('\n[5] Recebimento e retorno em sessão fechada');
     const sR2 = await sessao('recebimento', { fornecedor: 'Ecorafia' });
     const r1 = await imprimir('recebimento', sR2);
@@ -158,7 +170,12 @@ const contar = (sql, ...p) => lerDb(sql, ...p).n;
     console.log('\n[7] Sessão aberta segue normal');
     const sD = await sessao('retirada');
     const b5 = await bag(sRec);
-    ok((await consumir(b5, sD)).status === 200, 'bipe em retirada aberta sai', null);
+    const c5 = await consumir(b5, sD);
+    ok(c5.status === 200, 'bipe em retirada aberta sai', null);
+    const es5 = await req('POST', `/etiquetas/${c5.body.etiqueta_virtual.id}/estornar`);
+    ok(es5.status === 200 && es5.body.original_liberada === b5, 'estorno em retirada aberta funciona', es5.body);
+    ok(lerDb('SELECT status FROM etiquetas WHERE id = ?', b5).status === 'bipada', 'e o bag volta ao estoque', null);
+    ok((await consumir(b5, sD)).status === 200, 'e pode sair de novo', null);
     const ad2 = await req('POST', '/retirada/aditivo', { sessao_id: sD, materialKey: 'DESSEC', fornecedor: 'Karina', qtd_sacos: 2 });
     ok(ad2.status === 200, 'sacos em retirada aberta saem', ad2.body);
 
