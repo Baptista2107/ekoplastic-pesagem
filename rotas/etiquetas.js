@@ -366,8 +366,24 @@ async function rotasEtiquetas(req, res, parsed, pathname) {
       if (trocaC) return jsonErr(res, 409, mensagemProdutoTrocado(trocaC), { trava: 'produto_substituido', substituto: trocaC.para });
     }
 
+    // A contagem de sacos só continua valendo se o material novo também é
+    // contado em sacos e N × kg do saco ainda dá o peso; senão fica vazia
+    // (corrigir 40 sacos de dessecante para um grão não pode deixar
+    // "40 sacos × 25kg" na descrição do Bling — revisão 16/11/2026).
+    const matNovoC = String(body.materialKey).toUpperCase();
+    let qtdSacosC = null;
+    if (et.qtd_sacos != null && et.qtd_sacos > 0) {
+      if (matNovoC === String(et.material_key || '').toUpperCase()) qtdSacosC = et.qtd_sacos;
+      else {
+        const kgSacoC = materiaisPorSacos()[matNovoC];
+        if (kgSacoC && !kgIndicadoDe(matNovoC) && !kgIndicadoDe(et.material_key)
+            && Math.abs(et.qtd_sacos * kgSacoC - Number(et.peso)) < 0.01) qtdSacosC = et.qtd_sacos;
+      }
+    }
+
     dbStmts.corrigirEtiqueta.run({
       id:             idC,
+      qtd_sacos:      qtdSacosC,
       material_key:   body.materialKey,
       material_nome:  body.materialNomeEt || body.material_nome || et.material_nome,
       material_label: body.material_label || null,

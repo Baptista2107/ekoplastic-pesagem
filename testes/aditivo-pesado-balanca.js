@@ -9,6 +9,9 @@
 //      quantidade do Bling e a descrição não fala em sacos; o aditivo
 //      contado continua com "N sacos × 25kg".
 //   B) Etiqueta e resumo impressos mostram o kg pesado, sem "SACO".
+//   D) Corrigir etiqueta: a contagem de sacos só fica se ainda fizer
+//      sentido no material novo (por sacos e N × kg do saco = peso);
+//      senão vira vazia — sem "40 sacos" num grão corrigido.
 //   C) Tela (estático): escolha "Contar sacos" × "Pesar na balança" só no
 //      aditivo, padrão sacos, volta ao padrão ao trocar de material; peso,
 //      qtdSacos e etiqueta saem do jeito escolhido.
@@ -125,6 +128,34 @@ async function testeServidor() {
   }
 }
 
+async function testeCorrecao() {
+  console.log('\n[D] corrigir etiqueta: qtd_sacos acompanha o material novo');
+  const s = await req('POST', '/sessoes', { tipo: 'recebimento', operador: 'Recebedor', fornecedor: 'Karina' });
+  const sid = s.json.sessao_id;
+  const corrigir = (id, materialKey, codigo, peso) => req('POST', `/etiquetas/${id}/corrigir`, {
+    materialKey, materialNomeEt: materialKey, cor: null, fornecedor: 'Karina', codigo,
+    sku: `${materialKey}.KARINA | ${peso} | L161126` });
+
+  // 40 sacos de dessecante corrigidos para GRÃO: grão não é por sacos.
+  const a = await etiqueta(sid, 1000, { qtdSacos: 40, clientToken: `apD1-${CARIMBO}` });
+  const ca = await corrigir(a.id, 'GBD', 'PT1', 1000);
+  ok(ca.json && ca.json.ok, 'D) correção para grão aceita', JSON.stringify(ca.json));
+  ok(ca.json && ca.json.etiqueta && ca.json.etiqueta.qtd_sacos == null,
+     'D) corrigida para grão: sem "40 sacos"', JSON.stringify(ca.json && ca.json.etiqueta));
+
+  // 40 sacos de dessecante (25 kg) corrigidos para CARBONATO (25 kg): continua 40.
+  const b = await etiqueta(sid, 1000, { qtdSacos: 40, clientToken: `apD2-${CARIMBO}` });
+  const cb = await corrigir(b.id, 'CARBO', 'C1', 1000);
+  ok(cb.json && cb.json.etiqueta && cb.json.etiqueta.qtd_sacos === 40,
+     'D) corrigida para outro aditivo de 25 kg: continua 40 sacos', JSON.stringify(cb.json && cb.json.etiqueta));
+
+  // Bag pesado (sem sacos) corrigido para outro aditivo: continua sem sacos.
+  const c = await etiqueta(sid, 1208.5, { clientToken: `apD3-${CARIMBO}` });
+  const cc = await corrigir(c.id, 'CARBO', 'C1', 1208.5);
+  ok(cc.json && cc.json.etiqueta && cc.json.etiqueta.qtd_sacos == null,
+     'D) bag pesado corrigido continua sem sacos', JSON.stringify(cc.json && cc.json.etiqueta));
+}
+
 function testeTela() {
   console.log('\n[C] tela do recebimento (estático)');
   const h = fs.readFileSync(path.join(ROOT, 'public', 'mp-recebimento-retorno.html'), 'utf8');
@@ -157,6 +188,7 @@ function testeTela() {
     const h = await req('GET', '/healthcheck');
     if (!h.json || h.json.impressao_simulada_forcada !== true) throw new Error('ABORTADO: impressão não está travada em simulação');
     await testeServidor();
+    await testeCorrecao();
     testeTela();
     console.log('\n═══════════════════════════════════════════════════');
     console.log(` RESULTADO: ${passou} passaram, ${falhou} falharam`);
