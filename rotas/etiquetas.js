@@ -26,6 +26,22 @@ const { liberarBagNaRetirada } = require('../lib/enderecamento');
 const { avisarMudanca: avisarMapa } = require('../lib/mapa-vps');
 const { adicionarOperadorExtrusao, operadoresExtrusao, removerOperadorExtrusao } = require('../lib/operadores');
 
+// Sessão FECHADA (finalizada ou cancelada) não recebe item novo (16/11/2026,
+// revisão dos cartões do pedido, achado 1). Antes o item entrava depois do
+// envio ao Bling e o bag saía do barracão sem baixa — ou ficava 'consumida'
+// para sempre numa sessão cancelada. A tela recebe 409 sessao_fechada, abre
+// outra sessão e repete uma vez.
+function sessaoEstaFechada(sessaoId) {
+  const s = sessaoId ? dbStmts.getSessao.get(sessaoId) : null;
+  return !!(s && s.fim);
+}
+function recusarSessaoFechada(res, sessao) {
+  const como = sessao.bling_status === 'cancelada' ? 'cancelada' : 'finalizada';
+  logW('sessao', `Item recusado: sessão #${sessao.id} já ${como}`);
+  return jsonErr(res, 409, `A sessão #${sessao.id} já foi ${como} — este item não entrou nela`,
+    { sessao_fechada: true, sessao_id: sessao.id });
+}
+
 // Devolve NAO_TRATADA quando nenhuma rota daqui atende o pedido.
 async function rotasEtiquetas(req, res, parsed, pathname) {
   let m;
@@ -76,6 +92,12 @@ async function rotasEtiquetas(req, res, parsed, pathname) {
       });
     }
 
+    // MP: etiqueta de sessão já fechada não volta a valer pelo bipe (a
+    // cancelada voltava a 'bipada' sem entrar em pedido nenhum).
+    if ((et.tipo === 'recebimento' || et.tipo === 'retorno') && sessaoEstaFechada(et.sessao_id)) {
+      return recusarSessaoFechada(res, dbStmts.getSessao.get(et.sessao_id));
+    }
+
     dbStmts.marcarBipada.run('bipada', new Date().toISOString(), m[1]);
 
     // v52: registra a bipagem no log de produção (CSV por área, p/ dashboard)
@@ -124,6 +146,7 @@ async function rotasEtiquetas(req, res, parsed, pathname) {
     const sessao = dbStmts.getSessao.get(sessaoIdRet);
     if (!sessao) return jsonErr(res, 404, 'Sessão não encontrada');
     if (sessao.tipo !== 'retirada') return jsonErr(res, 400, `Sessão #${sessaoIdRet} não é de retirada (tipo=${sessao.tipo})`);
+    if (sessao.fim) return recusarSessaoFechada(res, sessao);
 
     const orig = dbStmts.getEtiqueta.get(origId);
     if (!orig) return jsonErr(res, 404, `Etiqueta ${origId} não encontrada`);
@@ -132,7 +155,7 @@ async function rotasEtiquetas(req, res, parsed, pathname) {
       // Já consumida — MAS se o consumo foi estornado/cancelado, a etiqueta
       // está livre de novo e pode ser bipada normalmente. Só bloqueia se
       // existir um consumo ATIVO (não cancelado).
-      const consumoAtivo = db.prepare(`SELECT id, hora_impressao FROM etiquetas WHERE tipo='retirada' AND ref_id = ? AND status != 'cancelada' ORDER BY hora_impressao DESC LIMIT 1`).get(origId);
+      const consumoAtivo = db.prepare(`SELECT id, hora_impressao, sessao_id FROM etiquetas WHERE tipo='retirada' AND ref_id = ? AND status != 'cancelada' ORDER BY hora_impressao DESC LIMIT 1`).get(origId);
       if (consumoAtivo) {
         return jsonErr(res, 409, `Etiqueta ${origId} já foi retirada`, {
           ja_consumida: true,
@@ -170,12 +193,15 @@ async function rotasEtiquetas(req, res, parsed, pathname) {
     const seqSessaoRet = proximoSeqSessao(sessaoIdRet);
     let bagLiberado = null;
     let jaRetirada = null;
+    let fechouNoMeio = false;
     const tr = makeTransaction(() => {
       // Rede de segurança (16/11/2026): confere DENTRO da transação se o bag
       // já tem retirada ativa — qualquer espera que volte a aparecer entre a
       // conferência lá de cima e aqui não pode gerar 2 S do mesmo bag.
-      jaRetirada = db.prepare(`SELECT id, hora_impressao FROM etiquetas WHERE tipo='retirada' AND ref_id = ? AND status != 'cancelada' ORDER BY hora_impressao DESC LIMIT 1`).get(origId);
+      jaRetirada = db.prepare(`SELECT id, hora_impressao, sessao_id FROM etiquetas WHERE tipo='retirada' AND ref_id = ? AND status != 'cancelada' ORDER BY hora_impressao DESC LIMIT 1`).get(origId);
       if (jaRetirada) return;
+      fechouNoMeio = sessaoEstaFechada(sessaoIdRet);
+      if (fechouNoMeio) return;
       dbStmts.insertEtiqueta.run({
         id:             idVirt,
         seq:            seqRet,
@@ -212,6 +238,7 @@ async function rotasEtiquetas(req, res, parsed, pathname) {
           .run(JSON.stringify(decisao.registro), idVirt);
     });
     tr();
+    if (fechouNoMeio) return recusarSessaoFechada(res, dbStmts.getSessao.get(sessaoIdRet));
     if (jaRetirada) {
       return jsonErr(res, 409, `Etiqueta ${origId} já foi retirada`, {
         ja_consumida: true, etiqueta: aplicarSubstituicao(orig), consumo: jaRetirada,
@@ -397,6 +424,7 @@ async function rotasEtiquetas(req, res, parsed, pathname) {
     const sessao = dbStmts.getSessao.get(sessaoIdRet);
     if (!sessao) return jsonErr(res, 404, 'Sessão não encontrada');
     if (sessao.tipo !== 'retirada') return jsonErr(res, 400, `Sessão #${sessaoIdRet} não é de retirada`);
+    if (sessao.fim) return recusarSessaoFechada(res, sessao);
     // QUEM PODE SAIR POR SACOS é quem ENTRA por sacos: os aditivos de
     // sempre (MP_CONTAGEM_MANUAL) e o material criado pela tela marcado
     // como "por sacos". Com nomes fixos aqui dentro, um material novo
@@ -488,6 +516,7 @@ async function rotasEtiquetas(req, res, parsed, pathname) {
     const sessaoRto = dbStmts.getSessao.get(sessaoIdRto);
     if (!sessaoRto) return jsonErr(res, 404, 'Sessão não encontrada');
     if (sessaoRto.tipo !== 'retorno') return jsonErr(res, 400, `Sessão #${sessaoIdRto} não é de retorno`);
+    if (sessaoRto.fim) return recusarSessaoFechada(res, sessaoRto);
     const qtdSacosRto = parseInt(body.qtd_sacos);
     if (!qtdSacosRto || qtdSacosRto < 1) return jsonErr(res, 400, 'qtd_sacos deve ser inteiro >= 1');
     // Volta por sacos quem sai por sacos (mesma lista da retirada). O
@@ -681,6 +710,7 @@ async function rotasEtiquetas(req, res, parsed, pathname) {
     // seq é atribuído pelo servidor (C2) — qualquer seq vindo do corpo é ignorado.
     return imprimirEPersistirEtiqueta(dados, resp => {
       if (resp.ok) jsonOk(res, resp);
+      else if (resp.sessao_fechada) recusarSessaoFechada(res, dbStmts.getSessao.get(dados.sessao_id));
       else jsonErr(res, 500, resp.erro, { printer: resp.printer });
     });
   }

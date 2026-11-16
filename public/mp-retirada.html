@@ -1098,7 +1098,9 @@ function setFluxo(f) {
 //  · o Enter do leitor nunca chega ao botão em foco (nem atrás da janela);
 //  · na caixa "Outro motivo…" o código bipado não fica no texto: uma sequência
 //    no ritmo do leitor que fecha um código R/S/T + Enter sai da caixa e vira bipe.
-const LEITOR_MAX_MS = 60;        // entre teclas do leitor; gente digitando passa disso
+// entre teclas do leitor; gente digitando passa disso. O teste de navegador
+// alarga (o Playwright, com a máquina carregada, manda a rajada a 20-70 ms).
+const LEITOR_MAX_MS = Number(window.EKO_LEITOR_MAX_MS) || 60;
 const LEITOR_REINICIO_MS = 1000; // pausa longa: o que estava no buffer era lixo
 const RX_CODIGO = /[RTS]\d{7}/;
 let _bufKey = '';
@@ -1110,12 +1112,30 @@ function janelaAberta() {
 }
 function teclaDoLeitor(e) {
   if (estado.fluxo !== 'bipagem') return;
-  if (document.getElementById('keypad-modal').classList.contains('ativo')) return;
-  const agora = Date.now();
+  // Ritmo pelo carimbo do evento (16/11/2026, revisão B7): Date.now() dentro do
+  // ouvinte media a demora do Mini PC em atender a tecla, não o leitor.
+  const agora = Number(e.timeStamp) || Date.now();
   const intervalo = agora - _tUltTecla;
   _tUltTecla = agora;
   if (intervalo > LEITOR_REINICIO_MS) _bufKey = '';
   if (intervalo > LEITOR_MAX_MS) _bufRapido = '';
+  const ehTecla = e.key && e.key.length === 1 && /^[A-Za-z0-9]$/.test(e.key);
+  // "Digitar código"/"Reimprimir" (teclado da tela) aberto: o Enter do leitor
+  // não pode apertar o botão tocado por último (repetia o dígito, reabria o
+  // teclado ou mandava o código pela metade — revisão M2). O bipe NÃO sai: com o
+  // Reimprimir aberto a pessoa quer reimprimir, não retirar. Avisa alto.
+  if (document.getElementById('keypad-modal').classList.contains('ativo')) {
+    if (e.key === 'Enter') {
+      e.preventDefault(); e.stopPropagation();
+      const lidos = _bufKey.match(/[RTS]\d{7}/g);
+      if (lidos) {
+        showToast('erro', '⛔', `${lidos[lidos.length - 1]} NÃO saiu — feche o teclado da tela e bipe de novo`, 7000);
+        beepErro();
+      }
+      _bufKey = '';
+    } else if (ehTecla) _bufKey += e.key;
+    return;
+  }
   const alvo = e.target || {};
   const tag = (alvo.tagName || '').toUpperCase();
   if (alvo.id === 'fora-outro') {
@@ -1128,7 +1148,7 @@ function teclaDoLeitor(e) {
         processarBipe(m[0]);
       }
       _bufRapido = '';
-    } else if (e.key.length === 1 && /^[A-Za-z0-9]$/.test(e.key)) {
+    } else if (ehTecla) {
       _bufRapido += e.key;
     } else {
       _bufRapido = '';
@@ -1142,12 +1162,15 @@ function teclaDoLeitor(e) {
   if (e.key === 'Enter') {
     e.preventDefault();       // nunca "clica" o botão em foco, com ou sem janela aberta
     e.stopPropagation();
-    // Vale o ÚLTIMO código do buffer: se o Enter de um bipe se perdeu, o
-    // buffer fica "R0000005R0000009" e o que o leitor acabou de ler é o fim.
-    // (A sobra sem Enter some sozinha: 1 s sem tecla zera o buffer.)
+    // TODOS os códigos completos do buffer saem, na ordem (revisão B6): se o
+    // Enter de um bipe se perdeu, o buffer fica "R0000005R0000009" — o leitor
+    // apitou nos dois, quem bipou acha que os dois saíram. Repetido o servidor
+    // barra (JÁ FOI RETIRADA). A sobra sem Enter some: 1 s sem tecla zera.
     const todos = _bufKey.match(/[RTS]\d{7}/g);
-    if (_bufKey.length > 0) { processarBipe(todos ? todos[todos.length - 1] : _bufKey); _bufKey = ''; }
-  } else if (e.key.length === 1 && /^[A-Za-z0-9]$/.test(e.key)) {
+    if (todos) todos.forEach(c => processarBipe(c));
+    else if (_bufKey.length > 0) processarBipe(_bufKey);
+    _bufKey = '';
+  } else if (ehTecla) {
     _bufKey += e.key;
   }
 }
@@ -1159,6 +1182,7 @@ document.addEventListener('keydown', teclaDoLeitor, true);
 // achando que saiu.
 let _filaBipe = Promise.resolve();
 let _bipesNaFila = 0;
+let _bipeEmCurso = Promise.resolve();   // o bipe que está no ar agora (finalizar espera ele)
 function processarBipe(raw) {
   const m = String(raw || '').match(RX_CODIGO);
   const vezDele = { comecou: false };
@@ -1174,17 +1198,27 @@ function processarBipe(raw) {
   _bipesNaFila++;
   const vez = _filaBipe
     .then(() => esperarJanelasFechadas())
-    .then(() => { vezDele.comecou = true; return processarBipeAgora(raw); })
+    .then(() => {
+      vezDele.comecou = true;
+      const p = processarBipeAgora(raw);
+      _bipeEmCurso = p.catch(() => {});
+      return p;
+    })
     .finally(() => { _bipesNaFila--; });
   _filaBipe = vez.catch(() => {});
   return vez;
 }
 // "Já foi retirada" e as confirmações de finalizar/cancelar não seguram a fila
-// por si: o bipe seguinte espera a pessoa fechar a janela.
+// por si: o bipe seguinte espera a pessoa fechar a janela. E espera também o
+// FINALIZAR/CANCELAR terminar (16/11/2026, revisão dos cartões, achado 1): o
+// bipe feito com a confirmação aberta saía logo depois do CONFIRMAR, ainda na
+// sessão que estava fechando — entrava depois do envio ao Bling (bag fora sem
+// baixa) ou numa sessão cancelada (bag preso como 'consumida').
+function podeSeguir() { return !janelaAberta() && !estado.fechando; }
 function esperarJanelasFechadas() {
-  if (!janelaAberta()) return Promise.resolve();
+  if (podeSeguir()) return Promise.resolve();
   return new Promise(res => {
-    const t = setInterval(() => { if (!janelaAberta()) { clearInterval(t); res(); } }, 150);
+    const t = setInterval(() => { if (podeSeguir()) { clearInterval(t); res(); } }, 150);
   });
 }
 
@@ -1226,14 +1260,31 @@ async function processarBipeAgora(raw) {
   }
   const id = m[0];
 
+  // Bipe que esperou na fila enquanto a pessoa finalizava: agora a tela pede a
+  // senha (o processo dela acabou). Sem dono, o bag não sai — e avisa alto.
+  if (window.EkoAcesso && EkoAcesso.bloqueando && EkoAcesso.bloqueando()) {
+    showToast('erro', '⛔', `${id} NÃO saiu — a retirada foi encerrada. Entre com a senha e bipe de novo`, 8000);
+    beepErro();
+    return;
+  }
+
   // 1) Garante sessão
-  const sessaoId = await garantirSessao();
+  let sessaoId = await garantirSessao();
   if (!sessaoId) return;
 
   // 2) Tenta consumir. checar_pedido: bag fora dos pedidos do painel volta
   // 409 fora_do_pedido (inclusive em teste) para a tela perguntar o motivo.
   try {
     let { r, d } = await postJsonComTeto(`${URL_ETIQ}/${id}/consumir`, { sessao_id: sessaoId, checar_pedido: true });
+    if (r.status === 409 && d.sessao_fechada) {
+      // A sessão desta tela já fechou (outra aba, fim automático): a lista
+      // local é de uma sessão que não existe mais. Começa outra e repete UMA vez.
+      showToast('warn', '↩', `A retirada #${sessaoId} já tinha sido fechada — ${id} vai numa nova`, 5000);
+      estado.sessaoId = null; estado.itens = []; renderHistorico(); atualizarBadgesPai();
+      sessaoId = await garantirSessao();
+      if (!sessaoId) return;
+      ({ r, d } = await postJsonComTeto(`${URL_ETIQ}/${id}/consumir`, { sessao_id: sessaoId, checar_pedido: true }));
+    }
 
     if (r.status === 409 && d.fora_do_pedido) {
       beepWarn();
@@ -1242,6 +1293,15 @@ async function processarBipeAgora(raw) {
       ({ r, d } = await postJsonComTeto(`${URL_ETIQ}/${id}/consumir`, { sessao_id: sessaoId, fora_do_pedido: escolha }));
     }
 
+    if (r.status === 409 && d.ja_consumida && d.consumo && d.consumo.sessao_id != null
+        && String(d.consumo.sessao_id) === String(sessaoId)) {
+      // Já saiu NESTA retirada (o 1º bipe passou do teto e o servidor gravou
+      // sem a tela saber — revisão M3): não é bloqueio, é a lista atrasada.
+      await restaurarSessaoAberta();
+      showToast('sucesso', '✓', `${id} já está nesta retirada`, 5000);
+      beepOk();
+      return;
+    }
     if (r.status === 409 && d.ja_consumida) {
       // Etiqueta já consumida — abre modal de bloqueio. O bipe seguinte espera
       // a janela fechar (esperarJanelasFechadas).
@@ -1277,9 +1337,12 @@ async function processarBipeAgora(raw) {
 
   } catch(e) {
     if (e && e.teto) {
-      // Pode ter saído ou não: bipar de novo resolve — se saiu, aparece
-      // "JÁ FOI RETIRADA"; se não, sai agora. A fila segue.
-      showToast('erro', '⚠', `${id}: ${e.message} — confira se saiu: bipe de novo (se já saiu, aparece JÁ FOI RETIRADA)`, 8000);
+      // Pode ter saído ou não: bipar de novo resolve — se saiu, entra na lista
+      // ("já está nesta retirada"); se não, sai agora. A fila segue, e a lista
+      // é relida do servidor ao fundo (revisão M3: a S gravada sem a tela saber
+      // deixava Finalizar/Cancelar mudos e a contagem errada).
+      showToast('erro', '⚠', `${id}: ${e.message} — confira se saiu: bipe de novo`, 8000);
+      restaurarSessaoAberta();
     } else {
       showToast('erro', '✗', 'Erro de comunicação: ' + e.message);
     }
@@ -1668,7 +1731,7 @@ function atualizarBotaoAdd() {
 }
 
 async function adicionarAditivo() {
-  const sessaoId = await garantirSessao();
+  let sessaoId = await garantirSessao();
   if (!sessaoId) return;
   const matKey = estado.tipo;
   const cor    = estado.cor;
@@ -1677,11 +1740,11 @@ async function adicionarAditivo() {
   const avulso = estado.pesoAvulso || 0;
 
   try {
-    const r = await fetch(URL_ADITV, {
+    const enviar = sid => fetch(URL_ADITV, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        sessao_id:   sessaoId,
+        sessao_id:   sid,
         materialKey: matKey,
         cor:         cor,
         fornecedor:  forn,
@@ -1689,7 +1752,17 @@ async function adicionarAditivo() {
         peso_avulso: estado.pesoAvulso || 0,
       }),
     });
-    const d = await r.json();
+    let r = await enviar(sessaoId);
+    let d = await r.json();
+    if (r.status === 409 && d.sessao_fechada) {
+      // Sessão desta tela já fechou (16/11/2026): começa outra e repete uma vez.
+      showToast('warn', '↩', `A retirada #${sessaoId} já tinha sido fechada — começando uma nova`, 5000);
+      estado.sessaoId = null; estado.itens = []; renderHistorico(); atualizarBadgesPai();
+      sessaoId = await garantirSessao();
+      if (!sessaoId) return;
+      r = await enviar(sessaoId);
+      d = await r.json();
+    }
     if (!d.ok) throw new Error(d.erro || 'falha');
 
     const ev = d.etiqueta;
@@ -1807,6 +1880,11 @@ function fecharConfirmacao(ok) {
 
 async function finalizar() {
   if (!estado.sessaoId || estado.itens.length === 0) return;
+  if (estado.fechando) return;
+  estado.fechando = true;
+  try { return await finalizarAgora(); } finally { estado.fechando = false; }
+}
+async function finalizarAgora() {
   const totKg = estado.itens.reduce((s, it) => s + it.peso, 0);
   const segue = await pedirConfirmacao({
     icone: '📤', titulo: 'FINALIZAR E ENVIAR AO BLING',
@@ -1827,6 +1905,15 @@ async function enviarRetirada(opc) {
   opc = opc || {};
   if (!estado.sessaoId || estado.itens.length === 0) return false;
   document.getElementById('btn-finalizar').disabled = true;
+  // Quem chama já segura a fila (estado.fechando); falta o bipe que já estava
+  // no ar quando tocaram Finalizar — ele termina antes, e entra no envio.
+  const segurei = !estado.fechando;
+  estado.fechando = true;
+  try { await _bipeEmCurso; } catch (e) {}
+  try { return await enviarRetiradaAgora(opc); } finally { if (segurei) estado.fechando = false; }
+}
+async function enviarRetiradaAgora(opc) {
+  if (!estado.sessaoId || estado.itens.length === 0) { document.getElementById('btn-finalizar').disabled = false; return false; }
   showToast('info', '📤', 'Enviando ao Bling...');
 
   try {
@@ -1870,6 +1957,11 @@ async function enviarRetirada(opc) {
 
 async function cancelar() {
   if (!estado.sessaoId || estado.itens.length === 0) return;
+  if (estado.fechando) return;
+  estado.fechando = true;
+  try { return await cancelarAgora(); } finally { estado.fechando = false; }
+}
+async function cancelarAgora() {
   const confirmaCancelar = await pedirConfirmacao({
     icone: '⚠️', titulo: 'CANCELAR A SESSÃO',
     texto: 'Todas as retiradas desta sessão serão DESFEITAS — as etiquetas voltam a ficar disponíveis. Isso não pode ser desfeito.',
@@ -1877,6 +1969,7 @@ async function cancelar() {
     botao: 'SIM, CANCELAR',
   });
   if (!confirmaCancelar) return;
+  try { await _bipeEmCurso; } catch (e) {}   // o bipe no ar termina antes (e é desfeito junto)
 
   try {
     const r = await fetch(`${URL_SESS}/${estado.sessaoId}/cancelar`, { method: 'POST' });

@@ -587,7 +587,7 @@ const registro = virtId => { const l = lerDb('SELECT pedido_retirada FROM etique
     }
 
     // ── [13] Fila de motivos: 5xx repetido não trava, recusados têm teto ─
-    console.log('\n[13] Item que a VPS devolve 500 sempre sai da fila na 5ª vez; recusados guardam só os 200 últimos');
+    console.log('\n[13] Item que a VPS devolve 500 sempre: sai da fila só com 5 falhas seguidas por mais de 1 h; recusados guardam só os 200 últimos');
     {
     await pedidosVps([], 'teste');
     VPS.recebidos = []; VPS.teto_hora = 100000;
@@ -612,13 +612,31 @@ const registro = virtId => { const l = lerDb('SELECT pedido_retirada FROM etique
     await req('GET', '/retirada/pedidos'); await sleep(400);
     cfg = (await req('GET', '/config')).body.config;
     f = JSON.parse(cfg.retirada_fora_fila || '{}');
+    ok(f.R0999500 && f.R0999500.falhas_5xx === 5 && !JSON.parse(cfg.retirada_fora_recusados || '{}').R0999500,
+       '5 falhas 5xx em menos de 1 h (deploy ruim passageiro) NÃO descartam o motivo', f);
+    // As falhas começaram há 2 h: agora sim é defeito do item.
+    f.R0999500.falhas_5xx_desde = new Date(Date.now() - 2 * 3600 * 1000).toISOString();
+    await req('POST', '/config', { retirada_fora_fila: JSON.stringify(f) });
+    await req('GET', '/retirada/pedidos'); await sleep(400);
+    cfg = (await req('GET', '/config')).body.config;
+    f = JSON.parse(cfg.retirada_fora_fila || '{}');
     const rec = JSON.parse(cfg.retirada_fora_recusados || '{}');
     ok(!f.R0999500 && rec.R0999500 && rec.R0999500.status === 500,
-       'na 5ª falha 5xx sai da fila e vai para os recusados', { f, r: rec.R0999500 });
+       '5xx seguido por mais de 1 h: sai da fila e vai para os recusados', { f, r: rec.R0999500 });
     ok(VPS.recebidos.some(b => b.etiqueta_id === 'R0999501'), 'e o item seguinte chega à VPS', VPS.recebidos);
     ok(Object.keys(rec).length === 200 && !rec.R0800000 && rec.R0800204,
        'recusados guardam só os 200 mais recentes (o mais velho sai)', Object.keys(rec).length);
     VPS.erro500.clear();
+    // Resposta que não é 5xx (aqui o teto por hora) zera a conta: "seguidas".
+    VPS.teto_hora = 0;
+    const fz = { R0999502: { em: '2026-11-16T10:00:02.000Z', corpo: { etiqueta_id: 'R0999502', motivo: 'conta zera' },
+                             falhas_5xx: 4, falhas_5xx_desde: new Date(Date.now() - 2 * 3600 * 1000).toISOString() } };
+    await req('POST', '/config', { retirada_fora_fila: JSON.stringify(fz) });
+    await req('GET', '/retirada/pedidos'); await sleep(400);
+    f = JSON.parse((await req('GET', '/config')).body.config.retirada_fora_fila || '{}');
+    ok(f.R0999502 && !f.R0999502.falhas_5xx && !f.R0999502.falhas_5xx_desde,
+       'resposta sem 5xx no meio (teto por hora) zera a conta de falhas', f);
+    VPS.teto_hora = 100000;
     }
   } catch (e) {
     falhou++; console.log('  \x1b[31m✗ ERRO\x1b[0m', e.stack || e.message);

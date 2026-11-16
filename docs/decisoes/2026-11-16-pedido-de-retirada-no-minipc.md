@@ -136,19 +136,63 @@ na tela anterior, 14 falhas nos 7 itens; as duas proteções do buffer também p
 
     cd ~/bling-claude && venv/bin/python -B <repo>/testes/navegador/retirada_leitor.py <repo>/public /tmp/prints
 
+## 3ª revisão de 16/11: junção com a senha e o que a revisão achou
+Os cartões e a senha por frame foram juntados no ramo `ativar-mp-16-11`. No
+ouvinte do leitor ficou a entrada única dos cartões, que já trazia a guarda da
+senha (com a senha na tela, o bipe é ignorado).
+
+- **Bipe com a confirmação de Finalizar/Cancelar aberta (grave).** O bipe
+  esperava a janela fechar e saía logo depois do CONFIRMAR, ainda com o número
+  da sessão que estava fechando. Com o Finalizar, a S entrava depois do envio
+  ao Bling e o bag saía sem baixa. Com o Cancelar, o bag ficava preso como
+  retirado numa sessão cancelada. Duas travas agora:
+  - **na tela:** a fila do leitor espera o finalizar ou o cancelar terminar, e
+    o envio espera o bipe que já estava no ar. Se depois disso a tela estiver
+    pedindo a senha (o processo acabou), o bag não sai e a tela avisa:
+    "NÃO saiu — entre com a senha e bipe de novo";
+  - **no servidor:** sessão fechada (finalizada ou cancelada) não recebe item.
+    Respondem 409 `sessao_fechada` o `/consumir`, o `/retirada/aditivo`, o
+    `/retorno/aditivo`, o `/print/etiqueta` de recebimento e de retorno e o
+    `/bipar` de etiqueta de MP. As telas de Retirada e de Recebimento/Retorno
+    começam uma sessão nova e repetem uma vez. A extrusão e as outras telas
+    não mudam: a bobina impressa depois do fim de turno automático ainda vai
+    ao Bling no bipe.
+- **Teclado da tela aberto** ("Digitar código"/"Reimprimir"): o Enter do
+  leitor apertava o último botão tocado. O "1" virava "11" e o OK mandava o
+  código pela metade. Agora o Enter não chega ao botão e o bipe não sai: com o
+  Reimprimir aberto, quem bipa quer reimprimir, não retirar. Toca o erro e
+  mostra "NÃO saiu — feche o teclado da tela e bipe de novo".
+- **Depois do teto de 15 s** a tela relê a sessão do servidor. Se o bag já
+  tinha saído nesta mesma retirada, o bipe de novo diz "já está nesta
+  retirada" e não abre o bloqueio. Antes a S gravada sem a tela saber deixava
+  o Finalizar mudo e a contagem errada.
+- **Enter perdido:** com "R0000005R0000009" no buffer, os dois códigos saem, na
+  ordem. Antes só saía o último: o leitor tinha apitado nos dois, e quem bipou
+  achava que os dois tinham saído. Se o código se repetir, o servidor barra.
+- **Ritmo do leitor** medido pelo carimbo de tempo da tecla, não pela hora em
+  que a tela a atendeu. Um travamento do Mini PC no meio da rajada não joga
+  mais o código no texto do motivo.
+- **Fila de motivos:** o item só vai para os recusados com 5 erros 5xx
+  seguidos ao longo de pelo menos 1 hora. Qualquer resposta que não seja 5xx
+  zera a conta. Antes, um deploy ruim de 1 minuto na VPS descartava o motivo,
+  porque a fila roda a cada 15 s.
+
+Testes: `testes/sessao-fechada.js`, novo, entra no rodar-todos (15 falhas no
+código anterior). `testes/retirada-pedidos.js` [13] (2 falhas no anterior).
+`testes/navegador/retirada_leitor.py`, cenários 8 a 11 (10 falhas na tela do
+5dd9c56). O finalizar falso demora 0,8 s, e na tela anterior o bipe ia na
+sessão que estava fechando.
+
 ## Em aberto (não corrigido)
 - **Relógio do Mini PC atrás do da VPS:** a VPS só conta a S impressa depois da
   criação do pedido. Se o relógio do Mini PC estiver atrasado, a VPS não conta a
   S e o Mini PC segue contando a dele.
 - **Bag escolhido que sai, é estornado e é bipado de novo:** enquanto a VPS não
   atualizar `bags[].saiu`, ele entra como "fora do pedido".
-- **Junção com a senha por frame:** o ramo `ativar-pin-por-frame` também mexe em
-  `public/mp-retirada.html` (no mesmo ouvinte do leitor). A entrada única já
-  traz a guarda `EkoAcesso.bloqueando()` daquele ramo; a junção é feita antes de
-  subir.
 - **Teto na abertura da sessão:** se o servidor abrir a sessão mas a resposta
-  passar dos 15 s, a tela abre outra no bipe seguinte; a vazia é cancelada na
-  restauração. Só com o Mini PC muito lento.
+  passar dos 15 s, a tela abre outra no bipe seguinte. A sessão vazia que ficou
+  para trás continua aberta: a restauração só pega a mais recente. Só acontece
+  com o Mini PC muito lento.
 - **Lote com troca de produto (menor):** no passo de lote, o Mini PC compara o
   bag de origem e a VPS compara a S (produto novo); podem atribuir o bag a
   pedidos diferentes. Afeta pouco.

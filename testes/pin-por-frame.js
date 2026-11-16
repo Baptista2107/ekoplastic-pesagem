@@ -777,8 +777,12 @@ async function testeTerceiraRevisao() {
       cancelarSessaoSeVazia: async () => {},
       pedirConfirmacao: async () => { f.modais++; return true; },   // o modal PRÓPRIO da Retirada
       estado: { sessaoId: 77, sessaoOperador: 'JOAO', sessaoInicio: null, itens: [{ peso: 500 }, { peso: 480 }] },
+      _bipeEmCurso: Promise.resolve(),   // nenhum bipe no ar (o envio espera o que estiver)
     });
-    vm.runInContext(presentes(htmlRet, ['escRet', 'encerrouProcesso', 'finalizar', 'enviarRetirada', 'conferirSessaoDeOutro'])
+    // finalizarAgora/enviarRetiradaAgora: desde 16/11 o finalizar e o envio
+    // seguram a fila do leitor e chamam a parte que de fato envia.
+    vm.runInContext(presentes(htmlRet, ['escRet', 'encerrouProcesso', 'finalizar', 'finalizarAgora', 'enviarRetirada',
+                                        'enviarRetiradaAgora', 'conferirSessaoDeOutro'])
       .map(n => extrairFuncao(htmlRet, n)).join('\n'), f.win);
     return f;
   };

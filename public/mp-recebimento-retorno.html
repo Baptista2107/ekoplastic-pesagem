@@ -1821,6 +1821,27 @@ async function garantirSessao(tipo, fornecedor) {
   }
 }
 
+// Envia um item da sessão; se o servidor responder 409 sessao_fechada (a
+// sessão desta tela já fechou em outra aba ou no fim automático — 16/11/2026,
+// revisão dos cartões), a lista local é de uma sessão que não existe mais:
+// zera, abre outra e repete UMA vez. enviar(sid) devolve o fetch.
+async function enviarNaSessao(tipo, fornecedor, enviar) {
+  const key = tipo === 'retorno' ? 'sessaoRetorno' : 'sessaoRecebimento';
+  let sid = await garantirSessao(tipo, fornecedor);
+  let resp = await enviar(sid);
+  let d = await resp.json();
+  if (resp.status === 409 && d && d.sessao_fechada) {
+    showToast('warn', '↩', `A sessão #${sid} já tinha sido fechada — começando uma nova`, 5000);
+    estado[key] = null;
+    if (tipo === 'retorno') estado.retItens = []; else estado.itens = [];
+    try { renderHistorico(); atualizarBadgesPai(); } catch (e) {}
+    sid = await garantirSessao(tipo, fornecedor);
+    resp = await enviar(sid);
+    d = await resp.json();
+  }
+  return { resp, d, sessaoId: sid };
+}
+
 // Carrega SEQ inicial e estado do servidor
 async function inicializarServidor() {
   try {
@@ -2558,13 +2579,12 @@ async function imprimir() {
 
   // Garante sessão aberta (cria se for a 1ª etiqueta do modo)
   const fornSessao = estado.modo === 'recebimento' ? dadosImpr.fornecedor : null;
-  const sessaoId = await garantirSessao(estado.modo, fornSessao);
 
   // Token de idempotência (C3): gera por tentativa, reusa em retry, limpa no sucesso.
   if (!estado.tokenPendente) estado.tokenPendente = gerarTokenMP();
 
   try {
-    const resp = await fetch(URL_PRINT, {
+    const { resp, d: result } = await enviarNaSessao(estado.modo, fornSessao, sessaoId => fetch(URL_PRINT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -2582,8 +2602,7 @@ async function imprimir() {
         ref_id: item.origId || null,                      // se retorno: lote original
         sub_tipo: item.subTipo === 'varredura' ? 'varredura' : undefined,   // nota de varredura
       })
-    });
-    const result = await resp.json();
+    }));
     if (!resp.ok || !result.ok) {
       const falha = new Error(result.error || result.erro || `HTTP ${resp.status}`);
       falha.recusa = resp.status === 409;   // regra do servidor, não impressora
@@ -2798,6 +2817,16 @@ function bipar(seq, id) {
 
   // Persiste no backend (não bloqueia se falhar)
   fetch(`${URL_ETIQUETA}/${id}/bipar`, { method: 'POST' })
+    .then(async r => {
+      if (r.status !== 409) return;
+      const d = await r.json().catch(() => ({}));
+      if (!d.sessao_fechada) return;
+      // A sessão desta etiqueta já fechou: o bipe não vale (16/11/2026).
+      item.status = 'aguardando_bipe'; item.horaBipe = null;
+      renderHistorico(); atualizarEstadoBlocos();
+      showToast('erro', '⛔', `${id} NÃO valeu: ${d.erro || 'a sessão já foi fechada'}`, 8000);
+      beepErro();
+    })
     .catch(e => console.warn('Falha ao persistir bipagem no backend:', e));
 
   renderHistorico();
@@ -3707,13 +3736,11 @@ async function adicionarRetoAditivo() {
   const btn = document.getElementById('btn-add-aditivo');
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Adicionando...'; }
   try {
-    const sessaoId = await garantirSessao('retorno', null);
     const codigo = buscarCodigo(mat, cor, forn);
-    const r = await fetch(URL_BASE + '/retorno/aditivo', {
+    const { resp: r, d } = await enviarNaSessao('retorno', null, sessaoId => fetch(URL_BASE + '/retorno/aditivo', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sessao_id: sessaoId, materialKey: mat, cor, fornecedor: forn, qtd_sacos: sacos, codigo })
-    });
-    const d = await r.json();
+    }));
     if (!r.ok || !d.ok) throw new Error(d.erro || `HTTP ${r.status}`);
     const e = d.etiqueta;
     estado.retItens.unshift({
@@ -3881,11 +3908,8 @@ async function imprimirEtiquetaSacoParcial() {
   btn.disabled = true;
   btn.textContent = '⏳ Imprimindo...';
 
-  // Garante sessão de retorno aberta
-  const sessaoId = await garantirSessao('retorno', null);
-
   try {
-    const resp = await fetch(URL_PRINT, {
+    const { resp, d: result } = await enviarNaSessao('retorno', null, sessaoId => fetch(URL_PRINT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -3896,8 +3920,7 @@ async function imprimirEtiquetaSacoParcial() {
         sub_tipo: 'aditivo-parcial',
         sessao_id: sessaoId
       })
-    });
-    const result = await resp.json();
+    }));
     if (!resp.ok || !result.ok) throw new Error(result.error || `HTTP ${resp.status}`);
   } catch(e) {
     btn.disabled = false;

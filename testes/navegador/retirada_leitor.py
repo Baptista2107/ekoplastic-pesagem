@@ -20,9 +20,18 @@ O leitor manda os caracteres + Enter como teclado USB. Confere, em 1366x768:
   6. /consumir que nunca responde: depois do teto, avisa "confira se saiu" e o
      bipe seguinte sai (a fila não trava);
   7. buffer: sobra de leitura sem Enter some depois de 1 s; Enter perdido entre
-     dois bipes → vale o último código, não o primeiro.
-Na tela de antes (c302b11) falha nos itens 1-7. Sai 1 se falhar."""
-import json, sys, urllib.parse
+     dois bipes → os DOIS códigos saem, na ordem (revisão B6: o leitor apitou
+     nos dois).
+  8. bipe com a confirmação de FINALIZAR aberta: não vai na sessão que está
+     fechando; com a tela pedindo a senha depois, não sai e avisa (revisão,
+     achado 1 — o bag saía sem baixa no Bling). Idem CANCELAR;
+  9. teclado da tela ("Digitar código") aberto: o Enter do leitor não aperta
+     o botão tocado por último, e o bipe avisa que NÃO saiu (revisão M2);
+ 10. depois do teto a lista é relida do servidor; "já foi retirada" NESTA
+     sessão não abre bloqueio (revisão M3);
+ 11. servidor responde sessao_fechada: abre outra sessão e repete uma vez.
+Na tela de antes (c302b11) falha nos itens 1-7; no 5dd9c56, em 7-11. Sai 1 se falhar."""
+import json, sys, time, urllib.parse
 from pathlib import Path
 sys.path.insert(0, "/home/ekoplastic/bling-claude")
 from playwright.sync_api import sync_playwright
@@ -30,12 +39,20 @@ from recorte_extrusao_operador import _navegador
 
 PUB = Path(sys.argv[1]); OUT = Path(sys.argv[2]); OUT.mkdir(parents=True, exist_ok=True)
 HTML = (PUB / "mp-retirada.html").read_text(encoding="utf-8")
-ACESSO = "window.EkoAcesso={exigir:(t,f)=>{window.EKO_RESPONSAVEL='TESTE';f('TESTE');}};"
+# encerrar() = o que o componente de verdade faz ao fim do processo: monta o
+# teclado de senha (bloqueando() passa a true até alguém entrar).
+ACESSO = ("window.EkoAcesso={exigir:(t,f)=>{window.EKO_RESPONSAVEL='TESTE';f('TESTE');},"
+          "encerrar:()=>{window._bloq=true;},bloqueando:()=>!!window._bloq};")
 
 FORA = {"R0000101", "R0000102", "R0000103", "R0000105", "R0000106"}   # bag fora do pedido
 JA = {"R0000201"}                                                      # já foi retirado
 TRAVA = {"R0000301"}                                                   # /consumir nunca responde
+JA_AQUI = {"R0000202"}                                                 # já saiu NESTA sessão
 CONSUMIDOS = []          # (id, corpo) dos /consumir que deram saída
+FECHADAS = set()         # sessões que o servidor falso já fechou
+SESS = {"prox": 777}
+EVENTOS = []             # ('consumir', id, sessao) / ('fechar', sessao) na ordem em que chegaram
+CHAMADAS = {"abertas": 0}
 PENDURADAS = []          # rotas que ficaram sem resposta de propósito
 falhas = []
 
@@ -64,9 +81,17 @@ def rota(route):
     if p == "/healthcheck":
         return J({"ok": True, "servidor": "online", "bling": {"conectado": True}})
     if p == "/sessoes" and req.method == "POST":
-        return J({"ok": True, "sessao_id": 777})
+        sid = SESS["prox"]; SESS["prox"] += 1
+        return J({"ok": True, "sessao_id": sid})
     if p.startswith("/sessoes/abertas"):
+        CHAMADAS["abertas"] += 1
         return J({"ok": True, "sessoes": []})
+    if p.startswith("/sessoes/") and (p.endswith("/finalizar") or p.endswith("/cancelar")):
+        sid = int(p.split("/")[2]); FECHADAS.add(sid); EVENTOS.append(("fechar", sid))
+        # O envio ao Bling demora: na tela de antes, o bipe que esperava a
+        # confirmação saía NESTE meio-tempo, ainda com o número desta sessão.
+        time.sleep(0.8)
+        return J({"ok": True, "sessao_id": sid, "bling": {"ok": True, "modo": "simulacao"}})
     if p == "/retirada/pedidos":
         return J({"ok": True, "modo": "teste", "pedidos": [{"id": "RM-1", "material_key": "GBD", "material_nome": "CARBONATO",
                   "fornecedor": "Karina", "lote": "", "bags_pedidos": 3, "bags_atendidos": 0, "status": "aberto",
@@ -77,8 +102,15 @@ def rota(route):
         if i in TRAVA:
             PENDURADAS.append(route)          # nunca responde
             return None
+        EVENTOS.append(("consumir", i, corpo.get("sessao_id")))
+        if corpo.get("sessao_id") in FECHADAS:
+            return J({"ok": False, "sessao_fechada": True, "sessao_id": corpo.get("sessao_id"),
+                      "erro": "sessão já fechada"}, 409)
         if i in JA:
             return J({"ok": False, "ja_consumida": True, "etiqueta": etiq(i), "consumo": {"id": "S0009999"}}, 409)
+        if i in JA_AQUI:
+            return J({"ok": False, "ja_consumida": True, "etiqueta": etiq(i),
+                      "consumo": {"id": "S0009998", "sessao_id": corpo.get("sessao_id")}}, 409)
         if i in FORA and not corpo.get("fora_do_pedido"):
             return J({"ok": False, "fora_do_pedido": True, "modo": "teste", "etiqueta": etiq(i),
                       "pedidos": [{"id": "RM-1", "material_nome": "CARBONATO", "fornecedor": "Karina", "lote": "",
@@ -136,7 +168,7 @@ def responder_motivo(pg):
 with sync_playwright() as p:
     nav = _navegador(p)
     ctx = nav.new_context(viewport={"width": 1366, "height": 768})
-    ctx.add_init_script("window.EKO_TETO_FETCH_MS = 2500;")
+    ctx.add_init_script("window.EKO_TETO_FETCH_MS = 2500; window.EKO_LEITOR_MAX_MS = 110;")
     pg = ctx.new_page(); erros = []
     pg.on("pageerror", lambda e: erros.append(str(e)))
     pg.route("**/*", rota)
@@ -195,7 +227,7 @@ with sync_playwright() as p:
     CONSUMIDOS.clear()
     bipar(pg, "R0000106", 500)
     clicar(pg, "#fora-motivos button[data-motivo='__outro']", 200)
-    pg.keyboard.type("lote errado", delay=120)       # gente digitando
+    pg.keyboard.type("lote errado", delay=200)       # gente digitando (teto do teste: 110 ms)
     bipar(pg, "R0000405", 400)                       # leitor no meio
     val = pg.evaluate("document.getElementById('fora-outro').value")
     ok(val == "lote errado", f"o código bipado não ficou no motivo ({val!r})")
@@ -231,7 +263,73 @@ with sync_playwright() as p:
     CONSUMIDOS.clear()
     pg.keyboard.type("R0000408")                     # Enter deste bipe se perdeu
     bipar(pg, "R0000409", 500)                       # e logo vem o próximo
-    ok(ids() == ["R0000409"], f"Enter perdido: vale o último código lido, não o primeiro ({ids()})")
+    ok(ids() == ["R0000408", "R0000409"], f"Enter perdido: os dois códigos saem, na ordem ({ids()})")
+
+    fechar_tudo(pg)
+    print("== 8. bipe com a confirmação de FINALIZAR aberta")
+    CONSUMIDOS.clear(); EVENTOS.clear()
+    sid = pg.evaluate("estado.sessaoId")
+    clicar(pg, "#btn-finalizar", 400)
+    ok(ativo(pg, "modal-confirmar"), "confirmação de finalizar aberta")
+    bipar(pg, "R0000421", 400)
+    ok("R0000421" not in ids(), "bipe com a confirmação aberta espera")
+    clicar(pg, "#conf-ok", 1200)
+    na_fechada = [e for e in EVENTOS if e[0] == "consumir" and e[1] == "R0000421" and e[2] == sid]
+    ok(not na_fechada, f"o bipe NÃO foi na sessão #{sid}, que estava fechando ({EVENTOS})")
+    ok(("fechar", sid) in EVENTOS, "a sessão foi finalizada")
+    ok("R0000421" not in ids() and "NÃO saiu" in toasts(pg),
+       f"com a senha pedida depois, o bag não sai e avisa ({toasts(pg)[:140]})")
+    pg.evaluate("window._bloq = false")             # alguém entrou com a senha
+    bipar(pg, "R0000422", 600)
+    novo = pg.evaluate("estado.sessaoId")
+    ok("R0000422" in ids() and novo and novo != sid, f"o bipe seguinte sai numa sessão nova (#{novo})")
+
+    fechar_tudo(pg)
+    print("== 8b. bipe com a confirmação de CANCELAR aberta")
+    CONSUMIDOS.clear(); EVENTOS.clear()
+    sid = pg.evaluate("estado.sessaoId")
+    clicar(pg, "#btn-cancelar", 400)
+    ok(ativo(pg, "modal-confirmar"), "confirmação de cancelar aberta")
+    bipar(pg, "R0000423", 400)
+    clicar(pg, "#conf-ok", 1200)
+    ok(not [e for e in EVENTOS if e[0] == "consumir" and e[2] == sid],
+       f"o bipe NÃO foi na sessão cancelada #{sid} ({EVENTOS})")
+    ok("R0000423" not in ids() and "NÃO saiu" in toasts(pg), "e avisa que não saiu")
+    pg.evaluate("window._bloq = false")
+
+    fechar_tudo(pg)
+    print("== 9. teclado da tela aberto e o leitor bipando")
+    CONSUMIDOS.clear()
+    clicar(pg, "button[onclick='simularBipe()']", 300)
+    ok(ativo(pg, "keypad-modal"), "teclado 'Digitar código' aberto")
+    clicar(pg, "#keypad-modal .kp-grid button:has-text('1')", 200)   # foco fica no '1'
+    bipar(pg, "R0000440", 500)
+    disp = pg.inner_text("#keypad-display").strip()
+    ok(disp == "R1", f"o Enter do leitor não apertou o botão em foco (visor {disp!r})")
+    ok("R0000440" not in ids() and "NÃO saiu" in toasts(pg), f"o bipe não saiu e avisa ({toasts(pg)[:120]})")
+    pg.evaluate("kpCancel()"); pg.wait_for_timeout(200)
+
+    fechar_tudo(pg)
+    print("== 10. depois do teto a lista é relida; já retirado NESTA sessão")
+    CONSUMIDOS.clear()
+    antes = CHAMADAS["abertas"]
+    bipar(pg, "R0000301", 0)
+    pg.wait_for_timeout(3200)
+    ok(CHAMADAS["abertas"] > antes, "passado o teto, a tela relê a sessão do servidor")
+    bipar(pg, "R0000202", 700)
+    ok(not ativo(pg, "modal-bloqueado"), "já saiu nesta retirada: sem janela de bloqueio")
+    ok("já está nesta retirada" in toasts(pg), f"avisa que já está na lista ({toasts(pg)[:120]})")
+
+    fechar_tudo(pg)
+    print("== 11. servidor diz que a sessão já fechou")
+    CONSUMIDOS.clear()
+    sid = pg.evaluate("estado.sessaoId")
+    FECHADAS.add(sid)
+    bipar(pg, "R0000430", 900)
+    cons = [c for c in CONSUMIDOS if c[0] == "R0000430"]
+    ok(cons and cons[0][1].get("sessao_id") not in FECHADAS,
+       f"abriu outra sessão e o bag saiu nela ({cons})")
+    ok("já tinha sido fechada" in toasts(pg), "e avisa que a anterior tinha fechado")
 
     ok(not erros, f"sem erro de JavaScript ({erros[:2]})")
     pg.screenshot(path=str(OUT / "retirada_leitor_fim.png"))
