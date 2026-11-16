@@ -22,7 +22,12 @@
 //  ignorado que a pasta do commit não tem (cert/, *.db, logs/), bit de
 //  skip-worktree que o git status esconde e outra sessão editando no meio —
 //  nos três casos a suíte passaria no clone com código que não é o commit
-//  (achado do revisor de 210cd40, reproduzido nos três).
+//  (achado do revisor de 210cd40, reproduzido nos três). Defesa a mais, para
+//  a variável forjada à mão no clone: no COMEÇO a pasta tem de estar como o
+//  git acabou de criar — nem arquivo ignorado (git status --ignored) nem bit
+//  de skip-worktree/assume-unchanged (git ls-files -v). Edição de outra sessão
+//  no meio da suíte com a variável forjada continua fora do alcance: quem
+//  forja a variável no clone compartilhado assume esse risco.
 //  APROVEITA (pre-push): só numa pasta limpa cujo HEAD é o commit perguntado
 //  — o pre-push pergunta de dentro da pasta temporária do commit, sempre limpa.
 //  Vale 24 h (o mesmo prazo do bling): teste que depende de data/hora volta a
@@ -69,13 +74,19 @@ function chave({ arvore, node, lock }) {
     .update(`arvore=${arvore}\nnode=${node}\nlock=${lock}\n`).digest('hex');
 }
 
-// Estado da pasta: { limpa, head, chave } ou null (sem git / não é a raiz).
+// Estado da pasta ou null (sem git / não é a raiz):
+//   limpa    — git status sem nada (nem arquivo novo fora do .gitignore);
+//   intocada — limpa E sem arquivo ignorado E sem bit de skip-worktree/
+//              assume-unchanged: a pasta como o git acabou de criar do commit.
 function estado() {
   try {
     if (path.resolve(git(['rev-parse', '--show-toplevel'])) !== path.resolve(ROOT)) return null;
     const sujo = git(['status', '--porcelain=v1', '--untracked-files=all']);
+    const ignorados = git(['status', '--porcelain=v1', '--untracked-files=all', '--ignored']);
+    const escondidos = git(['ls-files', '-v']).split('\n').some(l => /^(S|[a-z])/.test(l));
     const head = git(['rev-parse', 'HEAD']);
-    return { limpa: sujo === '', head, chave: chaveDoCommit(head) };
+    return { limpa: sujo === '', intocada: ignorados === '' && !escondidos,
+             head, chave: chaveDoCommit(head) };
   } catch (e) { return null; }
 }
 
@@ -86,16 +97,19 @@ function chaveDoCommit(commit) {
   return chave({ arvore, node: process.version, lock });
 }
 
-// O pre-push passa o commit que acabou de pôr na pasta temporária.
-function pedidoPeloHook() {
-  return process.env.EKO_APROVADOS_GRAVAR || '';
+// O pre-push passa o commit que acabou de pôr na pasta temporária. Lido UMA
+// vez e tirado do ambiente: os testes filhos não herdam o pedido (achado do
+// revisor de 36d7747 — o aprovados-por-arvore.js ficava vermelho no pre-push).
+function tirarPedidoDoHook() {
+  const pedido = process.env.EKO_APROVADOS_GRAVAR || '';
+  delete process.env.EKO_APROVADOS_GRAVAR;
+  return pedido;
 }
 
-// rodar-todos.js: grava se foi o pre-push que pediu para ESTE commit e começo
-// e fim batem (mesmo HEAD, limpa nos dois).
-function gravar(inicio, fim) {
-  const pedido = pedidoPeloHook();
-  if (!pedido || !inicio || !fim || !inicio.limpa || !fim.limpa ||
+// rodar-todos.js: grava se foi o pre-push que pediu para ESTE commit, a pasta
+// estava intocada no começo, limpa no fim, e o HEAD é o mesmo.
+function gravar(pedido, inicio, fim) {
+  if (!pedido || !inicio || !fim || !inicio.intocada || !fim.limpa ||
       inicio.head !== fim.head) return false;
   try { if (git(['rev-parse', `${pedido}^{commit}`]) !== fim.head) return false; }
   catch (e) { return false; }
@@ -132,7 +146,7 @@ function limparVencidas() {
   } catch (e) { /* pasta ainda não existe */ }
 }
 
-module.exports = { chave, estado, gravar, jaAprovado, limparVencidas, pasta, pedidoPeloHook };
+module.exports = { chave, estado, gravar, jaAprovado, limparVencidas, pasta, tirarPedidoDoHook };
 
 if (require.main === module) {
   const [cmd, commit] = process.argv.slice(2);

@@ -44,7 +44,9 @@ const log   = path.join(base, 'rodou.log');
 // Ambiente sem GIT_* (este teste pode estar rodando DENTRO de um pre-push).
 const env = { EKO_TESTES_APROVADOS: marcas, EKO_FALSO_LOG: log,
               GIT_CONFIG_NOSYSTEM: '1', GIT_TERMINAL_PROMPT: '0' };
-for (const [k, v] of Object.entries(process.env)) if (!k.startsWith('GIT_') && !(k in env)) env[k] = v;
+// Nem o pedido do pre-push de FORA (este teste roda dentro dele no push real).
+for (const [k, v] of Object.entries(process.env))
+  if (!k.startsWith('GIT_') && k !== 'EKO_APROVADOS_GRAVAR' && !(k in env)) env[k] = v;
 
 function sh(cmd, args, cwd = repo) {
   const r = spawnSync(cmd, args, { cwd, env, encoding: 'utf8', timeout: 120000 });
@@ -70,7 +72,8 @@ try {
   for (const f of ['rodar-todos.js', '_aprovados.js'])
     fs.copyFileSync(path.join(__dirname, f), path.join(repo, 'testes', f));
   escrever('testes/falso.js',
-    "const fs=require('fs');fs.appendFileSync(process.env.EKO_FALSO_LOG,'rodou\\n');" +
+    "const fs=require('fs');fs.appendFileSync(process.env.EKO_FALSO_LOG," +
+    "'rodou pedido='+(process.env.EKO_APROVADOS_GRAVAR||'nenhum')+'\\n');" +
     "process.exit(fs.readFileSync(__dirname+'/../resultado.txt','utf8').trim()==='passa'?0:1);\n");
   escrever('resultado.txt', 'passa\n');
   escrever('arquivo.txt', 'v1\n');
@@ -88,6 +91,8 @@ try {
   ok(r.rc === 0 && /testando/.test(r.out), '1º push roda a suíte e passa', r.out);
   ok(vezes() === 1, `1º push: a suíte rodou 1 vez (rodou ${vezes()})`);
   ok(nMarcas() === 1, `1º push verde grava 1 marca (há ${nMarcas()})`);
+  ok(fs.readFileSync(log, 'utf8').trim() === 'rodou pedido=nenhum',
+     'o teste chamado pelo rodar-todos do hook NÃO herda o pedido de gravar', fs.readFileSync(log, 'utf8'));
 
   // 2. mesma árvore em commit NOVO (só a mensagem muda) → pula, e diz numa linha
   commit('c1 de novo, mesma árvore', '--allow-empty');
@@ -153,11 +158,20 @@ try {
   fs.rmSync(path.join(repo, 'solto.txt'));
   r = comoHook({ EKO_APROVADOS_GRAVAR: g('rev-parse', 'HEAD~1').out.trim() });
   ok(r.status === 0 && nMarcas() === 2, `pedido do hook para OUTRO commit: NÃO grava (há ${nMarcas()})`, r.stdout);
-  escrever('ignorado.txt', 'no .gitignore: não conta\n');
+  //    pedido forjado à mão no clone: arquivo ignorado ou skip-worktree no começo → não grava
+  escrever('ignorado.txt', 'só no clone\n');
+  r = comoHook();
+  ok(r.status === 0 && nMarcas() === 2 && /NÃO gravada/.test(r.stdout),
+     `pedido forjado + arquivo IGNORADO na pasta: NÃO grava (há ${nMarcas()})`, r.stdout);
+  fs.rmSync(path.join(repo, 'ignorado.txt'));
+  g('update-index', '--skip-worktree', 'arquivo.txt');
+  r = comoHook();
+  ok(r.status === 0 && nMarcas() === 2 && /NÃO gravada/.test(r.stdout),
+     `pedido forjado + skip-worktree: NÃO grava (há ${nMarcas()})`, r.stdout);
+  g('update-index', '--no-skip-worktree', 'arquivo.txt');
   r = comoHook();
   ok(r.status === 0 && nMarcas() === 3 && /marca de aprovado gravada/.test(r.stdout),
-     `pedido do hook + pasta limpa (arquivo do .gitignore não conta): grava (há ${nMarcas()})`, r.stdout);
-  fs.rmSync(path.join(repo, 'ignorado.txt'));
+     `pedido do hook + pasta como o git criou: grava (há ${nMarcas()})`, r.stdout);
   ok(sh('node', ['testes/_aprovados.js', 'ja-aprovado', 'HEAD']).rc === 0, 'árvore aprovada + pasta limpa: aproveita');
   escrever('solto.txt', 'não commitado\n');
   ok(sh('node', ['testes/_aprovados.js', 'ja-aprovado', 'HEAD']).rc === 1, 'árvore aprovada + arquivo solto: NÃO aproveita');
