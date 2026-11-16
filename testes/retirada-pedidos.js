@@ -33,6 +33,14 @@ const TMP_TOK  = path.join(os.tmpdir(), `eko_rp_tok_${C}.json`);
 
 let passou = 0, falhou = 0, servidor, vps, portaVps = 0;
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+// Espera a CONDIÇÃO (até `ms`), não um tempo fixo: com a VPS carregada e os
+// testes em nice 19, o envio da fila passou dos 500 ms fixos (16/11, push
+// recusado com o código certo). Falso no fim = o teste reprova igual.
+async function ate(cond, ms = 10000) {
+  const fim = Date.now() + ms;
+  while (Date.now() < fim) { if (await cond()) return true; await sleep(100); }
+  return !!(await cond());
+}
 function ok(cond, msg, extra) {
   if (cond) { passou++; console.log(`  \x1b[32m✓\x1b[0m ${msg}`); }
   else { falhou++; console.log(`  \x1b[31m✗\x1b[0m ${msg}`);
@@ -529,7 +537,7 @@ const registro = virtId => { const l = lerDb('SELECT pedido_retirada FROM etique
     VPS.recebidos = [];
     const bom = await bag('181126');
     await consumir(bom, sRet, { fora_do_pedido: { motivo: 'Lote pedido acabou', pedido_id: 'PF' } });
-    await sleep(500);
+    await ate(() => VPS.recebidos.some(b => b.etiqueta_id === bom));
     ok(VPS.recebidos.some(b => b.etiqueta_id === bom), 'o motivo seguinte chega à VPS mesmo com um item antigo na frente', VPS.recebidos);
     const cfg2 = (await req('GET', '/config')).body.config;
     const fila = JSON.parse(cfg2.retirada_fora_fila || '{}');
@@ -541,7 +549,12 @@ const registro = virtId => { const l = lerDb('SELECT pedido_retirada FROM etique
     VPS.recebidos = [];
     const bom2 = await bag('191126');
     await consumir(bom2, sRet, { fora_do_pedido: { motivo: 'Bag do lote não achado', pedido_id: 'PF' } });
-    await sleep(500);
+    await ate(async () => {
+      const c = (await req('GET', '/config')).body.config;
+      return VPS.recebidos.some(b => b.etiqueta_id === bom2)
+        && !JSON.parse(c.retirada_fora_fila || '{}').O0000009
+        && !!JSON.parse(c.retirada_fora_recusados || '{}').O0000009;
+    });
     const cfg3 = (await req('GET', '/config')).body.config;
     const fila3 = JSON.parse(cfg3.retirada_fora_fila || '{}');
     const recus = JSON.parse(cfg3.retirada_fora_recusados || '{}');
