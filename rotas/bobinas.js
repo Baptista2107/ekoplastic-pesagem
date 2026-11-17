@@ -17,6 +17,7 @@ const {
   SQL_PACOTES_PARTE, sugerirFormato, TARAS_EIXO, turnoCorteAberto, TURNOS_CORTE,
   turnosBaixaBobina, txtPacotes,
 } = require('../lib/bobinas');
+const { turnoCorteAtrasado } = require('../lib/turno-corte-hora');
 const { jsonErr, jsonOk, lerBodyJson, NAO_TRATADA } = require('../lib/http');
 
 // Devolve NAO_TRATADA quando nenhuma rota daqui atende o pedido.
@@ -341,7 +342,11 @@ async function rotasBobinas(req, res, parsed, pathname) {
   // ── Turno do corte (ver turnoCorteAberto, lá em cima) ──
   // GET: o turno aberto de cada sacoleira e os últimos registros.
   if (pathname === '/bobinas/turno-corte' && req.method === 'GET') {
-    const sacoleiras = ['P1', 'P2'].map(p => ({ sacoleira: p, turno: turnoCorteAberto(p) }));
+    // atrasado (17/11/2026): turno aberto que passou da hora de fim → aviso no card.
+    const sacoleiras = ['P1', 'P2'].map(p => {
+      const t = turnoCorteAberto(p);
+      return { sacoleira: p, turno: t ? { ...t, atrasado: turnoCorteAtrasado(t) } : null };
+    });
     const recentes = db.prepare(`SELECT * FROM turnos_corte ORDER BY inicio DESC, id DESC LIMIT 12`).all();
     return jsonOk(res, { sacoleiras, recentes,
                          turnos: Object.entries(TURNOS_CORTE).map(([codigo, label]) => ({ codigo, label })) });

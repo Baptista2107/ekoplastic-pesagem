@@ -241,6 +241,15 @@
   .tc-txt b.sem{color:var(--ambar);}
   .tc-txt small{font-size:13px; font-weight:700; letter-spacing:0; color:var(--muted);}
   .tc-linha .btn{flex:0 0 auto; min-height:48px; font-size:15px; padding:8px 14px;}
+  /* 17/11/2026 (Gustavo): turno que passou da hora sem "Encerrar turno" — o
+     card inteiro avisa, piscando, até alguém encerrar. */
+  .tc.atrasado{border-color:var(--vermelho); animation:tc-pisca 1.2s ease-in-out infinite;}
+  @keyframes tc-pisca{0%,100%{background:var(--panel);} 50%{background:#3b1414;}}
+  .tc-atraso{margin-top:10px; padding:10px 12px; border-radius:10px; background:var(--vermelho); color:#2a0707;
+             font-size:17px; font-weight:900; line-height:1.25;}
+  .tc-atraso small{display:block; font-size:13px; font-weight:800; margin-top:3px;}
+  .l-atraso{margin-top:10px; padding:8px 10px; border-radius:10px; background:#3b1414; border:1.5px solid var(--vermelho);
+            color:var(--vermelho); font-size:14px; font-weight:800; line-height:1.3;}
   .btn-vermelho{background:var(--vermelho); color:#2a0707;}
   .modal input.senha{font-size:24px; letter-spacing:6px;}
 
@@ -433,6 +442,7 @@ async function onLeu(codigo){
         '<div class="l-orig">'+orig+'</div>'+
         '<div class="l-per">MONTAR NA SACOLEIRA</div>'+
         '<div class="destinos">'+botao('P1')+botao('P2')+'</div>'+
+        (avisoTurnoAtrasado()?'<div class="l-atraso">‼️ '+avisoTurnoAtrasado()+'. Esta bobina vai entrar nesse turno: peça ao supervisor para encerrar o turno antes de bipar.</div>':'')+
         (comTurno.some(p=>(ABERTAS.find(a=>a.sacoleira===p)||{}).bobina)?
           '<div class="l-orig" style="color:var(--ambar);font-weight:700;margin-top:10px">Sacoleira ocupada: antes de bipar a nova, toque em <b>✓ Bobina finalizou</b> no card dela.</div>':'')+
         '<button class="btn-link" onclick="cancelarLeitura()">Cancelar</button>'+
@@ -1174,10 +1184,22 @@ async function carregarTurnoCorte(){
   else if(!algumSem && abertos.every(s=>s.turno.turno===t0.turno))
     txt='<b>'+esc(lb(t0.turno))+'</b><small>desde '+desde(abertos.map(s=>s.turno.inicio).sort()[0])+'</small>';
   else txt='<b'+(algumSem?' class="sem"':'')+'>'+TC.sacoleiras.map(s=>s.sacoleira+' '+(s.turno?esc(lb(s.turno.turno)):'sem turno')).join(' · ')+'</b>';
-  el.className='tc'+(algumSem?' sem':'');
+  const atraso=avisoTurnoAtrasado();
+  el.className='tc'+(algumSem?' sem':'')+(atraso?' atrasado':'');
   el.innerHTML='<div class="tc-linha"><div class="tc-txt">TURNO DO CORTE'+txt+'</div>'+
     (algumSem?'<button class="btn btn-verde" onclick="turnoCorte(\'iniciar\')">Iniciar turno</button>':'')+
-    (abertos.length?'<button class="btn btn-vermelho" onclick="turnoCorte(\'encerrar\')">Encerrar turno</button>':'')+'</div>';
+    (abertos.length?'<button class="btn btn-vermelho" onclick="turnoCorte(\'encerrar\')">Encerrar turno</button>':'')+'</div>'+
+    (atraso?'<div class="tc-atraso">‼️ '+atraso+' — ENCERRE O TURNO<small>O supervisor encerra e inicia o próximo. Até lá, o que for bipado e lançado entra no turno que já acabou.</small></div>':'');
+}
+// Turno aberto que passou da hora de fim (17/11/2026): o servidor decide
+// (lib/turno-corte-hora.js) e manda `atrasado`; aqui só o texto.
+// "TURNO C PASSOU DAS 06:00 (há 2h 20min)" ou '' se nenhum passou.
+function avisoTurnoAtrasado(){
+  const lb=c=>(TC.turnos.find(t=>t.codigo===c)||{}).label||c;
+  const vistos={};
+  TC.sacoleiras.forEach(s=>{ const a=s.turno&&s.turno.atrasado; if(a) vistos[s.turno.turno]=vistos[s.turno.turno]||a; });
+  return Object.keys(vistos).map(k=>esc(lb(k)).toUpperCase()+' PASSOU DAS '+hora(vistos[k].fim_previsto)+
+    ' ('+haQuanto(vistos[k].fim_previsto)+')').join(' · ');
 }
 function turnoCorte(acao){
   const iniciar=acao==='iniciar';
