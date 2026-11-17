@@ -13,6 +13,8 @@
 //   [4] Outras pesagens (borra) continuam com a EKOPLASTIC.
 //   [5] Banco sem as chaves novas (estação antiga, chave apagada): cai na
 //       EKOPLASTIC, nunca manda contato vazio.
+//   [6] Chave nova preenchida e id_ekoplastic_bling vazio: envia com a nova
+//       (antes a checagem olhava só o id da EKOPLASTIC → pendente_config).
 //
 //  Como rodar:   node testes/contato-retirada-retorno.js
 // ════════════════════════════════════════════════════════════════════
@@ -173,6 +175,14 @@ async function outras() {
     ok(v2 && v2.corpo.contato && v2.corpo.contato.id === ID_EKO, 'retirada sem a chave: contato 17804838271', v2 && v2.corpo.contato);
     const c2 = await retorno();
     ok(c2 && c2.corpo.fornecedor && c2.corpo.fornecedor.id === ID_EKO, 'retorno sem a chave: fornecedor 17804838271', c2 && c2.corpo.fornecedor);
+
+    console.log('\n[6] Chave nova preenchida e a da EKOPLASTIC vazia: envia mesmo assim');
+    await req('POST', '/config', { id_retirada_mp_bling: String(ID_RETIRADA), id_retorno_mp_bling: String(ID_RETORNO) });
+    cfgDel(DB1, 'id_ekoplastic_bling');
+    const v3 = await retirada();
+    ok(v3 && v3.corpo.contato && v3.corpo.contato.id === ID_RETIRADA, 'retirada vai com 18523718529 (não fica pendente_config)', v3 && v3.corpo.contato);
+    const c3 = await retorno();
+    ok(c3 && c3.corpo.fornecedor && c3.corpo.fornecedor.id === ID_RETORNO, 'retorno vai com 18524168362 (não fica pendente_config)', c3 && c3.corpo.fornecedor);
   } catch (e) {
     falhou++;
     console.error('\n\x1b[31mERRO NO TESTE:\x1b[0m', e.stack || e.message);
