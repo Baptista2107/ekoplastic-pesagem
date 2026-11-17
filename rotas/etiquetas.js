@@ -244,10 +244,14 @@ async function rotasEtiquetas(req, res, parsed, pathname) {
         ja_consumida: true, etiqueta: aplicarSubstituicao(orig), consumo: jaRetirada,
       });
     }
-    if (decisao.registro && decisao.registro.fora) {
+    // Só o motivo escrito vai à VPS (aviso por bag ao autor do pedido). Bag fora
+    // SEM motivo (teste, 17/11) não vai: a VPS o acha sozinha — S que nenhum
+    // pedido levou — e avisa no "Retirada de MP SEM pedido" (Willian + Gustavo).
+    // Mandar aqui tiraria o bag desse aviso (a VPS pula quem já tem motivo).
+    if (decisao.registro && decisao.registro.fora && decisao.registro.motivo) {
       pedidosRetirada.enfileirarFora({
         etiqueta_id: origId, sessao_id: sessaoIdRet, operador: sessao.operador || null,
-        motivo: decisao.registro.motivo || '(teste) seguiu sem motivo', pedido_id: decisao.registro.pedido_id });
+        motivo: decisao.registro.motivo, pedido_id: decisao.registro.pedido_id });
       pedidosRetirada.enviarFila().catch(() => {});
     }
     if (bagLiberado) avisarMapa();

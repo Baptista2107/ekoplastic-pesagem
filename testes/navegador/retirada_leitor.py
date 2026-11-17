@@ -80,6 +80,10 @@ ACESSO = ("window.EkoAcesso={exigir:(t,f)=>{window.EKO_RESPONSAVEL='TESTE';f('TE
 
 FORA = {"R0000101", "R0000102", "R0000103", "R0000105", "R0000106"}   # bag fora do pedido
 JA = {"R0000201"}                                                      # já foi retirado
+# Fora do pedido com a regra REAL do Mini PC em modo teste (17/11): 409 só se a
+# tela pedir checar_pedido; sem ele o bag sai direto (Gustavo: "essa do motivo
+# não precisa mais").
+FORA_TESTE = {"R0000601"}
 TRAVA = {"R0000301"}                                                   # /consumir nunca responde
 JA_AQUI = {"R0000202"}                                                 # já saiu NESTA sessão
 LENTO = {"R0000101": 1.2,   # /consumir que demora (s): o Mini PC ocupado; passa dos 700 ms do aviso antigo
@@ -176,6 +180,10 @@ def rota(route):
         if i in JA_AQUI:
             return J({"ok": False, "ja_consumida": True, "etiqueta": etiq(i),
                       "consumo": {"id": "S0009998", "sessao_id": corpo.get("sessao_id")}}, 409)
+        if i in FORA_TESTE and corpo.get("checar_pedido") and not corpo.get("fora_do_pedido"):
+            return J({"ok": False, "fora_do_pedido": True, "modo": "teste", "etiqueta": etiq(i),
+                      "pedidos": [{"id": "RM-1", "material_nome": "CARBONATO", "fornecedor": "Karina", "lote": "",
+                                   "bags_pedidos": 3, "bags_atendidos": 0}]}, 409)
         if i in FORA and not corpo.get("fora_do_pedido"):
             return J({"ok": False, "fora_do_pedido": True, "modo": "teste", "etiqueta": etiq(i),
                       "pedidos": [{"id": "RM-1", "material_nome": "CARBONATO", "fornecedor": "Karina", "lote": "",
@@ -705,6 +713,15 @@ with sync_playwright() as p:
     ok(ate(pg, lambda: "R0000492" in ids(), ms=ESPERA_MS + 8000),
        f"o bipe seguinte sai mesmo assim (a fila não trava) ({toasts(pg)[-160:]})")
     CANCELAR_PENDURA["ligado"] = False
+
+    fechar_tudo(pg)
+    print("== 20. modo teste: bag fora do pedido sai direto, sem janela de motivo (17/11)")
+    CONSUMIDOS.clear(); limpar_toasts(pg)
+    bipar(pg, "R0000601")
+    ok(ate(pg, lambda: "R0000601" in ids()), f"o bag fora do pedido saiu ({toasts(pg)[-120:]})")
+    ok(not ativo(pg, "modal-fora"), "e a janela de motivo NÃO abriu")
+    ok(all(not c.get("checar_pedido") for i, c in CONSUMIDOS if i == "R0000601"),
+       "a tela não pede checar_pedido (é o que faz o servidor em teste deixar sair)")
 
     ok(not erros, f"sem erro de JavaScript ({erros[:2]})")
     pg.screenshot(path=str(OUT / "retirada_leitor_fim.png"))

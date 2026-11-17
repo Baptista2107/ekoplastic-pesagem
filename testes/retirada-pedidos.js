@@ -214,14 +214,20 @@ const registro = virtId => { const l = lerDb('SELECT pedido_retirada FROM etique
     const r3 = c3b.body && c3b.body.etiqueta_virtual && registro(c3b.body.etiqueta_virtual.id);
     ok(c3b.status === 200 && r3 && r3.fora === true && r3.motivo === null && r3.modo === 'teste',
        'em teste, "seguir sem motivo" deixa sair e registra fora do pedido', { st: c3b.status, r3 });
+    // 17/11 (Gustavo: "essa do motivo não precisa mais"): fora SEM motivo não
+    // vai à VPS como "fora do pedido" — se fosse, a VPS tiraria a S do aviso
+    // "Retirada de MP SEM pedido" (Willian + Gustavo), que pula quem tem motivo.
+    // Antes daqui o Mini PC mandava "(teste) seguiu sem motivo".
     await sleep(300);
-    ok(VPS.recebidos.length === 1 && VPS.recebidos[0].etiqueta_id === a3 && /teste/.test(VPS.recebidos[0].motivo),
-       'a VPS recebe o aviso de fora do pedido (motivo "(teste) seguiu sem motivo")', VPS.recebidos);
+    ok(VPS.recebidos.length === 0,
+       'fora SEM motivo não vai à VPS como "fora do pedido" (fica para o aviso SEM pedido)', VPS.recebidos);
     const b4 = await bag('999999');
     const c4 = await consumir(b4, sRet);
-    ok(c4.status === 200, 'tela antiga (sem checar_pedido) em teste não é barrada', c4.body);
+    const r4 = c4.body && c4.body.etiqueta_virtual && registro(c4.body.etiqueta_virtual.id);
+    ok(c4.status === 200 && r4 && r4.fora === true && r4.motivo === null,
+       'a tela de hoje (sem checar_pedido) em teste: bag fora sai direto, sem janela, e fica registrado', c4.body);
     await sleep(300);
-    ok(VPS.recebidos.length === 2 && VPS.recebidos[1].etiqueta_id === b4, 'e também avisa a VPS', VPS.recebidos);
+    ok(VPS.recebidos.length === 0, 'e também não vai à VPS como "fora do pedido"', VPS.recebidos);
 
     console.log('\n[3] Modo PRODUÇÃO');
     VPS.modo = 'producao'; VPS.pedidos = []; await req('GET', '/retirada/pedidos'); VPS.recebidos = [];

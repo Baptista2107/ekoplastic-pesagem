@@ -1337,10 +1337,13 @@ async function processarBipeAgora(raw) {
     return res;
   };
 
-  // 2) Tenta consumir. checar_pedido: bag fora dos pedidos do painel volta
-  // 409 fora_do_pedido (inclusive em teste) para a tela perguntar o motivo.
+  // 2) Tenta consumir. Sem checar_pedido (Gustavo 17/11: "essa do motivo não
+  // precisa mais, preciso saber quando saiu algo sem ser pedido"): em teste o
+  // bag fora do pedido sai direto, sem janela, e a VPS avisa no Telegram as S
+  // que nenhum pedido levou. Em produção o servidor ainda devolve 409
+  // fora_do_pedido e a janela de motivo abre (modo só muda pela VPS).
   try {
-    let res = await consumirNaSessao({ checar_pedido: true });
+    let res = await consumirNaSessao({});
     if (!res) return;
     let { r, d } = res;
 
