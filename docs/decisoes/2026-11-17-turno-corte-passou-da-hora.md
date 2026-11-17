@@ -49,8 +49,6 @@ de 11/11 (encerrado às 22:21) veria. O teste confere os 9 casos reais.
 ## Sem medir
 - Se o aviso no coletor é visto às 6h. Medir: quantas vezes o turno passa da hora
   daqui em diante (`turnos_corte`, encerramento mais de 15 min depois do fim).
-- A começa às 18:30 por engano: o fim previsto vira o dia seguinte às 18:00, e o
-  aviso não sai. Nunca aconteceu nos dados medidos.
 - Sábado sem A e domingo sem turno: o aviso só olha o turno aberto, então não muda nada.
 
 ## Testes
@@ -60,3 +58,16 @@ de 11/11 (encerrado às 22:21) veria. O teste confere os 9 casos reais.
 - `testes/navegador/turno_atrasado_coletor.py` (Chromium da VPS, fora do
   rodar-todos): card, bipagem e "encerrar apaga" em 360, 390 e 414 px, sem rolar.
   Fica vermelho com a tela de antes.
+
+## Revisor de 545c123 (17/11): 3 consertos
+- Turno aberto DEPOIS da própria hora de fim (C às 06:05, A às 18:20, EXTRA às
+  22:05) ficava ~24 h sem aviso. Agora cada turno tem duração máxima (A 14 h,
+  EXTRA 8 h, C 14 h). Passou disso, vale o fim do próprio dia, e o aviso sai já.
+  C aberto às 18:00 (dia sem EXTRA, 12 h) segue normal.
+- O texto diz a sacoleira ("TURNO C PASSOU DAS 06:00 NA P1"). Antes, com só a
+  P1 atrasada, a bipagem dava a entender que a bobina da P2 também entraria no
+  turno atrasado.
+- Hora e minutos vêm do Mini PC (`fim_hora`, `minutos`), não do relógio nem do
+  fuso do coletor. O texto saiu para `public/turno-atrasado.js`, testado no Node.
+- O teste do servidor dependia da hora em que rodava (falharia em todo push entre
+  18:15 e 23:59). Agora não depende mais.

@@ -18,8 +18,8 @@ Confere em 360x640 (TC60), 390x844 e 414x896: sem atraso o card é o de sempre;
 com atraso o card pisca e diz o turno e a hora; a bipagem avisa e AINDA deixa
 montar (aviso, não trava); encerrar o turno apaga o aviso; e a operação cabe sem
 rolar. Sem o aviso (tela de antes) falha já no item 2. Sai 1 se falhar.
-Só faz sentido depois das 06:15 (hora local): antes disso o C de ontem ainda não
-passou da folga — aí o teste diz e sai 0 sem conferir o aviso."""
+Não depende da hora em que roda: o turno "no horário" é o da hora de agora, e o
+atrasado é um C aberto anteontem às 22:00."""
 import json, os, shutil, sqlite3, subprocess, sys, tempfile, time, urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -62,8 +62,11 @@ def rodada(pw, larg, alt, porta):
                      VALUES ('E9950001', 9950001, 'extrusao', 'BOBINA', '-', '-', 400, 'E9950001', 'BOB-TESTE', 'bipada', ?,
                              'BRANCO', '1,20', 'LISA', 'E1', 'TESTE')""", (agora,))
         c.commit(); c.close()
-        s, _ = api(base, "POST", "/bobinas/turno-corte/iniciar", {"turno": "C", "maquinas": ["P1", "P2"]})
-        ok(s == 200, f"[{larg}] turno C aberto nas duas")
+        # o turno CERTO para a hora de agora (o teste não depende de quando roda)
+        h = datetime.now().hour
+        turno_agora = "C" if h < 6 else "A" if h < 18 else "EXTRA" if h < 22 else "C"
+        s, _ = api(base, "POST", "/bobinas/turno-corte/iniciar", {"turno": turno_agora, "maquinas": ["P1", "P2"]})
+        ok(s == 200, f"[{larg}] turno {turno_agora} (o da hora) aberto nas duas")
 
         br = _navegador(pw)
         pg = br.new_page(viewport={"width": larg, "height": alt})
@@ -75,16 +78,16 @@ def rodada(pw, larg, alt, porta):
         ok("atrasado" not in (tc.get_attribute("class") or "") and pg.locator(".tc-atraso").count() == 0,
            f"[{larg}] turno no horário: card sem aviso")
 
-        # 2. o C passa a ter começado ontem 22:00 → depois das 06:15 está atrasado
-        ontem22 = (datetime.now() - timedelta(days=1)).replace(hour=22, minute=0, second=0, microsecond=0)
+        # 2. as duas viram um C aberto ANTEONTEM 22:00 → fim ontem 06:00, atrasado
+        ini22 = (datetime.now() - timedelta(days=2)).replace(hour=22, minute=0, second=0, microsecond=0)
+        iso = lambda d: d.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
         c = sqlite3.connect(db)
-        c.execute("UPDATE turnos_corte SET inicio=? WHERE fim IS NULL",
-                  (ontem22.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),))
+        c.execute("UPDATE turnos_corte SET turno='C', inicio=? WHERE fim IS NULL", (iso(ini22),))
         c.commit(); c.close()
         pg.evaluate("carregarTurnoCorte()"); pg.wait_for_timeout(800)
         aviso = pg.locator(".tc-atraso").inner_text() if pg.locator(".tc-atraso").count() else ""
         ok("atrasado" in (tc.get_attribute("class") or ""), f"[{larg}] card do turno ganha a classe atrasado (pisca)")
-        ok("TURNO C PASSOU DAS 06:00" in aviso and "ENCERRE O TURNO" in aviso and "há " in aviso,
+        ok("TURNO C PASSOU DAS 06:00 NA P1 E P2" in aviso and "ENCERRE O TURNO" in aviso and "há " in aviso,
            f"[{larg}] aviso diz o turno, a hora e há quanto: {aviso[:90]!r}")
         anim = pg.evaluate("getComputedStyle(document.getElementById('turno-corte')).animationName")
         ok(anim == "tc-pisca", f"[{larg}] animação ligada: {anim}")
@@ -95,10 +98,26 @@ def rodada(pw, larg, alt, porta):
         # 3. bipagem: avisa, mas deixa montar (aviso, não trava)
         pg.evaluate("onLeu('E9950001')"); pg.wait_for_timeout(700)
         la = pg.locator(".lida .l-atraso")
-        ok(la.count() == 1 and "TURNO C PASSOU DAS 06:00" in la.inner_text(), f"[{larg}] bipagem mostra o aviso")
+        ok(la.count() == 1 and "TURNO C PASSOU DAS 06:00 NA P1 E P2" in la.inner_text(), f"[{larg}] bipagem mostra o aviso")
         b = pg.locator(".btn-destino[data-destino='P1']")
         ok(b.count() == 1 and b.is_enabled(), f"[{larg}] e a P1 continua liberada para montar")
         pg.screenshot(path=str(OUT / f"turno_atrasado_{larg}x{alt}_bipagem.png"))
+        pg.evaluate("cancelarLeitura()")
+
+        # 3b. só a P1 atrasada (a P2 volta ao turno da hora): a bipagem avisa da P1,
+        #     e o texto não fala da P2 (revisor 17/11)
+        c = sqlite3.connect(db)
+        c.execute("UPDATE turnos_corte SET turno=?, inicio=? WHERE fim IS NULL AND maquina='P2'",
+                  (turno_agora, iso(datetime.now())))
+        c.commit(); c.close()
+        pg.evaluate("carregarTurnoCorte()"); pg.wait_for_timeout(800)
+        aviso = pg.locator(".tc-atraso").inner_text() if pg.locator(".tc-atraso").count() else ""
+        ok("NA P1 (" in aviso and "P2" not in aviso.split("—")[0], f"[{larg}] só a P1 atrasada: card diz NA P1: {aviso[:70]!r}")
+        # mesma etiqueta de novo: limpa o anti-repetição da câmera (2,5 s), como a digitação manual
+        pg.evaluate("delete ultimoBipe['E9950001']; onLeu('E9950001')"); pg.wait_for_timeout(700)
+        la = pg.locator(".lida .l-atraso")
+        ok(la.count() == 1 and "NA P1 (" in la.inner_text() and "P2" not in la.inner_text(),
+           f"[{larg}] bipagem avisa só da P1")
         pg.evaluate("cancelarLeitura()")
 
         # 4. encerrar (sem bobina montada) apaga o aviso
@@ -111,9 +130,6 @@ def rodada(pw, larg, alt, porta):
     finally:
         srv.kill(); srv.wait(timeout=10); shutil.rmtree(tmp, ignore_errors=True)
 
-if datetime.now() < datetime.now().replace(hour=6, minute=16, second=0, microsecond=0):
-    print("antes das 06:16: o C de ontem 22:00 ainda está na folga — nada a conferir")
-    sys.exit(0)
 with sync_playwright() as pw:
     for i, (l, a) in enumerate(((360, 640), (390, 844), (414, 896))):
         print(f"\n— {l}x{a}")

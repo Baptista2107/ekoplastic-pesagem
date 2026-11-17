@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <script src="/eko-dialogo.js"></script>
+<script src="/turno-atrasado.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Operação Sacoleiras</title>
 <style>
@@ -432,6 +433,7 @@ async function onLeu(codigo){
       return '<button class="btn '+(m?'btn-cinza':'btn-verde')+' btn-destino" data-destino="'+p+'" onclick="confirmarBaixa(\''+p+'\')"'+
         (pode?'':' disabled data-semturno="1"')+'><b>'+p+'</b><span>'+sub+'</span></button>';
     };
+    const atrasoBip=avisoTurnoAtrasado(comTurno);   // só as sacoleiras onde dá para montar
     const orig=['Extrusora '+esc(b.maquina||'—'), esc(b.operador||''), b.hora_impressao?diaHora(b.hora_impressao):''].filter(Boolean).join(' · ');
     document.getElementById('area-bobina').innerHTML=
       '<div class="lida">'+
@@ -442,7 +444,7 @@ async function onLeu(codigo){
         '<div class="l-orig">'+orig+'</div>'+
         '<div class="l-per">MONTAR NA SACOLEIRA</div>'+
         '<div class="destinos">'+botao('P1')+botao('P2')+'</div>'+
-        (avisoTurnoAtrasado()?'<div class="l-atraso">‼️ '+avisoTurnoAtrasado()+'. Esta bobina vai entrar nesse turno: peça ao supervisor para encerrar o turno antes de bipar.</div>':'')+
+        (atrasoBip?'<div class="l-atraso">‼️ '+atrasoBip+'. Bobina montada ali entra no turno que já acabou: peça ao supervisor para encerrar o turno antes.</div>':'')+
         (comTurno.some(p=>(ABERTAS.find(a=>a.sacoleira===p)||{}).bobina)?
           '<div class="l-orig" style="color:var(--ambar);font-weight:700;margin-top:10px">Sacoleira ocupada: antes de bipar a nova, toque em <b>✓ Bobina finalizou</b> no card dela.</div>':'')+
         '<button class="btn-link" onclick="cancelarLeitura()">Cancelar</button>'+
@@ -1192,14 +1194,11 @@ async function carregarTurnoCorte(){
     (atraso?'<div class="tc-atraso">‼️ '+atraso+' — ENCERRE O TURNO<small>O supervisor encerra e inicia o próximo. Até lá, o que for bipado e lançado entra no turno que já acabou.</small></div>':'');
 }
 // Turno aberto que passou da hora de fim (17/11/2026): o servidor decide
-// (lib/turno-corte-hora.js) e manda `atrasado`; aqui só o texto.
-// "TURNO C PASSOU DAS 06:00 (há 2h 20min)" ou '' se nenhum passou.
-function avisoTurnoAtrasado(){
-  const lb=c=>(TC.turnos.find(t=>t.codigo===c)||{}).label||c;
-  const vistos={};
-  TC.sacoleiras.forEach(s=>{ const a=s.turno&&s.turno.atrasado; if(a) vistos[s.turno.turno]=vistos[s.turno.turno]||a; });
-  return Object.keys(vistos).map(k=>esc(lb(k)).toUpperCase()+' PASSOU DAS '+hora(vistos[k].fim_previsto)+
-    ' ('+haQuanto(vistos[k].fim_previsto)+')').join(' · ');
+// (lib/turno-corte-hora.js) e manda `atrasado`; o texto sai de
+// /turno-atrasado.js (testado no Node). "TURNO C PASSOU DAS 06:00 NA P1 E P2
+// (há 2h 20min)" ou '' se nenhum passou; `so` = só estas sacoleiras.
+function avisoTurnoAtrasado(so){
+  try{ return window.textoTurnoAtrasado ? window.textoTurnoAtrasado(TC, esc, so) : ''; }catch(e){ return ''; }
 }
 function turnoCorte(acao){
   const iniciar=acao==='iniciar';
