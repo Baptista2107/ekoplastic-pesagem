@@ -158,22 +158,23 @@ async function noServidor() {
   if (!await subir()) { ok(false, 'servidor de teste subiu'); return; }
   try {
     // Nada aqui depende da hora em que o teste roda (revisor 17/11: o pre-push
-    // roda a qualquer hora). P1: C aberto ANTEONTEM 22:00 → fim ontem 06:00, sempre
-    // atrasado. P2: o turno CERTO para a hora de agora, aberto agora → nunca atrasado.
+    // roda a qualquer hora). P1: C aberto 3 DIAS ATRÁS às 22:00 → fim anteontem 06:00:
+    // mais de 24 h de atraso a qualquer hora (com anteontem, de 00:00 a 05:59 dava
+    // 18-24 h — revisor de 2b57b59). P2: o turno CERTO para a hora de agora, aberto agora → nunca atrasado.
     const h = new Date().getHours();
     const turnoAgora = h < 6 ? 'C' : h < 18 ? 'A' : h < 22 ? 'EXTRA' : 'C';
     let r = await req('POST', '/bobinas/turno-corte/iniciar', { senha: SENHA, turno: 'C', maquinas: ['P1'], operador: 'SUP' });
     ok(r.status === 200, 'turno C iniciado na P1', r.body);
     r = await req('POST', '/bobinas/turno-corte/iniciar', { senha: SENHA, turno: turnoAgora, maquinas: ['P2'], operador: 'SUP' });
     ok(r.status === 200, `turno ${turnoAgora} (o da hora de agora) iniciado na P2`, r.body);
-    const ini22 = new Date(); ini22.setDate(ini22.getDate() - 2); ini22.setHours(22, 0, 0, 0);
+    const ini22 = new Date(); ini22.setDate(ini22.getDate() - 3); ini22.setHours(22, 0, 0, 0);
     comBanco(db => db.prepare(`UPDATE turnos_corte SET inicio = ? WHERE maquina = 'P1' AND fim IS NULL`).run(ini22.toISOString()));
     r = await req('GET', '/bobinas/turno-corte');
     const p1 = r.body.sacoleiras.find(s => s.sacoleira === 'P1').turno;
     const p2 = r.body.sacoleiras.find(s => s.sacoleira === 'P2').turno;
     const fimEsperado = H.fimPrevistoTurnoCorte('C', ini22.toISOString());
     ok(p1.atrasado && p1.atrasado.fim_previsto === fimEsperado.toISOString() && p1.atrasado.fim_hora === '06:00'
-       && p1.atrasado.minutos >= 24 * 60, 'C da P1 aberto anteontem 22:00: atrasado, fim 06:00 de ontem', p1);
+       && p1.atrasado.minutos >= 24 * 60, 'C da P1 aberto 3 dias atrás às 22:00: atrasado mais de 24 h, fim 06:00', p1);
     ok(p1.id && p1.turno === 'C' && p1.inicio === ini22.toISOString(), 'o resto do turno segue igual na resposta', p1);
     ok(p2.atrasado === null, `${turnoAgora} da P2 recém-aberto: sem aviso`, p2);
     // Encerrado não aparece mais como turno aberto.
@@ -194,7 +195,8 @@ function naTela() {
   const html = fs.readFileSync(path.join(ROOT, 'public', 'retirada-bobinas.html'), 'utf8');
   ok(/<script src="\/turno-atrasado\.js"><\/script>/.test(html) && /window\.textoTurnoAtrasado\(TC, esc, so\)/.test(html),
      'a tela carrega /turno-atrasado.js e monta o aviso com ele');
-  ok(/avisoTurnoAtrasado\(comTurno\)/.test(html), 'a bipagem só olha as sacoleiras onde dá para montar');
+  ok(/avisoTurnoAtrasado\(livres\.length\?livres:comTurno\)/.test(html) &&
+     /const livres=comTurno\.filter\(p=>!\(ABERTAS\.find/.test(html), 'a bipagem só olha as sacoleiras livres (onde dá para montar)');
   ok(/\(atraso\?' atrasado':''\)/.test(html) && /\.tc\.atrasado\{[^}]*animation:tc-pisca/.test(html), 'card do turno fica vermelho piscando');
   ok(/ENCERRE O TURNO/.test(html), 'card diz ENCERRE O TURNO');
   ok(/\(atrasoBip\?'<div class="l-atraso">/.test(html), 'a bipagem mostra o aviso antes de escolher a sacoleira');

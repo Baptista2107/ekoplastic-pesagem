@@ -71,3 +71,14 @@ de 11/11 (encerrado às 22:21) veria. O teste confere os 9 casos reais.
   fuso do coletor. O texto saiu para `public/turno-atrasado.js`, testado no Node.
 - O teste do servidor dependia da hora em que rodava (falharia em todo push entre
   18:15 e 23:59). Agora não depende mais.
+
+## Revisor de 2b57b59 (17/11)
+- Turnos reais de 01/10 a 17/11 (150) passados pela regra: 14 avisariam, todos
+  atrasados de verdade (7 pares P1/P2: A aberto 20:56 em 02/10; C fechado 06:54
+  em 10/10 e 06:16 em 17/10; A 18:26, 18:21, 18:38 em 19, 28 e 29/10; EXTRA 22:21
+  em 11/11). Nenhum aviso falso; encerramentos normais caem de −5 a +10 min.
+- Teste do servidor ainda falhava de 00:00 a 05:59: o C de "anteontem 22:00"
+  tinha só 18-24 h de atraso. Agora é de 3 dias atrás.
+- Bipagem avisa só das sacoleiras LIVRES (a ocupada não recebe a bobina).
+- Fica (sem caso nos dados): turno errado aberto ANTES da hora de fim (EXTRA às
+  08:00, A às 00:30) só avisa quando chega a hora de fim dele.

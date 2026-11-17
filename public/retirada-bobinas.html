@@ -433,7 +433,10 @@ async function onLeu(codigo){
       return '<button class="btn '+(m?'btn-cinza':'btn-verde')+' btn-destino" data-destino="'+p+'" onclick="confirmarBaixa(\''+p+'\')"'+
         (pode?'':' disabled data-semturno="1"')+'><b>'+p+'</b><span>'+sub+'</span></button>';
     };
-    const atrasoBip=avisoTurnoAtrasado(comTurno);   // só as sacoleiras onde dá para montar
+    // Aviso só das sacoleiras LIVRES (onde esta bobina pode montar); ocupada não
+    // recebe a bobina. Nenhuma livre: avisa de todas com turno.
+    const livres=comTurno.filter(p=>!(ABERTAS.find(a=>a.sacoleira===p)||{}).bobina);
+    const atrasoBip=avisoTurnoAtrasado(livres.length?livres:comTurno);
     const orig=['Extrusora '+esc(b.maquina||'—'), esc(b.operador||''), b.hora_impressao?diaHora(b.hora_impressao):''].filter(Boolean).join(' · ');
     document.getElementById('area-bobina').innerHTML=
       '<div class="lida">'+
