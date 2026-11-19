@@ -18,6 +18,7 @@ const {
 } = require('../lib/impressao');
 const { jsonErr, jsonOk, lerBodyJson, NAO_TRATADA } = require('../lib/http');
 const { avaliarJanelaAtualizacao } = require('../lib/atualizacao');
+const { estadoMapaVps } = require('../lib/mapa-vps');
 const { decidir: decidirTela, ehLocal, liberar: liberarTela, pausar: pausarTela, resumoTela } = require('../lib/tela');
 const telaMod = require('../lib/tela');   // estado.desistiuAvisado: ler sempre por aqui
 const blingMod = require('../lib/bling');   // variaveis que mudam de valor: ler sempre por aqui
@@ -63,6 +64,8 @@ async function rotasSistema(req, res, parsed, pathname) {
       bling:     { autenticado: !!(tk.accessToken || tk.refreshToken), token_expira_em_s: tk.expiresAt ? Math.max(0, Math.round((tk.expiresAt - Date.now())/1000)) : null, simulacao: configGet('bling_simular', '1') === '1',
                    host_api: blingHostApi(), host_oauth: blingHostOauth() },
       banco:     counts,
+      // Mapa do galpão → aba Mapa da VPS (19/11/2026: ficou 13 dias sem ir, calado).
+      mapa_vps:  estadoMapaVps(),
     });
   }
 

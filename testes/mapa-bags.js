@@ -109,6 +109,17 @@ const posicao = async cod => (await req('GET', '/enderecamento/mapa')).body.posi
     await sleep(1200);
     ok(recebidos.length === 0, 'nenhum retrato enviado (teste nunca suja a VPS de verdade)', recebidos.length);
     {
+      // 19/11/2026: o Mini PC ficou 13 dias assim sem ninguém saber. O
+      // /healthcheck tem de dizer que o mapa não está indo, e o log avisar uma vez.
+      const h = (await req('GET', '/healthcheck')).body;
+      ok(h.mapa_vps && h.mapa_vps.endereco_configurado === false && h.mapa_vps.ultimo === 'sem_endereco',
+         '/healthcheck diz que o mapa não vai à VPS (sem endereço)', h.mapa_vps);
+      const logs = fs.readdirSync(TMP_LOGS).filter(f => f.endsWith('.log'))
+        .map(f => fs.readFileSync(path.join(TMP_LOGS, f), 'utf8')).join('\n');
+      const avisos = logs.split('\n').filter(l => l.includes('NÃO vai à VPS: vps_sacoleiras_url')).length;
+      ok(avisos === 1, 'o log avisa UMA vez que falta o vps_sacoleiras_url (não a cada ciclo de 0,4 s)', avisos);
+    }
+    {
       // Por dentro: sem o endereço gravado, o envio nem tenta (não cai no
       // endereço padrão — que é a VPS de verdade).
       const db2 = path.join(os.tmpdir(), `eko_mb2_${C}.db`);
@@ -154,6 +165,9 @@ const posicao = async cod => (await req('GET', '/enderecamento/mapa')).body.posi
     const n0 = recebidos.length;
     await sleep(1500);
     ok(recebidos.length === n0, 'sem mudança, não manda de novo (ciclos de 0,4 s)', { antes: n0, depois: recebidos.length });
+    const h3 = (await req('GET', '/healthcheck')).body.mapa_vps;
+    ok(h3 && h3.endereco_configurado === true && h3.ultimo === 'enviado' && h3.enviado_em && h3.falhas_seguidas === 0,
+       '/healthcheck diz que o mapa está indo (enviado, sem falha) — "igual" não apaga o último envio', h3);
 
     console.log('\n[4] O bag sai na Retirada e a posição fica livre sozinha');
     const sRet = (await req('POST', '/sessoes', { tipo: 'retirada', operador: 'Bruno' })).body.sessao_id;
