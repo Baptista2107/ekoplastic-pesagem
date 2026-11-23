@@ -167,7 +167,9 @@ const posicao = async cod => (await req('GET', '/enderecamento/mapa')).body.posi
       // ver. O retrato leva a versão, a mesma do /healthcheck, e o vigia da VPS
       // compara com o GitHub.
       const h = (await req('GET', '/healthcheck')).body;
-      ok(ult && Object.prototype.hasOwnProperty.call(ult, 'commit') && ult.commit === h.commit,
+      // sha de verdade, não null === null (revisor de dd687c3: em worktree, como
+      // no pre-push, os dois davam null e o teste passava sem provar nada)
+      ok(ult && /^[0-9a-f]{7,40}$/.test(String(ult.commit)) && ult.commit === h.commit,
          'o retrato leva a versão do servidor (a mesma do /healthcheck)', { retrato: ult && ult.commit, health: h.commit });
     }
     const n0 = recebidos.length;
