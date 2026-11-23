@@ -162,6 +162,14 @@ const posicao = async cod => (await req('GET', '/enderecamento/mapa')).body.posi
     const ult = recebidos[recebidos.length - 1];
     ok(ult && ult.posicoes && ult.posicoes.find(p => p.codigo === '01-01-007').gaiola.id === b1 && ult.resumo.bags === 1,
        'a VPS recebeu o mapa com o bag em 01-01-007', ult && ult.resumo);
+    {
+      // 23/11/2026: o Mini PC ficou 4 dias atrás do GitHub (19→23/11) sem ninguém
+      // ver. O retrato leva a versão, a mesma do /healthcheck, e o vigia da VPS
+      // compara com o GitHub.
+      const h = (await req('GET', '/healthcheck')).body;
+      ok(ult && Object.prototype.hasOwnProperty.call(ult, 'commit') && ult.commit === h.commit,
+         'o retrato leva a versão do servidor (a mesma do /healthcheck)', { retrato: ult && ult.commit, health: h.commit });
+    }
     const n0 = recebidos.length;
     await sleep(1500);
     ok(recebidos.length === n0, 'sem mudança, não manda de novo (ciclos de 0,4 s)', { antes: n0, depois: recebidos.length });
