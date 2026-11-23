@@ -49,9 +49,42 @@ try {
   git(repo, 'worktree', 'add', '--detach', '-q', wt, sha);
   ok(commitAtual(wt) === sha.slice(0, 7), 'worktree destacada (.git é arquivo, como no pre-push): o sha', commitAtual(wt));
 
+  // gitdir: relativo (worktree --relative-paths, ou .git reescrito à mão)
+  const absoluto = fs.readFileSync(path.join(wt, '.git'), 'utf8').match(/^gitdir:\s*(.+)$/m)[1].trim();
+  fs.writeFileSync(path.join(wt, '.git'), 'gitdir: ' + path.relative(wt, absoluto) + '\n');
+  ok(commitAtual(wt) === sha.slice(0, 7), 'worktree com gitdir: RELATIVO: o sha', commitAtual(wt));
+
   const vazio = path.join(tmp, 'sem-git');
   fs.mkdirSync(vazio);
   ok(commitAtual(vazio) === null, 'sem .git: null', commitAtual(vazio));
+
+  // ── a versão mostrada é a do BOOT, não a do disco (2º revisor de dd687c3) ──
+  console.log('\n[COMMIT_NO_AR] git mexido com o node no ar não muda a versão mostrada');
+  const app = path.join(tmp, 'app');
+  fs.mkdirSync(app);
+  fs.cpSync(path.join(__dirname, '..', 'lib'), path.join(app, 'lib'), { recursive: true });
+  fs.symlinkSync(path.join(__dirname, '..', 'node_modules'), path.join(app, 'node_modules'));
+  git(app, 'init', '-q', '-b', 'main');
+  git(app, 'commit', '-q', '--allow-empty', '-m', 'v1');
+  const v1 = git(app, 'rev-parse', 'HEAD');
+  const filho = `
+    const { execFileSync } = require('node:child_process');
+    const L = require(${JSON.stringify(path.join(app, 'lib', 'log.js'))});
+    const antes = L.COMMIT_NO_AR;
+    execFileSync('git', ['commit', '-q', '--allow-empty', '-m', 'v2'], { cwd: ${JSON.stringify(app)} });
+    console.log(JSON.stringify({ antes, depois: L.COMMIT_NO_AR, disco: L.commitAtual() }));`;
+  const r = JSON.parse(execFileSync(process.execPath, ['-e', filho], { env, encoding: 'utf8', timeout: 30000 }).trim().split('\n').pop());
+  const v2 = git(app, 'rev-parse', 'HEAD');
+  ok(r.antes === v1.slice(0, 7) && r.depois === v1.slice(0, 7), 'COMMIT_NO_AR fica na versão do boot', r);
+  ok(r.disco === v2.slice(0, 7), '(ensaio) o disco mudou mesmo', r);
+
+  // quem MOSTRA versão (healthcheck, atualizar, retrato) usa a do boot
+  const raiz = path.join(__dirname, '..');
+  const fontes = ['server.js', ...['lib', 'rotas'].flatMap(d =>
+    fs.readdirSync(path.join(raiz, d)).filter(f => f.endsWith('.js')).map(f => path.join(d, f)))];
+  const disco = fontes.filter(f => f !== path.join('lib', 'log.js') &&
+    /commitAtual\s*\(/.test(fs.readFileSync(path.join(raiz, f), 'utf8')));
+  ok(disco.length === 0, 'nenhuma rota/lib mostra a versão do disco (commitAtual())', disco);
 } catch (e) {
   falhou++; console.log('  \x1b[31m✗\x1b[0m erro:', e.message);
 } finally {

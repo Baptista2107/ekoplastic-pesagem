@@ -9,7 +9,7 @@ const crypto = require('node:crypto');
 const { spawn } = require('child_process');
 
 const { PRINTER_NAMES, RAIZ, SERIAL_BAUD, SERIAL_PORT, VERSION } = require('../lib/config');
-const { commitAtual, estadoInicioAutomatico, hashSenha, logDesvio, logE, logI, logW } = require('../lib/log');
+const { COMMIT_NO_AR, estadoInicioAutomatico, hashSenha, logDesvio, logE, logI, logW } = require('../lib/log');
 const { configGet, configSet, db, getProximoSeq } = require('../lib/db');
 const { balanca, balancaRecebendo } = require('../lib/balanca');
 const { blingHostApi, blingHostOauth, CLIENT_ID, tk } = require('../lib/bling');
@@ -37,7 +37,7 @@ async function rotasSistema(req, res, parsed, pathname) {
     return jsonOk(res, {
       servidor: 'online',
       versao: VERSION,
-      commit: commitAtual(),
+      commit: COMMIT_NO_AR,              // a versão que está rodando (lida ao subir)
       inicio_automatico: estadoInicioAutomatico(),
       // Vigia da tela (INICIAR.bat): sessão do Windows, tela aberta, pausa.
       tela: resumoTela(),
@@ -238,7 +238,7 @@ async function rotasSistema(req, res, parsed, pathname) {
     jsonOk(res, {
       atualizando: true,
       versao_atual: VERSION,
-      commit_atual: commitAtual(),
+      commit_atual: COMMIT_NO_AR,
       pendentes_bling: pend,
       parado_s: confirma.parado_s,
       sessoes_abertas: confirma.abertas.length,
