@@ -106,15 +106,55 @@ with sync_playwright() as p:
         pg.evaluate("delete window.__ekoApp")
 
         # ── revisão do b0d37ed (24/11): o que o revisor mediu quebrando ──
-        # janela aberta: o bipe não entra e o Enter dele não confirma a janela
-        pg.evaluate("""window.__r='pendente'; ekoConfirmar({titulo:'Excluir', texto:'Excluir produto?', ok:'Excluir', perigo:true})
-                         .then(v => window.__r = v); 0""")
-        pg.wait_for_timeout(150)
+        # janela aberta: o bipe não entra e o Enter dele não confirma a janela.
+        # Quem barra é o onLeu de verdade (vale para app e câmera também).
+        REAL = "window.__onLeuEspiao = window.onLeu; window.onLeu = window.__onLeuReal; 0"
+        ESPIAO = "window.onLeu = window.__onLeuEspiao; 0"
+        ABRIR = """window.__r='pendente'; ekoConfirmar({titulo:'Excluir', texto:'Excluir produto?', ok:'Excluir', perigo:true})
+                     .then(v => window.__r = v); 0"""
+        FECHAR = "document.getElementById('md-cancelar') && document.getElementById('md-cancelar').click(); 0"
+        def janela(pg):
+            return pg.evaluate("[window.__r, !!document.querySelector('.eko-dlg'), document.getElementById('toast').textContent]")
+        pg.evaluate(REAL); pg.evaluate("document.getElementById('toast').textContent=''; 0")
+        pg.evaluate(ABRIR); pg.wait_for_timeout(150)
         bipar(pg, "R0000140")
-        st = pg.evaluate("[window.__r, !!document.querySelector('.eko-dlg')]")
-        ok(lidos(pg) == [] and st == ["pendente", True], f"janela aberta: bipe não entra nem confirma ({st})")
-        pg.evaluate("document.getElementById('md-cancelar') && document.getElementById('md-cancelar').click()")
-        pg.wait_for_timeout(100)
+        st = janela(pg)
+        ok(st[:2] == ["pendente", True] and "Feche a janela" in st[2], f"janela aberta: bipe não entra nem confirma ({st})")
+        # Enter atrasado (o código já fechou pelo relógio): não confirma
+        pg.keyboard.type("R0000147"); pg.wait_for_timeout(550); pg.keyboard.press("Enter"); pg.wait_for_timeout(150)
+        st = janela(pg)
+        ok(st[:2] == ["pendente", True], f"janela aberta: Enter 550 ms depois do código não confirma ({st})")
+        pg.evaluate(FECHAR); pg.wait_for_timeout(100)
+        # dentro do app (quem chama o onLeu é o app): janela aberta barra também
+        pg.evaluate("window.__ekoApp=1; 0"); pg.evaluate(ABRIR); pg.wait_for_timeout(150)
+        pg.evaluate("window.__n0 = leituras.length; onLeu('R0000148'); 0"); pg.wait_for_timeout(150)
+        st = janela(pg); n = pg.evaluate("leituras.length - window.__n0")
+        ok(st[:2] == ["pendente", True] and n == 0, f"app com janela aberta: bipe não entra ({st[:2]}, +{n})")
+        pg.evaluate(FECHAR); pg.evaluate("delete window.__ekoApp; 0"); pg.wait_for_timeout(100)
+        # janela na tela de SELEÇÃO ("Produto já inventariado → Recomeçar do zero")
+        pg.evaluate("""document.getElementById('tela-leitura').classList.add('oculto');
+                       document.getElementById('tela-selecao').classList.remove('oculto'); 0""")
+        pg.evaluate(ABRIR); pg.wait_for_timeout(150)
+        bipar(pg, "R0000149")
+        st = janela(pg)
+        ok(st[:2] == ["pendente", True], f"janela na tela de seleção: bipe não confirma ({st})")
+        pg.evaluate(FECHAR); pg.wait_for_timeout(100)
+        pg.evaluate("""(() => { const s = document.getElementById('sel-material');
+                         s.innerHTML = '<option value="">—</option><option value="PEBD">PEBD</option><option value="REC">RECICLADO</option>';
+                         s.disabled = false; s.value = 'PEBD'; s.focus(); })()""")
+        bipar(pg, "R0000150")
+        v = pg.evaluate("document.getElementById('sel-material').value")
+        ok(v == "PEBD" and lidos(pg) == [], f"lista da tela de seleção não pula de material ({v})")
+        pg.evaluate("""document.activeElement.blur(); document.getElementById('tela-selecao').classList.add('oculto');
+                       document.getElementById('tela-leitura').classList.remove('oculto'); 0""")
+        pg.evaluate(ESPIAO)
+        # botão em foco + Enter atrasado: não clica
+        pg.evaluate("""(() => { const b = document.createElement('button'); b.id = 'bt-teste'; window.__cliques = 0;
+                         b.onclick = () => window.__cliques++; document.getElementById('tela-leitura').prepend(b); b.focus(); })()""")
+        pg.keyboard.type("R0000151"); pg.wait_for_timeout(550); pg.keyboard.press("Enter"); pg.wait_for_timeout(150)
+        r = [lidos(pg), pg.evaluate("window.__cliques")]
+        ok(r == [["R0000151"], 0], f"botão em foco: Enter atrasado do leitor não clica ({r})")
+        pg.evaluate("document.getElementById('bt-teste').remove(); 0")
 
         bipar(pg, "]C1R0000141")
         ok(lidos(pg) == ["R0000141"], "prefixo AIM do leitor (]C1) sai")
@@ -131,6 +171,16 @@ with sync_playwright() as p:
         bipar(pg, "R0000143")
         v = pg.evaluate("document.getElementById('sac-num').value")
         ok(lidos(pg) == ["R0000143"] and v == "0", f"campo de número em foco: não vira quantidade ({v}) e o bipe entra")
+        # "Focus Output": o leitor escreve direto no campo de número em foco
+        pg.evaluate("const n = document.getElementById('sac-num'); n.value = '5'; n.focus(); 0")
+        pg.keyboard.insert_text("R0000160"); pg.wait_for_timeout(600)
+        v = pg.evaluate("document.getElementById('sac-num').value")
+        ok(lidos(pg) == ["R0000160"] and v == "5", f"leitor que escreve direto no campo de número: não vira quantidade ({v})")
+        # tecla atrasada no meio da leitura (tela ocupada): nada vaza para o campo
+        pg.evaluate("const n = document.getElementById('sac-num'); n.value = '5'; n.focus(); 0")
+        pg.keyboard.press("R"); pg.wait_for_timeout(150); pg.keyboard.type("0000161"); pg.keyboard.press("Enter"); pg.wait_for_timeout(150)
+        v = pg.evaluate("document.getElementById('sac-num').value")
+        ok(lidos(pg) == ["R0000161"] and v == "5", f"tecla atrasada no meio do código não vaza para o campo ({v})")
         pg.evaluate("const n = document.getElementById('sac-num'); n.value = ''; n.focus(); 0")
         pg.keyboard.type("12", delay=200)
         v = pg.evaluate("document.getElementById('sac-num').value")
@@ -142,11 +192,20 @@ with sync_playwright() as p:
         foco = pg.evaluate("document.activeElement && document.activeElement.id")
         ok(foco == "leitor-campo", f"campo invisível pega o foco sozinho ({foco})")
         pg.keyboard.insert_text("R0000144")
-        pg.wait_for_timeout(400)
+        pg.wait_for_timeout(600)
         ok(lidos(pg) == ["R0000144"], "leitor que escreve direto no campo (sem tecla, sem Enter) entra")
         pg.keyboard.type("R0000145")
-        pg.wait_for_timeout(400)
+        pg.wait_for_timeout(600)
         ok(lidos(pg) == ["R0000145"], "leitor sem Enter no fim entra")
+        # gaiola com pausa depois do 5º "|": sai inteira, não em dois pedaços
+        pg.keyboard.type("EKOPA|12|50x60|BC|40|"); pg.wait_for_timeout(200); pg.keyboard.type("1000")
+        pg.keyboard.press("Enter"); pg.wait_for_timeout(300)
+        ok(lidos(pg) == ["EKOPA|12|50x60|BC|40|1000"], "gaiola com pausa antes do kg sai inteira")
+        # código de fornecedor sem Enter (EAN): some em 1 s e o foco volta
+        pg.evaluate("document.activeElement.blur(); 0")
+        pg.keyboard.type("7891234567890"); pg.wait_for_timeout(1800)
+        r = [lidos(pg), pg.evaluate("document.activeElement && document.activeElement.id")]
+        ok(r == [[], "leitor-campo"], f"EAN sem Enter some e o foco volta ao campo invisível ({r})")
         im = pg.evaluate("document.getElementById('leitor-campo') && document.getElementById('leitor-campo').getAttribute('inputmode')")
         ok(im == "none", "campo invisível não abre o teclado (inputmode=none)")
 

@@ -1556,14 +1556,30 @@ async function digitarCodigo(){
      numéricos: letra num campo começa leitura (a tecla não vai para o campo),
      e numa lista nenhuma tecla vai para ela;
    · prefixo AIM do leitor (]C1…) e caractere de controle saem, como no app;
-   · leitor configurado sem Enter: etiqueta completa fecha sozinha em 150 ms;
+   · leitor configurado sem Enter: etiqueta completa fecha sozinha (300 ms; gaiola 800 ms);
    · leitor em "Focus Output" (escreve em campo, sem tecla): um campo
      invisível (inputmode=none, não abre teclado) fica com o foco sempre que
      ninguém está num campo de verdade — é o mesmo truque do app (__ekoScan);
    · contagem por sacos (MODO_MANUAL): bipe avisa e não entra (está no onLeu). */
-const BIPE_TEC = { buf: '', ult: 0, capt: false, timer: null };
-const LEITOR_RAJADA_MS = 100;     // entre teclas do leitor: poucos ms; dedo: >100
-const ETIQUETA_COMPLETA = /^(?:[A-Z]\d{7}|EKOPA(?:\|[^|]*){5})$/i;
+/* 2ª revisão (6a9aae6, 24/11), também medida no Playwright:
+   · Enter que chega >150 ms depois do código (já entregue pelo relógio)
+     confirmava a janela / clicava o botão → 500 ms depois de cada leitura o
+     Enter/Tab é engolido;
+   · janela FORA da tela de leitura ("Produto já inventariado → Recomeçar do
+     zero", "Encerrar o inventário?") não tinha proteção → janela aberta barra
+     o bipe em qualquer tela, e o onLeu barra também (app e câmera);
+   · lista em foco na tela de seleção pulava de material → lista não recebe
+     letra em tela nenhuma;
+   · "Focus Output" com campo de número em foco gravava "50000160" no campo →
+     o texto que chega sem tecla (beforeinput) com letra ou de uma vez só vai
+     para a leitura, não para o campo;
+   · tecla atrasada no meio da leitura (>100 ms) vazava dígitos para o campo →
+     depois de começada, a leitura aceita até 1 s entre teclas;
+   · resto no buffer (EAN de fornecedor sem Enter) travava o foco → some em 1 s;
+   · "EKOPA|12|50x60|BC|40|" (última parte vazia) contava como completa.   */
+const BIPE_TEC = { buf: '', ult: 0, capt: false, timer: null, limpa: null, engolirAte: 0 };
+const LEITOR_PAUSA_MS = 1000;     // um limite só, dentro e fora de campo (400 vazava com a máquina ocupada)
+const ETIQUETA_COMPLETA = /^(?:[A-Z]\d{7}|EKOPA(?:\|[^|]+){5,})$/i;
 function normalizarLeitura(t){
   return String(t == null ? '' : t).replace(/[\x00-\x1f\x7f]/g, '').trim().replace(/^\][A-Za-z][0-9A-Za-z]/, '');
 }
@@ -1573,51 +1589,88 @@ function leitorNaTela(){
   const tela = document.getElementById('tela-leitura');
   return !!tela && !tela.classList.contains('oculto');
 }
+function avisoJanelaAberta(){ beep(320, 0.18); vibrar([80,60,80]); toast('aviso', 'Feche a janela aberta e bipe de novo', 3000); }
+function zerarLeitor(){ BIPE_TEC.buf = ''; BIPE_TEC.capt = false; clearTimeout(BIPE_TEC.timer); }
+// Toda leitura do teclado/campo passa aqui. Janela aberta e contagem por sacos
+// são barradas no onLeu (vale também para o app e a câmera).
 function entregarLeitura(bruto){
   const t = normalizarLeitura(bruto);
-  BIPE_TEC.buf = ''; BIPE_TEC.capt = false; clearTimeout(BIPE_TEC.timer);
+  zerarLeitor();
+  BIPE_TEC.engolirAte = Date.now() + 800;     // Enter/Tab atrasado deste mesmo bipe
   if (t.length < 3) return;
-  if (janelaAberta()) { beep(320, 0.18); vibrar([80,60,80]); toast('aviso', 'Feche a janela aberta e bipe de novo', 3000); return; }
+  if (!leitorNaTela() && !janelaAberta()) return;   // fora da contagem: não lê
   onLeu(t);
 }
+function agendarFimDaLeitura(){
+  clearTimeout(BIPE_TEC.timer);
+  const t = normalizarLeitura(BIPE_TEC.buf);
+  if (ETIQUETA_COMPLETA.test(t))   // leitor sem Enter; gaiola ainda pode crescer (kg), espera mais
+    BIPE_TEC.timer = setTimeout(() => entregarLeitura(BIPE_TEC.buf), /^EKOPA/i.test(t) ? 800 : 300);
+  clearTimeout(BIPE_TEC.limpa);
+  BIPE_TEC.limpa = setTimeout(() => { BIPE_TEC.buf = ''; BIPE_TEC.capt = false; }, 1000);
+}
 function ouvirLeitor(e){
-  if (!leitorNaTela()) { BIPE_TEC.buf = ''; BIPE_TEC.capt = false; return; }
+  if (window.__ekoApp) return;
+  if (e.ctrlKey || e.altKey || e.metaKey) return;
   const alvo = e.target || {};
   if (alvo.id === 'leitor-campo') return;          // o campo invisível cuida de si
-  if (e.ctrlKey || e.altKey || e.metaKey) return;
   const tag = (alvo.tagName || '').toUpperCase();
+  const campo = tag === 'INPUT' || tag === 'TEXTAREA';
   const dlg = janelaAberta();
-  // Caixa de texto de uma janela (o "Digitar"): a tecla é dela, leitor incluído.
-  if (dlg && dlg.contains(alvo) && (tag === 'INPUT' || tag === 'TEXTAREA')) return;
+  const naLeitura = leitorNaTela();
+  // fora da contagem só se protege a janela e a lista
+  if (!naLeitura && !dlg && tag !== 'SELECT') { zerarLeitor(); return; }
+  // caixa de texto de uma janela (o "Digitar"): a tecla é dela, leitor incluído
+  if (dlg && dlg.contains(alvo) && campo) return;
   const agora = Date.now();
-  const rajada = agora - BIPE_TEC.ult <= LEITOR_RAJADA_MS;
-  if (agora - BIPE_TEC.ult > 1000) { BIPE_TEC.buf = ''; BIPE_TEC.capt = false; }
-  BIPE_TEC.ult = agora;
-  const tecla = e.key && e.key.length === 1;
   const enter = e.key === 'Enter' || e.key === 'Tab';
-  if (tag === 'INPUT' || tag === 'TEXTAREA') {
+  const tecla = !!e.key && e.key.length === 1;
+  if (enter && !BIPE_TEC.buf && agora < BIPE_TEC.engolirAte) {
+    e.preventDefault(); e.stopImmediatePropagation(); return;
+  }
+  const dt = agora - BIPE_TEC.ult;
+  if (dt > 1000) { BIPE_TEC.buf = ''; BIPE_TEC.capt = false; }
+  BIPE_TEC.ult = agora;
+  if (campo && naLeitura) {
     // campo numérico da contagem: número é de quem digita; letra é leitor
     if (!BIPE_TEC.capt) {
       if (!(tecla && /[A-Za-z\]]/.test(e.key))) { BIPE_TEC.buf = ''; return; }
       BIPE_TEC.capt = true;
-    } else if (!rajada && !enter) { BIPE_TEC.buf = ''; BIPE_TEC.capt = false; return; }
+    } else if (dt > LEITOR_PAUSA_MS && !enter) { BIPE_TEC.buf = ''; BIPE_TEC.capt = false; return; }
   }
   if (enter) {
-    const t = BIPE_TEC.buf;
-    if (t.length >= 3) {
+    if (BIPE_TEC.buf.length >= 3) {
       e.preventDefault(); e.stopImmediatePropagation();   // nem a janela nem o botão em foco recebem
-      entregarLeitura(t);
+      entregarLeitura(BIPE_TEC.buf);
     } else { BIPE_TEC.buf = ''; BIPE_TEC.capt = false; }
     return;
   }
   if (!tecla) return;
-  if (tag === 'SELECT' || tag === 'INPUT' || tag === 'TEXTAREA' || dlg) e.preventDefault();
+  if (tag === 'SELECT' || campo || dlg) e.preventDefault();
   BIPE_TEC.buf += e.key;
-  clearTimeout(BIPE_TEC.timer);
-  if (ETIQUETA_COMPLETA.test(normalizarLeitura(BIPE_TEC.buf)))   // leitor sem Enter
-    BIPE_TEC.timer = setTimeout(() => entregarLeitura(BIPE_TEC.buf), 150);
+  agendarFimDaLeitura();
 }
 document.addEventListener('keydown', ouvirLeitor, true);
+// Leitor que escreve direto no campo em foco (sem evento de tecla): texto com
+// letra, ou vários caracteres de uma vez, num campo da contagem é leitura.
+document.addEventListener('beforeinput', (e) => {
+  if (window.__ekoApp || !leitorNaTela()) return;
+  const a = e.target;
+  if (!a || a.id === 'leitor-campo') return;
+  const dlg = janelaAberta();
+  if (dlg && dlg.contains(a)) return;
+  if (!/^insert/.test(e.inputType || '')) return;
+  const d = e.data || '';
+  if (!d) return;
+  const agora = Date.now();
+  const seguindo = BIPE_TEC.capt && agora - BIPE_TEC.ult <= LEITOR_PAUSA_MS;
+  if (!seguindo && !(d.length > 1 || /[A-Za-z\]|]/.test(d))) return;   // dígito de quem digita
+  e.preventDefault();
+  if (!seguindo) BIPE_TEC.buf = '';
+  BIPE_TEC.capt = true; BIPE_TEC.ult = agora;
+  BIPE_TEC.buf += d;
+  agendarFimDaLeitura();
+}, true);
 
 // Campo invisível que recebe o leitor em "Focus Output" (texto direto em campo).
 (function(){
@@ -1632,7 +1685,7 @@ document.addEventListener('keydown', ouvirLeitor, true);
   });
   c.addEventListener('input', () => {
     clearTimeout(tm);
-    if (ETIQUETA_COMPLETA.test(normalizarLeitura(c.value))) tm = setTimeout(fechar, 150);
+    if (ETIQUETA_COMPLETA.test(normalizarLeitura(c.value))) tm = setTimeout(fechar, /^EKOPA/i.test(normalizarLeitura(c.value)) ? 800 : 300);
     else tm = setTimeout(() => { c.value = ''; }, 1000);        // sobra sem fim: some
   });
   document.addEventListener('DOMContentLoaded', () => document.body.appendChild(c));
@@ -1917,6 +1970,9 @@ async function onLeuGaiola(texto){
 }
 
 async function onLeu(codigo){
+  // Janela aberta ("Excluir?", "Recomeçar do zero?"…): o bipe não entra por
+  // baixo — vale para o app, a câmera e o teclado (2ª revisão, 24/11).
+  if(janelaAberta()){ avisoJanelaAberta(); return; }
   if(TIPO_INV==='pa') return onLeuGaiola(codigo);
   // Contagem por sacos (pigmento/dessecante): o bipe não entra — senão o bag
   // somava junto do {id:'MANUAL'} e o próximo desenho apagava (revisão 24/11).
