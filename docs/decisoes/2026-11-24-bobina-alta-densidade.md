@@ -45,3 +45,35 @@ Pedido do Vinicius:
 - **Baixa na sacoleira:** a etiqueta é O, não E. O coletor e o estoque de bobinas da VPS só conhecem E, então a bobina AD não é "montada" numa sacoleira nem aparece no estoque de bobinas.
 - **Unidade no Bling:** as 4 variações estão com a unidade vazia (a borra tem KG). Vale cadastrar KG.
 - **Ligar na fábrica:** pela regra do Gustavo (06/11), muda o que o operador faz, então só vai ao Mini PC depois do "pode ativar" dele. O código está no ramo `bobina-alta-densidade`.
+
+## Revisores (24/11, 2 rodadas)
+
+**1ª rodada (1917b24): consertado em commit próprio, com teste vermelho sem o conserto.**
+- O celular.css estava preso a `data-tela="Resíduos"`.
+- Uma apara misturada passava calada no pedido da IKATUPLAST.
+- Uma etiqueta O excluída voltava a 'bipada' pelo leitor.
+- O texto largo da etiqueta foi cortado em 27 caracteres.
+
+**Achado no caminho: o pre-push saindo de um worktree exporta GIT_DIR.** O `testes/commit-atual.js` herdou essa variável e fez dois estragos:
+- commitou 3 commits vazios no ramo;
+- deixou `core.bare=true` no clone `~/dev/ekoplastic-pesagem`.
+
+O conserto (teste + hook) já está no main desde 6b0e0d3.
+
+**Sobras, sem conserto (baixo):**
+- O catálogo está espelhado no HTML, e os 4 botões são fixos. O certo é servir o catálogo e gerar os botões a partir dele.
+- A regra do fornecedor aparece em 3 formas (`fornecedorOutras`, `grupoFornecedor` na tela e `contatoNome` na rota).
+- O `gerarEPLOutras` tem dois layouts na mesma função (o certo é separar um `gerarEPLBobinaAD`), e "MILHEIRO" está fixo no código.
+- O `tokenPendente` não é zerado ao trocar de item. Se uma resposta se perde e o operador troca de item, a tela pode gravar o item errado (vem de antes).
+- No reenvio forçado com erro, o `bling_id` antigo é zerado (padrão de antes).
+- O `/consumir` da retirada aceita etiqueta O, então uma bobina AD poderia ser "retirada" como MP (vem de antes).
+- Bipar de novo uma O já bipada regrava a hora e duplica a linha no CSV (vem de antes).
+- Uma R cancelada em sessão aberta volta a 'bipada' pelo servidor (vem de antes).
+- O papel do resumo continua dizendo "Inventario / Residuos".
+- Faltam testes de:
+  - reimpressão da bobina;
+  - resumo do dia com a bobina;
+  - modo simulação;
+  - bobina sem `id_ekoplastic_bling`;
+  - cancelar a sessão inteira e depois bipar;
+  - o próprio hook num repo descartável.
