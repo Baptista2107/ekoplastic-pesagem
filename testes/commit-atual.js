@@ -27,7 +27,12 @@ function ok(cond, msg, extra) {
 }
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'eko_commit_'));
-const env = { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't',
+// Sem as GIT_* de fora: o pre-push roda a suíte com GIT_DIR (e outras)
+// exportadas pelo git, e aí o `git init`/`git commit` daqui caíam no repo DE
+// VERDADE — em 24/11 o push do ramo bobina-alta-densidade ganhou 3 commits
+// vazios "a", "v1", "v2" de autor "t".
+const envSemGit = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_')));
+const env = { ...envSemGit, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't',
               GIT_COMMITTER_EMAIL: 't@t', GIT_CONFIG_NOSYSTEM: '1', HOME: tmp };
 const git = (cwd, ...a) => execFileSync('git', a, { cwd, env, encoding: 'utf8', timeout: 20000 }).trim();
 
