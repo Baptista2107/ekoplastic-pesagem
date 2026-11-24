@@ -30,7 +30,7 @@ Pedido do Vinicius:
 
 ## O que foi decidido sem perguntar (dá para mudar)
 
-- **Tara = tubete (Vinicius 24/11, cálculo aproximado):** 1,52 → 3,3 kg; 1,16 → 2,5 kg. O SERVIDOR desconta pelo catálogo (a tara mandada pela tela é ignorada); a tela mostra "balança − tubete". Peso que não passa do tubete → recusado.
+- **Tara = tubete (Vinicius 24/11, cálculo aproximado):** 1,52 → 3,3 kg; 1,16 → 2,5 kg. O SERVIDOR desconta pelo catálogo (a tara mandada pela tela é ignorada); a tela mostra "balança − tubete". O líquido tem de ficar entre 20 e 1.500 kg, como na bobina recuperada (decidido sem perguntar: abaixo de 20 é tubete vazio; acima de 1.500 é peso digitado errado).
 - **Quatro botões diretos** (cor + metragem), cada um já dizendo a sacola, em vez de escolher a cor primeiro e a metragem depois. É menos toque no Mini PC.
 - **O papel do "Resumo do dia" continua "RESUMO DO DIA - RESIDUOS".** A bobina AD entra nele como um grupo próprio, depois dos resíduos.
 
@@ -77,3 +77,19 @@ O conserto (teste + hook) já está no main desde 6b0e0d3.
   - bobina sem `id_ekoplastic_bling`;
   - cancelar a sessão inteira e depois bipar;
   - o próprio hook num repo descartável.
+
+## Revisores do tubete (24/11, 2 rodadas: 4149ab2 e 0d37b1e)
+
+**Consertado**, sempre com teste vermelho antes do conserto:
+- A prévia mostrava peso negativo.
+- Não havia mínimo nem teto de peso.
+- Repetida pelo `clientToken`, a tela mostrava o item e o peso da tela, não os gravados, e dizia "impressa" sem ter impresso.
+- O peso de cada caso ficou escrito no contrato.
+- O tubete e os limites da tela agora são conferidos contra os do servidor.
+- O teste abria o `etiquetas.db` da raiz.
+
+**Sobrou (baixo, sem 3ª rodada):**
+- A resposta do POST numa repetição traz `item` do pedido atual e `sku` do gravado. A tela usa o `sku`.
+- As validações de fornecedor e de peso rodam antes da idempotência. Repetir o mesmo token com outro item ou peso dá 400/409, não a etiqueta gravada.
+- Se a etiqueta foi cancelada entre o envio e a repetição, ela volta à lista como "aguardando bipe".
+- O servidor continua sem validar peso NaN, zero ou negativo para apara e resíduo (era assim antes).
