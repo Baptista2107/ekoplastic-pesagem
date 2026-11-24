@@ -131,11 +131,15 @@ async function rotasInventario(req, res, parsed, pathname) {
     // preciso dessa informação internamente nos sistemas". O PDF só leva os
     // totais; a contagem inteira (cada gaiola/bag lido) vai junto para a VPS
     // guardar, porque o Encerrar zera o inventario_atual logo depois daqui.
+    // Só o servidor preenche o campo: um "inventario" que venha no corpo (a
+    // tela não manda; a rede da fábrica é aberta) é descartado.
+    let mandouDetalhe = false;
     try {
       const d = JSON.parse(corpo.toString('utf8'));
+      delete d.inventario;
       let inv = null;
       try { inv = JSON.parse(configGet('inventario_atual', 'null')); } catch(e) {}
-      if (inv && Array.isArray(inv.itens) && inv.itens.length) d.inventario = inv;
+      if (inv && Array.isArray(inv.itens) && inv.itens.length) { d.inventario = inv; mandouDetalhe = true; }
       corpo = JSON.stringify(d);
     } catch(e) { return jsonErr(res, 400, 'corpo inválido: ' + e.message); }
     let base;
@@ -149,6 +153,11 @@ async function rotasInventario(req, res, parsed, pathname) {
       logI('inventario', 'PDF enviado à VPS: ' + (d.ok ? ('ok → ' + (d.enviados || []).join(', ')
            + (d.detalhe ? ' · bag a bag guardado' : ' · SEM bag a bag na VPS')) : ('FALHOU: ' + d.erro)));
       if (!d.ok) return jsonErr(res, 502, d.erro || 'a VPS recusou');
+      // VPS antiga (ou rollback) aceita o PDF e joga o bag a bag fora: sem
+      // este erro a tela zeraria e o detalhe sumiria calado, como em 24/11.
+      if (mandouDetalhe && !d.detalhe) {
+        return jsonErr(res, 502, 'o PDF foi, mas a VPS não guardou o bag a bag — tente de novo ou avise o suporte');
+      }
       return jsonOk(res, { enviados: d.enviados || [], falhas: d.falhas || [], guardado: d.guardado });
     } catch(e) {
       logI('inventario', 'PDF não chegou à VPS: ' + e.message);

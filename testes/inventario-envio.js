@@ -42,7 +42,7 @@ async function req(metodo, rota, corpo, cru) {
 
 // VPS de mentira: guarda o que chega no inventario-pdf e responde como a real.
 const recebidos = [];
-let vpsRecusa = false;
+let vpsRecusa = false, vpsSemDetalhe = false;
 function subirVps() {
   return new Promise(resolve => {
     vps = http.createServer((r, res) => {
@@ -55,7 +55,7 @@ function subirVps() {
           recebidos.push(d);
           if (vpsRecusa) return res.end(JSON.stringify({ ok: false, erro: 'não consegui mandar a ninguém no Telegram' }));
           return res.end(JSON.stringify({ ok: true, enviados: ['Bruno Augusto', 'Vinicius'], falhas: [],
-                                          guardado: 'x.pdf', detalhe: d && d.inventario ? 'x.json' : null }));
+                                          guardado: 'x.pdf', detalhe: (d && d.inventario && !vpsSemDetalhe) ? 'x.json' : null }));
         }
         res.end(JSON.stringify({ ok: true }));
       });
@@ -123,11 +123,26 @@ const pedidoPdf = { pdf_b64: PDF_B64, nome: 'inventario-2026-11-24.pdf', titulo:
     ok(r3.status === 400, 'erro 400', r3);
     ok(recebidos.length === antes, 'a VPS não recebeu nada', recebidos.length - antes);
 
+    console.log('\n[3b] VPS responde ok mas NÃO guardou o bag a bag (VPS antiga/rollback): não zera');
+    vpsSemDetalhe = true;
+    const r3b = await req('POST', '/inventario/enviar-pdf', pedidoPdf);
+    vpsSemDetalhe = false;
+    ok(r3b.status === 502 && /bag a bag/.test((r3b.body && r3b.body.erro) || ''),
+       'erro 502 dizendo que o bag a bag não ficou guardado (a tela não zera)', r3b);
+    const atual = (await req('GET', '/inventario/atual')).body;
+    ok(((atual.inventario || atual).itens || []).length === 2, 'a contagem continua no Mini PC', atual);
+
     console.log('\n[4] Contagem zerada: vai só o PDF, sem o campo inventario');
     await req('POST', '/inventario/limpar');
     const r4 = await req('POST', '/inventario/enviar-pdf', pedidoPdf);
     const d4 = recebidos[recebidos.length - 1] || {};
     ok(r4.status === 200 && d4.pdf_b64 === PDF_B64 && !('inventario' in d4), 'só o PDF, sem inventario', Object.keys(d4));
+
+    console.log('\n[5] Contagem zerada e o corpo traz um inventario de fora: não passa adiante');
+    const r5 = await req('POST', '/inventario/enviar-pdf', { ...pedidoPdf,
+      inventario: { inicio: 'forjado', itens: [{ material: 'GBD', leituras: [{ id: 'R9999999', peso: 99999 }] }] } });
+    const d5 = recebidos[recebidos.length - 1] || {};
+    ok(r5.status === 200 && !('inventario' in d5), 'a VPS não recebe o inventario que veio no corpo', d5.inventario);
   } catch (e) {
     falhou++; console.log('  \x1b[31m✗\x1b[0m exceção:', e.stack || e.message);
   } finally {
