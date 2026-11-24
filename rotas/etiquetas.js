@@ -92,6 +92,14 @@ async function rotasEtiquetas(req, res, parsed, pathname) {
       });
     }
 
+    // OUTRAS PESAGENS (24/11/2026): etiqueta excluída (✕) não volta pelo bipe.
+    // Voltava a 'bipada' e, numa pesagem de bobina AD, trazia de volta a
+    // apara/borra já excluída — misturando fornecedores no mesmo pedido.
+    if (et.tipo === 'outras' && et.status === 'cancelada') {
+      return jsonErr(res, 409, `A etiqueta ${et.id} foi EXCLUÍDA e não volta atrás. Se o material é bom, pese e imprima de novo.`,
+        { etiqueta_id: et.id, status: et.status, trava: 'outras_cancelada' });
+    }
+
     // MP: etiqueta de sessão já fechada não volta a valer pelo bipe (a
     // cancelada voltava a 'bipada' sem entrar em pedido nenhum).
     if ((et.tipo === 'recebimento' || et.tipo === 'retorno') && sessaoEstaFechada(et.sessao_id)) {

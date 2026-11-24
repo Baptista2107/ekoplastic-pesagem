@@ -17,6 +17,10 @@
 //   [5] Sessão misturada à mão no banco: o envio para com erro e não manda
 //       pedido nenhum (a bobina não vira compra da EKOPLASTIC).
 //   [6] Nada de palavra de resíduo na observação (a VPS leria como resíduo).
+//   [7] Apara (sem produto no Bling) misturada também para o envio.
+//   [8] Etiqueta O excluída não volta a 'bipada' pelo leitor.
+//   [9] Texto largo da etiqueta da bobina cabe em 800 dots.
+//  [10] celular.css não fica preso a um data-tela que não existe mais.
 //
 //  Como rodar:   node testes/bobina-alta-densidade.js
 // ════════════════════════════════════════════════════════════════════
@@ -189,6 +193,45 @@ const RX_RESIDUO_VPS = /RES\.|RESIDUO|RESÍDUO|VARREDURA|BORRA/i;   // = _RX_RES
     ok(!p4, 'nenhum pedido foi ao Bling', p4);
     const st = comBanco(db => db.prepare('SELECT bling_status FROM sessoes WHERE id = ?').get(s4).bling_status);
     ok(st === 'erro', 'sessão fica em erro (aparece em Envios ao Bling para reenviar)', st);
+
+    console.log('\n[7] apara misturada (sem produto no Bling) também para o envio');
+    const s5 = await novaSessao();
+    const a1 = await pesar(s5, 'BOB.VER.1,16', 100);
+    await req('POST', `/etiquetas/${a1.body.id}/bipar`);
+    const a2 = await pesar(s5, 'BOB.PT.1,16', 100);
+    await req('POST', `/etiquetas/${a2.body.id}/bipar`);
+    comBanco(db => db.prepare(`UPDATE etiquetas SET sku = 'APARA.VERDE' WHERE id = ?`).run(a2.body.id));
+    const { fim: f5, pedido: p5 } = await fechar(s5);
+    ok(f5.body && f5.body.bling && f5.body.bling.ok === false && /mistura/i.test(f5.body.bling.erro || ''),
+       'bobina + apara: envio para com erro (apara não entra no pedido da IKATUPLAST)', f5.body);
+    ok(!p5, 'nenhum pedido foi ao Bling', p5);
+
+    console.log('\n[8] etiqueta excluída não volta pelo bipe');
+    const s6 = await novaSessao();
+    const x1 = await pesar(s6, 'APARA.VERDE', 15);
+    await req('POST', `/etiquetas/${x1.body.id}/cancelar`);
+    const x2 = await pesar(s6, 'BOB.VER.1,52', 200);
+    ok(x2.status === 200, 'depois de excluir a apara, a bobina entra', x2.body);
+    const rb = await req('POST', `/etiquetas/${x1.body.id}/bipar`);
+    ok(rb.status === 409 && rb.body && rb.body.trava === 'outras_cancelada', 'bipar a apara excluída → 409', rb);
+    ok(comBanco(db => db.prepare('SELECT status FROM etiquetas WHERE id = ?').get(x1.body.id).status) === 'cancelada',
+       'a apara continua cancelada');
+
+    console.log('\n[9] etiqueta da bobina cabe em 800 dots (todo item do catálogo)');
+    const { OUTRAS_CATALOGO } = require(path.join(ROOT, 'lib', 'config.js'));
+    const { gerarEPL } = require(path.join(ROOT, 'lib', 'impressao.js'));
+    for (const [sku, cat] of Object.entries(OUTRAS_CATALOGO).filter(([, c]) => c.categoria === 'BOBINA_AD')) {
+      const epl = gerarEPL({ tipo: 'outras', seq: 1, sku, material_nome: cat.nome, peso: 9999.9 });
+      const largas = [...epl.matchAll(/^A(\d+),\d+,0,4,2,\d,N,"(.*)"$/gm)];
+      ok(largas.length === 2 && largas.every(m => Number(m[1]) + m[2].length * 28 <= 800), `${sku}: texto largo dentro de 800 dots`, largas.map(m => [m[1], m[2]]));
+    }
+
+    console.log('\n[10] celular.css só usa data-tela que existe numa tela');
+    const css = fs.readFileSync(path.join(ROOT, 'public', 'celular.css'), 'utf8');
+    const telas = new Set(fs.readdirSync(path.join(ROOT, 'public')).filter(f => f.endsWith('.html'))
+      .map(f => (fs.readFileSync(path.join(ROOT, 'public', f), 'utf8').match(/<body[^>]*data-tela="([^"]+)"/) || [])[1]).filter(Boolean));
+    const usadas = [...new Set([...css.matchAll(/data-tela="([^"]+)"/g)].map(m => m[1]))];
+    ok(usadas.every(t => telas.has(t)), 'toda regra do celular aponta para uma tela de verdade', { usadas, telas: [...telas] });
   } catch (e) {
     falhou++; console.log('  \x1b[31m✗ exceção:\x1b[0m', e.stack || e.message);
   } finally {

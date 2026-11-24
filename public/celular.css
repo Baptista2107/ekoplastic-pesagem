@@ -143,29 +143,29 @@
   /* ─── RESÍDUOS (Outras Pesagens) ───
      Era duas colunas: painel de toque + coluna de preview de 360 px
      fixos. Vira uma coluna, com o preview embaixo. */
-  body[data-tela="Resíduos"] .layout-content,
-  body[data-tela="Resíduos"] #banner-turno.on ~ .layout-content {
+  body[data-tela="Outras Pesagens"] .layout-content,
+  body[data-tela="Outras Pesagens"] #banner-turno.on ~ .layout-content {
     height: auto !important;
     overflow: visible !important;
   }
-  body[data-tela="Resíduos"] .page {
+  body[data-tela="Outras Pesagens"] .page {
     height: auto !important;
     overflow: visible !important;
     padding: 12px !important;
   }
-  body[data-tela="Resíduos"] .page.active { display: block !important; }
-  body[data-tela="Resíduos"] .touch-panel { width: 100% !important; }
-  body[data-tela="Resíduos"] .preview-col {
+  body[data-tela="Outras Pesagens"] .page.active { display: block !important; }
+  body[data-tela="Outras Pesagens"] .touch-panel { width: 100% !important; }
+  body[data-tela="Outras Pesagens"] .preview-col {
     width: 100% !important;
     flex-shrink: 1 !important;
     overflow: visible !important;
     margin-top: 14px;
   }
-  body[data-tela="Resíduos"] .touch-grid,
-  body[data-tela="Resíduos"] .touch-grid.cols-3 { grid-template-columns: repeat(2, 1fr) !important; }
-  body[data-tela="Resíduos"] .op-grid           { grid-template-columns: repeat(2, 1fr) !important; }
-  body[data-tela="Resíduos"] .row-2col          { grid-template-columns: 1fr !important; }
-  body[data-tela="Resíduos"] #banner-turno {
+  body[data-tela="Outras Pesagens"] .touch-grid,
+  body[data-tela="Outras Pesagens"] .touch-grid.cols-3 { grid-template-columns: repeat(2, 1fr) !important; }
+  body[data-tela="Outras Pesagens"] .op-grid           { grid-template-columns: repeat(2, 1fr) !important; }
+  body[data-tela="Outras Pesagens"] .row-2col          { grid-template-columns: 1fr !important; }
+  body[data-tela="Outras Pesagens"] #banner-turno {
     flex-wrap: wrap !important;
     gap: 10px !important;
     height: auto !important;
