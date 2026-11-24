@@ -4,7 +4,7 @@
 
 const {
   CAPAS_CATALOGO, OUTRAS_CATALOGO, PA_CORES, PA_FORMATOS, PA_FORMATOS_POR_MAQUINA, PA_KG_FARDO,
-  PA_MAQUINAS, PA_TURNOS, fornecedorOutras, OUTRAS_BOBINA_MIN_KG,
+  PA_MAQUINAS, PA_TURNOS, fornecedorOutras, OUTRAS_BOBINA_MIN_KG, OUTRAS_BOBINA_MAX_KG,
 } = require('../lib/config');
 const {
   dataLocalISO, gravarLogProducaoBipagem, hashSenha, logDesvio, logE, logI, logW,
@@ -1074,6 +1074,8 @@ async function rotasEtiquetas(req, res, parsed, pathname) {
       pesoItem  = Math.round((brutoItem - item.tubete) * 10) / 10;
       if (!(pesoItem >= OUTRAS_BOBINA_MIN_KG))
         return jsonErr(res, 400, `Balança ${brutoItem} kg − tubete ${item.tubete} kg = ${pesoItem} kg: abaixo de ${OUTRAS_BOBINA_MIN_KG} kg não é bobina. Confira a balança.`);
+      if (pesoItem > OUTRAS_BOBINA_MAX_KG)
+        return jsonErr(res, 400, `${pesoItem} kg passa de ${OUTRAS_BOBINA_MAX_KG.toLocaleString('pt-BR')} kg: confira o peso digitado.`);
     }
 
     return imprimirEPersistirEtiqueta({

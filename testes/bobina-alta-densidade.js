@@ -42,6 +42,10 @@ const DB1  = path.join(os.tmpdir(), `eko_bad_${C}.db`);
 const LOGS = path.join(os.tmpdir(), `eko_bad_${C}`);
 const TOK  = path.join(os.tmpdir(), `eko_bad_tok_${C}.json`);
 const DIR_EPL = path.join(LOGS, 'print-simulado');
+// Os require() de lib/ feitos AQUI dentro (impressao → db) abririam o
+// etiquetas.db da raiz — na pasta do Mini PC, o banco de verdade.
+process.env.EKO_DB_FILE = path.join(os.tmpdir(), `eko_bad_inproc_${C}.db`);
+process.env.EKO_LOG_DIR = path.join(os.tmpdir(), `eko_bad_inproc_${C}`);
 
 const ID_EKO        = 17804838271;
 const ID_IKATUPLAST = 18539284560;
@@ -152,6 +156,11 @@ const RX_RESIDUO_VPS = /RES\.|RESIDUO|RESÍDUO|VARREDURA|BORRA/i;   // = _RX_RES
     ok(tara0.status === 400 && /tubete/.test(tara0.body.erro || ''), 'peso que não passa do tubete → 400', tara0);
     const quase = await pesar(s1, 'BOB.VER.1,52', 23.2);          // 19,9 líquido
     ok(quase.status === 400, 'abaixo de 20 kg líquidos → 400 (tubete vazio não é bobina)', quase);
+    const teto = await pesar(s1, 'BOB.VER.1,52', 4092);           // 409.2 digitado sem o ponto
+    ok(teto.status === 400 && /1\.?500/.test(teto.body.erro || ''), 'acima de 1.500 kg → 400 (não vira 4 t no Bling)', teto);
+    const borda = await pesar(s1, 'BOB.VER.1,52', 23.3);          // exatamente 20,0 líquido
+    ok(borda.status === 200 && borda.body.peso === 20, 'borda: 23,3 − 3,3 = 20,0 kg aceito', borda.body);
+    if (borda.body.id) await req('POST', `/etiquetas/${borda.body.id}/cancelar`);
     const nan = await req('POST', '/etiquetas/outras', { clientToken: `bad-${C}-nan`, sessao_id: s1, item_codigo: 'BOB.VER.1,52', peso: 'abc' });
     ok(nan.status === 400, 'peso inválido → 400', nan);
     // contrato: com peso_bruto, o `peso` mandado NÃO é tratado como líquido (sem desconto em dobro)
@@ -262,6 +271,13 @@ const RX_RESIDUO_VPS = /RES\.|RESIDUO|RESÍDUO|VARREDURA|BORRA/i;   // = _RX_RES
     const { OUTRAS_BOBINA_MIN_KG } = require(path.join(ROOT, 'lib', 'config.js'));
     const mMin = html.match(/const BOBINA_MIN_KG = (\d+)/);
     ok(mMin && Number(mMin[1]) === OUTRAS_BOBINA_MIN_KG, 'mínimo da tela = do servidor', mMin && mMin[1]);
+    const { OUTRAS_BOBINA_MAX_KG } = require(path.join(ROOT, 'lib', 'config.js'));
+    const mMax = html.match(/const BOBINA_MAX_KG = (\d+)/);
+    ok(mMax && Number(mMax[1]) === OUTRAS_BOBINA_MAX_KG, 'máximo da tela = do servidor', mMax && mMax[1]);
+    // numa repetição (idempotente) a tela não pode dizer "impressa"
+    const blocoOk = html.slice(html.indexOf("if (d.idempotente)"), html.indexOf("if (d.idempotente)") + 400);
+    ok(/NÃO imprimi/.test(blocoOk) && /impressa/.test(html.slice(html.indexOf("if (d.idempotente)"), html.indexOf("if (d.seq) state.proximoSeq"))),
+       'tela trata idempotente: avisa que não imprimiu de novo', blocoOk.slice(0, 120));
 
     console.log('\n[10] celular.css só usa data-tela que existe numa tela');
     const css = fs.readFileSync(path.join(ROOT, 'public', 'celular.css'), 'utf8');

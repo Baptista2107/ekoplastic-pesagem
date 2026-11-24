@@ -695,9 +695,12 @@ const OUTRAS_ITENS = {
 // Peso que vale: balança − tubete (só bobina AD; = TUBETE do servidor, que
 // é quem desconta de verdade). Aparas/resíduos: o peso lido é o final.
 const BOBINA_MIN_KG = 20;   // = OUTRAS_BOBINA_MIN_KG do servidor
+const BOBINA_MAX_KG = 1500; // = OUTRAS_BOBINA_MAX_KG do servidor
 function pesoOk(codigo, bruto) {
   const it = OUTRAS_ITENS[codigo];
-  return it && it.tubete ? pesoLiquido(codigo, bruto) >= BOBINA_MIN_KG : bruto > 0;
+  if (!(it && it.tubete)) return bruto > 0;
+  const liq = pesoLiquido(codigo, bruto);
+  return liq >= BOBINA_MIN_KG && liq <= BOBINA_MAX_KG;
 }
 function pesoLiquido(codigo, bruto) {
   const it = OUTRAS_ITENS[codigo];
@@ -861,7 +864,10 @@ function atualizarPreview() {
   }
   const idPreview = 'O' + String(state.proximoSeq || 1).padStart(7, '0');
   if (item.categoria === 'BOBINA_AD' && !pesoOk(state.itemCodigo, state.pesoAtual)) {
-    div.innerHTML = `<div class="pe-vazio">Ponha a bobina na balança<br>(balança ${state.pesoAtual.toFixed(1)} − tubete ${item.tubete.toFixed(1)} kg: abaixo de ${BOBINA_MIN_KG} kg)</div>`;
+    const liq = pesoLiquido(state.itemCodigo, state.pesoAtual);
+    div.innerHTML = liq > BOBINA_MAX_KG
+      ? `<div class="pe-vazio">${liq.toFixed(1)} kg passa de ${BOBINA_MAX_KG} kg<br>confira o peso digitado</div>`
+      : `<div class="pe-vazio">Ponha a bobina na balança<br>(balança ${state.pesoAtual.toFixed(1)} − tubete ${item.tubete.toFixed(1)} kg: abaixo de ${BOBINA_MIN_KG} kg)</div>`;
     return;
   }
   if (item.categoria === 'BOBINA_AD') {
@@ -936,7 +942,11 @@ async function imprimirEtiqueta() {
     // o que o servidor GRAVOU (numa repetição é a etiqueta de antes), não o que está na tela
     const codigo = d.sku || state.itemCodigo;
     const item = OUTRAS_ITENS[codigo] || { nome: codigo };
-    toast(`✓ Etiqueta ${d.id} impressa (${item.nome})`, 'success');
+    if (d.idempotente) {
+      // repetição de um envio que JÁ tinha dado certo: o servidor não imprimiu de novo
+      toast(`Etiqueta ${d.id} (${item.nome}) já tinha saído — NÃO imprimi outra. Se a bobina na balança é outra, imprima de novo.`, 'warn', 9000);
+      if (state.itens.some(x => x.id === d.id)) { renderHistorico(); return; }
+    } else toast(`✓ Etiqueta ${d.id} impressa (${item.nome})`, 'success');
     if (d.seq) state.proximoSeq = d.seq + 1;
     state.itens.unshift({
       id: d.id, seq_sessao: d.seq_sessao, codigo,
