@@ -58,7 +58,8 @@ function pasta() {
 
 // git SEMPRE sobre esta pasta: um GIT_DIR/GIT_INDEX_FILE herdado apontaria
 // para outro repositório e não para a pasta temporária do commit (o git 2.43
-// no pre-push só exporta GIT_EXEC_PATH/GIT_PREFIX, mas não dependemos disso).
+// no pre-push exporta GIT_DIR quando o push sai de um worktree ligado — visto
+// em 24/11/2026; o hook agora limpa, mas não dependemos disso).
 // Por isso tira todo GIT_* do ambiente. --no-optional-locks: o git status não
 // segura o .git/index.lock (um commit de outra sessão no mesmo repositório
 // não falha por causa da consulta).
