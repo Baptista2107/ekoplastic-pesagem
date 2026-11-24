@@ -1589,7 +1589,15 @@ function leitorNaTela(){
   const tela = document.getElementById('tela-leitura');
   return !!tela && !tela.classList.contains('oculto');
 }
-function avisoJanelaAberta(){ beep(320, 0.18); vibrar([80,60,80]); toast('aviso', 'Feche a janela aberta e bipe de novo', 3000); }
+// Uma vez a cada 2,5 s: a câmera chama o onLeu a cada quadro (10/s) e o aviso
+// apitava 10 vezes por segundo com a janela aberta (3ª revisão, 24/11).
+let _avisoJanelaEm = 0;
+function avisoJanelaAberta(){
+  const agora = Date.now();
+  if (agora - _avisoJanelaEm < 2500) return;
+  _avisoJanelaEm = agora;
+  beep(320, 0.18); vibrar([80,60,80]); toast('aviso', 'Feche a janela aberta e bipe de novo', 3000);
+}
 function zerarLeitor(){ BIPE_TEC.buf = ''; BIPE_TEC.capt = false; clearTimeout(BIPE_TEC.timer); }
 // Toda leitura do teclado/campo passa aqui. Janela aberta e contagem por sacos
 // são barradas no onLeu (vale também para o app e a câmera).

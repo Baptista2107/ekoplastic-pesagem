@@ -124,6 +124,11 @@ with sync_playwright() as p:
         pg.keyboard.type("R0000147"); pg.wait_for_timeout(550); pg.keyboard.press("Enter"); pg.wait_for_timeout(150)
         st = janela(pg)
         ok(st[:2] == ["pendente", True], f"janela aberta: Enter 550 ms depois do código não confirma ({st})")
+        # câmera parada na etiqueta com a janela aberta: 10 leituras/s, 1 aviso só
+        pg.evaluate("""(() => { window.__bipes = 0; const b0 = window.beep; window.beep = (...a) => { window.__bipes++; };
+                         window.__beepOrig = b0; _avisoJanelaEm = 0; for (let i = 0; i < 10; i++) onLeu('R0000152'); })()""")
+        n = pg.evaluate("window.beep = window.__beepOrig; window.__bipes")
+        ok(n == 1, f"câmera com janela aberta: 1 aviso, não 10 ({n})")
         pg.evaluate(FECHAR); pg.wait_for_timeout(100)
         # dentro do app (quem chama o onLeu é o app): janela aberta barra também
         pg.evaluate("window.__ekoApp=1; 0"); pg.evaluate(ABRIR); pg.wait_for_timeout(150)
