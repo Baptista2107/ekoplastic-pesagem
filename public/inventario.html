@@ -236,12 +236,11 @@
   .lente-btn.sel{border-color:var(--verde); color:var(--verde);}
   /* Em telas bem baixas (celular deitado), reduz o vídeo para caber os botões */
   @media (max-height:520px){ .cam-box{max-width:250px;} }
-  /* 28/09/2026 (VPS): a leitura é do gatilho do coletor (app Ekoplastic
-     Inventário). A câmera sai da tela, como na "Operação Sacoleiras"; o
-     Digitar fica para etiqueta rasurada. Os elementos continuam no HTML
-     (escondidos) porque pararCamera() é chamada em vários pontos. */
-  #btn-camera, #btn-torch, #reader, #zoom-barra, #lente-barra, #painel-diag{display:none !important;}
-  #btn-digitar{flex:1 1 auto !important; width:100% !important;}
+  /* 28/09/2026: a câmera tinha saído da tela (leitura pelo gatilho do app).
+     24/11/2026 (Gustavo, urgente): o Bruno conta MP no coletor fora do app e
+     tinha de tocar em "Digitar" a cada etiqueta para o leitor escrever; agora a
+     página ouve o leitor sozinha (ouvirLeitor, abaixo) e a câmera VOLTA como
+     opção ("dê a opção de usar a câmera caso seja necessário"). */
 </style>
 <!-- Ajuste automatico para celular: so vale abaixo de 900px de largura -->
 <link rel="stylesheet" href="/celular.css">
@@ -1534,6 +1533,40 @@ async function digitarCodigo(){
   delete ultimoBipe[id];   // digitação manual não sofre o anti-repetição da câmera
   await onLeu(id);
 }
+
+/* ══════════════ leitor do coletor fora do app (24/11/2026) ══════════════
+   Gustavo: "o Bruno tá fazendo uma contagem de MP, só que ele tem que clicar
+   toda vez pra digitar pra aí o coletor lê o código de barras; isso tem que
+   ser automático". No navegador o leitor "teclado" digita o código e dá Enter
+   (ou Tab) onde estiver o foco; sem campo, as teclas iam para o nada. Este
+   ouvinte junta as teclas e entrega em onLeu(), o mesmo caminho do app e da
+   câmera — mesmo molde do enderecamento.html (12/11).
+   · só na tela de leitura (contagem aberta);
+   · dentro do app (window.__ekoApp) quem entrega é o app: ouvir aqui daria
+     leitura em dobro;
+   · campo com foco (sacos, kg, a caixa do Digitar) é de quem digita;
+   · tecla com mais de 1 s de intervalo recomeça (tecla solta não vira código);
+     o leitor digita tudo em poucos ms.                                        */
+const BIPE_TEC = { buf: '', ult: 0 };
+function ouvirLeitor(e){
+  if (window.__ekoApp) return;
+  const tela = document.getElementById('tela-leitura');
+  if (!tela || tela.classList.contains('oculto')) return;
+  const tag = ((e.target && e.target.tagName) || '').toUpperCase();
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+  if (e.ctrlKey || e.altKey || e.metaKey) return;
+  const agora = Date.now();
+  if (agora - BIPE_TEC.ult > 1000) BIPE_TEC.buf = '';
+  BIPE_TEC.ult = agora;
+  if (e.key === 'Enter' || e.key === 'Tab') {
+    const t = BIPE_TEC.buf.trim();
+    BIPE_TEC.buf = '';
+    if (t.length >= 3) { e.preventDefault(); e.stopPropagation(); onLeu(t); }
+    return;
+  }
+  if (e.key && e.key.length === 1) BIPE_TEC.buf += e.key;
+}
+document.addEventListener('keydown', ouvirLeitor, true);
 
 async function toggleCamera(){
   if(camLigada){ await pararCamera(); return; }
