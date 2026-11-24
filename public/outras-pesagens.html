@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Ekoplastic · Resíduos</title>
+<title>Ekoplastic · Outras Pesagens</title>
 <script src="/acesso-colaborador.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
 <style>
@@ -164,6 +164,8 @@ header {
 }
 .touch-btn:hover  { background: var(--panel-hi); border-color: var(--muted); }
 .touch-btn:active { transform: scale(0.96); }
+.touch-btn.btn-ad small { display:block; margin-top:3px; font-size:11px; font-weight:700; color:var(--muted); letter-spacing:0; }
+.touch-btn.btn-ad.selected small { color: var(--accent); }
 .touch-btn.selected {
   border-color: var(--accent);
   background: rgba(168,128,255,0.12);
@@ -470,12 +472,12 @@ header {
 <!-- Ajuste automatico para celular: so vale abaixo de 900px de largura -->
 <link rel="stylesheet" href="/celular.css">
 </head>
-<body data-tela="Resíduos">
+<body data-tela="Outras Pesagens">
 
 <header>
   <div class="logo">
     <div class="logo-icon">⚖</div>
-    RESÍDUOS
+    OUTRAS PESAGENS
   </div>
   <div class="header-center">
     <div class="clock" id="clock">--:--:--</div>
@@ -537,6 +539,19 @@ header {
         <!-- 21/10/2026 (Vinicius): bobina achada sem etiqueta, origem desconhecida -->
         <div class="touch-grid cols-2" style="margin-top:8px;">
           <div class="touch-btn" id="btn-recuperada" onclick="abrirRecuperada()">BOBINA SEM ETIQUETA</div>
+        </div>
+      </div>
+
+      <!-- 24/11/2026 (Vinicius): bobina comprada pronta, para a sacola de
+           milheiro. Sem operador; vai ao Bling num pedido próprio, separado
+           das aparas/resíduos. O botão já diz para qual sacola ela serve. -->
+      <div>
+        <div class="section-label">Bobina alta densidade · milheiro (vai ao Bling)</div>
+        <div class="touch-grid cols-2">
+          <div class="touch-btn btn-ad" id="it-BOB.VER.1,52" onclick="selecionarItem('BOB.VER.1,52')"><span style="color:#2eb82e;">VERDE</span> 1,52 m<small>sacola 38 x 48</small></div>
+          <div class="touch-btn btn-ad" id="it-BOB.PT.1,52"  onclick="selecionarItem('BOB.PT.1,52')"><span style="color:#aaa;">PRETA</span> 1,52 m<small>sacola 38 x 48</small></div>
+          <div class="touch-btn btn-ad" id="it-BOB.VER.1,16" onclick="selecionarItem('BOB.VER.1,16')"><span style="color:#2eb82e;">VERDE</span> 1,16 m<small>sacola 29 x 39</small></div>
+          <div class="touch-btn btn-ad" id="it-BOB.PT.1,16"  onclick="selecionarItem('BOB.PT.1,16')"><span style="color:#aaa;">PRETA</span> 1,16 m<small>sacola 29 x 39</small></div>
         </div>
       </div>
 
@@ -670,7 +685,17 @@ const OUTRAS_ITENS = {
   'RES.BORRA':     { nome:'Borra',         cor:null,      categoria:'RESIDUO' },
   'RES.VARREDURA': { nome:'Varredura',     cor:null,      categoria:'RESIDUO' },
   'RES.PO':        { nome:'Pó',            cor:null,      categoria:'RESIDUO' },
+  'BOB.VER.1,52':  { nome:'Bobina AD Verde 1,52', cor:'Verde', categoria:'BOBINA_AD', largura:'1,52', sacola:'38 x 48' },
+  'BOB.PT.1,52':   { nome:'Bobina AD Preta 1,52', cor:'Preta', categoria:'BOBINA_AD', largura:'1,52', sacola:'38 x 48' },
+  'BOB.VER.1,16':  { nome:'Bobina AD Verde 1,16', cor:'Verde', categoria:'BOBINA_AD', largura:'1,16', sacola:'29 x 39' },
+  'BOB.PT.1,16':   { nome:'Bobina AD Preta 1,16', cor:'Preta', categoria:'BOBINA_AD', largura:'1,16', sacola:'29 x 39' },
 };
+// 1 pesagem = 1 pedido no Bling = 1 fornecedor: bobina AD (IKATUPLAST) não
+// se mistura com aparas/resíduos (EKOPLASTIC). O servidor também recusa.
+function grupoFornecedor(codigo) {
+  const it = OUTRAS_ITENS[codigo];
+  return it && it.categoria === 'BOBINA_AD' ? 'BOBINA_AD' : 'EKOPLASTIC';
+}
 
 const state = {
   sessaoId:      null,
@@ -799,6 +824,13 @@ function bloqueadoPorBipagem() { if (pendentesBipagem().length > 0) { abrirModal
 // ─── SELEÇÃO DE ITEM ───
 function selecionarItem(codigo) {
   if (bloqueadoPorBipagem()) return;
+  const outro = state.itens.find(i => i.status !== 'cancelada' && grupoFornecedor(i.codigo) !== grupoFornecedor(codigo));
+  if (outro) {
+    toast(grupoFornecedor(codigo) === 'BOBINA_AD'
+      ? 'Esta pesagem já tem aparas/resíduos. Toque em FINALIZAR E ENVIAR antes de pesar bobina de alta densidade.'
+      : 'Esta pesagem é de bobina de alta densidade. Toque em FINALIZAR E ENVIAR antes de pesar aparas/resíduos.', 'warn', 7000);
+    return;
+  }
   state.itemCodigo = codigo;
   document.querySelectorAll('.touch-panel .cor-btn, .touch-panel .touch-btn').forEach(b => b.classList.remove('selected'));
   const el = document.getElementById('it-' + codigo);
@@ -816,7 +848,17 @@ function atualizarPreview() {
     return;
   }
   const idPreview = 'O' + String(state.proximoSeq || 1).padStart(7, '0');
-  div.innerHTML = `
+  if (item.categoria === 'BOBINA_AD') {
+    div.innerHTML = `
+    <div class="pe-turno">BOBINA ALTA DENSIDADE</div>
+    <div class="pe-prod">${item.cor.toUpperCase()} ${item.largura} M</div>
+    <div class="pe-info">SERVE PARA: <b>SACOLA ${item.sacola} - MILHEIRO</b></div>
+    <div class="pe-peso">${state.pesoAtual.toFixed(1)} kg</div>
+    <div class="pe-sku">${state.itemCodigo}</div>
+    <div class="pe-bc-wrap"><svg id="pe-barcode" class="pe-bc-svg"></svg></div>
+    <div class="pe-id">${idPreview}</div>
+  `;
+  } else div.innerHTML = `
     <div class="pe-turno">RESIDUOS</div>
     <div class="pe-prod">${item.nome.toUpperCase()}</div>
     <div class="pe-info">${item.categoria === 'RESIDUO' ? 'RESÍDUO (vai ao Bling)' : 'APARA (inventário)'}</div>
@@ -1027,9 +1069,10 @@ async function finalizarSessao() {
       toast('✓ Finalizado', 'success');
     }
     if (d.bling) {
-      if (d.bling.modo === 'sem_itens_bling') toast('Nenhuma borra/varredura — nada enviado ao Bling (só inventário).', 'info', 5000);
+      if (d.bling.modo === 'sem_itens_bling') toast('Só aparas — nada enviado ao Bling (só inventário).', 'info', 5000);
       else if (d.bling.modo === 'simulacao')  toast(`Bling: simulado (${d.bling.bling_id})`, 'info', 4000);
       else if (d.bling.ok)                    toast(`Bling: enviado (${d.bling.bling_id})`, 'success', 4000);
+      else if (d.bling.erro)                  toast(`Bling não recebeu: ${d.bling.erro}`, 'error', 9000);
     }
     // limpa estado
     state.sessaoId = null; state.itens = []; state.itemCodigo = '';

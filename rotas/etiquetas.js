@@ -4,7 +4,7 @@
 
 const {
   CAPAS_CATALOGO, OUTRAS_CATALOGO, PA_CORES, PA_FORMATOS, PA_FORMATOS_POR_MAQUINA, PA_KG_FARDO,
-  PA_MAQUINAS, PA_TURNOS,
+  PA_MAQUINAS, PA_TURNOS, fornecedorOutras,
 } = require('../lib/config');
 const {
   dataLocalISO, gravarLogProducaoBipagem, hashSenha, logDesvio, logE, logI, logW,
@@ -1037,14 +1037,28 @@ async function rotasEtiquetas(req, res, parsed, pathname) {
     const item = OUTRAS_CATALOGO[body.item_codigo];
     if (!item) return jsonErr(res, 400, `Item "${body.item_codigo}" não cadastrado em Outras Pesagens.`);
 
+    // 1 sessão = 1 pedido de compra = 1 fornecedor (24/11/2026). Bobina de
+    // alta densidade é da IKATUPLAST; aparas/resíduos são da EKOPLASTIC.
+    // Misturar lançaria um no fornecedor do outro: recusa e diz o que fazer.
+    const fornNovo = fornecedorOutras(body.item_codigo);
+    const outroForn = db.prepare(`SELECT sku FROM etiquetas WHERE sessao_id = ? AND tipo = 'outras' AND status != 'cancelada'`)
+      .all(sessao.id).map(e => e.sku).find(sku => fornecedorOutras(sku) !== fornNovo);
+    if (outroForn) {
+      const ehBobina = !!item.contatoBling;
+      return jsonErr(res, 409, ehBobina
+        ? 'Esta pesagem já tem aparas/resíduos. Finalize e envie antes de pesar bobina de alta densidade (vão em pedidos separados no Bling).'
+        : 'Esta pesagem é de bobina de alta densidade. Finalize e envie antes de pesar aparas/resíduos (vão em pedidos separados no Bling).',
+        { motivo: 'fornecedor_diferente' });
+    }
+
     return imprimirEPersistirEtiqueta({
       tipo:           'outras',
       clientToken:    body.clientToken || null,
-      material_key:   item.categoria,                // APARA | RESIDUO
+      material_key:   item.categoria,                // APARA | RESIDUO | BOBINA_AD
       material_nome:  item.nome,                     // ex "Apara Amarela", "Borra"
       material_label: body.item_codigo,
       cor:            item.cor,                       // cor da apara, ou null
-      fornecedor:     'EKOPLASTIC',                   // NOT NULL — sem fornecedor real
+      fornecedor:     item.contatoNome || 'EKOPLASTIC', // NOT NULL; bobina AD = IKATUPLAST (só no banco, não sai na etiqueta)
       lote:           (function(){ const s = dataLocalISO().split('-'); return s[2] + s[1] + s[0].slice(-2); })(),  // DDMMAA (data local)
       peso:           Number(body.peso),
       peso_bruto:     body.peso_bruto != null ? Number(body.peso_bruto) : null,
