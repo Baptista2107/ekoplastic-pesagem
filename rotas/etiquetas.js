@@ -1059,6 +1059,17 @@ async function rotasEtiquetas(req, res, parsed, pathname) {
         { motivo: 'fornecedor_diferente' });
     }
 
+    // Bobina AD (24/11/2026): o tubete é descontado AQUI, pelo catálogo — a
+    // tela só mostra a mesma conta. Peso que vale = balança − tubete.
+    let pesoItem = Number(body.peso), brutoItem = body.peso_bruto != null ? Number(body.peso_bruto) : null;
+    let taraItem = body.tara != null ? Number(body.tara) : null;
+    if (item.tubete) {
+      brutoItem = brutoItem != null ? brutoItem : pesoItem;
+      taraItem  = item.tubete;
+      pesoItem  = Math.round((brutoItem - item.tubete) * 10) / 10;
+      if (!(pesoItem > 0)) return jsonErr(res, 400, `Peso ${brutoItem} kg não passa do tubete (${item.tubete} kg). Confira a balança.`);
+    }
+
     return imprimirEPersistirEtiqueta({
       tipo:           'outras',
       clientToken:    body.clientToken || null,
@@ -1068,9 +1079,9 @@ async function rotasEtiquetas(req, res, parsed, pathname) {
       cor:            item.cor,                       // cor da apara, ou null
       fornecedor:     item.contatoNome || 'EKOPLASTIC', // NOT NULL; bobina AD = IKATUPLAST (só no banco, não sai na etiqueta)
       lote:           (function(){ const s = dataLocalISO().split('-'); return s[2] + s[1] + s[0].slice(-2); })(),  // DDMMAA (data local)
-      peso:           Number(body.peso),
-      peso_bruto:     body.peso_bruto != null ? Number(body.peso_bruto) : null,
-      tara:           body.tara       != null ? Number(body.tara)       : null,
+      peso:           pesoItem,
+      peso_bruto:     brutoItem,
+      tara:           taraItem,
       codigo:         body.item_codigo,               // sem cód. gravimétrico → usa o código do item
       sku:            body.item_codigo,               // p/ borra/varredura é o SKU real (RES.BORRA / RES.VARREDURA)
       sessao_id:      sessao.id,

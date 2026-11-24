@@ -16,6 +16,7 @@
 //   [4] Borra continua indo com a EKOPLASTIC.
 //   [5] Sessão misturada à mão no banco: o envio para com erro e não manda
 //       pedido nenhum (a bobina não vira compra da EKOPLASTIC).
+//   [1b] Tubete descontado pelo servidor: 1,52 → 3,3 kg; 1,16 → 2,5 kg.
 //   [6] Nada de palavra de resíduo na observação (a VPS leria como resíduo).
 //   [7] Apara (sem produto no Bling) misturada também para o envio.
 //   [8] Etiqueta O excluída não volta a 'bipada' pelo leitor.
@@ -137,11 +138,20 @@ const RX_RESIDUO_VPS = /RES\.|RESIDUO|RESÍDUO|VARREDURA|BORRA/i;   // = _RX_RES
     ok(epl1.includes('"BOBINA ALTA DENSIDADE"'), 'etiqueta diz BOBINA ALTA DENSIDADE', epl1.slice(0, 300));
     ok(epl1.includes('"VERDE 1,52 M"'), 'etiqueta diz VERDE 1,52 M', epl1.slice(0, 400));
     ok(epl1.includes('"SACOLA 38 X 48 - MILHEIRO"'), 'etiqueta diz para qual sacola serve (38 x 48)', epl1);
-    ok(epl1.includes('412.5 KG'), 'etiqueta leva o peso');
+    ok(epl1.includes('409.2 KG'), 'etiqueta leva o peso SEM o tubete (412,5 − 3,3)', epl1.match(/"[\d.]+ KG"/));
+    const g1 = comBanco(db => db.prepare('SELECT peso, peso_bruto, tara FROM etiquetas WHERE id = ?').get(b1.body.id));
+    ok(g1.peso === 409.2 && g1.peso_bruto === 412.5 && g1.tara === 3.3, 'banco: peso 409,2 · bruto 412,5 · tara 3,3', g1);
     ok(!/IKATU/i.test(epl1), 'fornecedor NÃO sai na etiqueta');
     await req('POST', `/etiquetas/${b1.body.id}/bipar`);
     const b2 = await pesar(s1, 'BOB.PT.1,16', 300);
     ok(b2.status === 200, 'bobina preta 1,16 na mesma pesagem', b2.body);
+    ok(comBanco(db => db.prepare('SELECT peso FROM etiquetas WHERE id = ?').get(b2.body.id).peso) === 297.5, '1,16: tubete de 2,5 kg (300 → 297,5)');
+    const tara0 = await pesar(s1, 'BOB.VER.1,52', 3);
+    ok(tara0.status === 400 && /tubete/.test(tara0.body.erro || ''), 'peso que não passa do tubete → 400', tara0);
+    const fraude = await req('POST', '/etiquetas/outras', { clientToken: `bad-${C}-tara`, sessao_id: s1, item_codigo: 'BOB.PT.1,52', peso: 100, peso_bruto: 100, tara: 0 });
+    ok(fraude.status === 200 && comBanco(db => db.prepare('SELECT peso FROM etiquetas WHERE id = ?').get(fraude.body.id).peso) === 96.7,
+       'tara mandada pela tela é ignorada: vale o tubete do catálogo', fraude.body);
+    await req('POST', `/etiquetas/${fraude.body.id}/cancelar`);
     ok(eplDe(b2.body.id).includes('"SACOLA 29 X 39 - MILHEIRO"'), '1,16 serve para a sacola 29 x 39');
     await req('POST', `/etiquetas/${b2.body.id}/bipar`);
     ok(comBanco(db => db.prepare('SELECT fornecedor FROM etiquetas WHERE id = ?').get(b1.body.id).fornecedor) === 'IKATUPLAST',
@@ -159,11 +169,11 @@ const RX_RESIDUO_VPS = /RES\.|RESIDUO|RESÍDUO|VARREDURA|BORRA/i;   // = _RX_RES
     ok(p1 && p1.corpo.fornecedor && p1.corpo.fornecedor.id === ID_IKATUPLAST, 'fornecedor do pedido = IKATUPLAST', p1);
     const itens = (p1 && p1.corpo.itens) || [];
     ok(itens.length === 2, '2 itens no pedido', itens);
-    ok(itens[0] && itens[0].produto.id === 16739758321 && itens[0].quantidade === 412.5, 'item 1 = variação BOB.VER.1,52 com 412,5 kg', itens[0]);
-    ok(itens[1] && itens[1].produto.id === 16739758328 && itens[1].quantidade === 300, 'item 2 = variação BOB.PT.1,16 com 300 kg', itens[1]);
+    ok(itens[0] && itens[0].produto.id === 16739758321 && itens[0].quantidade === 409.2, 'item 1 = variação BOB.VER.1,52 com 409,2 kg', itens[0]);
+    ok(itens[1] && itens[1].produto.id === 16739758328 && itens[1].quantidade === 297.5, 'item 2 = variação BOB.PT.1,16 com 297,5 kg', itens[1]);
     ok(itens.every(i => i.produto.id !== 16739752334), 'nenhum item vai no id do produto pai');
     const obs = (p1 && p1.corpo.observacoes) || '';
-    ok(/BOBINA ALTA DENSIDADE/.test(obs) && /TOTAL: 712,5 KG/.test(obs), 'observação com título e total', obs);
+    ok(/BOBINA ALTA DENSIDADE/.test(obs) && /TOTAL: 706,7 KG/.test(obs), 'observação com título e total', obs);
     ok(!RX_RESIDUO_VPS.test(obs), '[6] observação sem palavra que a VPS lê como resíduo', obs);
 
     console.log('\n[3b/4] pesagem de resíduo recusa bobina; cancelada não conta');

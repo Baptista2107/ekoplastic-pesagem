@@ -685,13 +685,20 @@ const OUTRAS_ITENS = {
   'RES.BORRA':     { nome:'Borra',         cor:null,      categoria:'RESIDUO' },
   'RES.VARREDURA': { nome:'Varredura',     cor:null,      categoria:'RESIDUO' },
   'RES.PO':        { nome:'Pó',            cor:null,      categoria:'RESIDUO' },
-  'BOB.VER.1,52':  { nome:'Bobina AD Verde 1,52', cor:'Verde', categoria:'BOBINA_AD', largura:'1,52', sacola:'38 x 48' },
-  'BOB.PT.1,52':   { nome:'Bobina AD Preta 1,52', cor:'Preta', categoria:'BOBINA_AD', largura:'1,52', sacola:'38 x 48' },
-  'BOB.VER.1,16':  { nome:'Bobina AD Verde 1,16', cor:'Verde', categoria:'BOBINA_AD', largura:'1,16', sacola:'29 x 39' },
-  'BOB.PT.1,16':   { nome:'Bobina AD Preta 1,16', cor:'Preta', categoria:'BOBINA_AD', largura:'1,16', sacola:'29 x 39' },
+  'BOB.VER.1,52':  { nome:'Bobina AD Verde 1,52', cor:'Verde', categoria:'BOBINA_AD', largura:'1,52', sacola:'38 x 48', tubete:3.3 },
+  'BOB.PT.1,52':   { nome:'Bobina AD Preta 1,52', cor:'Preta', categoria:'BOBINA_AD', largura:'1,52', sacola:'38 x 48', tubete:3.3 },
+  'BOB.VER.1,16':  { nome:'Bobina AD Verde 1,16', cor:'Verde', categoria:'BOBINA_AD', largura:'1,16', sacola:'29 x 39', tubete:2.5 },
+  'BOB.PT.1,16':   { nome:'Bobina AD Preta 1,16', cor:'Preta', categoria:'BOBINA_AD', largura:'1,16', sacola:'29 x 39', tubete:2.5 },
 };
 // 1 pesagem = 1 pedido no Bling = 1 fornecedor: bobina AD (IKATUPLAST) não
 // se mistura com aparas/resíduos (EKOPLASTIC). O servidor também recusa.
+// Peso que vale: balança − tubete (só bobina AD; = TUBETE do servidor, que
+// é quem desconta de verdade). Aparas/resíduos: o peso lido é o final.
+function pesoLiquido(codigo, bruto) {
+  const it = OUTRAS_ITENS[codigo];
+  const t = (it && it.tubete) || 0;
+  return Math.round(((bruto || 0) - t) * 10) / 10;
+}
 function grupoFornecedor(codigo) {
   const it = OUTRAS_ITENS[codigo];
   return it && it.categoria === 'BOBINA_AD' ? 'BOBINA_AD' : 'EKOPLASTIC';
@@ -853,7 +860,8 @@ function atualizarPreview() {
     <div class="pe-turno">BOBINA ALTA DENSIDADE</div>
     <div class="pe-prod">${item.cor.toUpperCase()} ${item.largura} M</div>
     <div class="pe-info">SERVE PARA: <b>SACOLA ${item.sacola} - MILHEIRO</b></div>
-    <div class="pe-peso">${state.pesoAtual.toFixed(1)} kg</div>
+    <div class="pe-peso">${pesoLiquido(state.itemCodigo, state.pesoAtual).toFixed(1)} kg</div>
+    <div class="pe-info">balança ${state.pesoAtual.toFixed(1)} − tubete ${item.tubete.toFixed(1)} kg</div>
     <div class="pe-sku">${state.itemCodigo}</div>
     <div class="pe-bc-wrap"><svg id="pe-barcode" class="pe-bc-svg"></svg></div>
     <div class="pe-id">${idPreview}</div>
@@ -876,7 +884,7 @@ function atualizarPreview() {
 function atualizarBotaoImprimir() {
   const btn = document.getElementById('btn-imprimir');
   if (!btn) return;
-  const camposOk = !!state.itemCodigo && state.pesoAtual > 0;
+  const camposOk = !!state.itemCodigo && pesoLiquido(state.itemCodigo, state.pesoAtual) > 0;
   const pend = pendentesBipagem();
   if (pend.length > 0) {
     btn.textContent = `⚠ BIPE A PESAGEM #${String(pend[0].seq_sessao||'-').padStart(2,'0')} PRIMEIRO`;
@@ -922,7 +930,7 @@ async function imprimirEtiqueta() {
     if (d.seq) state.proximoSeq = d.seq + 1;
     state.itens.unshift({
       id: d.id, seq_sessao: d.seq_sessao, codigo: state.itemCodigo,
-      nome: item.nome, peso: state.pesoAtual, status: 'aguardando_bipe',
+      nome: item.nome, peso: pesoLiquido(state.itemCodigo, state.pesoAtual), status: 'aguardando_bipe',
       hora: new Date().toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' }),
     });
     renderHistorico();

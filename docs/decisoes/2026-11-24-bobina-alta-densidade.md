@@ -30,7 +30,7 @@ Pedido do Vinicius:
 
 ## O que foi decidido sem perguntar (dá para mudar)
 
-- **Tara 0.** O peso da balança vai inteiro, como nas aparas. Se a bobina for pesada no eixo, falta descontar o peso dele (refugo e recuperada descontam pela largura).
+- **Tara = tubete (Vinicius 24/11, cálculo aproximado):** 1,52 → 3,3 kg; 1,16 → 2,5 kg. O SERVIDOR desconta pelo catálogo (a tara mandada pela tela é ignorada); a tela mostra "balança − tubete". Peso que não passa do tubete → recusado.
 - **Quatro botões diretos** (cor + metragem), cada um já dizendo a sacola, em vez de escolher a cor primeiro e a metragem depois. É menos toque no Mini PC.
 - **O papel do "Resumo do dia" continua "RESUMO DO DIA - RESIDUOS".** A bobina AD entra nele como um grupo próprio, depois dos resíduos.
 
