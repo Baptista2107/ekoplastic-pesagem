@@ -4,7 +4,7 @@
 
 const {
   CAPAS_CATALOGO, OUTRAS_CATALOGO, PA_CORES, PA_FORMATOS, PA_FORMATOS_POR_MAQUINA, PA_KG_FARDO,
-  PA_MAQUINAS, PA_TURNOS, fornecedorOutras,
+  PA_MAQUINAS, PA_TURNOS, fornecedorOutras, OUTRAS_BOBINA_MIN_KG,
 } = require('../lib/config');
 const {
   dataLocalISO, gravarLogProducaoBipagem, hashSenha, logDesvio, logE, logI, logW,
@@ -1061,13 +1061,19 @@ async function rotasEtiquetas(req, res, parsed, pathname) {
 
     // Bobina AD (24/11/2026): o tubete é descontado AQUI, pelo catálogo — a
     // tela só mostra a mesma conta. Peso que vale = balança − tubete.
+    // Contrato: com tubete, o BRUTO é peso_bruto (ou, sem ele, `peso`); o
+    // `peso` mandado não é usado como líquido — senão desconto em dobro.
+    // Mínimo de 20 kg líquidos, como a bobina recuperada: menos que isso é
+    // tubete vazio ou leitura errada, não bobina.
     let pesoItem = Number(body.peso), brutoItem = body.peso_bruto != null ? Number(body.peso_bruto) : null;
     let taraItem = body.tara != null ? Number(body.tara) : null;
     if (item.tubete) {
       brutoItem = brutoItem != null ? brutoItem : pesoItem;
+      if (!Number.isFinite(brutoItem)) return jsonErr(res, 400, 'Peso inválido.');
       taraItem  = item.tubete;
       pesoItem  = Math.round((brutoItem - item.tubete) * 10) / 10;
-      if (!(pesoItem > 0)) return jsonErr(res, 400, `Peso ${brutoItem} kg não passa do tubete (${item.tubete} kg). Confira a balança.`);
+      if (!(pesoItem >= OUTRAS_BOBINA_MIN_KG))
+        return jsonErr(res, 400, `Balança ${brutoItem} kg − tubete ${item.tubete} kg = ${pesoItem} kg: abaixo de ${OUTRAS_BOBINA_MIN_KG} kg não é bobina. Confira a balança.`);
     }
 
     return imprimirEPersistirEtiqueta({
@@ -1087,7 +1093,11 @@ async function rotasEtiquetas(req, res, parsed, pathname) {
       sessao_id:      sessao.id,
       printerName:    body.printerName || null,
     }, resp => {
-      if (resp.ok) jsonOk(res, { ...resp, item });
+      // O que FICOU gravado (na repetição pelo clientToken é a etiqueta
+      // antiga): a tela mostra isto, não o item/peso que tem na mão agora.
+      const gravada = resp.ok && resp.id ? dbStmts.getEtiqueta.get(resp.id) : null;
+      if (resp.ok) jsonOk(res, { ...resp, item,
+        ...(gravada ? { peso: gravada.peso, peso_bruto: gravada.peso_bruto, tara: gravada.tara, sku: gravada.sku } : {}) });
       else jsonErr(res, 500, resp.erro, { printer: resp.printer });
     });
   }

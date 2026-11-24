@@ -16,7 +16,9 @@
 //   [4] Borra continua indo com a EKOPLASTIC.
 //   [5] Sessão misturada à mão no banco: o envio para com erro e não manda
 //       pedido nenhum (a bobina não vira compra da EKOPLASTIC).
-//   [1b] Tubete descontado pelo servidor: 1,52 → 3,3 kg; 1,16 → 2,5 kg.
+//   [1b] Tubete descontado pelo servidor: 1,52 → 3,3 kg; 1,16 → 2,5 kg; mínimo 20 kg
+//        líquidos; peso_bruto não leva desconto duplo; repetição devolve o gravado.
+//  [11] tubete e mínimo da tela iguais aos do servidor.
 //   [6] Nada de palavra de resíduo na observação (a VPS leria como resíduo).
 //   [7] Apara (sem produto no Bling) misturada também para o envio.
 //   [8] Etiqueta O excluída não volta a 'bipada' pelo leitor.
@@ -148,6 +150,20 @@ const RX_RESIDUO_VPS = /RES\.|RESIDUO|RESÍDUO|VARREDURA|BORRA/i;   // = _RX_RES
     ok(comBanco(db => db.prepare('SELECT peso FROM etiquetas WHERE id = ?').get(b2.body.id).peso) === 297.5, '1,16: tubete de 2,5 kg (300 → 297,5)');
     const tara0 = await pesar(s1, 'BOB.VER.1,52', 3);
     ok(tara0.status === 400 && /tubete/.test(tara0.body.erro || ''), 'peso que não passa do tubete → 400', tara0);
+    const quase = await pesar(s1, 'BOB.VER.1,52', 23.2);          // 19,9 líquido
+    ok(quase.status === 400, 'abaixo de 20 kg líquidos → 400 (tubete vazio não é bobina)', quase);
+    const nan = await req('POST', '/etiquetas/outras', { clientToken: `bad-${C}-nan`, sessao_id: s1, item_codigo: 'BOB.VER.1,52', peso: 'abc' });
+    ok(nan.status === 400, 'peso inválido → 400', nan);
+    // contrato: com peso_bruto, o `peso` mandado NÃO é tratado como líquido (sem desconto em dobro)
+    const dupla = await req('POST', '/etiquetas/outras', { clientToken: `bad-${C}-dupla`, sessao_id: s1, item_codigo: 'BOB.VER.1,52', peso: 96.7, peso_bruto: 100 });
+    ok(dupla.status === 200 && dupla.body.peso === 96.7, 'peso_bruto 100 → 96,7 (não 93,4)', dupla.body);
+    // repetição pelo clientToken: mesma etiqueta, e a resposta diz o que FICOU gravado
+    const rep1 = await req('POST', '/etiquetas/outras', { clientToken: `bad-${C}-dupla`, sessao_id: s1, item_codigo: 'BOB.PT.1,16', peso: 300, peso_bruto: 300 });
+    ok(rep1.status === 200 && rep1.body.id === dupla.body.id && rep1.body.peso === 96.7 && rep1.body.sku === 'BOB.VER.1,52',
+       'repetir o mesmo clientToken com outro item/peso: devolve a etiqueta de antes (id, peso e sku dela)', rep1.body);
+    ok(comBanco(db => db.prepare(`SELECT COUNT(*) n FROM etiquetas WHERE sessao_id = ? AND sku = 'BOB.PT.1,16'`).get(s1).n) === 1,
+       'a repetição não criou etiqueta nova');
+    await req('POST', `/etiquetas/${dupla.body.id}/cancelar`);
     const fraude = await req('POST', '/etiquetas/outras', { clientToken: `bad-${C}-tara`, sessao_id: s1, item_codigo: 'BOB.PT.1,52', peso: 100, peso_bruto: 100, tara: 0 });
     ok(fraude.status === 200 && comBanco(db => db.prepare('SELECT peso FROM etiquetas WHERE id = ?').get(fraude.body.id).peso) === 96.7,
        'tara mandada pela tela é ignorada: vale o tubete do catálogo', fraude.body);
@@ -235,6 +251,17 @@ const RX_RESIDUO_VPS = /RES\.|RESIDUO|RESÍDUO|VARREDURA|BORRA/i;   // = _RX_RES
       const largas = [...epl.matchAll(/^A(\d+),\d+,0,4,2,\d,N,"(.*)"$/gm)];
       ok(largas.length === 2 && largas.every(m => Number(m[1]) + m[2].length * 28 <= 800), `${sku}: texto largo dentro de 800 dots`, largas.map(m => [m[1], m[2]]));
     }
+
+    console.log('\n[11] tubete e mínimo da tela = os do servidor');
+    const html = fs.readFileSync(path.join(ROOT, 'public', 'outras-pesagens.html'), 'utf8');
+    for (const [sku, cat] of Object.entries(OUTRAS_CATALOGO).filter(([, c]) => c.tubete)) {
+      const linha = html.split('\n').find(l => l.trim().startsWith(`'${sku}':`)) || '';
+      const m = linha.match(/tubete:\s*([\d.]+)/);
+      ok(m && Number(m[1]) === cat.tubete, `${sku}: tubete da tela = ${cat.tubete}`, linha.trim());
+    }
+    const { OUTRAS_BOBINA_MIN_KG } = require(path.join(ROOT, 'lib', 'config.js'));
+    const mMin = html.match(/const BOBINA_MIN_KG = (\d+)/);
+    ok(mMin && Number(mMin[1]) === OUTRAS_BOBINA_MIN_KG, 'mínimo da tela = do servidor', mMin && mMin[1]);
 
     console.log('\n[10] celular.css só usa data-tela que existe numa tela');
     const css = fs.readFileSync(path.join(ROOT, 'public', 'celular.css'), 'utf8');

@@ -694,6 +694,11 @@ const OUTRAS_ITENS = {
 // se mistura com aparas/resíduos (EKOPLASTIC). O servidor também recusa.
 // Peso que vale: balança − tubete (só bobina AD; = TUBETE do servidor, que
 // é quem desconta de verdade). Aparas/resíduos: o peso lido é o final.
+const BOBINA_MIN_KG = 20;   // = OUTRAS_BOBINA_MIN_KG do servidor
+function pesoOk(codigo, bruto) {
+  const it = OUTRAS_ITENS[codigo];
+  return it && it.tubete ? pesoLiquido(codigo, bruto) >= BOBINA_MIN_KG : bruto > 0;
+}
 function pesoLiquido(codigo, bruto) {
   const it = OUTRAS_ITENS[codigo];
   const t = (it && it.tubete) || 0;
@@ -708,7 +713,7 @@ const state = {
   sessaoId:      null,
   itemCodigo:    '',
   pesoAtual:     0,
-  pesoBruto:     0,        // Outras: peso lido = peso final (sem tara)
+  pesoBruto:     0,        // Outras: peso lido (bobina AD: o servidor tira o tubete)
   balancaEstavel:true,
   aguardandoZero:false,
   proximoSeq:    1,
@@ -776,7 +781,7 @@ async function pollBalanca() {
 }
 setInterval(pollBalanca, 1000);
 
-// Outras pesagens não têm tara/tubete: o peso lido é o peso final.
+// Aparas/resíduos: o peso lido é o final. Bobina AD: líquido = balança − tubete (pesoLiquido).
 function definirPeso(valor, statusCls, statusText) {
   state.pesoBruto = valor;
   state.pesoAtual = valor;
@@ -855,6 +860,10 @@ function atualizarPreview() {
     return;
   }
   const idPreview = 'O' + String(state.proximoSeq || 1).padStart(7, '0');
+  if (item.categoria === 'BOBINA_AD' && !pesoOk(state.itemCodigo, state.pesoAtual)) {
+    div.innerHTML = `<div class="pe-vazio">Ponha a bobina na balança<br>(balança ${state.pesoAtual.toFixed(1)} − tubete ${item.tubete.toFixed(1)} kg: abaixo de ${BOBINA_MIN_KG} kg)</div>`;
+    return;
+  }
   if (item.categoria === 'BOBINA_AD') {
     div.innerHTML = `
     <div class="pe-turno">BOBINA ALTA DENSIDADE</div>
@@ -884,7 +893,7 @@ function atualizarPreview() {
 function atualizarBotaoImprimir() {
   const btn = document.getElementById('btn-imprimir');
   if (!btn) return;
-  const camposOk = !!state.itemCodigo && pesoLiquido(state.itemCodigo, state.pesoAtual) > 0;
+  const camposOk = !!state.itemCodigo && pesoOk(state.itemCodigo, state.pesoAtual);
   const pend = pendentesBipagem();
   if (pend.length > 0) {
     btn.textContent = `⚠ BIPE A PESAGEM #${String(pend[0].seq_sessao||'-').padStart(2,'0')} PRIMEIRO`;
@@ -919,18 +928,19 @@ async function imprimirEtiqueta() {
         item_codigo: state.itemCodigo,
         peso:        state.pesoAtual,
         peso_bruto:  state.pesoBruto || null,
-        tara:        0,
       }),
     });
     const d = await r.json();
     if (!d.ok) throw new Error(d.erro || 'Falha na impressão');
     state.tokenPendente = null;
-    const item = OUTRAS_ITENS[state.itemCodigo] || { nome: state.itemCodigo };
+    // o que o servidor GRAVOU (numa repetição é a etiqueta de antes), não o que está na tela
+    const codigo = d.sku || state.itemCodigo;
+    const item = OUTRAS_ITENS[codigo] || { nome: codigo };
     toast(`✓ Etiqueta ${d.id} impressa (${item.nome})`, 'success');
     if (d.seq) state.proximoSeq = d.seq + 1;
     state.itens.unshift({
-      id: d.id, seq_sessao: d.seq_sessao, codigo: state.itemCodigo,
-      nome: item.nome, peso: pesoLiquido(state.itemCodigo, state.pesoAtual), status: 'aguardando_bipe',
+      id: d.id, seq_sessao: d.seq_sessao, codigo,
+      nome: item.nome, peso: d.peso != null ? Number(d.peso) : pesoLiquido(codigo, state.pesoAtual), status: 'aguardando_bipe',
       hora: new Date().toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' }),
     });
     renderHistorico();
