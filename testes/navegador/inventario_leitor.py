@@ -63,7 +63,7 @@ with sync_playwright() as p:
         pg.goto("http://eko.teste/inventario.html")
         pg.wait_for_timeout(400)
         # espião no lugar do onLeu (a validação de verdade fala com o Mini PC)
-        pg.evaluate("window.__lidos=[]; window.onLeu=(c)=>{window.__lidos.push(c);}; 0")   # '; 0': evaluate CHAMA função devolvida
+        pg.evaluate("window.__onLeuReal=window.onLeu; window.__lidos=[]; window.onLeu=(c)=>{window.__lidos.push(c);}; 0")   # '; 0': evaluate CHAMA função devolvida
 
         # fora da contagem (escolha MP/PA): o leitor não entrega nada
         bipar(pg, "R0000123")
@@ -104,6 +104,62 @@ with sync_playwright() as p:
         bipar(pg, "R0000125")
         ok(lidos(pg) == [], "dentro do app a página não lê o teclado (sem dobro)")
         pg.evaluate("delete window.__ekoApp")
+
+        # ── revisão do b0d37ed (24/11): o que o revisor mediu quebrando ──
+        # janela aberta: o bipe não entra e o Enter dele não confirma a janela
+        pg.evaluate("""window.__r='pendente'; ekoConfirmar({titulo:'Excluir', texto:'Excluir produto?', ok:'Excluir', perigo:true})
+                         .then(v => window.__r = v); 0""")
+        pg.wait_for_timeout(150)
+        bipar(pg, "R0000140")
+        st = pg.evaluate("[window.__r, !!document.querySelector('.eko-dlg')]")
+        ok(lidos(pg) == [] and st == ["pendente", True], f"janela aberta: bipe não entra nem confirma ({st})")
+        pg.evaluate("document.getElementById('md-cancelar') && document.getElementById('md-cancelar').click()")
+        pg.wait_for_timeout(100)
+
+        bipar(pg, "]C1R0000141")
+        ok(lidos(pg) == ["R0000141"], "prefixo AIM do leitor (]C1) sai")
+
+        # lista e campo de número em foco: o bipe não mexe neles e entra
+        pg.evaluate("""(() => { document.getElementById('painel-sacos').classList.remove('oculto');
+                         const s = document.getElementById('sac-produto');
+                         s.innerHTML = '<option value="">Selecione…</option><option value="1">RESINA</option><option value="2">TALCO</option>';
+                         s.value = '2'; s.focus(); })()""")
+        bipar(pg, "R0000142")
+        v = pg.evaluate("document.getElementById('sac-produto').value")
+        ok(lidos(pg) == ["R0000142"] and v == "2", f"lista em foco: material não muda ({v}) e o bipe entra")
+        pg.evaluate("const n = document.getElementById('sac-num'); n.value = '0'; n.focus(); 0")
+        bipar(pg, "R0000143")
+        v = pg.evaluate("document.getElementById('sac-num').value")
+        ok(lidos(pg) == ["R0000143"] and v == "0", f"campo de número em foco: não vira quantidade ({v}) e o bipe entra")
+        pg.evaluate("const n = document.getElementById('sac-num'); n.value = ''; n.focus(); 0")
+        pg.keyboard.type("12", delay=200)
+        v = pg.evaluate("document.getElementById('sac-num').value")
+        ok(lidos(pg) == [] and v == "12", f"número digitado à mão continua no campo ({v})")
+        pg.evaluate("document.activeElement.blur(); document.getElementById('painel-sacos').classList.add('oculto'); 0")
+
+        # leitor em "Focus Output" (texto direto no campo, sem tecla) e sem Enter
+        pg.wait_for_timeout(1600)   # o campo só pega o foco 1 s depois da última tecla
+        foco = pg.evaluate("document.activeElement && document.activeElement.id")
+        ok(foco == "leitor-campo", f"campo invisível pega o foco sozinho ({foco})")
+        pg.keyboard.insert_text("R0000144")
+        pg.wait_for_timeout(400)
+        ok(lidos(pg) == ["R0000144"], "leitor que escreve direto no campo (sem tecla, sem Enter) entra")
+        pg.keyboard.type("R0000145")
+        pg.wait_for_timeout(400)
+        ok(lidos(pg) == ["R0000145"], "leitor sem Enter no fim entra")
+        im = pg.evaluate("document.getElementById('leitor-campo') && document.getElementById('leitor-campo').getAttribute('inputmode')")
+        ok(im == "none", "campo invisível não abre o teclado (inputmode=none)")
+
+        # contagem por sacos: o onLeu de verdade barra o bipe
+        if pg.evaluate("!document.getElementById('leitor-campo')"):   # tela de antes: campo não existe
+            ok(False, "campo invisível existe")
+        pg.evaluate("""(() => { window.__onLeuEspiao = window.onLeu; window.onLeu = window.__onLeuReal;
+                         TIPO_INV = 'mp'; MODO_MANUAL = true; window.__n0 = leituras.length; })()""")
+        pg.evaluate("onLeu('R0000146')")
+        pg.wait_for_timeout(200)
+        r = pg.evaluate("[leituras.length - window.__n0, document.getElementById('toast').textContent]")
+        ok(r[0] == 0 and "sacos" in r[1], f"contagem por sacos: bipe não entra e avisa ({r})")
+        pg.evaluate("MODO_MANUAL = false; window.onLeu = window.__onLeuEspiao; 0")
 
         cam = pg.evaluate("""(() => { const b = document.getElementById('btn-camera');
                               const r = b.getBoundingClientRect(); return getComputedStyle(b).display !== 'none' && r.width > 0; })()""")
