@@ -156,7 +156,7 @@ async function rotasInventario(req, res, parsed, pathname) {
       // VPS antiga (ou rollback) aceita o PDF e joga o bag a bag fora: sem
       // este erro a tela zeraria e o detalhe sumiria calado, como em 24/11.
       if (mandouDetalhe && !d.detalhe) {
-        return jsonErr(res, 502, 'o PDF foi, mas a VPS não guardou o bag a bag — tente de novo ou avise o suporte');
+        return jsonErr(res, 502, 'o PDF foi, mas a VPS não guardou o bag a bag — não tente de novo, avise o suporte');
       }
       return jsonOk(res, { enviados: d.enviados || [], falhas: d.falhas || [], guardado: d.guardado });
     } catch(e) {
