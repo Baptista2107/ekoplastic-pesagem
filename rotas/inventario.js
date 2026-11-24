@@ -127,6 +127,17 @@ async function rotasInventario(req, res, parsed, pathname) {
   // Mini PC já usa); quem decide os destinos e guarda a cópia é a VPS.
   if (pathname === '/inventario/enviar-pdf' && req.method === 'POST') {
     let corpo; try { corpo = await lerBodyBinario(req, 8 * 1024 * 1024); } catch(e) { return jsonErr(res, 413, e.message); }
+    // 24/11/2026 (Gustavo): "o relatório não precisa de bag a bag, mas eu
+    // preciso dessa informação internamente nos sistemas". O PDF só leva os
+    // totais; a contagem inteira (cada gaiola/bag lido) vai junto para a VPS
+    // guardar, porque o Encerrar zera o inventario_atual logo depois daqui.
+    try {
+      const d = JSON.parse(corpo.toString('utf8'));
+      let inv = null;
+      try { inv = JSON.parse(configGet('inventario_atual', 'null')); } catch(e) {}
+      if (inv && Array.isArray(inv.itens) && inv.itens.length) d.inventario = inv;
+      corpo = JSON.stringify(d);
+    } catch(e) { return jsonErr(res, 400, 'corpo inválido: ' + e.message); }
     let base;
     try { base = new URL(configGet('vps_sacoleiras_url', 'http://100.107.130.114:8765/api/sacoleiras/agora')).origin; }
     catch(e) { return jsonErr(res, 500, 'endereço da VPS inválido'); }
@@ -135,7 +146,8 @@ async function rotasInventario(req, res, parsed, pathname) {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: corpo,
         signal: AbortSignal.timeout(60000) });
       const d = await r.json().catch(() => ({ ok: false, erro: 'resposta inválida da VPS (HTTP ' + r.status + ')' }));
-      logI('inventario', 'PDF enviado à VPS: ' + (d.ok ? ('ok → ' + (d.enviados || []).join(', ')) : ('FALHOU: ' + d.erro)));
+      logI('inventario', 'PDF enviado à VPS: ' + (d.ok ? ('ok → ' + (d.enviados || []).join(', ')
+           + (d.detalhe ? ' · bag a bag guardado' : ' · SEM bag a bag na VPS')) : ('FALHOU: ' + d.erro)));
       if (!d.ok) return jsonErr(res, 502, d.erro || 'a VPS recusou');
       return jsonOk(res, { enviados: d.enviados || [], falhas: d.falhas || [], guardado: d.guardado });
     } catch(e) {
