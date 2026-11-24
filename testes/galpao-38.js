@@ -12,6 +12,9 @@
 //   · as novas nascem livres, com o tipo certo por nível, e nada passa de 38;
 //   · subir de novo não muda nada (repetição).
 //
+//  24/11/2026: a rua 01 foi até 41 (testes/galpao-41.js). Este teste continua
+//  valendo para um banco de 138 que pule direto para o layout de hoje: 237.
+//
 //  Como rodar:  node testes/galpao-38.js
 // ════════════════════════════════════════════════════════════════════
 
@@ -76,10 +79,10 @@ function main() {
     };
     console.log(JSON.stringify(d));`;
   const d = JSON.parse(subir(fotografar));
-  eq(d.total, 228, '228 posições no total (38 vãos × 3 níveis × 2 ruas)');
-  eq(d.r1.n, 114, 'rua 01 com 38 vãos × 3 níveis');
+  eq(d.total, 237, '237 posições no total ((41 + 38) vãos × 3 níveis, desde 24/11)');
+  eq(d.r1.n, 123, 'rua 01 com 41 vãos × 3 níveis');
   eq(d.r2.n, 114, 'rua 02 com 38 vãos × 3 níveis');
-  eq(d.r1.m, 38, 'rua 01 vai até a posição 38');
+  eq(d.r1.m, 41, 'rua 01 vai até a posição 41');
   eq(d.r2.m, 38, 'rua 02 vai até a posição 38');
   eq(JSON.stringify(d.bloq), JSON.stringify([
     { codigo: '01-01-005', motivo: 'HIDRANTE' },
