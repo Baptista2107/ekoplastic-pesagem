@@ -223,7 +223,11 @@ public class MainActivity extends Activity {
             // levam de volta ao hub (shouldOverrideUrlLoading abaixo).
             @Override
             public void onPageFinished(WebView v, String url) {
-                if (url.startsWith("https://")) { if (TRAVAR_PAGINA && !temHub()) esconderSaidas(); injetarAtalhos(); }
+                if (url.startsWith("https://")) {
+                    if (TRAVAR_PAGINA && !temHub()) esconderSaidas();
+                    injetarAtalhos();
+                    if (temHub()) injetarAlertaPedidos();
+                }
             }
             @Override
             public void onPageCommitVisible(WebView v, String url) {
@@ -339,6 +343,37 @@ public class MainActivity extends Activity {
             // têm mais botão de câmera; lê o gatilho. EkoApp.laser() ficou.)
             "})()",
             null);
+    }
+
+    /**
+     * v2.2 (25/11/2026, Gustavo: "alerta de pedido de retirada no coletor…
+     * vibrar e colocar alerta na tela e um botão de ver pedido"). Só no hub:
+     * põe /alerta-pedidos.js do Mini PC em toda tela que o app abre. A regra
+     * mora nesse arquivo (testado no Node); aqui só o carrega. O hub já o
+     * carrega sozinho — o arquivo não roda duas vezes.
+     */
+    void injetarAlertaPedidos() {
+        web.evaluateJavascript("(function(){if(window.__ekoAlertaPedidos||document.getElementById('__ekoAlertaJs'))return;"
+            + "var s=document.createElement('script');s.id='__ekoAlertaJs';s.src='/alerta-pedidos.js';"
+            + "(document.head||document.documentElement).appendChild(s);})()", null);
+    }
+
+    /** Pedido de retirada novo: vibra 3 vezes e apita (o galpão é barulhento). */
+    void alertar() {
+        try {
+            android.os.Vibrator v = (android.os.Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
+            long[] p = {0, 500, 200, 500, 200, 800};
+            if (v != null && v.hasVibrator()) {
+                if (Build.VERSION.SDK_INT >= 26) v.vibrate(android.os.VibrationEffect.createWaveform(p, -1));
+                else v.vibrate(p, -1);
+            }
+        } catch (Exception ignore) {}
+        try {
+            final android.media.ToneGenerator t =
+                new android.media.ToneGenerator(android.media.AudioManager.STREAM_NOTIFICATION, 100);
+            t.startTone(android.media.ToneGenerator.TONE_PROP_BEEP2, 700);
+            ui.postDelayed(t::release, 1500);
+        } catch (Exception ignore) {}
     }
 
     // ─────────────────────────── laser por software ───────────────────────────
@@ -673,5 +708,7 @@ public class MainActivity extends Activity {
         /** Texto que o leitor escreveu no campo invisível da página. */
         @JavascriptInterface public void lido(String texto) { entregar(texto, "campo (leitor em modo preencher)"); }
         @JavascriptInterface public void laser() { ui.post(MainActivity.this::laser); }
+        /** v2.2: pedido de retirada novo (alerta-pedidos.js). */
+        @JavascriptInterface public void alertar() { ui.post(MainActivity.this::alertar); }
     }
 }

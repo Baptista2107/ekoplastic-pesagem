@@ -6,13 +6,15 @@
      (bobinas | inventario | mp). Não edite os marcadores à mão. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="@PACOTE@"
-    android:versionCode="12"
-    android:versionName="2.1">
+    android:versionCode="13"
+    android:versionName="2.2">
 
     <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="34" />
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- v2.2: vibrar no pedido de retirada novo (alerta-pedidos.js) -->
+    <uses-permission android:name="android.permission.VIBRATE" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <application

@@ -221,3 +221,21 @@ tela retoma calada a pesagem aberta de outra pessoa (as da MP perguntam "continu
 X"); com Mini PC e coletor na mesma sessão, uma etiqueta pode cair em sessão já finalizada e não
 ir ao Bling. **Compartilhado ainda pequeno:** teclado da senha e janela "sessão de outro"
 (`acesso-colaborador.js`) com texto de 14–15 px; `celular.css` baixa botão de janela a 44 px.
+
+## Alerta de pedido de retirada no coletor (25/11, tarde)
+
+Gustavo: "deixa um alerta de pedido de retirada no coletor da melhor forma possível, pode fazer
+o coletor vibrar e colocar alerta na tela e um botão de ver pedido direto na tela de retirada".
+
+- `public/alerta-pedidos.js`: a cada 15 s pergunta `GET /retirada/pedidos` ao Mini PC (o mesmo da
+  tela de Retirada). Pedido aberto nunca visto neste aparelho → vibra e apita **uma vez** e mostra
+  a faixa amarela no alto de qualquer tela, com VER PEDIDO (abre a Retirada) e ✕.
+- App 2.2 (versionCode 13): `EkoApp.alertar()` (vibração 3× + bipe) e o app põe o arquivo em toda
+  tela do hub. O hub já carrega sozinho, então com o 2.1 a faixa aparece só no hub, sem vibrar.
+- Só no app (user-agent `EkoColetor`): o monitor do Mini PC não muda.
+
+**Escolhido sem perguntar:** não repete o alerta enquanto o pedido fica aberto (pedidos de teste
+ficam o dia inteiro abertos e a vibração viraria ruído). Se o Bruno deixar passar, o pedido
+continua na tela de Retirada e no Telegram. **Não medido:** vibração e bipe no TC60 de verdade;
+alerta com o app em segundo plano ou com a tela apagada (o app mantém a tela acesa, mas fora
+dele não há aviso — para isso seria preciso um serviço do Android).
