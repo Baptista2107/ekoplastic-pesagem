@@ -54,9 +54,10 @@ function ler(epl) {
     } else if ((m = l.match(/^b(\d+),(\d+),Q,m2,s(\d+),"(.*)"$/))) {
       const [x, y, s] = m.slice(1, 4).map(Number);
       qrs.push({ x, y, s, dado: m[4], lado: 21 * s });
-    } else if ((m = l.match(/^B(\d+),(\d+),0,1,(\d+),(\d+),(\d+),N,"(.*)"$/))) {
+    } else if ((m = l.match(/^B(\d+),(\d+),0,1B,(\d+),(\d+),(\d+),N,"(.*)"$/))) {
       const [x, y, estreita, larga, alt] = m.slice(1, 6).map(Number);
-      // Code 128 B, pior caso: 11 módulos por caractere + início, checagem e fim.
+      // Code 128 subset B fixo ("1B"): largura exata, 11 módulos por caractere
+      // + início e checagem (11 cada) + fim (13) — sem isso não dá para centralizar.
       barras.push({ x, y, estreita, larga, alt, dado: m[6], fim_x: x + (11 * (m[6].length + 3) + 2) * estreita });
     } else if (/^B\d/.test(l)) barras.push({ cru: l });
     else if ((m = l.match(/^LO(\d+),(\d+),(\d+),(\d+)$/))) linhas.push(m.slice(1, 5).map(Number));
@@ -81,6 +82,16 @@ console.log('\n1. QR com o número da etiqueta; o que saiu não volta');
   ok(e.textos.some(x => /^DATA \/ HORA: \d{2}\/\d{2}\/\d{4}  \d{2}:\d{2}$/.test(x.txt)), 'tem a data/hora no rodapé');
   const peso = e.textos.find(x => x.txt === '1083.5');
   ok(peso && peso.x > DIVISOR_X, 'peso fica à direita do divisor', peso);
+}
+
+console.log('\n1b. data da pesagem em hora de Brasília, qualquer que seja o fuso da máquina');
+{
+  const tzAntes = process.env.TZ;
+  process.env.TZ = 'UTC';                        // máquina em UTC (ex.: troca gerada fora do Mini PC)
+  const epl = gerarEPL({ ...BASE, hora_impressao: '2026-07-10T01:30:00.000Z' });
+  process.env.TZ = tzAntes === undefined ? '' : tzAntes;
+  ok(/"DATA \/ HORA: 09\/07\/2026  22:30"/.test(epl), 'pesada 09/07 22:30 em Brasília sai 09/07 22:30, não 10/07 01:30',
+     (epl.match(/"DATA[^"]*"/) || [])[0]);
 }
 
 console.log('\n2. retorno (T) e varredura');
@@ -122,6 +133,9 @@ for (const [nome, dados] of CASOS) {
      { q, linhaQR, barras: b });
   ok(b && b.dado === q.dado && b.x >= 16 && b.fim_x <= LARG - 16 && b.y + b.alt < rodape.y - 8,
      `${nome}: barras com o mesmo número, dentro da largura e acima da data`, { b, rodape: rodape && rodape.y });
+  // Centralizadas (Gustavo, 25/11: "não ficou centralizado, um pouco mais pra direita").
+  ok(b && Math.abs((b.x + b.fim_x) / 2 - LARG / 2) <= 2, `${nome}: barras centralizadas na etiqueta`,
+     b && { centro: (b.x + b.fim_x) / 2, meio: LARG / 2 });
   ok(q && q.x >= 16 && q.x + q.lado <= LARG - 16, `${nome}: QR dentro da largura`, q);
   ok(q && q.s >= 15, `${nome}: QR grande (módulo ≥ 15 dots ≈ 1,9 mm)`, q && q.s);
   ok(topo.every(x => x.y < linhaQR[1]), `${nome}: textos do topo acima da linha do QR`);

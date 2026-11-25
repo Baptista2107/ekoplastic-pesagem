@@ -87,6 +87,16 @@ async function reimprimir(id) {
   }
   const PASTA = arg('--arquivo', null);
   if (PASTA) {
+    // As libs abrem o banco em ESCRITA (migração de schema): só numa cópia.
+    // Revisor de f742d0f: sem isto, no Mini PC abriria o etiquetas.db de
+    // produção num segundo processo; apontado para o pesagem.db da VPS,
+    // mudaria o schema dele.
+    const prod = [path.join(RAIZ, 'etiquetas.db'), path.join(os.homedir(), 'dados', 'pesagem', 'pesagem.db')]
+      .map(p => path.resolve(p).toLowerCase());
+    if (!process.env.EKO_DB_FILE || prod.includes(path.resolve(DB_FILE).toLowerCase())) {
+      console.error('ERRO: --arquivo só roda com EKO_DB_FILE apontando para uma CÓPIA do banco do Mini PC.');
+      process.exit(2);
+    }
     // Só aqui carrega as libs do servidor (abrem o banco): o modo normal no
     // Mini PC não abre o banco em escrita num segundo processo.
     const { dadosReimpressao } = require('../lib/negocio');

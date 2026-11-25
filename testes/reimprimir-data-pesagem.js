@@ -93,7 +93,7 @@ const dataDe = epl => { const m = epl && epl.match(/"DATA \/ HORA: ([^"]+)"/); r
     }
     ok(dataDe(epl) === '09/07/2026  11:30', 'reimpressa com a data da pesagem (09/07/2026 11:30)', dataDe(epl));
     ok(epl && epl.includes(`b`) && new RegExp(`^b\\d+,\\d+,Q,m2,s\\d+,"${id}"$`, 'm').test(epl), 'mesmo número no QR');
-    ok(epl && new RegExp(`^B\\d+,\\d+,0,1,3,6,80,N,"${id}"$`, 'm').test(epl), 'mesmo número nas barras');
+    ok(epl && new RegExp(`^B\\d+,\\d+,0,1B,3,6,80,N,"${id}"$`, 'm').test(epl), 'mesmo número nas barras');
     const db2 = new DatabaseSync(TMP_DB);
     ok(db2.prepare('SELECT status FROM etiquetas WHERE id = ?').get(id).status === st0, 'status não mudou');
     db2.close();
