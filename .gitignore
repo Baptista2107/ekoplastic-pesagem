@@ -119,3 +119,6 @@ android/build/
 
 # --- Python dos testes de navegador (12/11/2026) ---
 __pycache__/
+
+# worktrees dos agentes do Claude Code (cópia de trabalho, não é código)
+.claude/worktrees/
