@@ -39,7 +39,7 @@
       url: '/mp-recebimento-retorno.html?aba=retorno',     ico: '↩️', cor: '#ff9ad0', sessoes: ['retorno'] },
     { id: 'retirada',   nome: 'Retirada',        sub: 'Saída de MP para a produção',
       url: '/mp-retirada.html',                            ico: '📤', cor: '#ff9466', sessoes: ['retirada'] },
-    { id: 'residuos',   nome: 'Resíduos',        sub: 'Borra, varredura, pó, aparas',
+    { id: 'residuos',   nome: 'Resíduos',        sub: 'Aparas, varredura, bobina AD',
       url: '/outras-pesagens.html',                        ico: '♻️', cor: '#b5e655', sessoes: ['outras'] },
     { id: 'mapeamento', nome: 'Mapeamento',      sub: 'Endereço de bag e gaiola',
       url: '/enderecamento.html',                          ico: '🗺\uFE0F', cor: '#2ee6a6', sessoes: [] },
