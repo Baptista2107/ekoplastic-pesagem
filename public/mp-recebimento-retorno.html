@@ -1273,26 +1273,32 @@ body.modo-retorno #btn-corrigir { display: none; }
     content: ''; position: fixed; left: 0; right: 0; bottom: 0; height: 88px; z-index: 140;
     background: var(--surface); border-top: 1px solid var(--border); box-shadow: 0 -6px 18px rgba(0,0,0,.45);
   }
+  /* Bloco travado: o opacity do bloco criava um contexto de empilhamento e o
+     peso fixo ficava atrás do fundo da barra. Esmaece os filhos, não o bloco. */
+  body[data-tela="MP Recebimento"]:not(.embed) #bloco-peso.locked, body[data-tela="MP Recebimento"]:not(.embed) #bloco-qtd.locked { opacity: 1; }
+  body[data-tela="MP Recebimento"]:not(.embed) #bloco-peso.locked > :not(.liquido-display),
+  body[data-tela="MP Recebimento"]:not(.embed) #bloco-qtd.locked > :not(.qtd-calc) { opacity: .42; }
+  body[data-tela="MP Recebimento"]:not(.embed) #bloco-peso.locked .liquido-display, body[data-tela="MP Recebimento"]:not(.embed) #bloco-qtd.locked .qtd-calc { opacity: .6; }
   body[data-tela="MP Recebimento"]:not(.embed) .liquido-display,
   body[data-tela="MP Recebimento"]:not(.embed) .qtd-calc {
-    position: fixed; left: 8px; bottom: 8px; z-index: 150; margin: 0;
-    width: calc(50% - 12px); height: 72px; padding: 4px 8px;
+    position: fixed; left: 6px; bottom: 8px; z-index: 150; margin: 0;
+    width: calc(50% - 9px); height: 72px; padding: 4px 6px;
     flex-direction: column; align-items: flex-start; justify-content: center; gap: 0;
     background: #0e1d27; overflow: hidden;
   }
   body[data-tela="MP Recebimento"]:not(.embed) .liquido-display .lbl,
-  body[data-tela="MP Recebimento"]:not(.embed) .qtd-calc .lbl { font-size: 16px; letter-spacing: .5px; line-height: 1.1; white-space: nowrap; }
+  body[data-tela="MP Recebimento"]:not(.embed) .qtd-calc .lbl { font-size: 16px; letter-spacing: .3px; line-height: 1.1; white-space: nowrap; }
+  body[data-tela="MP Recebimento"]:not(.embed) .qtd-calc .lbl { white-space: normal; }
   body[data-tela="MP Recebimento"]:not(.embed) .liquido-display .val { font-size: 28px; line-height: 1.1; white-space: nowrap; }
   body[data-tela="MP Recebimento"]:not(.embed) .qtd-calc .val { font-size: 24px; line-height: 1.1; white-space: nowrap; }
   /* Peso instável: o número da barra também fica laranja. */
   body[data-tela="MP Recebimento"]:not(.embed) #bloco-peso:has(.peso-input.instavel) .liquido-display .val { color: var(--warn); }
   body[data-tela="MP Recebimento"]:not(.embed) #btn-imprimir {
-    position: fixed; right: 8px; bottom: 8px; z-index: 150;
-    width: calc(50% - 4px); height: 72px; min-height: 72px !important; padding: 6px 8px;
+    position: fixed; right: 6px; bottom: 8px; z-index: 150;
+    width: calc(50% - 9px); height: 72px; min-height: 72px !important; padding: 6px 8px;
     font-size: 18px; letter-spacing: .5px; line-height: 1.15;
   }
-  body[data-tela="MP Recebimento"]:not(.embed) #btn-imprimir:disabled { background: #2a3045; }
-  body.modo-retorno[data-tela="MP Recebimento"]:not(.embed) #btn-imprimir { left: 8px; width: auto; }
+  body.modo-retorno[data-tela="MP Recebimento"]:not(.embed) #btn-imprimir { left: 6px; width: auto; }
   body[data-tela="MP Recebimento"]:not(.embed) .ultima-etq {
     display: block; position: fixed; left: 8px; right: 8px; bottom: 92px; z-index: 150;
     padding: 10px 12px; border-radius: 10px; background: var(--panel); border: 1.5px solid var(--border);
@@ -1406,10 +1412,12 @@ body.modo-retorno #btn-corrigir { display: none; }
   body[data-tela="MP Recebimento"]:not(.embed) #rd-box .rd-sub,
   body[data-tela="MP Recebimento"]:not(.embed) #rd-box .rd-lb,
   body[data-tela="MP Recebimento"]:not(.embed) #rd-box .rd-diaext,
-  body[data-tela="MP Recebimento"]:not(.embed) #rd-box .rd-total small,
+
   body[data-tela="MP Recebimento"]:not(.embed) #rd-box .rd-g,
   body[data-tela="MP Recebimento"]:not(.embed) #rd-box .rd-vazio,
   body[data-tela="MP Recebimento"]:not(.embed) #rd-box .rd-alerta { font-size: 16px; }
+  body[data-tela="MP Recebimento"]:not(.embed) #rd-box .rd-total small { font-size: 16px !important; }
+  body[data-tela="MP Recebimento"]:not(.embed) #rd-box .rd-seta { width: 56px; flex-basis: 56px; }
   body[data-tela="MP Recebimento"]:not(.embed) #rd-box .rd-seta,
   body[data-tela="MP Recebimento"]:not(.embed) #rd-box .rd-atalho,
   body[data-tela="MP Recebimento"]:not(.embed) #rd-box .rd-btn,
@@ -3385,9 +3393,11 @@ function pintarUltimaEtq(lista) {
   if (!it) { el.textContent = ''; el.className = 'ultima-etq'; return; }
   const ok = it.status === 'bipada' || it.status === 'consumida';
   el.className = 'ultima-etq ' + (ok ? 'ok' : 'pendente');
-  el.textContent = 'Última: ' + (it.id || ('#' + String(it.n).padStart(4, '0')))
-    + ' · ' + Number(it.peso).toFixed(it.qtdSacos ? 0 : 1) + ' kg · '
-    + (ok ? '✓ ' + (estado.modo === 'retorno' ? 'registrada' : 'bipada') : '⚠ BIPAR');
+  // Status primeiro: se a linha não couber, a reticência corta o peso, não o status.
+  const id = it.id || ('#' + String(it.n).padStart(4, '0'));
+  const kg = Number(it.peso).toFixed(it.qtdSacos ? 0 : 1) + ' kg';
+  el.textContent = ok ? `✓ ${id} ${estado.modo === 'retorno' ? 'registrada' : 'bipada'} · ${kg}`
+                      : `⚠ BIPAR ${id} · ${kg}`;
 }
 /* </ultima-etq> */
 

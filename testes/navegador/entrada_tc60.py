@@ -97,6 +97,29 @@ def conferir(pg, nome):
     ok(m["nFonte"] == 0, f"{nome}: texto com pelo menos {FONTE} px", f"{m['nFonte']}: {m['fonte']}")
 
 
+# Revisor de 9f5eba7: "visível" não basta. O peso fixo pode estar atrás do
+# fundo da barra (contexto de empilhamento do bloco travado) e o texto da
+# barra pode estar cortado por overflow:hidden sem passar da tela.
+def barra_ok(pg, nome):
+    r = pg.evaluate("""() => { const out = [];
+        // bloco travado tem pointer-events:none, que o elementFromPoint pula:
+        // liga o toque em tudo só durante a medida.
+        const pe = document.createElement('style'); pe.textContent = '* { pointer-events: auto !important; }';
+        document.head.appendChild(pe);
+        for (const s of ['.liquido-display', '.qtd-calc', '#btn-imprimir', '#ultima-etq']) {
+          const e = document.querySelector(s); if (!e) continue;
+          const cs = getComputedStyle(e); const b = e.getBoundingClientRect();
+          if (cs.display === 'none' || !b.width || !b.height || e.closest('[style*="display: none"],[style*="display:none"]')) continue;
+          const topo = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+          if (!topo || !(e === topo || e.contains(topo))) out.push(s + ' coberto por ' + (topo ? (topo.id || topo.tagName + '.' + topo.className) : 'nada'));
+          for (const x of [e, ...e.querySelectorAll('*')])
+            if (x.scrollWidth > x.clientWidth + 1 && x.clientWidth) out.push(s + ' cortado: ' + (x.className || x.tagName) + ' ' + x.scrollWidth + '>' + x.clientWidth);
+        }
+        pe.remove();
+        return out; }""")
+    ok(not r, f"{nome}: barra de baixo à vista e sem texto cortado", r)
+
+
 def inteiro_na_tela(pg, sel):
     return pg.evaluate("""(s) => { const e = document.querySelector(s); if (!e) return null;
         const cs = getComputedStyle(e); if (cs.display === 'none' || cs.visibility === 'hidden') return null;
@@ -171,12 +194,14 @@ def main():
             ctx, pg = contexto(W, H)
             pg.goto(BASE + "/mp-recebimento-retorno.html?aba=recebimento", wait_until="domcontentloaded", timeout=30000); pg.wait_for_timeout(1200); senha(pg)
             conferir(pg, "inicio")
+            barra_ok(pg, "inicio (bloco do peso travado)")
             pg.locator("#grid-mat .opt", has_text="Grão Baixa").click(); pg.wait_for_timeout(300)
             conferir(pg, "fornecedores")
             pg.locator("#grid-forn .opt", has_text="Cedro").click(); pg.wait_for_timeout(300)
             pg.locator("#grid-cor .opt", has_text="Colorido").click(); pg.wait_for_timeout(300)
             pesar(pg, 812.4)
             conferir(pg, "peso-chegando")
+            barra_ok(pg, "peso-chegando")
             pg.evaluate("window.scrollTo(0, 0)"); pg.wait_for_timeout(300)
             print(f"\n[2] O principal sem rolar (página no topo)")
             pv = inteiro_na_tela(pg, ".liquido-display .val")
@@ -190,11 +215,12 @@ def main():
             etq = sess[0]["etiquetas"][0]["id"] if sess and sess[0]["etiquetas"] else "?"
             pg.evaluate("window.scrollTo(0, 0)"); pg.wait_for_timeout(300)
             pu = inteiro_na_tela(pg, "#ultima-etq")
-            ok(pu and pu["dentro"] and etq in pu["txt"] and "BIPAR" in pu["txt"], f"última etiqueta ({etq}, falta bipar) na tela sem rolar", pu)
+            ok(pu and pu["dentro"] and etq in pu["txt"] and pu["txt"].startswith("⚠ BIPAR"), f"última etiqueta ({etq}, falta bipar) na tela sem rolar", pu)
             conferir(pg, "etiqueta-impressa")
+            barra_ok(pg, "etiqueta-impressa")
             pg.evaluate(f"onLeu({json.dumps(etq)})"); pg.wait_for_timeout(1500)
             pu = inteiro_na_tela(pg, "#ultima-etq")
-            ok(pu and pu["dentro"] and "bipada" in pu["txt"], "depois do bipe a última etiqueta diz bipada", pu)
+            ok(pu and pu["dentro"] and pu["txt"].startswith("✓") and "bipada" in pu["txt"], "depois do bipe a última etiqueta diz bipada", pu)
 
             # 12 bags na mesma sessão (11 pela API) e a tela retomando
             sid = sess[0]["id"]
@@ -224,6 +250,7 @@ def main():
             pg.locator("#grid-forn .opt").first.click(); pg.wait_for_timeout(300)
             pg.evaluate("setQtd(40)"); pg.wait_for_timeout(300)
             conferir(pg, "aditivo-sacos")
+            barra_ok(pg, "aditivo-sacos")
             pg.evaluate("window.scrollTo(0, 0)"); pg.wait_for_timeout(200)
             pq = inteiro_na_tela(pg, ".qtd-calc .val"); pi = inteiro_na_tela(pg, "#btn-imprimir")
             ok(pq and pq["dentro"] and "1000" in pq["txt"].replace(".", "").replace(",", "") and pi and pi["dentro"],
@@ -239,6 +266,9 @@ def main():
             conferir(pg, "retorno-sem-etiqueta")
             pg.evaluate("setRetoTipo('aditivos')"); pg.wait_for_timeout(400)
             conferir(pg, "retorno-aditivos")
+            pg.evaluate("abrirResumoDia('retorno')"); pg.wait_for_timeout(1200)
+            conferir(pg, "resumo-do-dia")
+            pg.locator("#rd-fechar").click(); pg.wait_for_timeout(300)
             ctx.close()
 
             # ── 3. Monitor do Mini PC ──────────────────────────────────
