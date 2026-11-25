@@ -486,194 +486,209 @@ header {
      Só aparência: nenhum botão, campo, rota ou regra muda. -->
 <style id="estilo-coletor">
 @media (max-width: 600px) {
-  body[data-tela="Outras Pesagens"]:not(.embed) { padding-bottom: 156px; }
+  body[data-pagina="outras"]:not(.embed) { padding-bottom: 156px; }
 
   /* ─── Cabeçalho: linha 1 = nome + ← + 🏠; linha 2 = Resumo do dia + servidor ─── */
-  body[data-tela="Outras Pesagens"]:not(.embed) header { padding: 6px 10px !important; column-gap: 8px; row-gap: 6px; }
-  body[data-tela="Outras Pesagens"]:not(.embed) header .logo { font-size: 18px !important; letter-spacing: 1px !important; flex: 1 1 calc(100% - 140px); order: 0; }
-  body[data-tela="Outras Pesagens"]:not(.embed) header .logo-icon { width: 32px !important; height: 32px !important; font-size: 18px; }
-  body[data-tela="Outras Pesagens"]:not(.embed) header .header-center { display: none !important; }
-  body[data-tela="Outras Pesagens"]:not(.embed) header .header-right { display: contents; }
-  body[data-tela="Outras Pesagens"]:not(.embed) header .btn-icon { order: 1; width: 56px; height: 56px; min-width: 56px !important; min-height: 56px !important; font-size: 22px; }
-  body[data-tela="Outras Pesagens"]:not(.embed) header .btn-dia { order: 2; flex: 1 1 0; min-width: 0; min-height: 56px !important; font-size: 16px !important; letter-spacing: .3px;
+  body[data-pagina="outras"]:not(.embed) header { padding: 6px 10px !important; column-gap: 8px; row-gap: 6px; }
+  body[data-pagina="outras"]:not(.embed) header .logo { font-size: 18px !important; letter-spacing: 1px !important; flex: 1 1 calc(100% - 140px); order: 0; }
+  body[data-pagina="outras"]:not(.embed) header .logo-icon { width: 32px !important; height: 32px !important; font-size: 18px; }
+  body[data-pagina="outras"]:not(.embed) header .header-center { display: none !important; }
+  body[data-pagina="outras"]:not(.embed) header .header-right { display: contents; }
+  body[data-pagina="outras"]:not(.embed) header .btn-icon { order: 1; width: 56px; height: 56px; min-width: 56px !important; min-height: 56px !important; font-size: 22px; }
+  body[data-pagina="outras"]:not(.embed) header .btn-dia { order: 2; flex: 1 1 0; min-width: 0; min-height: 56px !important; font-size: 16px !important; letter-spacing: .3px;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  body[data-tela="Outras Pesagens"]:not(.embed) header .srv-status { order: 3; font-size: 16px !important; padding: 8px 10px !important; letter-spacing: .5px; }
+  body[data-pagina="outras"]:not(.embed) header .srv-status { order: 3; font-size: 16px !important; padding: 8px 10px !important; letter-spacing: .5px; }
 
   /* ─── Faixa "pesagem em andamento" + FINALIZAR ─── */
-  body[data-tela="Outras Pesagens"]:not(.embed) #banner-turno { padding: 8px 10px !important; gap: 8px !important; }
-  /* bobina alta densidade (veio do main 25/11): a sacola embaixo do botão, 16 px */
-  body[data-tela="Outras Pesagens"]:not(.embed) .touch-btn.btn-ad small { display: block; font-size: 16px !important; }
-  body[data-tela="Outras Pesagens"]:not(.embed) #banner-turno > div:first-child { flex-wrap: wrap; gap: 4px 12px !important; }
-  body[data-tela="Outras Pesagens"]:not(.embed) .banner-label { font-size: 16px; letter-spacing: .5px; }
-  body[data-tela="Outras Pesagens"]:not(.embed) .banner-info { font-size: 16px; }
-  body[data-tela="Outras Pesagens"]:not(.embed) .banner-resumo { font-size: 16px; padding-left: 0; border-left: none; flex-basis: 100%; }
-  body[data-tela="Outras Pesagens"]:not(.embed) .btn-finalizar { flex: 1 1 100%; min-height: 56px !important; font-size: 17px; letter-spacing: .5px; }
+  body[data-pagina="outras"]:not(.embed) #banner-turno { padding: 8px 10px !important; gap: 8px !important; }
+  body[data-pagina="outras"]:not(.embed) #banner-turno > div:first-child { flex-wrap: wrap; gap: 4px 12px !important; }
+  body[data-pagina="outras"]:not(.embed) .banner-label { font-size: 16px; letter-spacing: .5px; }
+  body[data-pagina="outras"]:not(.embed) .banner-info { font-size: 16px; }
+  body[data-pagina="outras"]:not(.embed) .banner-resumo { font-size: 16px; padding-left: 0; border-left: none; flex-basis: 100%; }
+  body[data-pagina="outras"]:not(.embed) .btn-finalizar { flex: 1 1 100%; min-height: 56px !important; font-size: 17px; letter-spacing: .5px; }
 
   /* ─── Escolha do item: alvo de luva ─── */
-  body[data-tela="Outras Pesagens"]:not(.embed) .page { padding: 10px !important; }
-  body[data-tela="Outras Pesagens"]:not(.embed) .touch-panel { gap: 12px; }
-  body[data-tela="Outras Pesagens"]:not(.embed) .section-label { font-size: 16px; letter-spacing: .5px; line-height: 1.2; margin-bottom: 6px; }
-  body[data-tela="Outras Pesagens"]:not(.embed) .touch-grid { gap: 8px; }
-  body[data-tela="Outras Pesagens"]:not(.embed) .touch-btn { min-height: 56px !important; font-size: 17px; padding: 8px; line-height: 1.2;
+  body[data-pagina="outras"]:not(.embed) .page { padding: 10px !important; }
+  body[data-pagina="outras"]:not(.embed) .touch-panel { gap: 12px; }
+  body[data-pagina="outras"]:not(.embed) .section-label { font-size: 16px; letter-spacing: .5px; line-height: 1.2; margin-bottom: 6px; }
+  body[data-pagina="outras"]:not(.embed) .touch-grid { gap: 8px; }
+  body[data-pagina="outras"]:not(.embed) .touch-btn { min-height: 56px !important; font-size: 17px; padding: 8px; line-height: 1.2;
     display: flex; align-items: center; justify-content: center; }
-  body[data-tela="Outras Pesagens"]:not(.embed) .cor-btn { min-height: 56px !important; padding: 8px 10px; }
-  body[data-tela="Outras Pesagens"]:not(.embed) .cor-label { font-size: 17px; }
-  body[data-tela="Outras Pesagens"]:not(.embed) #refugo-hoje-btn { font-size: 16px !important; }
-  body[data-tela="Outras Pesagens"]:not(.embed) #refugo-aguardando-aviso { font-size: 16px; line-height: 1.3; overflow-wrap: anywhere; }
+  /* Bobina alta densidade: "VERDE 1,52 m" numa linha e a sacola embaixo. Com
+     o flex de cima a sacola virava uma 3ª coluna e, sem a fonte Nunito, o
+     botão da PRETA ia a 389 px (revisor, 25/11). */
+  body[data-pagina="outras"]:not(.embed) .touch-btn.btn-ad { display: block; }
+  body[data-pagina="outras"]:not(.embed) .touch-btn.btn-ad small { display: block; font-size: 16px !important; }
+  body[data-pagina="outras"]:not(.embed) .cor-btn { min-height: 56px !important; padding: 8px 10px; }
+  body[data-pagina="outras"]:not(.embed) .cor-label { font-size: 17px; }
+  body[data-pagina="outras"]:not(.embed) #refugo-hoje-btn { font-size: 16px !important; }
+  body[data-pagina="outras"]:not(.embed) #refugo-aguardando-aviso { font-size: 16px; line-height: 1.3; overflow-wrap: anywhere; }
 
   /* ─── Balança ─── */
-  body[data-tela="Outras Pesagens"]:not(.embed) .balanca-card { padding: 10px 12px; }
-  body[data-tela="Outras Pesagens"]:not(.embed) .balanca-top { gap: 8px; }
-  body[data-tela="Outras Pesagens"]:not(.embed) .balanca-label { font-size: 16px; letter-spacing: .5px; }
-  body[data-tela="Outras Pesagens"]:not(.embed) .balanca-status { font-size: 16px; letter-spacing: .3px; padding: 4px 10px; }
-  body[data-tela="Outras Pesagens"]:not(.embed) .peso-sub { font-size: 16px; }
-  body[data-tela="Outras Pesagens"]:not(.embed) .peso-manual-wrap { gap: 8px; }
+  body[data-pagina="outras"]:not(.embed) .balanca-card { padding: 10px 12px; }
+  body[data-pagina="outras"]:not(.embed) .balanca-top { gap: 8px; }
+  body[data-pagina="outras"]:not(.embed) .balanca-label { font-size: 16px; letter-spacing: .5px; }
+  body[data-pagina="outras"]:not(.embed) .balanca-status { font-size: 16px; letter-spacing: .3px; padding: 4px 10px; }
+  body[data-pagina="outras"]:not(.embed) .peso-sub { font-size: 16px; }
+  body[data-pagina="outras"]:not(.embed) .peso-manual-wrap { gap: 8px; }
   /* Campos por id: o celular.css pega input com 4 :not() e vence classe. */
-  body[data-tela="Outras Pesagens"]:not(.embed) #peso-manual,
-  body[data-tela="Outras Pesagens"]:not(.embed) #refugo-etiqueta { min-width: 0; min-height: 56px !important; font-size: 18px; padding: 6px 10px; }
-  body[data-tela="Outras Pesagens"]:not(.embed) .btn-peso-ok,
-  body[data-tela="Outras Pesagens"]:not(.embed) .btn-peso-sim { min-height: 56px !important; min-width: 64px; font-size: 16px !important; letter-spacing: .5px; padding: 6px 10px; }
+  body[data-pagina="outras"]:not(.embed) #peso-manual,
+  body[data-pagina="outras"]:not(.embed) #refugo-etiqueta { min-width: 0; min-height: 56px !important; font-size: 18px; padding: 6px 10px; }
+  body[data-pagina="outras"]:not(.embed) .btn-peso-ok,
+  body[data-pagina="outras"]:not(.embed) .btn-peso-sim { min-height: 56px !important; min-width: 64px; font-size: 16px !important; letter-spacing: .5px; padding: 6px 10px; }
 
   /* ─── Barra fixa embaixo: item + peso | IMPRIMIR; a última etiqueta acima ───
      São os elementos de sempre, só fixados na tela. O fundo da barra é o
      body::after. */
-  body[data-tela="Outras Pesagens"]:not(.embed)::after {
+  body[data-pagina="outras"]:not(.embed)::after {
     content: ''; position: fixed; left: 0; right: 0; bottom: 0; height: 88px; z-index: 140;
     background: var(--surface); border-top: 1px solid var(--border); box-shadow: 0 -6px 18px rgba(0,0,0,.45);
   }
-  body[data-tela="Outras Pesagens"]:not(.embed) .peso-display {
+  body[data-pagina="outras"]:not(.embed) .peso-display {
     position: fixed; left: 6px; bottom: 8px; z-index: 150; margin: 0;
     width: calc(50% - 9px); height: 72px; padding: 4px 8px;
     display: flex; flex-wrap: wrap; align-content: center; align-items: baseline; column-gap: 4px;
     text-align: left; background: #0e1d27; border: 1.5px solid var(--border); border-radius: 12px;
     overflow: hidden; letter-spacing: .5px;
   }
-  body[data-tela="Outras Pesagens"]:not(.embed) .peso-item {
+  body[data-pagina="outras"]:not(.embed) .peso-item {
     display: block; flex: 1 1 100%; min-width: 0; font-family: 'Nunito', sans-serif; font-size: 16px; font-weight: 800;
     letter-spacing: .3px; line-height: 1.15; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
-  body[data-tela="Outras Pesagens"]:not(.embed) .peso-item.vazio { color: var(--muted); }
-  body[data-tela="Outras Pesagens"]:not(.embed) #peso-val { font-size: 28px; line-height: 1.15; white-space: nowrap; }
-  body[data-tela="Outras Pesagens"]:not(.embed) .peso-unit { font-size: 16px; }
+  body[data-pagina="outras"]:not(.embed) .peso-item.vazio { color: var(--muted); }
+  body[data-pagina="outras"]:not(.embed) #peso-val { font-size: 28px; line-height: 1.15; white-space: nowrap; }
+  body[data-pagina="outras"]:not(.embed) .peso-unit { font-size: 16px; }
+  /* Bobina AD: a etiqueta sai com o LÍQUIDO (balança − tubete). A barra mostra
+     o líquido e o tubete no lugar do número da balança; o bruto da AD só
+     aparece na prévia da etiqueta, mais abaixo. */
+  body[data-pagina="outras"]:not(.embed) .peso-display.com-tubete { row-gap: 0; padding: 2px 8px; }
+  body[data-pagina="outras"]:not(.embed) .peso-display.com-tubete #peso-val,
+  body[data-pagina="outras"]:not(.embed) .peso-display.com-tubete .peso-unit { display: none; }
+  body[data-pagina="outras"]:not(.embed) .peso-display.com-tubete .peso-item { line-height: 1.1; }
+  body[data-pagina="outras"]:not(.embed) .peso-display.com-tubete .peso-liq {
+    display: block; flex: 1 1 100%; min-width: 0; font-size: 16px; line-height: 1.1; color: var(--muted); white-space: nowrap; }
+  body[data-pagina="outras"]:not(.embed) .peso-display.com-tubete .peso-liq b { font-size: 24px; line-height: 1; color: var(--accent); font-weight: 600; }
+  body[data-pagina="outras"]:not(.embed) .peso-display.com-tubete .peso-liq .tb { display: block; }
+  body[data-pagina="outras"]:not(.embed) .balanca-card:has(.balanca-status.instavel, .balanca-status.descarga) .peso-liq b { color: var(--warn); }
   /* Peso instável ou balança para descarregar: o número da barra fica laranja. */
-  body[data-tela="Outras Pesagens"]:not(.embed) .balanca-card:has(.balanca-status.instavel, .balanca-status.descarga) #peso-val { color: var(--warn); }
-  body[data-tela="Outras Pesagens"]:not(.embed) #btn-imprimir {
+  body[data-pagina="outras"]:not(.embed) .balanca-card:has(.balanca-status.instavel, .balanca-status.descarga) #peso-val { color: var(--warn); }
+  body[data-pagina="outras"]:not(.embed) #btn-imprimir {
     position: fixed; right: 6px; bottom: 8px; z-index: 150;
     width: calc(50% - 9px); height: 72px; min-height: 72px !important; padding: 4px 8px;
     font-size: 17px; letter-spacing: .3px; line-height: 1.15; overflow-wrap: anywhere;
   }
   /* :disabled esmaecia o botão a 25% em cima do fundo da barra: fica legível. */
-  body[data-tela="Outras Pesagens"]:not(.embed) #btn-imprimir:disabled { opacity: .55; }
-  body[data-tela="Outras Pesagens"]:not(.embed) .ultima-etq {
+  body[data-pagina="outras"]:not(.embed) #btn-imprimir:disabled { opacity: .55; }
+  body[data-pagina="outras"]:not(.embed) .ultima-etq {
     display: block; position: fixed; left: 8px; right: 8px; bottom: 92px; z-index: 150;
     padding: 10px 12px; border-radius: 10px; background: var(--panel); border: 1.5px solid var(--border);
     border-left: 6px solid var(--accent2); font-size: 16px; font-weight: 800; line-height: 1.25;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-shadow: 0 -4px 14px rgba(0,0,0,.4);
   }
-  body[data-tela="Outras Pesagens"]:not(.embed) .ultima-etq.pendente { border-left-color: var(--warn); color: var(--warn); }
-  body[data-tela="Outras Pesagens"]:not(.embed) .ultima-etq.cancelada { border-left-color: var(--danger); color: var(--danger); }
-  body[data-tela="Outras Pesagens"]:not(.embed) .ultima-etq:empty { display: none; }
+  body[data-pagina="outras"]:not(.embed) .ultima-etq.pendente { border-left-color: var(--warn); color: var(--warn); }
+  body[data-pagina="outras"]:not(.embed) .ultima-etq.cancelada { border-left-color: var(--danger); color: var(--danger); }
+  body[data-pagina="outras"]:not(.embed) .ultima-etq:empty { display: none; }
 
   /* ─── Prévia + lista (descem e rolam com a página) ─── */
-  body[data-tela="Outras Pesagens"]:not(.embed) .preview-wrap { padding: 10px; }
-  body[data-tela="Outras Pesagens"]:not(.embed) .preview-label { font-size: 16px; letter-spacing: .5px; }
-  body[data-tela="Outras Pesagens"]:not(.embed) .preview-etiqueta { max-width: 300px; margin: 0 auto; }
-  body[data-tela="Outras Pesagens"]:not(.embed) .hist-card { padding: 10px 8px; }
-  body[data-tela="Outras Pesagens"]:not(.embed) .hist-head { flex-wrap: wrap; gap: 4px 10px; }
-  body[data-tela="Outras Pesagens"]:not(.embed) .hist-titulo,
-  body[data-tela="Outras Pesagens"]:not(.embed) .hist-totais { font-size: 16px; letter-spacing: .5px; }
-  body[data-tela="Outras Pesagens"]:not(.embed) .hist-lista { flex: none; overflow: visible; gap: 6px; }
-  body[data-tela="Outras Pesagens"]:not(.embed) .hist-vazio { font-size: 16px; padding: 18px 0; }
+  body[data-pagina="outras"]:not(.embed) .preview-wrap { padding: 10px; }
+  body[data-pagina="outras"]:not(.embed) .preview-label { font-size: 16px; letter-spacing: .5px; }
+  body[data-pagina="outras"]:not(.embed) .preview-etiqueta { max-width: 300px; margin: 0 auto; }
+  body[data-pagina="outras"]:not(.embed) .hist-card { padding: 10px 8px; }
+  body[data-pagina="outras"]:not(.embed) .hist-head { flex-wrap: wrap; gap: 4px 10px; }
+  body[data-pagina="outras"]:not(.embed) .hist-titulo,
+  body[data-pagina="outras"]:not(.embed) .hist-totais { font-size: 16px; letter-spacing: .5px; }
+  body[data-pagina="outras"]:not(.embed) .hist-lista { flex: none; overflow: visible; gap: 6px; }
+  body[data-pagina="outras"]:not(.embed) .hist-vazio { font-size: 16px; padding: 18px 0; }
   /* Nº e peso na 1ª linha (lado a lado com os botões não cabiam: o nº
      invadia o peso); descrição, BIPAR e ✕ na 2ª. */
-  body[data-tela="Outras Pesagens"]:not(.embed) #hist-lista .hist-item {
+  body[data-pagina="outras"]:not(.embed) #hist-lista .hist-item {
     grid-template-columns: minmax(0, 1fr) 76px 56px;
     grid-template-areas: "id peso peso" "desc acao del";
     gap: 4px 6px; padding: 6px 6px 6px 8px;
   }
-  body[data-tela="Outras Pesagens"]:not(.embed) #hist-lista .hist-id { grid-area: id; }
-  body[data-tela="Outras Pesagens"]:not(.embed) #hist-lista .hist-peso { grid-area: peso; justify-self: end; }
-  body[data-tela="Outras Pesagens"]:not(.embed) #hist-lista .hist-desc { grid-area: desc; }
-  body[data-tela="Outras Pesagens"]:not(.embed) #hist-lista .hist-acao,
-  body[data-tela="Outras Pesagens"]:not(.embed) #hist-lista .hist-check { grid-area: acao; }
-  body[data-tela="Outras Pesagens"]:not(.embed) #hist-lista .hist-del { grid-area: del; }
+  body[data-pagina="outras"]:not(.embed) #hist-lista .hist-id { grid-area: id; }
+  body[data-pagina="outras"]:not(.embed) #hist-lista .hist-peso { grid-area: peso; justify-self: end; }
+  body[data-pagina="outras"]:not(.embed) #hist-lista .hist-desc { grid-area: desc; }
+  body[data-pagina="outras"]:not(.embed) #hist-lista .hist-acao,
+  body[data-pagina="outras"]:not(.embed) #hist-lista .hist-check { grid-area: acao; }
+  body[data-pagina="outras"]:not(.embed) #hist-lista .hist-del { grid-area: del; }
   /* Nas janelas (refugo, bipe pendente) a linha quebra: nº e peso, descrição, botões. */
-  body[data-tela="Outras Pesagens"]:not(.embed) .modal .hist-item { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 8px; }
-  body[data-tela="Outras Pesagens"]:not(.embed) .modal .hist-item .hist-id { order: 1; flex: 1 1 auto; }
-  body[data-tela="Outras Pesagens"]:not(.embed) .modal .hist-item .hist-peso { order: 2; }
-  body[data-tela="Outras Pesagens"]:not(.embed) .modal .hist-item .hist-desc { order: 3; flex: 1 1 100%; }
-  body[data-tela="Outras Pesagens"]:not(.embed) .modal .hist-item > button { order: 4; flex: 1 1 56px; }
-  body[data-tela="Outras Pesagens"]:not(.embed) .hist-id,
-  body[data-tela="Outras Pesagens"]:not(.embed) .hist-peso { font-size: 16px; white-space: nowrap; }
-  body[data-tela="Outras Pesagens"]:not(.embed) .hist-desc { font-size: 16px; white-space: normal; line-height: 1.25; }
-  body[data-tela="Outras Pesagens"]:not(.embed) .hist-small { font-size: 16px; letter-spacing: 0; }
-  body[data-tela="Outras Pesagens"]:not(.embed) .hist-acao { min-height: 56px !important; min-width: 56px; padding: 0 6px; font-size: 16px; letter-spacing: .5px; }
-  body[data-tela="Outras Pesagens"]:not(.embed) .hist-check { font-size: 24px; }
-  body[data-tela="Outras Pesagens"]:not(.embed) .hist-del { width: 56px; height: 56px; min-height: 56px !important; font-size: 20px; }
+  body[data-pagina="outras"]:not(.embed) .modal .hist-item { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 8px; }
+  body[data-pagina="outras"]:not(.embed) .modal .hist-item .hist-id { order: 1; flex: 1 1 auto; }
+  body[data-pagina="outras"]:not(.embed) .modal .hist-item .hist-peso { order: 2; }
+  body[data-pagina="outras"]:not(.embed) .modal .hist-item .hist-desc { order: 3; flex: 1 1 100%; }
+  body[data-pagina="outras"]:not(.embed) .modal .hist-item > button { order: 4; flex: 1 1 56px; }
+  body[data-pagina="outras"]:not(.embed) .hist-id,
+  body[data-pagina="outras"]:not(.embed) .hist-peso { font-size: 16px; white-space: nowrap; }
+  body[data-pagina="outras"]:not(.embed) .hist-desc { font-size: 16px; white-space: normal; line-height: 1.25; }
+  body[data-pagina="outras"]:not(.embed) .hist-small { font-size: 16px; letter-spacing: 0; }
+  body[data-pagina="outras"]:not(.embed) .hist-acao { min-height: 56px !important; min-width: 56px; padding: 0 6px; font-size: 16px; letter-spacing: .5px; }
+  body[data-pagina="outras"]:not(.embed) .hist-check { font-size: 24px; }
+  body[data-pagina="outras"]:not(.embed) .hist-del { width: 56px; height: 56px; min-height: 56px !important; font-size: 20px; }
 
   /* ─── Toast em cima: embaixo ficava atrás da barra (e do dedo). ─── */
   /* Acima do teclado da senha (z 99999): no app o FINALIZAR pede a senha de
      novo na hora, e "Bling: enviado" / "o papel sai no Resumo do dia" ficavam
      escondidos atrás dele (revisor de c950492). */
-  body[data-tela="Outras Pesagens"]:not(.embed) #toast-area { top: 8px; left: 8px; right: 8px; z-index: 100000; }
-  body[data-tela="Outras Pesagens"]:not(.embed) .toast { min-width: 0; font-size: 16px; padding: 12px 14px; }
+  body[data-pagina="outras"]:not(.embed) #toast-area { top: 8px; left: 8px; right: 8px; z-index: 100000; }
+  body[data-pagina="outras"]:not(.embed) .toast { min-width: 0; font-size: 16px; padding: 12px 14px; }
   /* Crachá "👤 NOME": no fim da página (o celular.css o punha no canto de
      baixo, onde agora fica a barra). */
-  body[data-tela="Outras Pesagens"]:not(.embed) #eko-resp-tag {
+  body[data-pagina="outras"]:not(.embed) #eko-resp-tag {
     position: static !important; display: flex; align-items: center; justify-content: center;
     margin: 12px 10px 0; max-width: none !important; min-height: 56px; border-radius: 12px !important;
     font-size: 16px !important;
   }
 
   /* ─── Janelas: rolam dentro da tela, botões de luva ─── */
-  body[data-tela="Outras Pesagens"]:not(.embed) .modal-overlay { align-items: flex-start; padding: 8px; overflow-y: auto; }
-  body[data-tela="Outras Pesagens"]:not(.embed) .modal { padding: 16px 14px; border-radius: 14px; }
-  body[data-tela="Outras Pesagens"]:not(.embed) .modal-titulo { font-size: 20px; line-height: 1.25; }
-  body[data-tela="Outras Pesagens"]:not(.embed) .modal-corpo { font-size: 16px; margin-bottom: 14px; }
-  body[data-tela="Outras Pesagens"]:not(.embed) .modal-acoes { flex-wrap: wrap; gap: 8px; }
-  body[data-tela="Outras Pesagens"]:not(.embed) .btn-modal { flex: 1 1 40%; min-height: 56px !important; font-size: 17px; padding: 6px 12px; }
-  body[data-tela="Outras Pesagens"]:not(.embed) #lista-pendentes-modal [style*="font-size:13px"],
-  body[data-tela="Outras Pesagens"]:not(.embed) #lista-pendentes-modal [style*="font-size:11px"] { font-size: 16px !important; }
-  body[data-tela="Outras Pesagens"]:not(.embed) #lista-pendentes-modal > div { flex-wrap: wrap; }
-  body[data-tela="Outras Pesagens"]:not(.embed) #refugo-bobina,
-  body[data-tela="Outras Pesagens"]:not(.embed) #refugo-peso,
-  body[data-tela="Outras Pesagens"]:not(.embed) #rec-peso { font-size: 16px !important; overflow-wrap: anywhere; }
-  body[data-tela="Outras Pesagens"]:not(.embed) #refugo-lista { max-height: none !important; overflow: visible; }
-  body[data-tela="Outras Pesagens"]:not(.embed) #refugo-aguardando > div:first-child { font-size: 16px; }
-  body[data-tela="Outras Pesagens"]:not(.embed) #rec-teclado { gap: 8px !important; }
-  body[data-tela="Outras Pesagens"]:not(.embed) #rec-teclado .touch-btn { font-size: 22px; }
+  body[data-pagina="outras"]:not(.embed) .modal-overlay { align-items: flex-start; padding: 8px; overflow-y: auto; }
+  body[data-pagina="outras"]:not(.embed) .modal { padding: 16px 14px; border-radius: 14px; }
+  body[data-pagina="outras"]:not(.embed) .modal-titulo { font-size: 20px; line-height: 1.25; }
+  body[data-pagina="outras"]:not(.embed) .modal-corpo { font-size: 16px; margin-bottom: 14px; }
+  body[data-pagina="outras"]:not(.embed) .modal-acoes { flex-wrap: wrap; gap: 8px; }
+  body[data-pagina="outras"]:not(.embed) .btn-modal { flex: 1 1 40%; min-height: 56px !important; font-size: 17px; padding: 6px 12px; }
+  body[data-pagina="outras"]:not(.embed) #lista-pendentes-modal [style*="font-size:13px"],
+  body[data-pagina="outras"]:not(.embed) #lista-pendentes-modal [style*="font-size:11px"] { font-size: 16px !important; }
+  body[data-pagina="outras"]:not(.embed) #lista-pendentes-modal > div { flex-wrap: wrap; }
+  body[data-pagina="outras"]:not(.embed) #refugo-bobina,
+  body[data-pagina="outras"]:not(.embed) #refugo-peso,
+  body[data-pagina="outras"]:not(.embed) #rec-peso { font-size: 16px !important; overflow-wrap: anywhere; }
+  body[data-pagina="outras"]:not(.embed) #refugo-lista { max-height: none !important; overflow: visible; }
+  body[data-pagina="outras"]:not(.embed) #refugo-aguardando > div:first-child { font-size: 16px; }
+  body[data-pagina="outras"]:not(.embed) #rec-teclado { gap: 8px !important; }
+  body[data-pagina="outras"]:not(.embed) #rec-teclado .touch-btn { font-size: 22px; }
 
   /* ─── Janelas que vêm de arquivos compartilhados (senha, resumo do dia):
      só o tamanho de texto e de toque, e só nesta tela. ─── */
-  body[data-tela="Outras Pesagens"]:not(.embed) #eko-acesso .tl,
-  body[data-tela="Outras Pesagens"]:not(.embed) #eko-acesso .hint,
-  body[data-tela="Outras Pesagens"]:not(.embed) #eko-acesso .msg,
-  body[data-tela="Outras Pesagens"]:not(.embed) #eko-acesso .rodape a { font-size: 16px; }
-  body[data-tela="Outras Pesagens"]:not(.embed) #eko-acesso .rodape a { display: inline-flex; align-items: center; min-height: 56px !important; padding: 0 12px; }
-  body[data-tela="Outras Pesagens"]:not(.embed) #eko-outro button,
-  body[data-tela="Outras Pesagens"]:not(.embed) #eko-confirma button { min-height: 56px !important; font-size: 17px !important; }
-  body[data-tela="Outras Pesagens"]:not(.embed) #eko-outro [style*="font-size:14px"],
-  body[data-tela="Outras Pesagens"]:not(.embed) #eko-confirma [style*="font-size:14px"] { font-size: 16px !important; }
-  body[data-tela="Outras Pesagens"]:not(.embed) #rd-box .rd-sub,
-  body[data-tela="Outras Pesagens"]:not(.embed) #rd-box .rd-lb,
-  body[data-tela="Outras Pesagens"]:not(.embed) #rd-box .rd-diaext,
-  body[data-tela="Outras Pesagens"]:not(.embed) #rd-box .rd-g,
-  body[data-tela="Outras Pesagens"]:not(.embed) #rd-box .rd-vazio,
-  body[data-tela="Outras Pesagens"]:not(.embed) #rd-box .rd-alerta { font-size: 16px; }
-  body[data-tela="Outras Pesagens"]:not(.embed) #rd-box .rd-total small { font-size: 16px !important; }
-  body[data-tela="Outras Pesagens"]:not(.embed) #rd-box .rd-seta { width: 56px; flex-basis: 56px; }
-  body[data-tela="Outras Pesagens"]:not(.embed) #rd-box .rd-seta,
-  body[data-tela="Outras Pesagens"]:not(.embed) #rd-box .rd-atalho,
-  body[data-tela="Outras Pesagens"]:not(.embed) #rd-box .rd-btn,
-  body[data-tela="Outras Pesagens"]:not(.embed) #rd-box #rd-data { min-height: 56px !important; font-size: 16px; }
+  body[data-pagina="outras"]:not(.embed) #eko-acesso .tl,
+  body[data-pagina="outras"]:not(.embed) #eko-acesso .hint,
+  body[data-pagina="outras"]:not(.embed) #eko-acesso .msg,
+  body[data-pagina="outras"]:not(.embed) #eko-acesso .rodape a { font-size: 16px; }
+  body[data-pagina="outras"]:not(.embed) #eko-acesso .rodape a { display: inline-flex; align-items: center; min-height: 56px !important; padding: 0 12px; }
+  body[data-pagina="outras"]:not(.embed) #eko-outro button,
+  body[data-pagina="outras"]:not(.embed) #eko-confirma button { min-height: 56px !important; font-size: 17px !important; }
+  body[data-pagina="outras"]:not(.embed) #eko-outro [style*="font-size:14px"],
+  body[data-pagina="outras"]:not(.embed) #eko-confirma [style*="font-size:14px"] { font-size: 16px !important; }
+  body[data-pagina="outras"]:not(.embed) #rd-box .rd-sub,
+  body[data-pagina="outras"]:not(.embed) #rd-box .rd-lb,
+  body[data-pagina="outras"]:not(.embed) #rd-box .rd-diaext,
+  body[data-pagina="outras"]:not(.embed) #rd-box .rd-g,
+  body[data-pagina="outras"]:not(.embed) #rd-box .rd-vazio,
+  body[data-pagina="outras"]:not(.embed) #rd-box .rd-alerta { font-size: 16px; }
+  body[data-pagina="outras"]:not(.embed) #rd-box .rd-total small { font-size: 16px !important; }
+  body[data-pagina="outras"]:not(.embed) #rd-box .rd-seta { width: 56px; flex-basis: 56px; }
+  body[data-pagina="outras"]:not(.embed) #rd-box .rd-seta,
+  body[data-pagina="outras"]:not(.embed) #rd-box .rd-atalho,
+  body[data-pagina="outras"]:not(.embed) #rd-box .rd-btn,
+  body[data-pagina="outras"]:not(.embed) #rd-box #rd-data { min-height: 56px !important; font-size: 16px; }
 }
 /* Fora do coletor a linha "Última etiqueta" e o nome do item na barra não existem. */
-.ultima-etq, .peso-item { display: none; }
+.ultima-etq, .peso-item, .peso-liq { display: none; }
 </style>
 <!-- Ajuste automatico para celular: so vale abaixo de 900px de largura -->
 <link rel="stylesheet" href="/celular.css">
 </head>
-<body data-tela="Outras Pesagens">
+<body data-tela="Outras Pesagens" data-pagina="outras">
 
 <header>
   <div class="logo">
@@ -761,7 +776,7 @@ header {
           <span class="balanca-label">Peso</span>
           <span class="balanca-status disconnected" id="balanca-status">Desconectada</span>
         </div>
-        <div class="peso-display"><span class="peso-item" id="peso-item"></span><span id="peso-val">0.0</span><span class="peso-unit"> kg</span></div>
+        <div class="peso-display"><span class="peso-item" id="peso-item"></span><span id="peso-val">0.0</span><span class="peso-unit"> kg</span><span class="peso-liq" id="peso-liq"></span></div>
         <div class="peso-sub" id="peso-sub" style="visibility:hidden;">—</div>
         <div class="peso-manual-wrap">
           <input type="number" class="peso-manual-input" id="peso-manual"
@@ -1100,11 +1115,24 @@ function atualizarPreview() {
 /* <barra-coletor> 25/11/2026: nome do item na barra de baixo do coletor (só
    aparece abaixo de 600 px, pelo CSS). Só escreve texto: não muda estado. */
 function pintarPesoItem() {
-  const el = document.getElementById('peso-item');
-  if (!el) return;
   const item = OUTRAS_ITENS[state.itemCodigo];
-  el.textContent = item ? item.nome : 'Escolha o item';
-  el.className = 'peso-item' + (item ? '' : ' vazio');
+  const el = document.getElementById('peso-item');
+  if (el) {
+    // Bobina AD: nome curto, para caber a largura (1,52 / 1,16), que é o que
+    // distingue uma da outra ("Bobina AD Verde 1,52" perdia o fim).
+    el.textContent = !item ? 'Escolha o item'
+      : item.categoria === 'BOBINA_AD' ? `AD ${item.cor.toUpperCase()} ${item.largura}` : item.nome;
+    el.className = 'peso-item' + (item ? '' : ' vazio');
+  }
+  // Bobina AD: o líquido (balança − tubete), que é o peso da etiqueta.
+  const tubete = item && item.tubete;
+  const box = document.querySelector('.peso-display');
+  if (box) box.classList.toggle('com-tubete', !!tubete);
+  const liq = document.getElementById('peso-liq');
+  if (liq) liq.innerHTML = tubete
+    // Nunca negativo: balança vazia ou só o tubete (bruto até 3,3) dá 0.0.
+    ? `<b>${Math.max(0, pesoLiquido(state.itemCodigo, state.pesoAtual)).toFixed(1)}</b> kg`
+      + `<span class="tb">−${tubete.toFixed(1)} tubete</span>` : '';
 }
 /* </barra-coletor> */
 
@@ -1123,6 +1151,19 @@ function atualizarBotaoImprimir() {
     btn.disabled = true;
   } else if (camposOk && !state.balancaEstavel) {
     btn.textContent = '⏳ AGUARDANDO ESTABILIDADE...';
+    btn.disabled = true;
+  } else if (state.itemCodigo && (OUTRAS_ITENS[state.itemCodigo] || {}).tubete && state.pesoAtual >= LIMIAR_ZERO_KG
+             && state.balancaEstavel && !camposOk) {
+    // Bobina AD com peso parado na balança mas fora da faixa: o botão diz por
+    // quê (antes só ficava apagado). A faixa é do LÍQUIDO (balança − tubete):
+    // no Mini PC o número grande é o bruto, então o texto diz "líquido" e o
+    // lado (22.0 na balança = 18.7 líquido, abaixo de 20). Vale também no
+    // Mini PC: só o texto.
+    const liq = pesoLiquido(state.itemCodigo, state.pesoAtual);
+    // Curto para caber numa linha do botão do monitor (não muda a altura).
+    btn.textContent = liq > BOBINA_MAX_KG
+      ? `⚠ LÍQUIDO > ${BOBINA_MAX_KG.toLocaleString('pt-BR')} kg`
+      : `⚠ LÍQUIDO < ${BOBINA_MIN_KG} kg`;
     btn.disabled = true;
   } else {
     btn.textContent = '⎙ IMPRIMIR ETIQUETA';
@@ -1727,7 +1768,7 @@ function entrarNoApp() {
   restaurarSessaoAberta().then(() => { atualizarBotaoImprimir(); atualizarPreview(); });
 }
 if (NO_APP && window.EkoAcesso && typeof EkoAcesso.exigir === 'function')
-  EkoAcesso.exigir('mp', entrarNoApp, { chave: CHAVE_PIN_APP, nomeTela: 'Resíduos', aindaValida: residuosAbertaDe });
+  EkoAcesso.exigir('mp', entrarNoApp, { chave: CHAVE_PIN_APP, nomeTela: 'Outras Pesagens', aindaValida: residuosAbertaDe });
 else
   comAcesso('mp', init);
 </script>

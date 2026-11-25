@@ -1,4 +1,4 @@
-"""Resíduos (outras-pesagens.html) no coletor TC60 do Bruno (25/11/2026).
+"""Outras Pesagens / Resíduos (outras-pesagens.html) no coletor TC60 do Bruno (25/11/2026).
 
 Gustavo pediu Resíduos no hub do app "Ekoplastic MP" para o Bruno
 (almoxarifado) pesar pelo CMX Supply TC60: 720×1440 px com dpr 2, ~360×690
@@ -24,6 +24,10 @@ simulada pela rota /balanca/peso) e confere, a 360×690 com o UA do app:
      senha tem chave própria (residuos), acaba no FINALIZAR e é pedida de novo
      ao reabrir sem pesagem aberta. No Mini PC: chave 'mp' como antes, nada
      de senha ao finalizar e o leitor USB (teclado) bipando.
+  3b. Bobina alta densidade (com e sem as fontes do Google): a sacola fica
+     embaixo do botão, nada passa de 360 px, a barra diz "AD VERDE 1,52"
+     inteiro e o LÍQUIDO (balança − tubete, o que a etiqueta leva); peso fora
+     de 20–1.500 kg: o IMPRIMIR diz o motivo; imprime e bipa pelo onLeu.
   4. Monitor do Mini PC (1366×768, dentro do quadro do menu, como no
      quiosque): a página é aberta de novo SEM o bloco de
      estilo do coletor e sem as linhas novas, e a posição, o tamanho e o
@@ -76,6 +80,15 @@ def senha(pg):
         pg.locator("#eko-kb button.ok").click()
         pg.wait_for_selector("#eko-acesso", state="detached", timeout=15000)
     pg.wait_for_function("() => /ONLINE/.test(document.getElementById('srv-status').textContent)", timeout=15000, polling=200)
+
+
+# Espera que não derruba o teste: na versão antiga o texto esperado nunca vem,
+# e isso tem de sair como falha contada, não como exceção.
+def esperar(pg, expr, timeout=10000):
+    try:
+        pg.wait_for_function(expr, timeout=timeout, polling=200); return True
+    except Exception:
+        return False
 
 
 # Toque de verdade (o Playwright recusa o que está fora da tela e não rola).
@@ -189,7 +202,7 @@ def principal(pg, nome, item, kg, ultima=None):
 # por cima: entra a caixa, não o texto. As linhas novas do coletor saem.
 FOTO_LAYOUT = """() => { const out = [];
   for (const e of document.querySelectorAll('body *')) {
-    if (['eko-resp-tag', 'ultima-etq', 'peso-item'].includes(e.id) || e.closest('#toast-area')) continue;
+    if (e.closest('#eko-resp-tag, #ultima-etq, #peso-item, #peso-liq, #toast-area')) continue;   // peças só do coletor (e o que é delas)
     if (e.ownerSVGElement) continue;   // barras do código: o número muda de uma rodada para a outra
     const cs = getComputedStyle(e); const b = e.getBoundingClientRect();
     out.push([e.tagName, e.id, e.className && e.className.baseVal === undefined ? e.className : '',
@@ -231,6 +244,7 @@ def main():
                         html = re.sub(r'<style id="estilo-coletor">.*?</style>', '', html, flags=re.S)
                         html = re.sub(r'<div class="ultima-etq"[^>]*></div>', '', html)
                         html = re.sub(r'<span class="peso-item"[^>]*></span>', '', html)
+                        html = re.sub(r'<span class="peso-liq"[^>]*></span>', '', html)
                         rota.fulfill(response=r, body=html)
                     pg.route("**/outras-pesagens.html*", tirar)
                 return ctx, pg
@@ -424,6 +438,87 @@ def main():
                 if x: req(f"/sessoes/{x}/cancelar", {})
             ctx.close()
 
+            # ── 3b. Bobina alta densidade (main 905b268) ─────────────────
+            # Com as fontes do Google abortadas (coletor sem internet: cai na
+            # fonte do sistema, mais larga) e com elas.
+            AD = '[id="it-BOB.VER.1,52"]'
+            for sem_fontes in (True, False):
+                rot = "sem fontes do Google" if sem_fontes else "com as fontes"
+                suf = "-sem-fontes" if sem_fontes else ""
+                print(f"\n[3b] Bobina AD escolhida e pesada ({rot})")
+                ctx, pg = contexto(W, H)
+                if sem_fontes:
+                    pg.route(re.compile(r"https://fonts\.g(oogleapis|static)\.com/"), lambda rota: rota.abort())
+                pg.goto(BASE + URL, wait_until="domcontentloaded", timeout=30000)
+                pg.wait_for_selector("#eko-acesso", state="visible", timeout=15000)
+                tl = pg.locator("#eko-acesso .tela").text_content().strip()
+                ok(tl == "Outras Pesagens", "teclado da senha diz o nome da tela: Outras Pesagens", tl)
+                senha(pg)
+                pg.locator(AD).click()
+                lay = pg.evaluate("""(s) => { const b = document.querySelector(s); const sp = b.querySelector('span'), sm = b.querySelector('small');
+                    const r = e => e.getBoundingClientRect();
+                    return { sp: [r(sp).top, r(sp).bottom], sm: [r(sm).top, r(sm).bottom], w: r(b).width, h: r(b).height }; }""", AD)
+                ok(lay["sm"][0] >= lay["sp"][1] - 1, f"AD ({rot}): a sacola fica embaixo de 'VERDE 1,52 m', não ao lado", lay)
+                pesar(pg, 503.3)
+                pg.wait_for_function("() => !document.getElementById('btn-imprimir').disabled", timeout=10000, polling=200)
+                conferir(pg, f"ad-pesada{suf}")
+                for h in (H, H_BAIXA):
+                    pg.set_viewport_size({"width": W, "height": h}); pg.evaluate("window.scrollTo(0, 0)"); pg.wait_for_timeout(200)
+                    r = pg.evaluate(PRINCIPAL, ["#peso-item", "#peso-liq", "#btn-imprimir"])
+                    bom = lambda x: x.get("dentro") and not x.get("coberto") and not x.get("cortado")
+                    pi, pl, pb = r["#peso-item"], r["#peso-liq"], r["#btn-imprimir"]
+                    ok(bom(pi) and "AD VERDE 1,52" in pi.get("txt", ""), f"AD @{h} ({rot}): barra diz 'AD VERDE 1,52' inteiro, sem reticência", pi)
+                    ok(bom(pl) and "500.0" in pl.get("txt", "") and "3.3" in pl.get("txt", "") and "tubete" in pl.get("txt", ""),
+                       f"AD @{h} ({rot}): barra mostra o líquido 500.0 e o tubete 3.3, como a etiqueta sai", pl)
+                    ok(bom(pb), f"AD @{h} ({rot}): IMPRIMIR à vista", pb)
+                pg.set_viewport_size({"width": W, "height": H})
+                if PRINTS: pg.screenshot(path=str(PRINTS / f"{PREFIXO}ad-pesada{suf}-tela.png"))
+                pesar(pg, 1600.0)
+                esperar(pg, "() => /LÍQUIDO/.test(document.getElementById('btn-imprimir').textContent)")
+                pg.evaluate("window.scrollTo(0, 0)")
+                r = pg.evaluate(PRINCIPAL, ["#btn-imprimir", "#peso-liq"])
+                pb, pl = r["#btn-imprimir"], r["#peso-liq"]
+                bom = lambda x: x.get("dentro") and not x.get("coberto") and not x.get("cortado")
+                desl = pg.evaluate("document.getElementById('btn-imprimir').disabled")
+                ok(desl and bom(pb) and "LÍQUIDO > 1.500" in pb.get("txt", ""),
+                   f"AD 1600 kg ({rot}): IMPRIMIR apagado diz o motivo (líquido > 1.500), inteiro", pb)
+                ok(bom(pl) and "1596.7" in pl.get("txt", ""), f"AD 1600 kg ({rot}): a barra mostra 1596.7 sem cortar", pl)
+                conferir(pg, f"ad-peso-fora{suf}")
+                if PRINTS: pg.screenshot(path=str(PRINTS / f"{PREFIXO}ad-peso-fora{suf}-tela.png"))
+                # Só o tubete na balança (bruto 3.0, acima do zero de 2 kg):
+                # líquido nunca negativo, e o botão diz o lado certo.
+                pesar(pg, 3.0)
+                esperar(pg, "() => /LÍQUIDO </.test(document.getElementById('btn-imprimir').textContent)")
+                pl = pg.evaluate("document.getElementById('peso-liq').textContent")
+                bt = pg.evaluate("document.getElementById('btn-imprimir').textContent")
+                ok(pl.startswith("0.0") and "LÍQUIDO < 20" in bt, f"AD bruto 3.0 ({rot}): barra 0.0 (não -0.3) e botão 'líquido < 20'", [pl, bt])
+                if not sem_fontes:
+                    pesar(pg, 503.3)
+                    pg.wait_for_function("() => !document.getElementById('btn-imprimir').disabled", timeout=10000, polling=200)
+                    pg.locator("#btn-imprimir").click()
+                    pg.wait_for_function("() => document.querySelectorAll('#hist-lista .hist-item').length === 1", timeout=15000, polling=200)
+                    bal["peso"] = 0.0
+                    sess = req("/sessoes/abertas?tipo=outras")["sessoes"]
+                    e_ad = sess[0]["etiquetas"][0]
+                    ok(abs(float(e_ad["peso"]) - 500.0) < 0.05, "AD: etiqueta impressa com 500.0 kg (o líquido que a barra mostrou)", e_ad.get("peso"))
+                    conferir(pg, "ad-impressa")
+                    if PRINTS: pg.screenshot(path=str(PRINTS / f"{PREFIXO}ad-impressa-tela.png"))
+                    if pg.evaluate("typeof onLeu === 'function'"):
+                        pg.evaluate(f"onLeu({json.dumps(e_ad['id'])})")
+                        try:
+                            pg.wait_for_selector("#hist-lista .hist-item.bipada", timeout=8000); bip = True
+                        except Exception:
+                            bip = False
+                        ok(bip, f"AD: bipe de {e_ad['id']} pelo onLeu")
+                    else:
+                        ok(False, "AD: a tela tem onLeu")
+                    pg.wait_for_function("() => document.getElementById('peso-val').textContent === '0.0'", timeout=10000, polling=200)
+                    pl = pg.evaluate("(document.getElementById('peso-liq') || {}).textContent || ''")
+                    ok(pl.startswith("0.0"), "AD: balança vazia, a barra mostra 0.0 (não um líquido negativo)", pl)
+                    if PRINTS: pg.screenshot(path=str(PRINTS / f"{PREFIXO}ad-bipada-tela.png"))
+                    req(f"/sessoes/{sess[0]['id']}/finalizar", {})
+                ctx.close()
+
             # ── 4. Monitor do Mini PC ──────────────────────────────────
             print("\n[4] Monitor do Mini PC 1366×768: igual com e sem o estilo do coletor")
             fotos = {}
@@ -444,6 +539,24 @@ def main():
                     ok(ch[0] and not ch[1], "Mini PC: a senha continua na chave 'mp' (igual a antes)", ch)
                 f = {"inicio": fr.evaluate(FOTO_LAYOUT)}
                 if PRINTS: pg.screenshot(path=str(PRINTS / f"{PREFIXO}monitor-inicio-{'sem' if sem else 'com'}.png"))
+                # Bobina AD no monitor: o #peso-liq e a classe com-tubete não
+                # mexem no layout; o texto do botão fora da faixa não muda a altura.
+                fr.locator('[id="it-BOB.VER.1,52"]').click(); pesar(fr, 503.3)
+                fr.wait_for_function("() => !document.getElementById('btn-imprimir').disabled", polling=200)
+                f["ad"] = fr.evaluate(FOTO_LAYOUT)
+                h_ok = fr.evaluate("document.getElementById('btn-imprimir').getBoundingClientRect().height")
+                if PRINTS: pg.screenshot(path=str(PRINTS / f"{PREFIXO}monitor-ad-{'sem' if sem else 'com'}.png"))
+                pesar(fr, 1600.0)
+                fr.wait_for_function("() => document.getElementById('btn-imprimir').disabled", polling=200)
+                fr.wait_for_timeout(300)
+                f["ad-fora"] = fr.evaluate(FOTO_LAYOUT)
+                if not sem:
+                    h_fora = fr.evaluate("document.getElementById('btn-imprimir').getBoundingClientRect().height")
+                    tx = fr.evaluate("document.getElementById('btn-imprimir').textContent")
+                    ok(abs(h_fora - h_ok) < 0.5, f"Mini PC: o texto '{tx}' cabe numa linha (botão com a mesma altura)", [h_ok, h_fora])
+                if PRINTS: pg.screenshot(path=str(PRINTS / f"{PREFIXO}monitor-ad-fora-{'sem' if sem else 'com'}.png"))
+                bal["peso"] = 0.0
+                fr.wait_for_function("() => document.getElementById('peso-val').textContent === '0.0'", polling=200)
                 fr.locator("#it-RES\\.BORRA").click(); pesar(fr, 41.7)
                 fr.wait_for_function("() => !document.getElementById('btn-imprimir').disabled", polling=200)
                 f["peso"] = fr.evaluate(FOTO_LAYOUT)
