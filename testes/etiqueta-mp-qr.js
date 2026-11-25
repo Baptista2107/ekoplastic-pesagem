@@ -18,10 +18,15 @@
 const path = require('node:path');
 const os   = require('node:os');
 
-// Banco temporário: carregar lib/impressao abre o config (e o banco).
-process.env.EKO_DB_FILE = path.join(os.tmpdir(), `eko_etq_mp_${Date.now()}.db`);
-process.env.EKO_LOG_DIR = path.join(os.tmpdir(), `eko_etq_mp_${Date.now()}`);
+const fs   = require('node:fs');
+
+// Banco temporário: carregar lib/impressao abre o config (e o banco). Tudo
+// numa pasta só, apagada no fim (o /tmp da VPS já encheu de lixo de teste).
+const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'eko_etq_mp_'));
+process.env.EKO_DB_FILE = path.join(TMP, 'etiquetas.db');
+process.env.EKO_LOG_DIR = path.join(TMP, 'logs');
 process.env.EKO_PRINT_SIMULAR = '1';
+process.on('exit', () => { try { fs.rmSync(TMP, { recursive: true, force: true }); } catch {} });
 
 const { gerarEPL } = require(path.join(__dirname, '..', 'lib', 'impressao'));
 
@@ -87,6 +92,10 @@ const CASOS = [
     materialNomeEt: 'Polietileno de Baixa Densidade Linear Reciclado Pós-Consumo Lavado e Granulado Extra',
     fornecedor: 'Piquiri Reciclagem e Comércio de Materiais Plásticos e Derivados do Paraná Ltda ME',
     lote: 'LOTE-2025-08-26-PRODUCAO-NOTURNA-TURNO-C-CAMINHAO-2', cor: 'colorido', peso: 99999.9 }],
+  ['o máximo: retorno com tudo enorme (9 linhas)', { ...BASE, tipo: 'retorno', seq: 77,
+    materialNomeEt: 'Polietileno de Baixa Densidade Linear Reciclado Pós-Consumo Lavado e Granulado Extra',
+    fornecedor: 'Piquiri Reciclagem e Comércio de Materiais Plásticos e Derivados do Paraná Ltda ME',
+    lote: 'LOTE-2025-08-26-PRODUCAO-NOTURNA-TURNO-C-CAMINHAO-2' }],
   ['palavra sem espaço maior que a linha', { ...BASE, materialNomeEt: 'X'.repeat(80), fornecedor: 'Y'.repeat(60) }],
   ['peso pequeno, retorno', { ...BASE, tipo: 'retorno', seq: 1, peso: 0.5 }],
 ];
@@ -106,6 +115,23 @@ for (const [nome, dados] of CASOS) {
   ok(q && q.x >= 16 && q.x + q.lado <= LARG - 16, `${nome}: QR dentro da largura`, q);
   ok(q && q.s >= 15, `${nome}: QR grande (módulo ≥ 15 dots ≈ 1,9 mm)`, q && q.s);
   ok(topo.every(x => x.y < linhaQR[1]), `${nome}: textos do topo acima da linha do QR`);
+  // Zona de silêncio: 4 módulos livres entre o QR e a linha de cima / a data.
+  ok(q && linhaQR && q.y - (linhaQR[1] + 3) >= 4 * q.s && rodape.y - (q.y + q.lado) >= 4 * q.s,
+     `${nome}: 4 módulos livres em cima e embaixo do QR`,
+     q && { acima: q.y - (linhaQR[1] + 3), abaixo: rodape.y - (q.y + q.lado), quatro_modulos: 4 * q.s });
+  ok(q && /^[RT]\d{7}$/.test(q.dado), `${nome}: QR com o formato que os leitores aceitam`, q && q.dado);
+}
+
+console.log('\n6. texto que quebraria o EPL e campos vazios');
+{
+  const epl = gerarEPL({ ...BASE, tipo: 'retorno', fornecedor: 'ACME \\"LTDA\\', lote: 'L\\1"2\\' });
+  const cmdsA = epl.split('\n').filter(l => l.startsWith('A'));
+  ok(cmdsA.every(l => /^A\d+,\d+,0,\d,\d+,\d+,N,"[^"\\]*"$/.test(l)),
+     'nenhum texto com " ou \\ dentro (o comando A sempre fecha)', cmdsA.filter(l => !/^A\d+,\d+,0,\d,\d+,\d+,N,"[^"\\]*"$/.test(l)));
+  let e2, erro = null;
+  try { e2 = ler(gerarEPL({ ...BASE, fornecedor: null, lote: undefined, cor: '' })); } catch (x) { erro = x.message; }
+  ok(!erro && e2.textos.some(x => x.txt === 'FORNECEDOR:') && e2.textos.some(x => x.txt === 'LOTE:'),
+     'fornecedor/lote vazios não derrubam a impressão (a antiga dava TypeError)', erro || e2.textos.map(x => x.txt));
 }
 
 console.log('\n5. etiqueta de bobina não mudou');
