@@ -99,7 +99,7 @@ const CASOS = [
     materialNomeEt: 'Polietileno de Baixa Densidade Linear Reciclado Pós-Consumo Lavado e Granulado Extra',
     fornecedor: 'Piquiri Reciclagem e Comércio de Materiais Plásticos e Derivados do Paraná Ltda ME',
     lote: 'LOTE-2025-08-26-PRODUCAO-NOTURNA-TURNO-C-CAMINHAO-2', cor: 'colorido', peso: 99999.9 }],
-  ['o máximo: retorno com tudo enorme (9 linhas)', { ...BASE, tipo: 'retorno', seq: 77,
+  ['o máximo: retorno com tudo enorme (8 linhas)', { ...BASE, tipo: 'retorno', seq: 77,
     materialNomeEt: 'Polietileno de Baixa Densidade Linear Reciclado Pós-Consumo Lavado e Granulado Extra',
     fornecedor: 'Piquiri Reciclagem e Comércio de Materiais Plásticos e Derivados do Paraná Ltda ME',
     lote: 'LOTE-2025-08-26-PRODUCAO-NOTURNA-TURNO-C-CAMINHAO-2' }],
@@ -129,8 +129,11 @@ for (const [nome, dados] of CASOS) {
   ok(q && linhaQR && b && q.y - (linhaQR[1] + 3) >= 4 * q.s && b.y - (q.y + q.lado) >= 4 * q.s,
      `${nome}: 4 módulos livres em cima e embaixo do QR`,
      q && b && { acima: q.y - (linhaQR[1] + 3), abaixo: b.y - (q.y + q.lado), quatro_modulos: 4 * q.s });
-  const loteL = e.textos.filter(x => x.txt.startsWith('LOTE:'));
-  ok(loteL.length === 1 && loteL[0].txt.length <= 33, `${nome}: lote numa linha só, sem passar de 33 caracteres`, loteL.map(x => x.txt));
+  // Lote numa linha só: a linha logo depois do "LOTE:" tem de ser a da
+  // ETIQUETA (pega o valor do lote escorrendo para a linha de baixo).
+  const iLote = topo.findIndex(x => x.txt.startsWith('LOTE:'));
+  ok(iLote >= 0 && topo[iLote].txt.length <= 33 && topo[iLote + 1] && topo[iLote + 1].txt.startsWith('ETIQUETA:'),
+     `${nome}: lote numa linha só, sem passar de 33 caracteres`, topo.map(x => x.txt));
   ok(q && /^[RT]\d{7}$/.test(q.dado), `${nome}: QR com o formato que os leitores aceitam`, q && q.dado);
 }
 
