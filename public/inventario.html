@@ -241,6 +241,122 @@
      tinha de tocar em "Digitar" a cada etiqueta para o leitor escrever; agora a
      página ouve o leitor sozinha (ouvirLeitor, abaixo) e a câmera VOLTA como
      opção ("dê a opção de usar a câmera caso seja necessário"). */
+
+  /* ══════════ COLETOR TC60 (25/11/2026) ══════════
+     Gustavo: "não tá legal de ver no android do TC60". A WebView do app mostra
+     ~360×690 CSS e o Bruno usa com uma mão, às vezes de luva. Medido no
+     testes/navegador/inventario_tc60.py: o resumo "CONTADO" saía 22 px para
+     fora da tela, os botões tinham 35-44 px (o celular.css baixa todo botão,
+     inclusive o da janela, para 44 px) e havia texto de 10,5 a 15 px.
+     Aqui: todo toque ≥ 56 px e todo texto ≥ 16 px, e o que se olha a cada bipe
+     (produto, contagem, último bag) continua sem rolar.
+     Só abaixo de 430 px (o mesmo corte da fileira −10…+10, acima): o monitor
+     do Mini PC e telas médias ficam iguais — o teste compara com a referência.
+     Os seletores mais longos (body …, #id …) são para ganhar das regras com
+     !important do celular.css, que é carregado depois deste <style>. */
+  @media (max-width: 430px){
+    /* cabeçalho: mais baixo, botões do tamanho do dedo */
+    body header{padding:6px 10px !important; gap:10px;}
+    header h1{font-size:19px; line-height:1.2;}
+    body header .btn-voltar{min-height:56px !important; padding:0 14px; font-size:16px; white-space:nowrap;}
+    body header .btn-sair{min-width:56px !important; min-height:56px !important; display:flex; align-items:center;
+                          justify-content:center; padding:0;}
+
+    .wrap{padding:12px 12px 8px;}
+    .rotulo{font-size:16px; margin:16px 0 8px; letter-spacing:0.6px;}
+    .tipo-tit{font-size:16px;}
+    .vazio{font-size:16px; padding:18px 8px;}
+    .carregando{font-size:16px;}
+    #bloco-mp > div[style], #bloco-pa > div[style]{font-size:16px !important; margin:12px 0 2px !important;}
+    #tela-selecao .btn-cinza > span{font-size:16px !important; line-height:1.3;}
+
+    /* produtos já inventariados */
+    .sec-fim{margin-top:24px; padding-top:16px;}
+    .sec-fim-tit{font-size:16px; letter-spacing:0.6px; gap:10px;}
+    /* 4 caixas lado a lado não cabem em 336 px: "27.643 kg CONTADO" saía
+       da tela. Viram 2 × 2. */
+    .resumo-inv{display:grid; grid-template-columns:1fr 1fr; gap:8px;}
+    .resumo-inv .ri .l{font-size:16px; letter-spacing:0.3px;}
+    .resumo-inv .ri .n{font-size:22px !important;}
+    .fim-item{padding:12px; gap:10px;}
+    .fim-item .fi-sub{font-size:16px;}
+    .fim-item .fi-badge{font-size:16px; padding:6px 10px;}
+    .acoes-fim{flex-wrap:wrap; gap:8px;}
+    .acoes-fim .btn-fim-acao{min-height:56px !important; font-size:16px; padding:0 10px;}
+
+    /* contagem: o que se olha a cada bipe fica no alto */
+    .prod-sel{padding:12px 14px; margin-bottom:10px;}
+    .prod-sel .p1{font-size:20px;}
+    .prod-sel .p2{font-size:16px;}
+    #pa-modo, #mp-modo{margin-bottom:10px;}
+    .pa-chip{min-height:56px !important; font-size:16px; letter-spacing:0.2px;}
+    .cam-controles{margin-top:10px; gap:8px;}
+    .cam-controles .btn{min-height:56px !important; padding:0 12px; font-size:16px; white-space:nowrap;}
+    #btn-digitar{padding:0 14px; font-size:16px;}
+    #btn-torch{min-width:56px; padding:0 12px;}
+    .contador{margin:12px 0; gap:8px;}
+    .contador .cx{padding:12px 6px;}
+    .contador .cx:last-child{flex:1.5;}
+    .contador .n{font-size:34px;}
+    .contador .l{font-size:16px; letter-spacing:0.3px; margin-top:6px;}
+    .leitura-item{padding:2px 4px 2px 14px; gap:10px; min-height:60px;}
+    .leitura-item .rm{min-width:56px; min-height:56px !important; padding:0; font-size:18px;}
+    .acoes-leitura{gap:8px;}
+    .acoes-leitura #btn-previa{padding:0 14px;}
+
+    /* contadores −10 −1 [n] +1 +10: cinco num fila davam botões de 42 px.
+       O número vai para uma linha só dele e os quatro botões dividem a de
+       baixo, cada um com ~70 px. */
+    .manual-cx{padding:14px 12px;}
+    .manual-lb{font-size:16px; letter-spacing:0.5px; margin-bottom:10px;}
+    .manual-linha{flex-wrap:wrap; gap:8px;}
+    .manual-num{order:-1; flex:1 1 100%; width:100%; height:64px;}
+    .manual-op{flex:1 1 0; min-width:56px; height:60px; font-size:18px;}
+    .manual-conta{font-size:18px; margin-top:12px;}
+    .sobras-sec{margin-top:14px; padding-top:12px;}
+    .sobras-lb{font-size:16px; letter-spacing:0.4px;}
+    .sobras-in{height:56px; font-size:18px;}
+    .sobras-bt{height:56px; min-height:56px !important; font-size:16px; padding:0 14px;}
+    .sobra-linha{font-size:16px; padding:2px 0;}
+    .sobra-linha .sx{min-width:56px; min-height:56px !important; padding:0; font-size:18px;}
+    #man-sobras-lista > div[style], #sac-sobras-lista > div[style]{font-size:16px !important;}
+    .sacos-cx{padding:14px 12px;}
+    .sacos-cx select{min-height:56px !important; font-size:16px;}
+    .mp-man-kg{height:64px;}
+    .mp-man-un{font-size:20px;}
+
+    /* leitura livre */
+    .grupo-livre{padding:12px;}
+    .grupo-livre .gl-sub{font-size:16px;}
+    .gl-excluir, .gl-ver{min-height:56px !important; font-size:16px; padding:0 14px;}
+    .gl-linha{font-size:16px; padding:2px 0;}
+    .gl-rm{min-width:56px; min-height:56px !important; padding:0; font-size:18px;}
+
+    /* prévia e comparativo */
+    .previa-cx{padding:14px 12px;}
+    .previa-tit{font-size:16px; letter-spacing:0.5px;}
+    .previa-linha{font-size:16px; gap:10px;}
+    #painel-previa .previa-linha span[style], #painel-previa .previa-cx > div[style]{font-size:16px !important;}
+    #painel-previa .previa-cx > button{min-height:56px !important; font-size:16px !important;}
+    .comp{padding:14px;}
+    .comp .linha{font-size:16px; padding:12px 0; gap:10px;}
+    .comp .veredicto{font-size:19px; padding:14px;}
+    .comp .veredicto span{font-size:16px !important;}
+
+    /* câmera (quando ligada) e diagnóstico (toque longo no botão da câmera) */
+    .zoom-lb{font-size:16px;}
+    .zoom-op{min-width:56px; height:56px;}
+    .lente-btn{min-height:56px !important; font-size:16px;}
+    #painel-diag{font-size:16px !important;}
+    #painel-diag button{min-height:56px !important; font-size:16px !important;}
+
+    /* janelas (eko-dialogo.js): o celular.css baixava os botões para 44 px */
+    body .eko-dlg{padding:12px;}
+    body .eko-dlg .eko-cx{padding:16px;}
+    body .eko-dlg .eko-tx{font-size:16px;}
+    body .eko-dlg .eko-bt{min-height:56px !important;}
+    body .eko-dlg input{min-height:56px !important;}
+  }
 </style>
 <!-- Ajuste automatico para celular: so vale abaixo de 900px de largura -->
 <link rel="stylesheet" href="/celular.css">
