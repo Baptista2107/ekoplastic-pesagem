@@ -115,6 +115,21 @@ tenta('1 memória do aparelho', () => {
   const r2 = A.decidir(resp(ped('z')), { alertados: { z: oito }, vistos: { z: oito } }, T0, false);
   ok(!r2.vibrar && r2.faixa.length === 0, 'pedido aberto há 8 dias já visto: não vibra nem volta à faixa');
   ok(A.GUARDA_MS === 7 * 24 * 3600e3, 'memória de 7 dias');
+  // 2º revisor 25/11: lista some por um giro (VPS fora > 30 min, indisponível,
+  // desligado) e volta — o pedido antigo não pode vibrar de novo.
+  for (const ruim of [{ ok: true, desatualizado: true, idade_s: 1900, pedidos: [] }, { ok: true, indisponivel: true, pedidos: [] },
+                      { desligado: true, pedidos: [] }, { ok: false }]) {
+    let e = A.decidir(resp(ped('z')), { alertados: { z: oito }, vistos: { z: oito } }, T0, false).estado;
+    const meio = A.decidir(ruim, e, T0 + 60e3, false);
+    ok(meio.faixa === null && !meio.vibrar, 'resposta sem lista confiável: não mexe na faixa', ruim);
+    const volta = A.decidir(resp(ped('z')), meio.estado, T0 + 120e3, false);
+    ok(!volta.vibrar && volta.faixa.length === 0, 'lista volta: pedido antigo não vibra nem volta à faixa', ruim);
+  }
+  // Aberto há 10 dias, visto há 10: segue sem vibrar (carimbo = última vez na lista).
+  let e10 = { alertados: { y: T0 - 10 * 864e5 }, vistos: { y: T0 - 10 * 864e5 } };
+  for (let d = 0; d < 3; d++) e10 = A.decidir(resp(ped('y')), e10, T0 + d * 864e5, false).estado;
+  const r10 = A.decidir(resp(ped('y')), e10, T0 + 9 * 864e5, false);
+  ok(!r10.vibrar && r10.faixa.length === 0, 'pedido aberto por semanas: nunca vibra de novo');
 });
 
 tenta('2 app 2.2 e hub', () => {
@@ -136,7 +151,7 @@ tenta('2 app 2.2 e hub', () => {
 });
 
 tenta('1 tela ocupada (VER PEDIDO pergunta antes de sair)', () => {
-  const el = (o) => Object.assign({ getClientRects: () => [1], readOnly: false, disabled: false, type: 'text', value: '' }, o);
+  const el = (o) => Object.assign({ getClientRects: () => [1], readOnly: false, disabled: false, type: 'text', value: '', defaultValue: '' }, o);
   const doc = (janelas, campos) => ({ defaultView: { getComputedStyle: () => ({ display: 'block', visibility: 'visible' }) },
     querySelectorAll: q => q.startsWith('input') ? campos : janelas });
   ok(!A.telaOcupada(doc([], [el({})])), 'campos vazios: sai direto');
@@ -145,6 +160,8 @@ tenta('1 tela ocupada (VER PEDIDO pergunta antes de sair)', () => {
   ok(!A.telaOcupada(doc([], [el({ value: 'x', getClientRects: () => [] })])), 'campo escondido não conta');
   ok(!A.telaOcupada(doc([], [el({ type: 'hidden', value: 'x' })])), 'input hidden não conta');
   ok(A.telaOcupada(doc([el({})], [])), 'janela aberta: pergunta');
+  ok(!A.telaOcupada(doc([], [el({ type: 'number', value: '0', defaultValue: '0' })])), 'contador "0" que a tela pôs: sai direto');
+  ok(A.telaOcupada(doc([], [el({ type: 'number', value: '3', defaultValue: '0' })])), 'contador mudado: pergunta');
 });
 
 tenta('3 só no app', () => {

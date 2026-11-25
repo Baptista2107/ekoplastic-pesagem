@@ -38,10 +38,17 @@
   // Mais velha que isto não alerta nem mostra (mesmo prazo do LISTA_VALE_MS da lib).
   const LISTA_VELHA_S = 30 * 60;
 
+  /** A resposta traz uma lista em que dá para confiar? Erro, pedidos desligados,
+   *  "indisponivel" (nunca houve lista) ou lista guardada velha → não. */
+  function listaValida(resp) {
+    if (!resp || resp.ok === false || resp.desligado || resp.indisponivel || !Array.isArray(resp.pedidos)) return false;
+    if (resp.desatualizado && !(resp.idade_s != null && Number(resp.idade_s) <= LISTA_VELHA_S)) return false;
+    return true;
+  }
+
   /** Pedidos abertos da resposta de GET /retirada/pedidos (resposta ruim → nenhum). */
   function abertos(resp) {
-    if (!resp || resp.ok === false || resp.desligado || !Array.isArray(resp.pedidos)) return [];
-    if (resp.desatualizado && !(Number(resp.idade_s) <= LISTA_VELHA_S)) return [];
+    if (!listaValida(resp)) return [];
     return resp.pedidos.filter(p => p && p.id != null && p.status === 'aberto' && !p.cancelado_em);
   }
 
@@ -87,8 +94,8 @@
   }
   function obj(o) { return o && typeof o === 'object' && !Array.isArray(o) ? o : {}; }
 
-  /** Esquece o id que não está mais na lista há 7 dias; o que segue aberto nunca é esquecido
-   *  (senão um pedido aberto há 8 dias vibraria de novo — revisor 25/11). */
+  /** Esquece o id que não aparece na lista há 7 dias (o carimbo é a última vez
+   *  que apareceu; o que segue aberto nunca é esquecido — revisor 25/11). */
   function podar(mapa, agora, ativos) {
     const out = {};
     for (const [id, ms] of Object.entries(mapa)) if (ativos.has(id) || agora - Number(ms) < GUARDA_MS) out[id] = ms;
@@ -98,12 +105,16 @@
   /**
    * Um giro. naRetirada = a tela aberta é a de Retirada; listaAVista = a
    * lista de pedidos dela está à vista (não há teclado da senha por cima).
-   * → { vibrar, faixa: [pedidos que a faixa mostra], estado: novo estado }
+   * → { vibrar, faixa: [pedidos que a faixa mostra] | null, estado: novo estado }
+   *   Resposta sem lista confiável: nada muda (faixa null = deixa a que está;
+   *   o estado não é podado — senão o pedido antigo vibraria quando a lista
+   *   voltasse, revisor 25/11).
    *   vibrar: chegou pedido que nunca vibrou neste aparelho.
    *   faixa: abertos que o operador ainda não viu (VER/✕ ou lista da Retirada).
    *   Na Retirada nunca há faixa; só conta como visto com a lista à vista.
    */
   function decidir(resp, estado, agora, naRetirada, listaAVista = true) {
+    if (!listaValida(resp)) return { vibrar: false, faixa: null, estado };
     const lista = abertos(resp);
     const ativos = new Set(lista.map(p => String(p.id)));
     const alertados = podar(estado.alertados, agora, ativos);
@@ -111,8 +122,9 @@
     let vibrar = false;
     for (const p of lista) {
       const id = String(p.id);
-      if (!(id in alertados)) { alertados[id] = agora; vibrar = true; }
-      if (naRetirada && listaAVista) vistos[id] = vistos[id] || agora;
+      if (!(id in alertados)) vibrar = true;
+      alertados[id] = agora;                       // última vez na lista
+      if (id in vistos || (naRetirada && listaAVista)) vistos[id] = agora;
     }
     const faixa = naRetirada ? [] : lista.filter(p => !(String(p.id) in vistos));
     return { vibrar, faixa, estado: { alertados, vistos } };
@@ -135,24 +147,30 @@
     return { titulo: `📦 ${n} PEDIDOS DE RETIRADA`, linha: resumo(p) + ` · e mais ${n - 1}`, botao: 'VER PEDIDOS' };
   }
 
-  /** Há algo na tela que se perde ao sair? Janela aberta ou campo preenchido. */
+  // Janelas das telas do hub (revisor 25/11: cada tela tem a sua classe):
+  // eko-dialogo (.modal-fundo), Retirada (.modal-overlay, .kp-overlay), PA
+  // (#modal-gaiola…), Resíduos (#modal-bipagem-pendente…), Entrada/Retorno
+  // (#ov-correcao). Escondidas ficam em display:none.
+  const JANELAS = '.modal-fundo, .modal-overlay, .kp-overlay, [id^="modal-"], [id^="ov-"], [role="dialog"], dialog[open]';
+
+  /** Há algo na tela que se perde ao sair? Janela aberta ou campo que o operador mudou. */
   function telaOcupada(doc) {
-    const visivel = e => !!(e && e.getClientRects && e.getClientRects().length);
-    for (const j of doc.querySelectorAll('.modal-fundo, [role="dialog"], dialog[open]')) {
-      if (visivel(j) && getComputedStyleSeguro(doc, j)) return true;
-    }
+    const visivel = e => !!(e && e.getClientRects && e.getClientRects().length) && estiloVisivel(doc, e);
+    for (const j of doc.querySelectorAll(JANELAS)) if (visivel(j)) return true;
     for (const c of doc.querySelectorAll('input, textarea')) {
-      if (c.id === '__ekoScan' || c.readOnly || c.disabled) continue;
+      if (c.id === '__ekoScan' || c.id === 'leitor-campo' || c.readOnly || c.disabled) continue;
       if (/^(hidden|checkbox|radio|button|submit|date|range|color)$/i.test(c.type || '')) continue;
-      if (visivel(c) && String(c.value || '').trim()) return true;
+      const v = String(c.value || '').trim();
+      // "0" que a tela pôs (contador intocado) não conta: só o que mudou.
+      if (!v || c.value === c.defaultValue) continue;
+      if (visivel(c)) return true;
     }
     return false;
   }
-  function getComputedStyleSeguro(doc, e) {
+  function estiloVisivel(doc, e) {
     try { const cs = doc.defaultView.getComputedStyle(e); return cs.display !== 'none' && cs.visibility !== 'hidden'; }
     catch (x) { return true; }
   }
-
   /** Só no app do coletor. */
   function noApp(ua) { return /EkoColetor\//.test(String(ua || '')); }
 
@@ -245,7 +263,7 @@
         const out = decidir(d, estado, Date.now(), naRetirada(), listaAVista());
         estado = out.estado; gravar();
         if (out.vibrar) alertar();
-        pintar(out.faixa);
+        if (out.faixa) pintar(out.faixa);
       } catch (e) {
         // Mini PC fora: a faixa que já está fica; nada novo.
       } finally { girando = false; }
@@ -259,7 +277,7 @@
     if (doc.readyState !== 'loading') ini(); else doc.addEventListener('DOMContentLoaded', ini);
   }
 
-  const api = { CHAVE, RETIRADA, GIRO_MS, GUARDA_MS, LISTA_VELHA_S, abertos, telaOcupada, quantidade, resumo, lerEstado, decidir, marcarVistos, textoFaixa, noApp, iniciar };
+  const api = { CHAVE, RETIRADA, GIRO_MS, GUARDA_MS, LISTA_VELHA_S, abertos, listaValida, telaOcupada, quantidade, resumo, lerEstado, decidir, marcarVistos, textoFaixa, noApp, iniciar };
   if (typeof module === 'object' && module.exports) module.exports = api;
   if (raiz && raiz.document) { raiz.EkoAlertaPedidos = api; iniciar(raiz); }
 })(typeof window !== 'undefined' ? window : null);

@@ -206,6 +206,21 @@ def main():
             ok(faixa(pg, esperar=False) is None and not perguntas, "sem faixa e sem perguntar pelos pedidos", perguntas)
             ctx.close()
 
+            print("\n[8] VER PEDIDO pergunta só com algo a perder (janelas reais de cada tela)")
+            resposta.clear(); resposta.update({"ok": True, "modo": "teste", "pedidos": []})
+            JANELA_REAL = {"/produto-acabado.html": "#modal-gaiola", "/outras-pesagens.html": "#modal-bipagem-pendente",
+                           "/mp-recebimento-retorno.html?aba=recebimento": "#ov-correcao"}
+            for tela in TELAS + [RETIRADA]:
+                ctx, pg = contexto(); pg.goto(base + tela, wait_until="load"); pg.wait_for_timeout(800)
+                n = tela.split("/")[-1]
+                ocup = pg.evaluate("EkoAlertaPedidos.telaOcupada(document)")
+                ok(ocup is False, f"{n}: tela recém-aberta não pergunta", ocup)
+                if tela in JANELA_REAL:
+                    sel = JANELA_REAL[tela]
+                    pg.evaluate(f"document.querySelector('{sel}').classList.add('on')")
+                    ok(pg.evaluate("EkoAlertaPedidos.telaOcupada(document)") is True, f"{n}: com a janela {sel} aberta, pergunta")
+                ctx.close()
+
             ok(not erros, "nenhum erro de JavaScript nas telas", "; ".join(erros[:5]))
             br.close()
     finally:
