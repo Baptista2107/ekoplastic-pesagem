@@ -663,6 +663,192 @@ header {
 .kp-ok:active { background:#2ea043; }
 
 </style>
+<!-- tc60 -->
+<style>
+/* ══════════════════════════════════════════════════════════════════
+   COLETOR TC60 (25/11/2026)
+   Gustavo: "não tá legal de ver no android do TC60". O TC60 mostra a tela
+   no app "Ekoplastic MP" com ~360×690 e o Bruno usa com uma mão, às vezes
+   de luva. Abaixo de 600 px:
+     · botão e campo com ≥ 56 px, texto com ≥ 16 px;
+     · cabeçalho em duas linhas: RETIRADA + status + 📦 🏠 em cima, o
+       responsável ("👤 NOME · trocar") embaixo, no lugar do crachá que
+       ficava por cima da lista;
+     · o que bipar agora e o último bag no topo, sem precisar rolar;
+     · FINALIZAR e ✕ numa barra presa no pé da tela;
+     · as janelas rolam por dentro quando não cabem.
+   Só aparência: nenhum botão, texto, rota ou regra muda. O monitor do
+   Mini PC (1366 px) não lê nada daqui — testes/navegador/retirada_tc60.py
+   compara a tela com e sem este bloco. Fica ANTES do celular.css (o
+   testes/hub-coletor.js quer o link no fim do head); o "html" na frente
+   de cada regra é o que faz ela valer sobre a do celular.css.
+   ══════════════════════════════════════════════════════════════════ */
+@media (max-width: 600px) {
+  /* ─── cabeçalho ─── */
+  html body[data-tela="MP Retirada"] header {
+    flex-wrap: nowrap !important;
+    padding: 4px 12px 64px !important;
+    column-gap: 8px;
+  }
+  html body[data-tela="MP Retirada"] header .logo { display: none; }
+  html body[data-tela="MP Retirada"] header .crumb a,
+  html body[data-tela="MP Retirada"] header .crumb .crumb-sep { display: none; }
+  html body[data-tela="MP Retirada"] header .crumb b { font-size: 20px; letter-spacing: 1px; }
+  html body[data-tela="MP Retirada"] header .header-right { flex-wrap: nowrap !important; gap: 8px !important; }
+  html body[data-tela="MP Retirada"] header .clock { display: none !important; }
+  /* Status vira uma bolinha: verde = servidor no ar, vermelha = fora. */
+  html body[data-tela="MP Retirada"] header .srv-status {
+    font-size: 16px !important; width: 18px; height: 18px; padding: 0 !important;
+    overflow: hidden; white-space: nowrap; text-indent: 40px;
+    border-radius: 50%; border: none; background: var(--muted);
+  }
+  html body[data-tela="MP Retirada"] header .srv-status.on  { background: var(--devol); }
+  html body[data-tela="MP Retirada"] header .srv-status.off { background: var(--danger); }
+  html body[data-tela="MP Retirada"] header .btn-icon {
+    width: 56px; height: 56px; min-width: 56px !important; font-size: 24px;
+  }
+  /* Responsável: segunda linha do cabeçalho (antes ficava solto por cima
+     da lista de pedidos). Tocar continua sendo "trocar". */
+  html body[data-tela="MP Retirada"] #eko-resp-tag {
+    position: absolute !important;
+    top: 64px !important; bottom: auto !important;
+    left: 12px !important; right: 12px !important;
+    max-width: none; height: 56px; z-index: 5 !important;
+    display: flex; align-items: center;
+    padding: 0 14px !important; border-radius: 10px !important;
+    font-size: 16px !important;
+  }
+
+  /* ─── corpo ─── */
+  html body[data-tela="MP Retirada"] .central { padding: 10px 10px 0 !important; gap: 10px; }
+  html body[data-tela="MP Retirada"] .subtab {
+    padding: 6px 4px; min-height: 56px !important; font-size: 16px; line-height: 1.2; letter-spacing: 0;
+  }
+  html body[data-tela="MP Retirada"] .subtab span {
+    display: block; font-size: 16px !important; opacity: 0.7; white-space: nowrap;
+  }
+  html body[data-tela="MP Retirada"] .fluxo { padding: 10px; gap: 10px; }
+
+  /* o que bipar agora: título e os dois botões numa faixa curta */
+  html body[data-tela="MP Retirada"] .bipa-display {
+    flex-direction: row; flex-wrap: wrap; justify-content: center;
+    padding: 8px; gap: 8px;
+  }
+  html body[data-tela="MP Retirada"] .bipa-display .icone,
+  html body[data-tela="MP Retirada"] .bipa-display .sub { display: none; }
+  html body[data-tela="MP Retirada"] .bipa-display .titulo { flex: 1 1 100%; font-size: 22px; }
+  html body[data-tela="MP Retirada"] .bipa-display .btn-simular {
+    flex: 1 1 0; margin: 0; min-height: 56px !important; padding: 6px 8px;
+    font-family: inherit; font-size: 16px; letter-spacing: 0; white-space: normal;
+  }
+  /* o último bag sobe para logo abaixo do "Aguardando bipagem" */
+  html body[data-tela="MP Retirada"] .bipa-display    { order: 0; }
+  html body[data-tela="MP Retirada"] .ultima-retirada { order: 1; }
+  html body[data-tela="MP Retirada"] .pedidos-painel  { order: 2; }
+  html body[data-tela="MP Retirada"] .ultima-retirada { padding: 8px 10px; gap: 8px; font-size: 16px; }
+  html body[data-tela="MP Retirada"] .ultima-retirada .ok-ico { font-size: 22px; }
+  html body[data-tela="MP Retirada"] .ultima-retirada .titulo { font-size: 16px; letter-spacing: 0; }
+  html body[data-tela="MP Retirada"] .ultima-retirada .det { font-size: 16px; }
+  html body[data-tela="MP Retirada"] .ultima-retirada .meta { font-family: inherit; font-size: 16px; letter-spacing: 0; overflow-wrap: anywhere; }
+
+  /* pedidos do painel */
+  html body[data-tela="MP Retirada"] .pedidos-painel { padding: 10px; gap: 8px; }
+  html body[data-tela="MP Retirada"] .pedidos-painel .pp-titulo .pp-nome { font-size: 16px; letter-spacing: 0.5px; }
+  html body[data-tela="MP Retirada"] .pedidos-painel .pp-conta,
+  html body[data-tela="MP Retirada"] .pedidos-painel .pp-modo { font-size: 16px; letter-spacing: 0; }
+  html body[data-tela="MP Retirada"] .pedidos-painel .pp-faixa,
+  html body[data-tela="MP Retirada"] .pedidos-painel .pp-vazio { font-size: 16px; }
+  html body[data-tela="MP Retirada"] .pp-item { grid-template-columns: 28px 1fr; gap: 8px; padding: 10px; }
+  html body[data-tela="MP Retirada"] .pp-sinal { width: 28px; }
+  html body[data-tela="MP Retirada"] .pp-linha1 { flex-wrap: wrap; column-gap: 10px; row-gap: 2px; }
+  html body[data-tela="MP Retirada"] .pp-mat { font-size: 18px; }
+  html body[data-tela="MP Retirada"] .pp-qtd { font-size: 16px; }
+  html body[data-tela="MP Retirada"] .pp-qtd b { font-size: 20px; }
+  html body[data-tela="MP Retirada"] .pp-chip,
+  html body[data-tela="MP Retirada"] .pp-chip i { font-size: 16px; letter-spacing: 0; white-space: normal; }
+  html body[data-tela="MP Retirada"] .pp-bag { width: 24px; height: 24px; font-size: 16px; }
+  html body[data-tela="MP Retirada"] .pp-rodape { font-size: 16px; }
+
+  /* aditivo em sacos */
+  html body[data-tela="MP Retirada"] .par { grid-template-columns: 1fr; }
+  html body[data-tela="MP Retirada"] .bloco { padding: 10px; }
+  html body[data-tela="MP Retirada"] .bloco-titulo,
+  html body[data-tela="MP Retirada"] .avulso-lb { font-size: 16px; letter-spacing: 0.5px; }
+  html body[data-tela="MP Retirada"] .opc { min-height: 56px !important; min-width: 56px; padding: 8px 14px; font-size: 16px; }
+  html body[data-tela="MP Retirada"] .btn-cont { width: 64px; height: 56px; }
+  html body[data-tela="MP Retirada"] .cont-input { width: 110px; height: 56px; }
+  html body[data-tela="MP Retirada"] .contador-info { font-size: 16px; letter-spacing: 0; }
+  html body[data-tela="MP Retirada"] .quantidades-rapidas { grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  html body[data-tela="MP Retirada"] .btn-qtd-rapida { min-height: 56px !important; font-size: 18px; }
+  html body[data-tela="MP Retirada"] .avulso-row { flex-wrap: wrap; gap: 6px 12px; }
+  html body[data-tela="MP Retirada"] .avulso-input { width: 100%; height: 56px; }
+  html body[data-tela="MP Retirada"] .avulso-dica { font-size: 16px; }
+  html body[data-tela="MP Retirada"] .btn-add { min-height: 56px !important; font-size: 16px; }
+
+  /* itens da retirada: a lista inteira rola com a página */
+  html body[data-tela="MP Retirada"] .historico-side { order: 3; padding-bottom: 0 !important; }
+  html body[data-tela="MP Retirada"] .historico { height: auto; overflow: visible; padding: 10px; }
+  html body[data-tela="MP Retirada"] .itens-lista { overflow: visible; gap: 6px; }
+  html body[data-tela="MP Retirada"] .hist-head { flex-wrap: wrap; gap: 4px 10px; }
+  html body[data-tela="MP Retirada"] .hist-titulo { font-size: 16px; letter-spacing: 0.5px; }
+  html body[data-tela="MP Retirada"] .hist-totais { font-size: 16px; }
+  /* cartão do item: registro e peso em cima, material embaixo, X à direita */
+  html body[data-tela="MP Retirada"] .item {
+    grid-template-columns: 1fr auto 56px;
+    grid-template-areas: "id peso x" "det det x";
+    gap: 4px 10px; padding: 8px 8px 8px 10px; font-size: 16px;
+  }
+  html body[data-tela="MP Retirada"] .item > .id-tag { grid-area: id; font-size: 16px; }
+  html body[data-tela="MP Retirada"] .item > .det { grid-area: det; min-width: 0; overflow-wrap: anywhere; }
+  html body[data-tela="MP Retirada"] .item > div:nth-child(3) { grid-area: peso; display: flex; gap: 8px; align-items: baseline; }
+  html body[data-tela="MP Retirada"] .item > .item-x { grid-area: x; align-self: center; width: 56px; height: 56px; font-size: 20px; }
+  html body[data-tela="MP Retirada"] .item .det .sub-info,
+  html body[data-tela="MP Retirada"] .item .peso,
+  html body[data-tela="MP Retirada"] .item .hora { font-size: 16px; letter-spacing: 0; }
+  html body[data-tela="MP Retirada"] .item .peso,
+  html body[data-tela="MP Retirada"] .item .hora { white-space: nowrap; }
+  html body[data-tela="MP Retirada"] .item-vazio { font-size: 16px; padding: 16px; }
+
+  /* relatórios: depois da lista; o pé da página sobra para a barra */
+  html body[data-tela="MP Retirada"] .linha-relatorios { order: 4; margin-bottom: 0; padding-bottom: 84px; }
+  html body[data-tela="MP Retirada"] .btn-relatorio { min-height: 56px !important; font-size: 16px; padding: 6px 8px; letter-spacing: 0; }
+
+  /* FINALIZAR e ✕ presos no pé da tela */
+  html body[data-tela="MP Retirada"] .acoes {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 50;
+    grid-template-columns: 1fr 64px; gap: 8px;
+    padding: 8px 10px calc(8px + env(safe-area-inset-bottom, 0px));
+    background: var(--bg); border-top: 1px solid var(--border);
+  }
+  html body[data-tela="MP Retirada"] .btn-finalizar { min-height: 56px !important; padding: 6px 10px; font-size: 16px; letter-spacing: 0.5px; }
+  html body[data-tela="MP Retirada"] .btn-cancelar { min-height: 56px !important; font-size: 22px; }
+
+  /* avisos: acima da barra do FINALIZAR, na largura da tela */
+  html body[data-tela="MP Retirada"] .toast-wrap { left: 8px; right: 8px; bottom: 84px; }
+  html body[data-tela="MP Retirada"] .toast { min-width: 0; font-size: 16px; padding: 12px 14px; }
+
+  /* janelas: ocupam a largura e rolam por dentro quando não cabem */
+  html body[data-tela="MP Retirada"] .modal-overlay,
+  html body[data-tela="MP Retirada"] .kp-overlay { align-items: flex-start; overflow-y: auto; padding: 8px; }
+  html body[data-tela="MP Retirada"] .modal,
+  html body[data-tela="MP Retirada"] .kp-box { margin: auto 0; width: 100%; max-width: none; }
+  html body[data-tela="MP Retirada"] .modal { padding: 16px 14px; }
+  html body[data-tela="MP Retirada"] .modal .icone-grande { font-size: 40px; margin-bottom: 6px; }
+  html body[data-tela="MP Retirada"] .modal .titulo { font-size: 20px; }
+  html body[data-tela="MP Retirada"] .modal [style*="font-size"] { font-size: 16px !important; }
+  html body[data-tela="MP Retirada"] .modal .info-bloco { font-size: 16px; padding: 10px 12px; margin: 10px 0; }
+  html body[data-tela="MP Retirada"] .modal .info-bloco .lbl { font-size: 16px; letter-spacing: 0.5px; }
+  html body[data-tela="MP Retirada"] .modal .info-bloco .val { overflow-wrap: anywhere; }
+  html body[data-tela="MP Retirada"] .modal .btn-fechar { min-height: 56px !important; padding: 8px 12px; font-size: 16px; letter-spacing: 0.5px; }
+  html body[data-tela="MP Retirada"] .fora-motivos button { min-height: 56px !important; padding: 10px 14px; font-size: 16px; }
+  html body[data-tela="MP Retirada"] .fora-motivos textarea { font-size: 16px; }
+  html body[data-tela="MP Retirada"] .kp-box { padding: 14px; }
+  html body[data-tela="MP Retirada"] .kp-titulo { font-size: 18px; }
+  html body[data-tela="MP Retirada"] .kp-prefixos button,
+  html body[data-tela="MP Retirada"] .kp-acoes button { min-height: 56px !important; padding: 0; }
+}
+</style>
+<!-- /tc60 -->
 <!-- 25/11/2026: no coletor (app Ekoplastic MP) e no celular a tela vira uma coluna.
      Só vale abaixo de 900 px: o monitor do Mini PC não muda. -->
 <link rel="stylesheet" href="/celular.css">
@@ -672,7 +858,7 @@ header {
 <header>
   <div style="display:flex;align-items:center;gap:24px">
     <div class="logo">EKOPLASTIC</div>
-    <div class="crumb"><a href="/materia-prima.html" style="color:var(--muted);text-decoration:none">MP</a> &nbsp;›&nbsp; <b>RETIRADA</b></div>
+    <div class="crumb"><a href="/materia-prima.html" style="color:var(--muted);text-decoration:none">MP</a><span class="crumb-sep"> &nbsp;›&nbsp; </span><b>RETIRADA</b></div>
   </div>
   <div class="header-right">
     <div class="clock" id="clock">--:--:--</div>
