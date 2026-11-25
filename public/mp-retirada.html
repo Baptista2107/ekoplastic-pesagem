@@ -693,17 +693,28 @@ header {
   html body[data-tela="MP Retirada"] header .logo { display: none; }
   html body[data-tela="MP Retirada"] header .crumb a,
   html body[data-tela="MP Retirada"] header .crumb .crumb-sep { display: none; }
-  html body[data-tela="MP Retirada"] header .crumb b { font-size: 20px; letter-spacing: 1px; }
+  html body[data-tela="MP Retirada"] header .crumb b { font-size: 18px; letter-spacing: 0.5px; }
   html body[data-tela="MP Retirada"] header .header-right { flex-wrap: nowrap !important; gap: 8px !important; }
   html body[data-tela="MP Retirada"] header .clock { display: none !important; }
-  /* Status vira uma bolinha: verde = servidor no ar, vermelha = fora. */
+  /* Status curto (OK / BLING OFF / OFFLINE): "SERVIDOR OK · BLING OFF"
+     inteiro não cabe ao lado do 📦 🏠. O texto curto vem do data-curto que
+     o checarServidor preenche; o texto longo fica na caixa, fora da vista.
+     BLING OFF em amarelo: o servidor responde, mas o FINALIZAR não envia. */
   html body[data-tela="MP Retirada"] header .srv-status {
-    font-size: 16px !important; width: 18px; height: 18px; padding: 0 !important;
-    overflow: hidden; white-space: nowrap; text-indent: 40px;
-    border-radius: 50%; border: none; background: var(--muted);
+    position: relative; flex: 0 0 76px; width: 76px; height: 44px; padding: 0 !important;
+    font-size: 16px !important; overflow: hidden; white-space: nowrap; text-indent: 100px;
+    border-radius: 8px;
   }
-  html body[data-tela="MP Retirada"] header .srv-status.on  { background: var(--devol); }
-  html body[data-tela="MP Retirada"] header .srv-status.off { background: var(--danger); }
+  html body[data-tela="MP Retirada"] header .srv-status::after {
+    content: attr(data-curto);
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    text-indent: 0; white-space: normal; text-align: center;
+    font-size: 16px; line-height: 1.05; letter-spacing: 0;
+  }
+  html body[data-tela="MP Retirada"] header .srv-status.bling-off {
+    color: var(--warn); border-color: rgba(255,170,0,0.5); background: rgba(255,170,0,0.10);
+  }
   html body[data-tela="MP Retirada"] header .btn-icon {
     width: 56px; height: 56px; min-width: 56px !important; font-size: 24px;
   }
@@ -714,18 +725,29 @@ header {
     top: 64px !important; bottom: auto !important;
     left: 12px !important; right: 12px !important;
     max-width: none; height: 56px; z-index: 5 !important;
-    display: flex; align-items: center;
+    display: block; line-height: 54px;   /* bloco, não flex: senão o nome longo corta sem reticências */
     padding: 0 14px !important; border-radius: 10px !important;
     font-size: 16px !important;
+  }
+  /* Dentro do quadro (?embed=1) não há cabeçalho: o crachá volta para o
+     canto, acima da barra do FINALIZAR. */
+  html body.embed[data-tela="MP Retirada"] #eko-resp-tag {
+    position: fixed !important; top: auto !important; bottom: 84px !important;
+    right: auto !important; max-width: calc(100vw - 24px);
   }
 
   /* ─── corpo ─── */
   html body[data-tela="MP Retirada"] .central { padding: 10px 10px 0 !important; gap: 10px; }
   html body[data-tela="MP Retirada"] .subtab {
-    padding: 6px 4px; min-height: 56px !important; font-size: 16px; line-height: 1.2; letter-spacing: 0;
+    padding: 6px 2px; min-height: 56px !important; font-size: 16px; line-height: 1.2; letter-spacing: 0;
   }
+  /* "GBD / POLI / CARBO" numa linha só; mais estreito que 360 px, corta
+     com reticências em vez de invadir a aba do lado. */
+  html body[data-tela="MP Retirada"] .subtabs { padding: 3px; gap: 4px; }
+  html body[data-tela="MP Retirada"] .subtab { font-family: inherit; min-width: 0; }
   html body[data-tela="MP Retirada"] .subtab span {
-    display: block; font-size: 16px !important; opacity: 0.7; white-space: nowrap;
+    display: block; font-size: 16px !important; opacity: 0.7; word-spacing: -1px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   html body[data-tela="MP Retirada"] .fluxo { padding: 10px; gap: 10px; }
 
@@ -800,7 +822,7 @@ header {
   }
   html body[data-tela="MP Retirada"] .item > .id-tag { grid-area: id; font-size: 16px; }
   html body[data-tela="MP Retirada"] .item > .det { grid-area: det; min-width: 0; overflow-wrap: anywhere; }
-  html body[data-tela="MP Retirada"] .item > div:nth-child(3) { grid-area: peso; display: flex; gap: 8px; align-items: baseline; }
+  html body[data-tela="MP Retirada"] .item > .peso-hora { grid-area: peso; display: flex; gap: 8px; align-items: baseline; }
   html body[data-tela="MP Retirada"] .item > .item-x { grid-area: x; align-self: center; width: 56px; height: 56px; font-size: 20px; }
   html body[data-tela="MP Retirada"] .item .det .sub-info,
   html body[data-tela="MP Retirada"] .item .peso,
@@ -820,6 +842,9 @@ header {
     padding: 8px 10px calc(8px + env(safe-area-inset-bottom, 0px));
     background: var(--bg); border-top: 1px solid var(--border);
   }
+  /* Teclado do Android aberto (o app encolhe a tela): a barra subiria junto
+     e cobriria o campo de quantidade. Enquanto se digita, ela sai. */
+  html body[data-tela="MP Retirada"]:has(.avulso-input:focus, .cont-input:focus) .acoes { display: none; }
   html body[data-tela="MP Retirada"] .btn-finalizar { min-height: 56px !important; padding: 6px 10px; font-size: 16px; letter-spacing: 0.5px; }
   html body[data-tela="MP Retirada"] .btn-cancelar { min-height: 56px !important; font-size: 22px; }
 
@@ -862,7 +887,7 @@ header {
   </div>
   <div class="header-right">
     <div class="clock" id="clock">--:--:--</div>
-    <div class="srv-status off" id="srv-status">SERVIDOR ...</div>
+    <div class="srv-status off" id="srv-status" data-curto="…">SERVIDOR ...</div>
     <button class="btn-icon" onclick="location.href='/materia-prima.html'" title="Voltar para Matéria-Prima">📦</button>
     <button class="btn-icon" onclick="location.href='/'" title="Início">🏠</button>
   </div>
@@ -1230,15 +1255,18 @@ async function checarServidor() {
     const d = await r.json();
     estado.servidorOnline = d.ok;
     const el = document.getElementById('srv-status');
-    el.className = 'srv-status ' + (d.ok ? 'on' : 'off');
+    const blingOff = d.ok && !d.bling.autenticado;
+    el.className = 'srv-status ' + (d.ok ? 'on' : 'off') + (blingOff ? ' bling-off' : '');
     el.textContent = d.ok
       ? 'SERVIDOR OK · BLING ' + (d.bling.autenticado ? 'OK' : 'OFF')
       : 'SERVIDOR OFFLINE';
+    el.dataset.curto = d.ok ? (blingOff ? 'BLING OFF' : 'OK') : 'OFFLINE';   // coletor (tc60)
   } catch(e) {
     estado.servidorOnline = false;
     const el = document.getElementById('srv-status');
     el.className = 'srv-status off';
     el.textContent = 'SERVIDOR OFFLINE';
+    el.dataset.curto = 'OFFLINE';
   }
 }
 checarServidor();
@@ -2147,7 +2175,7 @@ function renderHistorico() {
           <b>${it.materialNome}${corStr}</b>
           <div class="sub-info">${sub}</div>
         </div>
-        <div>
+        <div class="peso-hora">
           <div class="peso">${fmtKg(it.peso)} kg</div>
           <div class="hora">${it.hora}</div>
         </div>

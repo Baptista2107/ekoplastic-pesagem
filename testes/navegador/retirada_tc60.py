@@ -22,7 +22,11 @@ confirmação do FINALIZAR e o aviso depois dele — confere:
      agora (aguardando bipagem + 1º pedido aberto), o último bag e o
      FINALIZAR. Listas e o formulário de sacos podem rolar: o último item
      da lista e o ADICIONAR ITEM se alcançam rolando, sem nada por cima.
-  5. Monitor do Mini PC (1366×768): a tela com o bloco do coletor é IGUAL à
+  5. cabeçalho: o status do servidor diz OK / BLING OFF / OFFLINE (não só
+     cor); o crachá do responsável com nome comprido corta com reticências;
+     com o teclado do Android aberto (tela encolhida para 400 px), o campo
+     de quantidade em foco não fica atrás da barra do FINALIZAR;
+  6. Monitor do Mini PC (1366×768): a tela com o bloco do coletor é IGUAL à
      tela sem ele (posição, tamanho e fonte de cada elemento), em 4 estados.
 
 Não entra no rodar-todos.js (o Mini PC não tem navegador de teste).
@@ -42,6 +46,7 @@ PREFIXO = sys.argv[3] if len(sys.argv) > 3 else "foto"
 if FOTOS: FOTOS.mkdir(parents=True, exist_ok=True)
 PORTA = 14130
 PIN = "5824"
+NOME = "BRUNO HENRIQUE DE OLIVEIRA SANTOS"
 UA_APP = "Mozilla/5.0 (Linux; Android 14; TC60) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Mobile Safari/537.36 EkoColetor/2.0"
 W, H = 360, 690
 MIN_TOQUE, MIN_FONTE = 56, 16
@@ -96,6 +101,9 @@ JS_MEDIR = """(o) => {
     const ctrl = e.matches('button, select, textarea, a[href], [onclick], input:not([type=hidden]):not([type=checkbox]):not([type=radio])');
     if (ctrl && (b.height < o.toque - 0.5 || b.width < o.toque - 0.5))
       toque.push(nome(e) + ' ' + Math.round(b.width) + '×' + Math.round(b.height));
+    // Texto que vaza do próprio botão (linha sem quebra) também é "fora".
+    if (ctrl && getComputedStyle(e).overflowX === 'visible' && e.scrollWidth > e.clientWidth + 1)
+      borda.push(nome(e) + ' vaza do botão ' + e.scrollWidth + '>' + e.clientWidth);
     const temTexto = [...e.childNodes].some(n => n.nodeType === 3 && n.textContent.trim());
     // Texto que vaza da caixa (linha sem quebra) também conta como "fora" —
     // a não ser que uma caixa (fora o body) corte o excesso dentro da tela,
@@ -193,9 +201,10 @@ def main():
             time.sleep(0.2)
         # Nada deste banco de teste vai para a VPS de verdade.
         req("/config", {"vps_sacoleiras_url": "http://127.0.0.1:9/api/sacoleiras/agora"})
-        req("/colaboradores/salvar", {"nome": "BRUNO TESTE", "pin": PIN, "telas": ["mp"]})
+        # Nome comprido de propósito: o crachá tem de cortar com reticências.
+        req("/colaboradores/salvar", {"nome": NOME, "pin": PIN, "telas": ["mp"]})
         # Bags no estoque: recebidos e bipados.
-        srec = req("/sessoes", {"tipo": "recebimento", "operador": "BRUNO TESTE", "fornecedor": "Ecorafia"})["sessao_id"]
+        srec = req("/sessoes", {"tipo": "recebimento", "operador": NOME, "fornecedor": "Ecorafia"})["sessao_id"]
         bags = []
         for i in range(12):
             r = req("/print/etiqueta", {"clientToken": f"tc60-{time.time()}-{i}", "tipo": "recebimento", "materialKey": "GBD",
@@ -223,7 +232,27 @@ def main():
             medir(pg, "pin", ignorar=None, toque=False, fonte=False)
             ok(senha(pg), "senha aceita")
 
-            medir(pg, "sem-pedido", a_vista=("#fluxo-bipagem .bipa-display .titulo", "#btn-finalizar"))
+            medir(pg, "sem-pedido", a_vista=("#fluxo-bipagem .bipa-display .titulo", "#btn-finalizar", "#eko-resp-tag"))
+            cr = pg.evaluate("""() => { const e = document.getElementById('eko-resp-tag'), cs = getComputedStyle(e);
+                return { corta: e.scrollWidth > e.clientWidth + 1, display: cs.display, to: cs.textOverflow }; }""")
+            ok(not cr["corta"] or (cr["display"] in ("block", "inline-block") and cr["to"] == "ellipsis"),
+               "crachá com nome comprido: corta com reticências (não no seco)", json.dumps(cr))
+
+            # Status do servidor no cabeçalho: os três estados, com texto.
+            def status(resp):
+                pg.route("**/healthcheck", resp); pg.evaluate("checarServidor()"); pg.wait_for_timeout(600)
+                pg.unroute("**/healthcheck")
+                return pg.evaluate("""() => { const e = document.getElementById('srv-status');
+                    return { cls: e.className, txt: getComputedStyle(e, '::after').content, cor: getComputedStyle(e).color }; }""")
+            J = lambda d: (lambda r: r.fulfill(status=200, content_type="application/json", body=json.dumps(d)))
+            s_ok = status(J({"ok": True, "bling": {"autenticado": True}}))
+            s_bl = status(J({"ok": True, "bling": {"autenticado": False}}))
+            s_of = status(lambda r: r.fulfill(status=500, body="erro"))
+            ok(s_ok["txt"] == '"OK"' and s_bl["txt"] == '"BLING OFF"' and s_of["txt"] == '"OFFLINE"'
+               and len({s_ok["cor"], s_bl["cor"], s_of["cor"]}) == 3,
+               "status: OK / BLING OFF / OFFLINE escritos e em três cores", json.dumps([s_ok, s_bl, s_of]))
+            if FOTOS: pg.screenshot(path=str(FOTOS / f"{PREFIXO}-status-offline.png"), timeout=30000)
+            pg.evaluate("checarServidor()"); pg.wait_for_timeout(600)
 
             por_pedidos(pg, DOIS)
             medir(pg, "com-pedido", a_vista=("#fluxo-bipagem .bipa-display .titulo", "#pp-lista .pp-item .pp-mat", "#btn-finalizar"))
@@ -255,14 +284,29 @@ def main():
             pg.locator("#hist-lista .item").last.scroll_into_view_if_needed(); pg.wait_for_timeout(300)
             faltam = pg.evaluate(JS_A_VISTA, ["#hist-lista .item:last-child .item-x"])
             ok(not faltam, "lista-longa: rolando, o X do último item fica à vista e tocável", "; ".join(faltam))
+            pg.locator("#btn-resumo-dia").scroll_into_view_if_needed(); pg.wait_for_timeout(300)
+            faltam = pg.evaluate(JS_A_VISTA, ["#btn-resumo-dia", "#btn-relatorio"])
+            ok(not faltam, "lista-longa: rolando até o fim, Relatório e Resumo do dia à vista e tocáveis", "; ".join(faltam))
 
             # Aditivo com cor (Pigmento): blocos de cor + fornecedor.
             pg.locator(".subtab[data-tipo=sacos]").click(); pg.wait_for_timeout(300)
             pg.locator("#opc-tipo .opc", has_text="PIGMENTO").click(); pg.wait_for_timeout(200)
             if pg.locator("#opc-cor .opc").count(): pg.locator("#opc-cor .opc").first.click()
             pg.locator("#opc-forn .opc").first.click(); pg.wait_for_timeout(200)
-            pg.locator("#avulso-input").fill("12,5"); pg.evaluate("ajustarSacos(0)"); pg.wait_for_timeout(200)
+            pg.locator("#avulso-input").fill("12,5"); pg.evaluate("ajustarSacos(0); document.activeElement.blur()"); pg.wait_for_timeout(200)
             medir(pg, "sacos-pigmento", a_vista=("#opc-tipo .opc", "#btn-finalizar"))
+            # Teclado do Android aberto: o app encolhe a tela (adjustResize).
+            # O campo em foco não pode ficar atrás da barra do FINALIZAR.
+            pg.set_viewport_size({"width": W, "height": 400})
+            for campo in ("#avulso-input", "#sacos-input"):
+                # O Android rola o campo em foco só o mínimo: ele fica no pé da tela.
+                pg.locator(campo).focus(); pg.evaluate(f"document.querySelector('{campo}').scrollIntoView({{block: 'end'}})")
+                pg.wait_for_timeout(300)
+                faltam = pg.evaluate(JS_A_VISTA, [campo])
+                ok(not faltam, f"teclado do Android aberto: {campo} em foco fica à vista", "; ".join(faltam))
+                if FOTOS and campo == "#avulso-input": pg.screenshot(path=str(FOTOS / f"{PREFIXO}-sacos-teclado-android.png"), timeout=30000)
+            pg.evaluate("document.activeElement.blur()")
+            pg.set_viewport_size({"width": W, "height": H}); pg.wait_for_timeout(300)
             pg.evaluate("setFluxo('bipagem')"); pg.wait_for_timeout(300)
 
             pg.evaluate("simularBipe()"); pg.wait_for_timeout(400)
@@ -323,6 +367,7 @@ def main():
                 # Sem transição/animação nas duas: a VPS carregada pegava a cor
                 # da aba no meio da troca e acusava diferença que não existe.
                 pg.add_style_tag(content="*,*::before,*::after{transition:none!important;animation:none!important}")
+                pg.wait_for_selector("#srv-status.on", timeout=20000)
                 itens(pg, 1); pg.wait_for_timeout(800)
                 a = {"bipagem": pg.evaluate(JS_ASSINATURA)}
                 if FOTOS and qual == "com": pg.screenshot(path=str(FOTOS / f"{PREFIXO}-1366-bipagem.png"))
