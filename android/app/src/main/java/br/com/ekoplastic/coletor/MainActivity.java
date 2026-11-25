@@ -77,8 +77,18 @@ public class MainActivity extends Activity {
     //                   inventário lê QR de gaiola "EKOPA|id|formato|…");
     //   travar_pagina   true = não sai da página (bobinas); false = navega
     //                   dentro do Mini PC e o Voltar volta (inventário).
+    //
+    // v2.0 (25/11/2026) — terceiro app, "Ekoplastic MP" (hub do almoxarifado):
+    //   paginas         outras páginas que o app pode abrir, separadas por
+    //                   vírgula. Vazio = só a página inicial (os dois de antes).
+    //                   Com lista, a página inicial é um HUB: qualquer outra
+    //                   navegação dentro do Mini PC (🏠, "voltar ao menu", ✕)
+    //                   volta ao hub, e o Voltar do Android também, quando não
+    //                   há janela aberta.
     String PAGINA_PADRAO = "/retirada-bobinas.html";
     boolean LEITURA_ESTRITA = true, TRAVAR_PAGINA = true;
+    final List<String> PAGINAS_EXTRAS = new ArrayList<>();
+    String VOLTAR_JS = null;
 
     void lerVariante() {
         try {
@@ -88,8 +98,31 @@ public class MainActivity extends Activity {
                 PAGINA_PADRAO = m.getString("pagina", PAGINA_PADRAO);
                 LEITURA_ESTRITA = m.getBoolean("leitura_estrita", true);
                 TRAVAR_PAGINA = m.getBoolean("travar_pagina", true);
+                for (String p : String.valueOf(m.getString("paginas", "")).split(",")) {
+                    p = p.trim();
+                    if (p.startsWith("/") && !PAGINAS_EXTRAS.contains(p)) PAGINAS_EXTRAS.add(p);
+                }
             }
         } catch (Exception ignore) {}
+    }
+
+    boolean temHub() { return !PAGINAS_EXTRAS.isEmpty(); }
+
+    /** O app pode abrir este caminho? A página inicial sempre; no hub, também as telas dele. */
+    boolean permitida(String caminho) {
+        return pagina().equals(caminho) || PAGINAS_EXTRAS.contains(caminho);
+    }
+
+    /** assets/voltar.js: o que o Voltar do Android faz na página (testado no Node). */
+    String voltarJs() {
+        if (VOLTAR_JS != null) return VOLTAR_JS;
+        try (java.io.InputStream in = getAssets().open("voltar.js")) {
+            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+            byte[] b = new byte[4096]; int n;
+            while ((n = in.read(b)) > 0) out.write(b, 0, n);
+            VOLTAR_JS = new String(out.toByteArray(), "UTF-8");
+        } catch (Exception e) { VOLTAR_JS = "'hub'"; }
+        return VOLTAR_JS;
     }
     static final String ACAO_PROPRIA = "br.com.ekoplastic.coletor.SCAN";
 
@@ -182,13 +215,15 @@ public class MainActivity extends Activity {
             public void onReceivedError(WebView v, WebResourceRequest r, WebResourceError e) {
                 if (r.isForMainFrame()) mostrarErro(String.valueOf(e.getDescription()));
             }
+            // No hub (v2.0) as saídas ficam à vista: o ✕ e o "voltar ao menu"
+            // levam de volta ao hub (shouldOverrideUrlLoading abaixo).
             @Override
             public void onPageFinished(WebView v, String url) {
-                if (url.startsWith("https://")) { if (TRAVAR_PAGINA) esconderSaidas(); injetarAtalhos(); }
+                if (url.startsWith("https://")) { if (TRAVAR_PAGINA && !temHub()) esconderSaidas(); injetarAtalhos(); }
             }
             @Override
             public void onPageCommitVisible(WebView v, String url) {
-                if (url.startsWith("https://") && TRAVAR_PAGINA) esconderSaidas();
+                if (url.startsWith("https://") && TRAVAR_PAGINA && !temHub()) esconderSaidas();
             }
             /**
              * v1.4 — o coletor NÃO sai da tela definida (Frederico,
@@ -205,7 +240,12 @@ public class MainActivity extends Activity {
                 // para conferir outra tela e voltar; a contagem fica guardada
                 // no aparelho e no Mini PC (rascunho). Nunca sai do Mini PC.
                 if (!TRAVAR_PAGINA) return !mesmoMiniPc;
-                return !(mesmoMiniPc && pagina().equals(u.getPath()));   // true = bloqueia
+                if (mesmoMiniPc && permitida(u.getPath())) return false;
+                // Hub (v2.0): 🏠, ✕, "voltar ao menu", 📦 da MP… — tudo o que
+                // levaria a outra página do Mini PC volta ao hub. Fora do Mini
+                // PC, nada abre.
+                if (mesmoMiniPc && temHub()) ui.post(MainActivity.this::abrir);
+                return true;   // bloqueia
             }
         });
         web.setWebChromeClient(new WebChromeClient() {
@@ -239,16 +279,17 @@ public class MainActivity extends Activity {
     public void onBackPressed() {
         // Sem trava (não usado hoje): volta à tela anterior, nunca fecha o app.
         if (!TRAVAR_PAGINA) { if (web.canGoBack()) web.goBack(); return; }
-        // Travado (os dois apps, v1.7): o Voltar do Android não sai da tela nem
-        // fecha o app. Em ordem: fecha a janela aberta por cima (fardos da
-        // bobina); senão aciona o "← Voltar" DA PRÓPRIA TELA, se estiver à
-        // vista (navegação interna do inventário); senão fecha o cartão da
-        // bobina lida.
-        web.evaluateJavascript("(function(){var m=document.querySelector('.modal-fundo');"
-            + "if(m){var c=m.querySelector('#md-cancelar');if(c)c.click();else m.remove();return;}"
-            + "var v=document.getElementById('btn-voltar');"
-            + "if(v&&v.offsetParent!==null&&getComputedStyle(v).display!=='none'){v.click();return;}"
-            + "if(typeof cancelarLeitura==='function')cancelarLeitura();})()", null);
+        // Travado (os três apps): o Voltar do Android não sai da tela nem fecha
+        // o app. Em ordem (assets/voltar.js): fecha a janela aberta por cima;
+        // senão aciona o "← Voltar" DA PRÓPRIA TELA, se estiver à vista
+        // (inventário); senão fecha o cartão da bobina lida. No hub (v2.0), se
+        // não havia nada para fechar, volta ao hub.
+        web.evaluateJavascript(voltarJs(), r -> {
+            if (temHub() && r != null && r.contains("hub")) {
+                Uri u = Uri.parse(String.valueOf(web.getUrl()));
+                if (!pagina().equals(u.getPath())) abrir();
+            }
+        });
     }
 
     /** Esconde as saídas da página (o ✕ do topo e o "voltar ao menu" do PIN). */

@@ -1197,8 +1197,11 @@ body.modo-retorno #btn-corrigir { display: none; }
 .ret-peso-input { border-color: var(--devol) !important; }
 .ret-peso-input:focus { border-color: var(--devol) !important; }
 </style>
+<!-- 25/11/2026: no coletor (app Ekoplastic MP) e no celular a tela vira uma coluna.
+     Só vale abaixo de 900 px: o monitor do Mini PC não muda. -->
+<link rel="stylesheet" href="/celular.css">
 </head>
-<body>
+<body data-tela="MP Recebimento">
 
 <header>
   <div class="logo">MATÉRIA-PRIMA</div>
@@ -2335,9 +2338,13 @@ function avisoForneTravado() {
 // ─── BALANÇA REAL via /balanca/raw ────────────────────────────
 // Arquitetura: servidor Node.js mantém COM3 aberta e expõe HTTP.
 // Frontend faz polling a cada 500ms.
-const URL_BALANCA = 'http://localhost:3000/balanca/raw';
-const URL_BAL_ZERAR = 'http://localhost:3000/balanca/zerar';
-const URL_BAL_TARAR = 'http://localhost:3000/balanca/tarar';
+// 25/11/2026: endereço relativo (era http://localhost:3000/…). No monitor do
+// Mini PC dá no mesmo; no coletor (https://<Mini PC>:3443) o "localhost" era
+// o próprio coletor e o peso nunca chegava. A balança continua sendo a do
+// Mini PC — o coletor só mostra o que ela está lendo.
+const URL_BALANCA = '/balanca/raw';
+const URL_BAL_ZERAR = '/balanca/zerar';
+const URL_BAL_TARAR = '/balanca/tarar';
 const POLLING_MS = 500;
 const ESTAB_MS = 1500;          // peso parado por 1.5s = estável
 const ESTAB_TOL_KG = 0.2;       // variação máxima permitida em kg
@@ -2780,6 +2787,21 @@ window.addEventListener('keydown', (e) => {
     bipeBuffer = bipeBuffer.slice(0, -1);
   }
 });
+
+/* <leitor-app> */
+// App do coletor "Ekoplastic MP" (25/11/2026): no TC60 o código chega inteiro
+// pelo app (EkoApp → onLeu), não pelo teclado — o app mantém um campo
+// invisível (#__ekoScan) em foco, e o leitor-teclado acima ignora tecla em
+// campo. Mesmas travas do leitor-teclado e o mesmo processarBipeRaw. No Mini PC
+// ninguém chama esta função.
+function onLeu(codigo) {
+  const ae = document.activeElement;
+  if (ae && ae.id !== '__ekoScan' && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA')) return;
+  if (window.EkoAcesso && EkoAcesso.bloqueando && EkoAcesso.bloqueando()) return;
+  const t = String(codigo == null ? '' : codigo).trim();
+  if (t) processarBipeRaw(t);
+}
+/* </leitor-app> */
 
 function processarBipeRaw(raw) {
   // Aceita formatos:

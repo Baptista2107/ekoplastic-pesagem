@@ -74,7 +74,7 @@ def main():
             pg.on("dialog", lambda d: d.accept())
             pg.on("request", lambda r: impressoes.append(json.loads(r.post_data or "{}"))
                   if r.method == "POST" and r.url.endswith("/print/etiqueta") else None)
-            # A tela lê a balança em http://localhost:3000/balanca/raw: aqui responde o teste.
+            # A tela lê a balança em /balanca/raw (relativo desde 25/11/2026): aqui responde o teste.
             pg.route("**/balanca/raw", lambda rota: rota.fulfill(status=200, content_type="application/json",
                      body=json.dumps({"portaAberta": True, "porta": "COM3", "peso": bal["peso"],
                                       "ultimoByteTs": int(time.time() * 1000)})))

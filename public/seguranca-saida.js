@@ -31,6 +31,12 @@
   const EH_PROCESSO = (TELA !== 'Menu');
   const EMBUTIDO = !NO_TOPO;   // tela de processo rodando dentro do iframe do shell
 
+  // 0) App do coletor (WebView "Ekoplastic MP", 25/11/2026): a tela abre
+  //    sozinha, sem o shell. O app já prende a navegação e não tem tela cheia
+  //    nem barra do Windows para travar; sem esta saída a tela de Produto
+  //    Acabado pulava para o menu (/?tela=…), que o app não deixa abrir.
+  if (/\bEkoColetor\//.test(navigator.userAgent || '')) return;
+
   // 1) Tela de processo aberta DIRETO (fora do shell) -> reabre via shell.
   if (EH_PROCESSO && NO_TOPO) {
     try { location.replace('/?tela=' + encodeURIComponent(location.pathname)); } catch (e) {}

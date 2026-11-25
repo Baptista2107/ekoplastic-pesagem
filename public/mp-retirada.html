@@ -663,8 +663,11 @@ header {
 .kp-ok:active { background:#2ea043; }
 
 </style>
+<!-- 25/11/2026: no coletor (app Ekoplastic MP) e no celular a tela vira uma coluna.
+     Só vale abaixo de 900 px: o monitor do Mini PC não muda. -->
+<link rel="stylesheet" href="/celular.css">
 </head>
-<body>
+<body data-tela="MP Retirada">
 
 <header>
   <div style="display:flex;align-items:center;gap:24px">
@@ -1202,6 +1205,34 @@ function teclaDoLeitor(e) {
   }
 }
 document.addEventListener('keydown', teclaDoLeitor, true);
+
+/* <leitor-app> */
+// App do coletor "Ekoplastic MP" (25/11/2026): no TC60 o código chega inteiro
+// pelo app (EkoApp → onLeu), não pelo teclado — o app mantém um campo
+// invisível (#__ekoScan) em foco, e o teclaDoLeitor ignora tecla em campo.
+// Mesmas travas do teclaDoLeitor, na mesma ordem, e o mesmo processarBipe.
+// No Mini PC ninguém chama esta função.
+function onLeu(codigo) {
+  const t = String(codigo == null ? '' : codigo).trim();
+  if (document.getElementById('keypad-modal').classList.contains('ativo')) {
+    const lidos = t.match(/[RTS]\d{7}/g);
+    if (lidos) {
+      showToast('erro', '⛔', `${lidos[lidos.length - 1]} NÃO saiu — feche o teclado da tela e bipe de novo`, 7000);
+      beepErro();
+    }
+    return;
+  }
+  // Campo de verdade em foco (inclusive a caixa do motivo): o TC60 também
+  // "digita" o código nele, e quem trata é o teclaDoLeitor — aqui sairia 2×.
+  const ae = document.activeElement;
+  const tag = ((ae && ae.tagName) || '').toUpperCase();
+  if (ae && ae.id !== '__ekoScan' && (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT')) return;
+  if (window.EkoAcesso && EkoAcesso.bloqueando && EkoAcesso.bloqueando()) return;
+  const todos = t.match(/[RTS]\d{7}/g);
+  if (todos) todos.forEach(c => processarBipe(c));
+  else if (t) processarBipe(t);
+}
+/* </leitor-app> */
 
 // UM bipe por vez (16/11/2026): o 2º espera o 1º terminar, inclusive a resposta
 // da janela de motivo. Bipe que chega com janela aberta ou com outro bipe em

@@ -268,6 +268,42 @@
   body[data-tela="Endereçamento"] header .btn-ic { flex: 0 0 44px; }
   body[data-tela="Endereçamento"] header .logo { letter-spacing: .3px !important; gap: 7px; }
 
+  /* ─── MP: RECEBIMENTO / RETORNO e RETIRADA (25/11/2026) ───
+     Nasceram para o monitor do Mini PC, onde fica a balança. Abertas no
+     coletor do Bruno (app "Ekoplastic MP") eram duas colunas espremidas em
+     360 px: a lista e o Finalizar ficavam cortados. Vira uma coluna que
+     rola. Só estrutura: nenhum botão, campo ou regra muda. */
+  body[data-tela="MP Recebimento"] .layout,
+  body[data-tela="MP Retirada"] .layout {
+    display: block !important;
+    height: auto !important;
+  }
+  body[data-tela="MP Recebimento"] .central,
+  body[data-tela="MP Retirada"] .central {
+    display: flex !important;
+    flex-direction: column;
+    overflow: visible !important;
+    padding: 10px !important;
+  }
+  body[data-tela="MP Recebimento"] .coluna-direita {
+    border-left: none !important;
+    border-top: 1px solid var(--border);
+    overflow: visible !important;
+    padding: 12px 10px 64px !important;
+  }
+  body[data-tela="MP Recebimento"] .atalhos { grid-template-columns: repeat(4, 1fr) !important; }
+  /* Retirada: o menu lateral (RETIRADA / Voltar) sai — a 🏠 do cabeçalho
+     faz o mesmo. A coluna do histórico desce para baixo das ações. */
+  body[data-tela="MP Retirada"] .layout > .menu { display: none !important; }
+  body[data-tela="MP Retirada"] .fluxo { overflow: visible !important; }
+  body[data-tela="MP Retirada"] .historico-side { padding-bottom: 64px; }
+  /* O relógio empurrava a 🏠 para uma terceira linha do cabeçalho; o
+     coletor e o celular já mostram a hora na barra de cima. */
+  @media (max-width: 400px) {
+    body[data-tela="MP Recebimento"] header .clock,
+    body[data-tela="MP Retirada"] header .clock { display: none !important; }
+  }
+
   /* ─── INVENTÁRIO / RETIRADA DE BOBINAS ───
      Também já eram de celular. Sem regra estrutural: herdam só o
      cabeçalho, o alvo de toque e o texto mínimo. */

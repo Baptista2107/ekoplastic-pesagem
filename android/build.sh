@@ -7,10 +7,11 @@
 #   ./build.sh                       # os dois apps
 #   VARIANTE=bobinas ./build.sh      # só "Ekoplastic Coletor" (bobina na sacoleira)
 #   VARIANTE=inventario ./build.sh   # só "Ekoplastic Inventário" (MP e PA)
+#   VARIANTE=mp ./build.sh           # só "Ekoplastic MP" (hub do almoxarifado, v2.0)
 #
 # O MESMO código gera os dois (v1.6, 28/09/2026): o manifesto é um modelo com
 # @MARCADORES@ que este script preenche — pacote, nome, ícone, página inicial,
-# leitura estrita e trava de página. O pacote do de bobinas continua
+# leitura estrita, trava de página e (v2.0) as páginas extras do hub. O pacote do de bobinas continua
 # br.com.ekoplastic.coletor, para a versão nova instalar por cima da antiga.
 #
 # Variáveis (com o padrão da VPS da Ekoplastic):
@@ -41,8 +42,9 @@ SRC="$AQUI/app/src/main"
 VERSAO=$(sed -n 's/.*android:versionName="\([^"]*\)".*/\1/p' "$SRC/AndroidManifest.xml")
 
 if [ -z "${VARIANTE:-}" ]; then
-  VARIANTE=bobinas "$0" && VARIANTE=inventario "$0"; exit $?
+  VARIANTE=bobinas "$0" && VARIANTE=inventario "$0" && VARIANTE=mp "$0"; exit $?
 fi
+PAGINAS=""   # só no hub: as telas que ele abre, além da inicial
 case "$VARIANTE" in
   bobinas)    PACOTE=br.com.ekoplastic.coletor;    NOME="Ekoplastic Coletor";    ICONE=icone
               PAGINA=/retirada-bobinas.html;       ESTRITA=true;  TRAVAR=true;  ARQ=ekoplastic-coletor ;;
@@ -50,7 +52,13 @@ case "$VARIANTE" in
               PAGINA=/inventario.html;             ESTRITA=false; TRAVAR=true;  ARQ=ekoplastic-inventario ;;
   # v1.7: o inventário também fica preso na tela (sem acesso ao menu
   # principal); a navegação interna dele é toda JS, na mesma página.
-  *) echo "VARIANTE desconhecida: $VARIANTE (bobinas | inventario)"; exit 1 ;;
+  # v2.0 (25/11/2026, Gustavo): hub do almoxarifado no coletor do Bruno.
+  # PAGINAS tem de bater com a lista TELAS de public/hub-mp.js
+  # (testes/hub-coletor.js confere).
+  mp)         PACOTE=br.com.ekoplastic.mp;         NOME="Ekoplastic MP";         ICONE=icone_mp
+              PAGINA=/hub-mp.html;                 ESTRITA=false; TRAVAR=true;  ARQ=ekoplastic-mp
+              PAGINAS=/mp-recebimento-retorno.html,/mp-retirada.html,/enderecamento.html,/inventario.html,/produto-acabado.html ;;
+  *) echo "VARIANTE desconhecida: $VARIANTE (bobinas | inventario | mp)"; exit 1 ;;
 esac
 echo "=== $NOME ($PACOTE) · $PAGINA · v$VERSAO"
 
@@ -58,8 +66,9 @@ OUT="$AQUI/build/$VARIANTE"
 rm -rf "$OUT"; mkdir -p "$OUT/res" "$OUT/classes" "$OUT/dex"
 sed -e "s|@PACOTE@|$PACOTE|g" -e "s|@NOME@|$NOME|g" -e "s|@ICONE@|$ICONE|g" \
     -e "s|@PAGINA@|$PAGINA|g" -e "s|@ESTRITA@|$ESTRITA|g" -e "s|@TRAVAR@|$TRAVAR|g" \
+    -e "s|@PAGINAS@|$PAGINAS|g" \
     "$SRC/AndroidManifest.xml" > "$OUT/AndroidManifest.xml"
-if grep -qE '@(PACOTE|NOME|ICONE|PAGINA|ESTRITA|TRAVAR)@' "$OUT/AndroidManifest.xml"; then echo "marcador sem valor no manifesto"; exit 1; fi
+if grep -qE '@(PACOTE|NOME|ICONE|PAGINA|ESTRITA|TRAVAR|PAGINAS)@' "$OUT/AndroidManifest.xml"; then echo "marcador sem valor no manifesto"; exit 1; fi
 
 echo "1/5 recursos"
 "$BT/aapt2" compile --dir "$SRC/res" -o "$OUT/res/res.zip"

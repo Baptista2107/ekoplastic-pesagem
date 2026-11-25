@@ -1,15 +1,25 @@
-# Apps Android dos coletores (Ekoplastic Coletor e Ekoplastic Inventário)
+# Apps Android dos coletores (Ekoplastic Coletor, Ekoplastic Inventário e Ekoplastic MP)
 
-**Dois apps, um código só** (v1.6, 28/09/2026). O `build.sh` gera os dois:
+**Três apps, um código só** (v2.0, 25/11/2026). O `build.sh` gera os três:
 
-| | Ekoplastic Coletor | Ekoplastic Inventário |
-|---|---|---|
-| Tela | `/retirada-bobinas.html` (bobina na sacoleira) | `/inventario.html` (MP e produto acabado) |
-| Leitura | só etiqueta exata (letra + 7 dígitos) | texto como vier; a tela valida (gaiola `EKOPA\|…`, big bag) |
-| Navegação | presa na tela | presa na tela de inventário; por dentro dela, tudo (v1.7) |
-| Voltar do Android | fecha janelas abertas | fecha janelas; senão, o "← Voltar" da própria tela |
-| Ícone | bobina | caixinha |
-| Pacote | `br.com.ekoplastic.coletor` | `br.com.ekoplastic.inventario` |
+| | Ekoplastic Coletor | Ekoplastic Inventário | Ekoplastic MP |
+|---|---|---|---|
+| Tela | `/retirada-bobinas.html` (bobina na sacoleira) | `/inventario.html` (MP e produto acabado) | `/hub-mp.html`: hub com Entrada, Retirada, Mapeamento, Inventário e Produto Acabado |
+| Leitura | só etiqueta exata (letra + 7 dígitos) | texto como vier; a tela valida (gaiola `EKOPA\|…`, big bag) | texto como vier; cada tela valida |
+| Navegação | presa na tela | presa na tela de inventário; por dentro dela, tudo (v1.7) | presa no hub e nas 5 telas; 🏠, ✕ e "voltar ao menu" voltam ao hub |
+| Voltar do Android | fecha janelas abertas | fecha janelas; senão, o "← Voltar" da própria tela | fecha janelas; senão o "← Voltar" da tela; senão volta ao hub |
+| Ícone | bobina | caixinha | quatro quadrados |
+| Pacote | `br.com.ekoplastic.coletor` | `br.com.ekoplastic.inventario` | `br.com.ekoplastic.mp` |
+
+**Ekoplastic MP (v2.0, ramo `coletor-hub-teste`, ainda não validado na
+fábrica):** pedido do Gustavo em 25/11/2026 para o coletor do Bruno
+(almoxarifado). O hub não pede senha: cada tela pede o PIN dela, como no Mini
+PC (Entrada e Retirada pedem `mp`; Mapeamento e PA pedem `pa`). A lista de
+botões está em `public/hub-mp.js`; a de páginas que o app abre, no `build.sh`
+(`VARIANTE=mp`, `PAGINAS=`). As duas têm de bater: `testes/hub-coletor.js`
+confere. O que o Voltar faz em cada tela está em
+`app/src/main/assets/voltar.js` (o mesmo arquivo para os três apps, testado
+no Node). Decisão: `docs/decisoes/2026-11-25-hub-coletor-mp.md`.
 
 No inventário, a contagem em andamento fica no aparelho **e** no Mini PC
 (rascunho por aparelho): voltar para a escolha de produto, fechar o app ou
@@ -105,7 +115,8 @@ Para travar também o botão Home, use a **fixação de tela** do Android
 ## Gerar uma versão nova (na VPS)
 
 ```
-cd android && ./build.sh
+cd android && ./build.sh                 # os três
+VARIANTE=mp ./build.sh                    # só o Ekoplastic MP
 ```
 
 Sem Gradle nem Android Studio: usa só o JDK 17 e o Android SDK

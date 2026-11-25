@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Ícone do app "Ekoplastic MP" (hub do almoxarifado, v2.0): quatro quadrados,
+     um por tela, nas cores dos botões do hub. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp" android:height="48dp"
+    android:viewportWidth="48" android:viewportHeight="48">
+    <!-- fundo -->
+    <path android:fillColor="#0A1119" android:pathData="M8,0h32a8,8 0 0 1 8,8v32a8,8 0 0 1 -8,8h-32a8,8 0 0 1 -8,-8v-32a8,8 0 0 1 8,-8z" />
+    <!-- entrada -->
+    <path android:fillColor="#00D4FF" android:pathData="M9,9 H22 V22 H9 Z" />
+    <!-- retirada -->
+    <path android:fillColor="#F07040" android:pathData="M26,9 H39 V22 H26 Z" />
+    <!-- mapeamento -->
+    <path android:fillColor="#2EE6A6" android:pathData="M9,26 H22 V39 H9 Z" />
+    <!-- inventário -->
+    <path android:fillColor="#FFC250" android:pathData="M26,26 H39 V39 H26 Z" />
+</vector>
