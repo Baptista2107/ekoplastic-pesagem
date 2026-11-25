@@ -104,7 +104,9 @@ async function testeServidor() {
   ok(porId[normal.id] && !porId[normal.id].sub_tipo, 'A) pesagem comum fica sem nota');
   ok(porId[capa.id] && !porId[capa.id].sub_tipo, 'B) recebimento não aceita outro sub_tipo vindo da tela ("capa" ignorado)');
 
-  const eV = eplDe('18.5 KG'), eN = eplDe('1012.5 KG'), eC = eplDe('7.5 KG');
+  // 25/11/2026: na etiqueta de MP com QR o número e o "KG" são textos
+  // separados: acha pelo número exato, entre aspas ("7.5" não casa "17.5").
+  const eV = eplDe('"18.5"'), eN = eplDe('"1012.5"'), eC = eplDe('"7.5"');
   ok(eV && /"VARREDURA"/.test(eV), 'A) etiqueta impressa da varredura traz VARREDURA');
   ok(eN && !/VARREDURA/.test(eN), 'A) etiqueta comum sem VARREDURA');
   ok(eC && !/VARREDURA/.test(eC), 'B) etiqueta com sub_tipo recusado sai comum');

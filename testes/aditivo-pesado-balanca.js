@@ -99,8 +99,10 @@ async function testeServidor() {
   const contado = await etiqueta(sid, 1000, { qtdSacos: 40 });    // "Contar sacos"
   ok(pesado && pesado.ok && contado && contado.ok, 'duas etiquetas de dessecante impressas', JSON.stringify([pesado, contado]));
 
-  const eP = eplDe('1208.5 KG');
-  ok(!!eP, 'B) etiqueta do bag pesado sai com 1208.5 KG');
+  // 25/11/2026: na etiqueta de MP com QR o número e o "KG" são textos
+  // separados (peso à direita, KG embaixo): acha pelo número exato.
+  const eP = eplDe('"1208.5"');
+  ok(!!eP && /"KG"/.test(eP), 'B) etiqueta do bag pesado sai com 1208.5 KG');
   ok(eP && !/SACO/i.test(eP), 'B) etiqueta do bag pesado sem "SACO"', eP && eP.slice(0, 400));
 
   for (const id of [pesado.id, contado.id]) await req('POST', `/etiquetas/${id}/bipar`);
