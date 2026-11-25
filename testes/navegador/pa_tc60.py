@@ -18,10 +18,16 @@ etiqueta de gaiola) confere:
   4. o principal de cada estado aparece sem rolar (os três "Iniciar", o
      "Adicionar", o "Confirmar e enviar", o "Imprimir etiqueta"...).
 
+Também: o aviso (toast) logo depois do Iniciar não tapa a máquina; nada fica
+por cima do principal (barra presa, crachá); com o servidor fora, o nome da
+tela não encavala no selo OFFLINE; e a 320 px continua cabendo.
+
 E no monitor do Mini PC (1366 x 768) a tela tem de ficar igual: mede a
 posição, o tamanho e a fonte de cada elemento com o bloco do coletor e sem
 ele (folha `#pa-coletor` desligada e a div `.pa-acao` desfeita) e exige que
-sejam idênticos.
+sejam idênticos. Isso prova que o bloco e a div não mexem no monitor; não
+compara com versões antigas do arquivo (em 25/11 isso foi conferido uma vez,
+fora deste teste, contra 7e5097a: idêntico em 5 estados).
 
 O teclado da senha vem do acesso-colaborador.js (compartilhado por todas as
 telas) e fica fora das medidas de fonte.
@@ -56,10 +62,16 @@ def req(rota, corpo=None):
     with urllib.request.urlopen(r, timeout=10) as x: return json.loads(x.read())
 
 def senha(pg):
-    pg.wait_for_timeout(700)
-    if pg.locator("#eko-acesso").count() and pg.locator("#eko-acesso").is_visible():
-        for ch in PIN: pg.locator("#eko-kb button", has_text=ch).first.click()
-        pg.locator("#eko-kb button.ok").click(); pg.wait_for_timeout(1300)
+    """Espera o teclado da senha (a VPS pode estar lenta), digita e espera
+    ele sumir. Sai False se a tela não liberou."""
+    try: pg.wait_for_selector("#eko-acesso", state="visible", timeout=8000)
+    except Exception: return not pg.locator("#eko-acesso").is_visible()
+    for ch in PIN: pg.locator("#eko-kb button", has_text=ch).first.click()
+    pg.locator("#eko-kb button.ok").click()
+    try: pg.wait_for_selector("#eko-acesso", state="detached", timeout=8000)
+    except Exception: return False
+    pg.wait_for_timeout(800)
+    return True
 
 # Mede o que está NA FRENTE: a janela aberta, ou a tela sem as janelas.
 MEDIR = """([toque, fonte, principais]) => {
@@ -93,17 +105,25 @@ MEDIR = """([toque, fonte, principais]) => {
   for (const s of principais) {
     const e = document.querySelector(s);
     const b = e && e.getBoundingClientRect();
-    if (!e || !visivel(e) || b.top < 0 || b.bottom > vh + 0.5 || b.left < 0 || b.right > vw + 0.5)
-      escondidos.push(s + (b ? ' ' + Math.round(b.top) + '..' + Math.round(b.bottom) : ' (não existe)'));
+    if (!e || !visivel(e) || b.top < 0 || b.bottom > vh + 0.5 || b.left < 0 || b.right > vw + 0.5) {
+      escondidos.push(s + (b ? ' ' + Math.round(b.top) + '..' + Math.round(b.bottom) : ' (não existe)')); continue; }
+    // Visível não basta: nada pode estar por cima (barra presa, crachá, aviso).
+    const hit = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+    if (hit && !e.contains(hit) && !hit.contains(e)) escondidos.push(s + ' coberto por ' + nome(hit));
+    for (const t of document.querySelectorAll('#toast-area .toast')) {
+      const r = t.getBoundingClientRect();
+      if (r.width && r.left < b.right && r.right > b.left && r.top < b.bottom && r.bottom > b.top)
+        escondidos.push(s + ' coberto pelo aviso "' + t.textContent.slice(0, 24) + '"');
+    }
   }
   return { sw: document.documentElement.scrollWidth, vw, fora, pequenos, miudos, escondidos };
 }"""
 
-def medir(pg, nome, principais=()):
+def medir(pg, nome, principais=(), largura=W):
     pg.evaluate("window.scrollTo(0, 0); document.querySelectorAll('.modal').forEach(m => m.scrollTop = 0)")
     pg.wait_for_timeout(150)
     r = pg.evaluate(MEDIR, [TOQUE, FONTE, list(principais)])
-    ok(r["sw"] <= W and not r["fora"], f"{nome}: nada passa da borda de {W} px", f"scrollWidth={r['sw']} " + "; ".join(r["fora"][:5]))
+    ok(r["sw"] <= largura and not r["fora"], f"{nome}: nada passa da borda de {largura} px", f"scrollWidth={r['sw']} " + "; ".join(r["fora"][:5]))
     ok(not r["pequenos"], f"{nome}: controles com {TOQUE} px ou mais", f"{len(r['pequenos'])}: " + "; ".join(r["pequenos"][:6]))
     ok(not r["miudos"], f"{nome}: texto com {FONTE} px ou mais", f"{len(r['miudos'])}: " + "; ".join(r["miudos"][:6]))
     if principais:
@@ -149,17 +169,34 @@ def main():
             print(f"\n[1] Coletor TC60 ({W} x {H}, app)")
             ctx = br.new_context(viewport={"width": W, "height": H}, device_scale_factor=2, user_agent=UA_APP,
                                  locale="pt-BR", has_touch=True, is_mobile=True)
-            pg = ctx.new_page(); pg.set_default_timeout(6000)
+            pg = ctx.new_page(); pg.set_default_timeout(6000); pg.set_default_navigation_timeout(30000)
             pg.on("pageerror", lambda e: erros.append(str(e)))
-            pg.goto(BASE + "/produto-acabado.html"); senha(pg); pg.wait_for_timeout(500)
+            pg.goto(BASE + "/produto-acabado.html"); ok(senha(pg), "senha aceita"); pg.wait_for_timeout(500)
             medir(pg, "turno e data", ["#turno-A .turno-iniciar", "#turno-C .turno-iniciar", "#turno-EXTRA .turno-iniciar", "#data-EXTRA"])
             pg.locator("#turno-A .turno-iniciar").click(); pg.wait_for_timeout(1200)
-            medir(pg, "lançamento vazio", ["#maq-P1", "#fmt-30x40", "#btn-add", "#preview"])
+            # Logo depois do Iniciar o aviso "✓ TURNO A · …" está na tela: não pode tapar o passo 1.
+            medir(pg, "lançamento vazio", ["#maq-P1", "#maq-P2", "#fmt-30x40", "#btn-add", "#preview"])
+            # Sem servidor: o selo OFFLINE aparece e o nome da tela não pode encavalar nele.
+            pg.route("**/healthcheck", lambda r: r.fulfill(status=500, body="{}"))
+            pg.evaluate("pingServidor()"); pg.wait_for_selector("#srv-status.off", state="visible")
+            r = pg.evaluate("""() => { const g = new Range(); g.selectNodeContents(document.querySelector('header .logo'));
+                const a = [...g.getClientRects()], s = document.getElementById('srv-status').getBoundingClientRect();
+                const bate = x => x.left < s.right && x.right > s.left && x.top < s.bottom && x.bottom > s.top;
+                return { encavala: a.some(bate), direita: Math.max(...a.map(x => x.right)), selo: [s.left, s.top] }; }""")
+            ok(not r["encavala"], "OFFLINE: o nome da tela não encavala no selo", json.dumps(r))
+            # O aviso passageiro (até 5 s) fica por cima do cabeçalho de propósito, para não
+            # tapar a máquina; o selo OFFLINE é medido depois que ele some.
+            pg.wait_for_function("!document.querySelector('#toast-area .toast')", timeout=10000)
+            medir(pg, "OFFLINE", ["#srv-status", "#maq-P1", "#btn-add"])
+            pg.unroute("**/healthcheck"); pg.evaluate("pingServidor()"); pg.wait_for_selector("#srv-status.on", state="attached")
+            pg.wait_for_timeout(300)
             pg.locator("#maq-P1").click(); pg.locator("#fmt-50x60").click(); pg.locator("#cor-BC").click()
             pg.locator("#quick-grid .quick-btn", has_text="50").first.click(); pg.wait_for_timeout(200)
             ok(pg.locator("#btn-add").is_enabled(), "escolha completa libera o Adicionar")
             medir(pg, "escolha feita", ["#btn-add", "#preview"])
-            pg.locator("#btn-add").click(); pg.wait_for_timeout(1500)
+            pg.locator("#btn-add").click()
+            try: pg.wait_for_function("state.itens.length === 1", timeout=10000)
+            except Exception: pass
             ok(pg.evaluate("state.itens.length") == 1, "Adicionar lança o item (fluxo igual)")
             # Cor nunca lançada nessa máquina+formato → aviso de cor.
             pg.locator("#maq-P1").click(); pg.locator("#fmt-50x60").click(); pg.locator("#cor-PT").click()
@@ -173,12 +210,16 @@ def main():
                                ("P2","33x46","PT",5),("P1","40x50","AM",9),("P2","35x45","BC",4),("P1","50x60","BC",11),
                                ("P2","30x45","AM",6),("P1","60x80","PT",8),("P2","40x50","REC",2),("P1","80x100","BC",1)]:
                 req("/produto-acabado/item", {"sessao_id": sid, "corKey": c, "formato": f, "fardos": n, "maquina": m})
-            pg.reload(); senha(pg); pg.wait_for_timeout(1500)
+            pg.reload(); senha(pg)
+            try: pg.wait_for_function("state.itens.length === 14", timeout=10000)
+            except Exception: pass
             ok(pg.evaluate("state.itens.length") == 14, "lista longa: 14 itens retomados", pg.evaluate("state.itens.length"))
             medir(pg, "lista longa", ["#btn-add"])
             pg.locator("#btn-fim").click(); pg.wait_for_timeout(500)
             medir(pg, "confirmar envio (14 itens)", ["#modal-confirmar-envio .btn-modal.secundario", "#modal-confirmar-envio .btn-modal.primary"])
-            pg.locator("#modal-confirmar-envio .btn-modal.primary").click(); pg.wait_for_timeout(2500)
+            pg.locator("#modal-confirmar-envio .btn-modal.primary").click()
+            try: pg.wait_for_selector("#overlay-turno.on", timeout=15000)
+            except Exception: pass
             ok(pg.locator("#overlay-turno.on").count() == 1 and not req("/sessoes/abertas?tipo=produto-acabado")["sessoes"],
                "Confirmar finaliza e volta ao turno (fluxo igual)")
             pg.locator("#turno-C .turno-iniciar").click(); pg.wait_for_timeout(1000)
@@ -191,11 +232,25 @@ def main():
             ok(not erros, "sem erro de JavaScript", "; ".join(erros)[:300])
             ctx.close()
 
+            print("\n[1b] Celular pequeno (320 x 640): continua cabendo")
+            ctx = br.new_context(viewport={"width": 320, "height": 640}, device_scale_factor=2, user_agent=UA_APP,
+                                 locale="pt-BR", has_touch=True, is_mobile=True)
+            pg = ctx.new_page(); pg.set_default_timeout(6000); pg.set_default_navigation_timeout(30000)
+            pg.goto(BASE + "/produto-acabado.html"); senha(pg); pg.wait_for_timeout(800)
+            if pg.locator("#overlay-turno.on").count() == 0: pg.evaluate("trocarTurno()")
+            medir(pg, "320 · turno e data", ["#turno-A .turno-iniciar"], largura=320)
+            pg.locator("#turno-A .turno-iniciar").click(); pg.wait_for_selector("#main.on")
+            pg.locator("#maq-P1").click(); pg.locator("#fmt-80x100").click(); pg.locator("#cor-REC").click()
+            medir(pg, "320 · lançamento", ["#maq-P1", "#btn-add"], largura=320)
+            ctx.close()
+
             print("\n[2] Monitor do Mini PC (1366 x 768): nada muda")
             ctx = br.new_context(viewport={"width": 1366, "height": 768}, locale="pt-BR")
             # No Mini PC a tela roda dentro do menu; aqui sem a trava que a reabre por lá.
             ctx.route("**/seguranca-saida.js", lambda r: r.fulfill(status=200, content_type="text/javascript", body=""))
-            pg = ctx.new_page(); pg.set_default_timeout(6000)
+            pg = ctx.new_page(); pg.set_default_timeout(6000); pg.set_default_navigation_timeout(30000)
+            erros_monitor = []
+            pg.on("pageerror", lambda e: erros_monitor.append(str(e)))
             def abrir():
                 pg.goto(BASE + "/produto-acabado.html"); senha(pg); pg.wait_for_timeout(1500)
             abrir(); igual_no_monitor(pg, "turno e data")
@@ -210,6 +265,7 @@ def main():
             abrir(); pg.evaluate("abrirGaiola()"); pg.wait_for_timeout(800)
             pg.locator("#g-fmt-40x50").click(); pg.locator("#g-cor-grid .cor-btn").nth(2).click()
             igual_no_monitor(pg, "etiqueta de gaiola")
+            ok(not erros_monitor, "1366: sem erro de JavaScript", "; ".join(erros_monitor)[:300])
             ctx.close()
             br.close()
     finally:
