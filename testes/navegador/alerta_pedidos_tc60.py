@@ -54,16 +54,13 @@ def pedido(id_, **k):
          "material_nome": "COLORIDO BAIXA DENSIDADE", "fornecedor": "Piquiri", "lote_fmt": ""}
     p.update(k); return p
 
-# O mesmo que MainActivity.injetarAlertaPedidos() roda no fim do carregamento.
+# O app: EkoApp.alertar() contado e, no fim do carregamento, o MESMO arquivo
+# que MainActivity.injetarAlertaPedidos() roda (assets/injetar-alerta.js).
 INJETAR = """
 window.__vibrou = 0;
 window.EkoApp = { versao: () => '2.2', alertar: () => { window.__vibrou++; } };
-window.addEventListener('load', () => {
-  if (window.__ekoAlertaPedidos || document.getElementById('__ekoAlertaJs')) return;
-  var s = document.createElement('script'); s.id = '__ekoAlertaJs'; s.src = '/alerta-pedidos.js';
-  (document.head || document.documentElement).appendChild(s);
-});
-"""
+window.addEventListener('load', () => { %s });
+""" % (REPO / "android/app/src/main/assets/injetar-alerta.js").read_text()
 
 MEDIR = r"""() => {
   const f = document.getElementById('eko-alerta-pedido');
@@ -161,6 +158,15 @@ def main():
             pg.goto(base + "/inventario.html", wait_until="load"); r = faixa(pg)
             ok(r is not None and pg.evaluate("window.__vibrou") == 0, "outra tela: a faixa continua e não vibra de novo",
                pg.evaluate("window.__vibrou"))
+            # Peso digitado na tela: VER PEDIDO pergunta antes de sair (revisor 25/11).
+            pg.evaluate("""() => { const c = document.createElement('input'); c.id = 'peso-teste'; c.value = '512,3';
+                                     c.style.cssText = 'position:fixed;bottom:0;left:0'; document.body.appendChild(c); }""")
+            perguntou = []
+            pg.once("dialog", lambda d: (perguntou.append(d.message), d.dismiss()))
+            pg.click("#eko-alerta-pedido .eap-ver"); pg.wait_for_timeout(500)
+            ok(perguntou and "se perde" in perguntou[0] and pg.url.endswith("/inventario.html")
+               and faixa(pg, esperar=False) is not None, "com peso digitado: pergunta e, no Cancelar, fica na tela com a faixa", perguntou)
+            pg.once("dialog", lambda d: d.accept())
             pg.click("#eko-alerta-pedido .eap-ver"); pg.wait_for_load_state("load")
             ok(pg.url.endswith(RETIRADA), "VER PEDIDO abre a tela de Retirada", pg.url)
             ok(faixa(pg, esperar=False) is None, "na Retirada não há faixa")
@@ -173,6 +179,8 @@ def main():
                "pedido novo: faixa só com ele e vibra", r and r["lin"])
             pg.click("#eko-alerta-pedido .eap-fechar")
             ok(faixa(pg, esperar=False) is None, "✕ some com a faixa")
+            pg.evaluate("document.dispatchEvent(new Event('visibilitychange'))"); pg.wait_for_timeout(1500)
+            ok(faixa(pg, esperar=False) is None, "✕: o giro seguinte não traz a faixa de volta")
             pg.reload(wait_until="load")
             ok(faixa(pg, esperar=False) is None and pg.evaluate("window.__vibrou") == 0, "✕: não volta nem vibra ao recarregar")
 

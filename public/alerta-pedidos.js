@@ -33,27 +33,38 @@
   const CHAVE = 'eko_pedidos_alerta';
   const RETIRADA = '/mp-retirada.html';
   const GIRO_MS = 15000;
-  const GUARDA_MS = 7 * 24 * 3600 * 1000;   // id visto há mais de 7 dias sai da memória
+  const GUARDA_MS = 7 * 24 * 3600 * 1000;   // id que sumiu da lista há mais de 7 dias sai da memória
+  // Mini PC sem falar com a VPS devolve a última lista boa (desatualizado:true).
+  // Mais velha que isto não alerta nem mostra (mesmo prazo do LISTA_VALE_MS da lib).
+  const LISTA_VELHA_S = 30 * 60;
 
   /** Pedidos abertos da resposta de GET /retirada/pedidos (resposta ruim → nenhum). */
   function abertos(resp) {
     if (!resp || resp.ok === false || resp.desligado || !Array.isArray(resp.pedidos)) return [];
+    if (resp.desatualizado && !(Number(resp.idade_s) <= LISTA_VELHA_S)) return [];
     return resp.pedidos.filter(p => p && p.id != null && p.status === 'aberto' && !p.cancelado_em);
   }
 
   function num(v) {
+    if (v == null || v === '') return null;
     const n = Number(v);
     return Number.isFinite(n) ? n : null;
   }
+  // Mesma regra do emKg de lib/retirada-pedidos.js.
+  function emKg(p) { return String(p.unidade || '').toLowerCase() === 'kg'; }
+  function fmtKg(v) { return String(Math.round(v * 10) / 10).replace('.', ','); }
 
-  /** "2 bags", "1 bag", "25 kg". */
+  /** "2 bags", "1 bag", "25 kg"; já começado: "falta 1 de 3 bags", "falta 50 de 200 kg". */
   function quantidade(p) {
-    if (p.unidade === 'kg') {
-      const kg = num(p.kg_pedidos);
-      return kg == null ? 'kg' : `${String(Math.round(kg * 10) / 10).replace('.', ',')} kg`;
+    if (emKg(p)) {
+      const kg = num(p.kg_pedidos), feito = num(p.kg_atendidos) || 0;
+      if (kg == null) return 'kg';
+      return feito > 0 && feito < kg ? `falta ${fmtKg(kg - feito)} de ${fmtKg(kg)} kg` : `${fmtKg(kg)} kg`;
     }
-    const n = num(p.bags_pedidos);
-    return n == null ? 'bags' : `${n} ${n === 1 ? 'bag' : 'bags'}`;
+    const n = num(p.bags_pedidos), feito = num(p.bags_atendidos) || 0;
+    if (n == null) return 'bags';
+    if (feito > 0 && feito < n) return `falta ${n - feito} de ${n} ${n === 1 ? 'bag' : 'bags'}`;
+    return `${n} ${n === 1 ? 'bag' : 'bags'}`;
   }
 
   /** "2 bags · COLORIDO BAIXA DENSIDADE · Piquiri · lote 123". */
@@ -76,27 +87,32 @@
   }
   function obj(o) { return o && typeof o === 'object' && !Array.isArray(o) ? o : {}; }
 
-  function podar(mapa, agora) {
+  /** Esquece o id que não está mais na lista há 7 dias; o que segue aberto nunca é esquecido
+   *  (senão um pedido aberto há 8 dias vibraria de novo — revisor 25/11). */
+  function podar(mapa, agora, ativos) {
     const out = {};
-    for (const [id, ms] of Object.entries(mapa)) if (agora - Number(ms) < GUARDA_MS) out[id] = ms;
+    for (const [id, ms] of Object.entries(mapa)) if (ativos.has(id) || agora - Number(ms) < GUARDA_MS) out[id] = ms;
     return out;
   }
 
   /**
-   * Um giro. naRetirada = a tela aberta é a de Retirada.
+   * Um giro. naRetirada = a tela aberta é a de Retirada; listaAVista = a
+   * lista de pedidos dela está à vista (não há teclado da senha por cima).
    * → { vibrar, faixa: [pedidos que a faixa mostra], estado: novo estado }
    *   vibrar: chegou pedido que nunca vibrou neste aparelho.
-   *   faixa: abertos que o operador ainda não viu (VER/✕ ou tela de Retirada).
+   *   faixa: abertos que o operador ainda não viu (VER/✕ ou lista da Retirada).
+   *   Na Retirada nunca há faixa; só conta como visto com a lista à vista.
    */
-  function decidir(resp, estado, agora, naRetirada) {
+  function decidir(resp, estado, agora, naRetirada, listaAVista = true) {
     const lista = abertos(resp);
-    const alertados = podar(estado.alertados, agora);
-    const vistos = podar(estado.vistos, agora);
+    const ativos = new Set(lista.map(p => String(p.id)));
+    const alertados = podar(estado.alertados, agora, ativos);
+    const vistos = podar(estado.vistos, agora, ativos);
     let vibrar = false;
     for (const p of lista) {
       const id = String(p.id);
       if (!(id in alertados)) { alertados[id] = agora; vibrar = true; }
-      if (naRetirada) vistos[id] = vistos[id] || agora;
+      if (naRetirada && listaAVista) vistos[id] = vistos[id] || agora;
     }
     const faixa = naRetirada ? [] : lista.filter(p => !(String(p.id) in vistos));
     return { vibrar, faixa, estado: { alertados, vistos } };
@@ -117,6 +133,24 @@
     const quem = p.autor_nome ? ` (${p.autor_nome})` : '';
     if (n === 1) return { titulo: '📦 PEDIDO DE RETIRADA' + quem, linha: resumo(p), botao: 'VER PEDIDO' };
     return { titulo: `📦 ${n} PEDIDOS DE RETIRADA`, linha: resumo(p) + ` · e mais ${n - 1}`, botao: 'VER PEDIDOS' };
+  }
+
+  /** Há algo na tela que se perde ao sair? Janela aberta ou campo preenchido. */
+  function telaOcupada(doc) {
+    const visivel = e => !!(e && e.getClientRects && e.getClientRects().length);
+    for (const j of doc.querySelectorAll('.modal-fundo, [role="dialog"], dialog[open]')) {
+      if (visivel(j) && getComputedStyleSeguro(doc, j)) return true;
+    }
+    for (const c of doc.querySelectorAll('input, textarea')) {
+      if (c.id === '__ekoScan' || c.readOnly || c.disabled) continue;
+      if (/^(hidden|checkbox|radio|button|submit|date|range|color)$/i.test(c.type || '')) continue;
+      if (visivel(c) && String(c.value || '').trim()) return true;
+    }
+    return false;
+  }
+  function getComputedStyleSeguro(doc, e) {
+    try { const cs = doc.defaultView.getComputedStyle(e); return cs.display !== 'none' && cs.visibility !== 'hidden'; }
+    catch (x) { return true; }
   }
 
   /** Só no app do coletor. */
@@ -151,6 +185,8 @@
     function lerLS() { try { return win.localStorage.getItem(CHAVE); } catch (e) { return null; } }
     function gravar() { try { win.localStorage.setItem(CHAVE, JSON.stringify(estado)); } catch (e) {} }
     function naRetirada() { return win.location.pathname === RETIRADA; }
+    // Teclado da senha (acesso-colaborador.js) cobre a tela inteira.
+    function listaAVista() { return !doc.getElementById('eko-acesso'); }
 
     function alertar() {
       try { if (win.EkoApp && typeof win.EkoApp.alertar === 'function') { win.EkoApp.alertar(); return; } } catch (e) {}
@@ -162,7 +198,7 @@
       if (f) f.remove();
     }
 
-    function vistos() {
+    function marcarFaixaVista() {
       estado = marcarVistos(estado, naFaixa, Date.now());
       gravar();
     }
@@ -184,8 +220,12 @@
         const ver = doc.createElement('button'); ver.type = 'button'; ver.className = 'eap-ver';
         const fe = doc.createElement('button'); fe.type = 'button'; fe.className = 'eap-fechar';
         fe.textContent = '✕'; fe.setAttribute('aria-label', 'Fechar aviso');
-        ver.addEventListener('click', () => { vistos(); tirarFaixa(); win.location.href = RETIRADA; });
-        fe.addEventListener('click', () => { vistos(); tirarFaixa(); });
+        ver.addEventListener('click', () => {
+          // Peso digitado ou janela aberta se perdem ao trocar de tela (revisor 25/11).
+          if (telaOcupada(doc) && !win.confirm('Sair desta tela para ver o pedido?\n\nO que foi digitado e ainda não confirmado aqui se perde.')) return;
+          marcarFaixaVista(); tirarFaixa(); win.location.href = RETIRADA;
+        });
+        fe.addEventListener('click', () => { marcarFaixaVista(); tirarFaixa(); });
         bts.append(ver, fe); f.append(tit, lin, bts);
         doc.body.appendChild(f);
       }
@@ -202,7 +242,7 @@
         const r = await win.fetch('/retirada/pedidos', { cache: 'no-store' });
         if (!r.ok) return;
         const d = await r.json();
-        const out = decidir(d, estado, Date.now(), naRetirada());
+        const out = decidir(d, estado, Date.now(), naRetirada(), listaAVista());
         estado = out.estado; gravar();
         if (out.vibrar) alertar();
         pintar(out.faixa);
@@ -219,7 +259,7 @@
     if (doc.readyState !== 'loading') ini(); else doc.addEventListener('DOMContentLoaded', ini);
   }
 
-  const api = { CHAVE, RETIRADA, GIRO_MS, abertos, quantidade, resumo, lerEstado, decidir, marcarVistos, textoFaixa, noApp, iniciar };
+  const api = { CHAVE, RETIRADA, GIRO_MS, GUARDA_MS, LISTA_VELHA_S, abertos, telaOcupada, quantidade, resumo, lerEstado, decidir, marcarVistos, textoFaixa, noApp, iniciar };
   if (typeof module === 'object' && module.exports) module.exports = api;
   if (raiz && raiz.document) { raiz.EkoAlertaPedidos = api; iniciar(raiz); }
 })(typeof window !== 'undefined' ? window : null);

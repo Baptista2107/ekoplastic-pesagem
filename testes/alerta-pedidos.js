@@ -42,6 +42,9 @@ tenta('1 quais pedidos contam', () => {
   ok(A.abertos({ ok: false, erro: 'x' }).length === 0, 'resposta de erro → nada');
   ok(A.abertos(null).length === 0 && A.abertos({ ok: true }).length === 0, 'resposta vazia → nada');
   ok(A.abertos({ ok: true, pedidos: [null, {}, ped('a')] }).length === 1, 'item quebrado é ignorado');
+  ok(A.abertos({ ok: true, desatualizado: true, idade_s: 120, pedidos: [ped('a')] }).length === 1, 'VPS fora há 2 min: a lista guardada vale');
+  ok(A.abertos({ ok: true, desatualizado: true, idade_s: 3 * 3600, pedidos: [ped('a')] }).length === 0, 'VPS fora há 3 h: lista velha não alerta');
+  ok(A.abertos({ ok: true, desatualizado: true, pedidos: [ped('a')] }).length === 0, 'desatualizada sem idade: não alerta');
 });
 
 tenta('1 texto', () => {
@@ -50,6 +53,13 @@ tenta('1 texto', () => {
   ok(A.quantidade(ped('a', { unidade: 'kg', kg_pedidos: 25, bags_pedidos: null })) === '25 kg', 'pedido em kg');
   ok(A.quantidade(ped('a', { unidade: 'kg', kg_pedidos: 12.5 })) === '12,5 kg', 'kg com vírgula');
   ok(A.resumo(ped('a', { lote_fmt: '0423' })).endsWith('· lote 0423'), 'com lote');
+  // revisor 25/11: o que FALTA, não o total; nulo não vira "0"; KG maiúsculo
+  ok(A.quantidade(ped('a', { bags_pedidos: 3, bags_atendidos: 2 })) === 'falta 1 de 3 bags', 'bags já começado: o que falta');
+  ok(A.quantidade(ped('a', { unidade: 'kg', kg_pedidos: 200, kg_atendidos: 150 })) === 'falta 50 de 200 kg', 'kg já começado: o que falta');
+  ok(A.quantidade(ped('a', { bags_pedidos: 3, bags_atendidos: 0 })) === '3 bags', 'nada tirado: o total');
+  ok(A.quantidade(ped('a', { unidade: 'kg', kg_pedidos: null })) === 'kg', 'kg nulo não vira "0 kg"');
+  ok(A.quantidade(ped('a', { bags_pedidos: null })) === 'bags', 'bags nulo não vira "0 bags"');
+  ok(A.quantidade(ped('a', { unidade: 'KG', kg_pedidos: 25 })) === '25 kg', 'unidade "KG" (como o emKg da lib)');
   const um = A.textoFaixa([ped('a')]);
   ok(um.titulo === '📦 PEDIDO DE RETIRADA (Willian)' && um.botao === 'VER PEDIDO', 'um pedido', um);
   const tres = A.textoFaixa([ped('a'), ped('b'), ped('c')]);
@@ -83,6 +93,11 @@ tenta('1 VER / ✕ / tela de Retirada', () => {
   r = A.decidir(resp(ped('c')), r.estado, T0 + 15000, false);
   ok(!r.vibrar && r.faixa.length === 0, 'saiu da Retirada: o pedido que ela já mostrou não volta na faixa');
 
+  r = A.decidir(resp(ped('e')), VAZIO, T0, true, false);
+  ok(r.vibrar && r.faixa.length === 0, 'Retirada com o teclado da senha por cima: vibra, sem faixa');
+  r = A.decidir(resp(ped('e')), r.estado, T0 + 15000, false);
+  ok(r.faixa.length === 1, '…e não conta como visto: no hub a faixa aparece');
+
   r = A.decidir(resp(ped('d')), VAZIO, T0, false);
   r = A.decidir(resp(), r.estado, T0 + 15000, false);
   ok(r.faixa.length === 0, 'pedido atendido/cancelado sai da faixa');
@@ -94,7 +109,12 @@ tenta('1 memória do aparelho', () => {
   ok(JSON.stringify(A.lerEstado('{"alertados":[1],"vistos":"x"}')) === JSON.stringify(VAZIO), 'estado torto → vazio');
   const velho = { alertados: { z: T0 - 8 * 24 * 3600e3, a: T0 - 3600e3 }, vistos: { z: T0 - 8 * 24 * 3600e3 } };
   const r = A.decidir(resp(), velho, T0, false);
-  ok(!('z' in r.estado.alertados) && ('a' in r.estado.alertados) && !('z' in r.estado.vistos), 'esquece o que tem mais de 7 dias');
+  ok(!('z' in r.estado.alertados) && ('a' in r.estado.alertados) && !('z' in r.estado.vistos), 'esquece o que sumiu há mais de 7 dias');
+  // revisor 25/11: pedido aberto há 8 dias, já visto, não vibra nem volta
+  const oito = T0 - 8 * 24 * 3600e3;
+  const r2 = A.decidir(resp(ped('z')), { alertados: { z: oito }, vistos: { z: oito } }, T0, false);
+  ok(!r2.vibrar && r2.faixa.length === 0, 'pedido aberto há 8 dias já visto: não vibra nem volta à faixa');
+  ok(A.GUARDA_MS === 7 * 24 * 3600e3, 'memória de 7 dias');
 });
 
 tenta('2 app 2.2 e hub', () => {
@@ -103,7 +123,9 @@ tenta('2 app 2.2 e hub', () => {
   ok(/@JavascriptInterface public void alertar\(\)/.test(java), 'EkoApp.alertar() existe na ponte');
   ok(/createWaveform/.test(java) && /ToneGenerator/.test(java), 'alertar vibra e apita');
   ok(/if \(temHub\(\)\) injetarAlertaPedidos\(\);/.test(java), 'só o app do hub carrega o alerta nas telas');
-  ok(/s\.src='\/alerta-pedidos\.js'/.test(java), 'o app carrega /alerta-pedidos.js do Mini PC');
+  ok(/getAssets\(\)\.open\("injetar-alerta\.js"\)/.test(java), 'o app roda assets/injetar-alerta.js');
+  ok(/s\.src = '\/alerta-pedidos\.js'/.test(ler('android/app/src/main/assets/injetar-alerta.js')), 'que carrega /alerta-pedidos.js do Mini PC');
+  ok(/USAGE_ALARM/.test(java) && /STREAM_ALARM/.test(java), 'vibra e apita como alarme (não some com o volume de notificação)');
   ok(/android\.permission\.VIBRATE/.test(man), 'manifesto com permissão de vibrar');
   const v = /android:versionName="([\d.]+)"/.exec(man);
   ok(v && Number(v[1].split('.')[0]) * 100 + Number(v[1].split('.')[1]) >= 202, 'versão do app ≥ 2.2', v && v[1]);
@@ -111,6 +133,18 @@ tenta('2 app 2.2 e hub', () => {
   const hub = require('../public/hub-mp.js');
   ok(hub.caminhosPermitidos().includes(A.RETIRADA), 'VER PEDIDO abre uma tela que o app deixa abrir');
   ok(fs.existsSync(path.join(RAIZ, 'public', A.RETIRADA)), 'a tela de Retirada existe');
+});
+
+tenta('1 tela ocupada (VER PEDIDO pergunta antes de sair)', () => {
+  const el = (o) => Object.assign({ getClientRects: () => [1], readOnly: false, disabled: false, type: 'text', value: '' }, o);
+  const doc = (janelas, campos) => ({ defaultView: { getComputedStyle: () => ({ display: 'block', visibility: 'visible' }) },
+    querySelectorAll: q => q.startsWith('input') ? campos : janelas });
+  ok(!A.telaOcupada(doc([], [el({})])), 'campos vazios: sai direto');
+  ok(A.telaOcupada(doc([], [el({ value: '512,3' })])), 'peso digitado: pergunta');
+  ok(!A.telaOcupada(doc([], [el({ id: '__ekoScan', value: 'R0000001' })])), 'campo invisível do leitor não conta');
+  ok(!A.telaOcupada(doc([], [el({ value: 'x', getClientRects: () => [] })])), 'campo escondido não conta');
+  ok(!A.telaOcupada(doc([], [el({ type: 'hidden', value: 'x' })])), 'input hidden não conta');
+  ok(A.telaOcupada(doc([el({})], [])), 'janela aberta: pergunta');
 });
 
 tenta('3 só no app', () => {

@@ -349,28 +349,48 @@ public class MainActivity extends Activity {
      * v2.2 (25/11/2026, Gustavo: "alerta de pedido de retirada no coletor…
      * vibrar e colocar alerta na tela e um botão de ver pedido"). Só no hub:
      * põe /alerta-pedidos.js do Mini PC em toda tela que o app abre. A regra
-     * mora nesse arquivo (testado no Node); aqui só o carrega. O hub já o
-     * carrega sozinho — o arquivo não roda duas vezes.
+     * mora nesse arquivo (testado no Node); aqui só o carrega
+     * (assets/injetar-alerta.js, o mesmo que o teste de navegador roda). O hub
+     * já o carrega sozinho — o arquivo não roda duas vezes.
      */
+    String INJETAR_ALERTA_JS = null;
     void injetarAlertaPedidos() {
-        web.evaluateJavascript("(function(){if(window.__ekoAlertaPedidos||document.getElementById('__ekoAlertaJs'))return;"
-            + "var s=document.createElement('script');s.id='__ekoAlertaJs';s.src='/alerta-pedidos.js';"
-            + "(document.head||document.documentElement).appendChild(s);})()", null);
+        if (INJETAR_ALERTA_JS == null) {
+            try (java.io.InputStream in = getAssets().open("injetar-alerta.js")) {
+                java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+                byte[] b = new byte[4096]; int n;
+                while ((n = in.read(b)) > 0) out.write(b, 0, n);
+                INJETAR_ALERTA_JS = new String(out.toByteArray(), "UTF-8");
+            } catch (Exception e) { return; }
+        }
+        web.evaluateJavascript(INJETAR_ALERTA_JS, null);
     }
 
-    /** Pedido de retirada novo: vibra 3 vezes e apita (o galpão é barulhento). */
+    /**
+     * Pedido de retirada novo: vibra 3 vezes e apita (o galpão é barulhento).
+     * Como ALARME (revisor 25/11): vibração sem "usage" o Android 9+ costuma
+     * ignorar com o app em segundo plano, e o bipe de notificação some com o
+     * volume de notificação zerado ou em "Não perturbe".
+     */
+    @SuppressWarnings("deprecation")
     void alertar() {
         try {
             android.os.Vibrator v = (android.os.Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
             long[] p = {0, 500, 200, 500, 200, 800};
             if (v != null && v.hasVibrator()) {
-                if (Build.VERSION.SDK_INT >= 26) v.vibrate(android.os.VibrationEffect.createWaveform(p, -1));
-                else v.vibrate(p, -1);
+                if (Build.VERSION.SDK_INT >= 33) {
+                    v.vibrate(android.os.VibrationEffect.createWaveform(p, -1),
+                              android.os.VibrationAttributes.createForUsage(android.os.VibrationAttributes.USAGE_ALARM));
+                } else if (Build.VERSION.SDK_INT >= 26) {
+                    v.vibrate(android.os.VibrationEffect.createWaveform(p, -1),
+                              new android.media.AudioAttributes.Builder()
+                                  .setUsage(android.media.AudioAttributes.USAGE_ALARM).build());
+                } else v.vibrate(p, -1);
             }
         } catch (Exception ignore) {}
         try {
             final android.media.ToneGenerator t =
-                new android.media.ToneGenerator(android.media.AudioManager.STREAM_NOTIFICATION, 100);
+                new android.media.ToneGenerator(android.media.AudioManager.STREAM_ALARM, 100);
             t.startTone(android.media.ToneGenerator.TONE_PROP_BEEP2, 700);
             ui.postDelayed(t::release, 1500);
         } catch (Exception ignore) {}
