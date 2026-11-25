@@ -19,9 +19,13 @@ RETIRAR, MAPA, rua cheia, detalhe de um vão, ficha do histórico — confere:
   3. todo texto com pelo menos 16 px;
   4. no ENDEREÇAR, os dois quadros (o que bipar e onde) e o CONFIRMAR à vista
      sem rolar.
-  5. Monitor do Mini PC (1366x768): posição, tamanho e fonte de todo elemento
-     e a foto da tela (pixel a pixel) iguais aos da tela de referência (--ref,
-     padrão 7e5097a, a de antes desta mudança), no MAPA e no ENDEREÇAR.
+  5. Câmera de reserva ligada nasce à vista; sem a fonte do Google (sem
+     internet) o nome do cabeçalho não vira reticências.
+  6. Monitor do Mini PC (1366) e a faixa do celular.css acima de 600 px (768
+     e 601): posição, tamanho e fonte de todo elemento e a foto da tela
+     (pixel a pixel, tolerando 8/255 de serrilhado) iguais aos da tela de referência (--ref, padrão 7e5097a,
+     a de antes desta mudança; só o enderecamento.html é trocado), no MAPA e
+     no ENDEREÇAR.
 
 A tela da senha e o crachá vêm do acesso-colaborador.js (arquivo de todas as
 telas): ali só se cobra o item 1; fonte e tamanho são medidos e impressos,
@@ -32,7 +36,8 @@ Não entra no rodar-todos.js (o Mini PC não tem navegador de teste).
     cd ~/bling-claude && timeout 300 venv/bin/python -I <repo>/testes/navegador/mapeamento_tc60.py <repo> [pasta-fotos] [prefixo] [--ref=<commit>]
 
 Sai 1 se falhar."""
-import json, os, shutil, subprocess, sys, tempfile, time, urllib.request
+import io, json, os, shutil, signal, socket, subprocess, sys, tempfile, time, urllib.request
+from PIL import Image, ImageChops
 from pathlib import Path
 sys.path.insert(0, "/home/ekoplastic/bling-claude")
 from playwright.sync_api import sync_playwright
@@ -106,13 +111,18 @@ def medir(pg, estado):
     return r
 
 def a_vista(pg, estado, seletores):
-    """Os seletores visíveis aparecem inteiros na tela sem rolar."""
+    """Os seletores existem, estão visíveis e aparecem inteiros na tela sem rolar."""
     pg.evaluate("window.scrollTo(0, 0)"); pg.wait_for_timeout(150)
     fora = pg.evaluate("""([sels, H]) => sels.map(s => { const e = document.querySelector(s);
-        if (!e || !(e.checkVisibility ? e.checkVisibility() : e.offsetParent)) return null;
+        if (!e || !(e.checkVisibility ? e.checkVisibility() : e.offsetParent)) return s + ' não aparece';
         const b = e.getBoundingClientRect(); return (b.top >= 0 && b.bottom <= H + 0.5) ? null : s + ' ' + Math.round(b.top) + '..' + Math.round(b.bottom);
       }).filter(Boolean)""", [seletores, H])
     ok(not fora, f"{estado}: {', '.join(seletores)} à vista sem rolar", "; ".join(fora))
+
+def parar_rolagem(pg):
+    """Espera o scrollIntoView suave terminar (scrollY parado)."""
+    pg.wait_for_function("""() => new Promise(r => { let y = scrollY, n = 0;
+        const t = setInterval(() => { if (scrollY === y) { if (++n >= 4) { clearInterval(t); r(true); } } else { y = scrollY; n = 0; } }, 100); })""")
 
 def foto(pg, estado, inteira=False):
     if FOTOS:
@@ -132,6 +142,15 @@ ASSINATURA = """() => [...document.querySelectorAll('body *')].filter(e => !e.cl
             Math.round(b.left), Math.round(b.top), Math.round(b.width), Math.round(b.height),
             cs.fontSize, cs.display, cs.padding, cs.minHeight, cs.flexWrap, cs.gridTemplateColumns].join('|'); })"""
 
+def pixels_diferentes(png1, png2):
+    """Pixels que mudam de verdade. O Chromium às vezes pinta a mesma tela com
+    1 nível de cor de diferença no contorno do texto (medido: 37 pixels, 1/255,
+    com a máquina carregada); isso não é mudança e não conta."""
+    a, b = (Image.open(io.BytesIO(x)).convert("RGB") for x in (png1, png2))
+    if a.size != b.size: return -1
+    h = ImageChops.difference(a, b).convert("L").histogram()
+    return sum(h[9:])
+
 def main():
     porta = 14140
     tmp = Path(tempfile.mkdtemp(prefix="eko_map_tc60_"))
@@ -141,13 +160,20 @@ def main():
            "EKO_PRINT_SIMULAR": "1", "EKO_FECHAR_TELA_SIMULAR": "1"}
     html_ref = subprocess.run(["git", "-C", str(REPO), "show", f"{REF}:public/enderecamento.html"],
                               capture_output=True, text=True, check=True).stdout
+    for pt in (14140, 14141, 14142):          # porta ocupada = outro servidor (outro banco, outro código)
+        with socket.socket() as so:
+            if so.connect_ex(("127.0.0.1", pt)) == 0: sys.exit(f"porta {pt} já ocupada: outro teste rodando?")
+    # timeout/kill manda SIGTERM: vira saída normal para o finally derrubar o server.js.
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))
     srv = subprocess.Popen(["node", str(REPO / "server.js")], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
-        for _ in range(75):
+        subiu = False
+        for _ in range(150):
             try:
-                if req(base, "/healthcheck").get("ok"): break
+                if req(base, "/healthcheck").get("ok"): subiu = True; break
             except Exception: pass
             time.sleep(0.2)
+        if not subiu or srv.poll() is not None: sys.exit("o server.js de teste não subiu")
         # Nada deste banco de teste vai para a VPS de verdade.
         req(base, "/config", {"vps_sacoleiras_url": "http://127.0.0.1:9/api/sacoleiras/agora"})
         req(base, "/colaboradores/salvar", {"nome": "TESTE TC60", "pin": PIN, "telas": ["pa"]})
@@ -213,6 +239,17 @@ def main():
             ok("Vai retirar" in pg.inner_text("#msg"), "RETIRAR: mostra o que vai sair")
             foto(pg, "retirar"); medir(pg, "RETIRAR"); a_vista(pg, "RETIRAR", ["#msg", "#slot-end", "#btn-confirmar"])
             pg.locator("#md-entrada").tap(); pg.wait_for_timeout(300)
+            # Câmera de reserva (celular sem leitor): o html5-qrcode põe style no
+            # #reader. Ligada, ela tem de nascer à vista, logo abaixo de COLOCAR/RETIRAR.
+            pg.evaluate("""() => { const r = document.getElementById('reader'); r.classList.add('on');
+                r.style.position = 'relative'; r.style.height = '300px'; scrollTo(0, 0); }""")
+            pg.wait_for_timeout(200)
+            cam = pg.evaluate("""() => { const r = document.getElementById('reader').getBoundingClientRect(),
+                m = document.querySelector('.modos').getBoundingClientRect(), s = document.getElementById('slot-end').getBoundingClientRect();
+                return {topo: r.top, modos: m.bottom, quadros: s.top}; }""")
+            ok(cam["topo"] >= cam["modos"] and cam["topo"] < H - 200 and cam["quadros"] > cam["topo"],
+               "câmera ligada aparece logo abaixo de COLOCAR/RETIRAR, à vista", cam)
+            pg.evaluate("() => { const r = document.getElementById('reader'); r.classList.remove('on'); r.removeAttribute('style'); }")
             pg.evaluate("HIST_ABERTO.clear(); carregarHistorico()"); pg.wait_for_timeout(500)
             it = pg.locator("#hist .hist-item").first
             it.scroll_into_view_if_needed(); it.tap(); pg.wait_for_timeout(300)
@@ -225,7 +262,7 @@ def main():
             pg.locator(".chip[data-rua='2']").tap(); pg.wait_for_timeout(400)
             ok("114 de 114 ocupadas" in pg.inner_text("#mapa"), "rua 02 filtrada e cheia (114 de 114)", pg.inner_text("#mapa")[:60])
             foto(pg, "rua-cheia", inteira=True); medir(pg, "rua cheia")
-            pg.locator(".vao.ocupada").nth(40).tap(); pg.wait_for_timeout(700)
+            pg.locator(".vao.ocupada").nth(40).tap(); pg.wait_for_timeout(300); parar_rolagem(pg)
             ok(pg.locator("#detalhe .det").is_visible(), "tocar num vão abre o detalhe")
             d = pg.locator("#detalhe .det").bounding_box()
             cab = pg.locator("header").bounding_box()
@@ -234,29 +271,45 @@ def main():
             foto(pg, "mapa-detalhe"); medir(pg, "detalhe do vão")
             ctx.close()
 
-            # ── Monitor do Mini PC ────────────────────────────────────
-            print(f"\n[Monitor 1366x768: igual à tela de {REF}]")
-            assin = {}
-            for qual in ("ref", "atual"):
+            # Sem internet (o galpão não pode depender dela): a fonte do Google
+            # não chega e entra a fonte reserva. O nome não pode virar reticências.
+            print("\n[TC60 sem a fonte do Google]")
+            ctx = br.new_context(viewport={"width": W, "height": H}, user_agent=UA_APP, device_scale_factor=2,
+                                 is_mobile=True, has_touch=True)
+            pg = ctx.new_page(); pg.set_default_timeout(20000)
+            pg.route("**/fonts.googleapis.com/**", lambda r: r.abort()); pg.route("**/fonts.gstatic.com/**", lambda r: r.abort())
+            pg.goto(base + "/enderecamento.html"); senha(pg); pg.wait_for_timeout(600)
+            foto(pg, "sem-fonte-google"); medir(pg, "sem a fonte do Google")
+            ctx.close()
+
+            # ── Monitor do Mini PC (e a faixa 600-900 px do celular.css) ──
+            for largura in (1366, 768, 601):
+              print(f"\n[{largura}x768: igual à tela de {REF}]")
+              assin = {}
+              for qual in ("ref", "atual"):
                 # Sem animação (o pulso do leitor) para a foto da tela sair igual pixel a pixel.
-                ctx = br.new_context(viewport={"width": 1366, "height": 768}, reduced_motion="reduce"); pg = ctx.new_page()
+                ctx = br.new_context(viewport={"width": largura, "height": 768}, reduced_motion="reduce"); pg = ctx.new_page()
                 if qual == "ref":
                     pg.route("**/enderecamento.html", lambda r: r.fulfill(status=200, content_type="text/html; charset=utf-8", body=html_ref))
                 pg.goto(base + "/enderecamento.html"); pg.wait_for_timeout(1200); senha(pg); pg.wait_for_timeout(800)
+                # O mouse parado em cima de um vão (do toque na senha) o levanta 2 px pelo :hover.
+                pg.mouse.move(1, 1); pg.evaluate("irAba('mapa')"); pg.wait_for_timeout(500)
+                pg.evaluate("document.fonts.ready.then(() => true)")
                 a = {"mapa": pg.evaluate(ASSINATURA), "foto-mapa": pg.screenshot(full_page=True)}
-                if FOTOS and qual == "atual": pg.screenshot(path=str(FOTOS / f"{PREFIXO}-1366-mapa.png"))
+                if FOTOS and qual == "atual": pg.screenshot(path=str(FOTOS / f"{PREFIXO}-{largura}-mapa.png"))
                 pg.evaluate("irAba('acao')"); pg.wait_for_timeout(300)
                 pg.evaluate("for (const k of Object.keys(ultimaLeitura)) delete ultimaLeitura[k]; onLeu('01-01-011')"); pg.wait_for_timeout(600)
                 pg.evaluate("onLeu('EKOPA|G0000555|50x60|BC|40|1000|PEQUENA')"); pg.wait_for_timeout(600)
                 a["enderecar"] = pg.evaluate(ASSINATURA); a["foto-enderecar"] = pg.screenshot(full_page=True)
-                if FOTOS and qual == "atual": pg.screenshot(path=str(FOTOS / f"{PREFIXO}-1366-enderecar.png"))
+                if FOTOS and qual == "atual": pg.screenshot(path=str(FOTOS / f"{PREFIXO}-{largura}-enderecar.png"))
                 assin[qual] = a; ctx.close()
-            for aba in ("mapa", "enderecar"):
+              for aba in ("mapa", "enderecar"):
                 r_, a_ = assin["ref"][aba], assin["atual"][aba]
                 dif = [f"{x} → {y}" for x, y in zip(r_, a_) if x != y]
-                ok(len(r_) == len(a_) and not dif, f"1366 {aba}: posição, tamanho e fonte iguais ({len(a_)} elementos)",
+                ok(len(r_) == len(a_) and not dif, f"{largura} {aba}: posição, tamanho e fonte iguais ({len(a_)} elementos)",
                    f"{len(r_)} vs {len(a_)}; " + "; ".join(dif[:3]))
-                ok(assin["ref"]["foto-" + aba] == assin["atual"]["foto-" + aba], f"1366 {aba}: a foto da tela é a mesma, pixel a pixel")
+                n = pixels_diferentes(assin["ref"]["foto-" + aba], assin["atual"]["foto-" + aba])
+                ok(n == 0, f"{largura} {aba}: a foto da tela é a mesma, pixel a pixel", f"{n} pixels diferentes")
             ok(not erros, "sem erro de JavaScript", "; ".join(erros)[:300])
             br.close()
     finally:

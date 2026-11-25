@@ -156,9 +156,12 @@ header .sp{flex:1;min-width:0}
   body[data-tela="Endereçamento"] { font-size: 16px; }
 
   /* Cabeçalho numa linha: o ícone decorativo sai para o nome caber em 16 px. */
-  /* 56 do botão + 3+3 + 1 da borda = 63 px (o teste do coletor cobra ≤ 64). */
-  body[data-tela="Endereçamento"] header { padding: 3px 10px !important; column-gap: 6px; }
-  body[data-tela="Endereçamento"] header .logo { font-size: 16px !important; letter-spacing: 0 !important; }
+  /* 56 do botão + 3+3 + 1 da borda = 63 px (o teste do coletor cobra ≤ 64).
+     Sem o espaçador e com folga de 4 px sobram ~164 px para o nome: cabe
+     também na fonte reserva, quando a do Google não chega (sem internet). */
+  body[data-tela="Endereçamento"] header { padding: 3px 8px !important; column-gap: 4px; }
+  body[data-tela="Endereçamento"] header .sp { display: none; }
+  body[data-tela="Endereçamento"] header .logo { flex: 1 1 auto; font-size: 16px !important; letter-spacing: 0 !important; }
   body[data-tela="Endereçamento"] header .logo .ic { display: none; }
   body[data-tela="Endereçamento"] header .btn-ic {
     flex: 0 0 56px; width: 56px; height: 56px; min-width: 56px !important; min-height: 56px !important;
@@ -178,9 +181,14 @@ header .sp{flex:1;min-width:0}
   body[data-tela="Endereçamento"] #pg-acao.on { display: flex; flex-direction: column; }
   body[data-tela="Endereçamento"] #pg-acao > .modos  { order: 1; }
   body[data-tela="Endereçamento"] #pg-acao > #msg    { order: 2; }
-  body[data-tela="Endereçamento"] #pg-acao > div[style] { order: 3; margin-top: 0 !important; }
+  /* a caixa dos dois quadros é o único filho sem id nem classe (o
+     div[style] pegava também o #reader, que ganha style da câmera) */
+  body[data-tela="Endereçamento"] #pg-acao > div:not([id]):not([class]) { order: 3; margin-top: 0 !important; }
   body[data-tela="Endereçamento"] #pg-acao > .acoes  { order: 4; margin-top: 2px; }
   body[data-tela="Endereçamento"] #pg-acao > #reader { order: 5; margin-top: 12px; margin-bottom: 0; }
+  /* Câmera de reserva ligada (celular sem leitor): sobe para logo abaixo do
+     aviso, senão o vídeo nascia abaixo da borda da tela. */
+  body[data-tela="Endereçamento"] #pg-acao > #reader.on { order: 2; margin-top: 0; margin-bottom: 10px; }
   body[data-tela="Endereçamento"] #pg-acao > .leitor { order: 6; margin-top: 12px; }
   body[data-tela="Endereçamento"] #pg-acao > .dica   { order: 7; }
   body[data-tela="Endereçamento"] #pg-acao > .hist   { order: 8; }
@@ -226,6 +234,7 @@ header .sp{flex:1;min-width:0}
      do vão 08 em diante ficava escondido à direita): 5 por linha, 56 px. */
   body[data-tela="Endereçamento"] .niveis { overflow-x: visible; padding: 8px; }
   body[data-tela="Endereçamento"] .nivel { flex-direction: column; align-items: stretch; gap: 6px; margin-bottom: 14px; }
+  body[data-tela="Endereçamento"] .nivel:last-child { margin-bottom: 0; }
   body[data-tela="Endereçamento"] .nivel-lb { flex: none; font-size: 16px; letter-spacing: .5px; }
   body[data-tela="Endereçamento"] .nivel-lb small { display: inline; margin-left: 6px; font-size: 16px !important; }
   body[data-tela="Endereçamento"] .vaos { display: grid; grid-template-columns: repeat(auto-fill, minmax(56px, 1fr)); gap: 6px; }
