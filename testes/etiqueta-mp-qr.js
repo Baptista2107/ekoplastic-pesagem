@@ -2,17 +2,19 @@
 //  ETIQUETA DE MP COM QR  (25/11/2026, desenho do Gustavo)
 //  ------------------------------------------------------------------
 //  Recebimento (R) e retorno (T): material, fornecedor, lote e etiqueta à
-//  esquerda; peso à direita; QR grande no meio; data/hora no rodapé. Sem
-//  código para extrusão, sem SKU, sem "PESAGEM #N", sem código de barras.
+//  esquerda; peso à direita; QR grande no meio; código de barras PEQUENO
+//  embaixo do QR (o leitor da mesa do Mini PC não lê QR — Gustavo, mesmo
+//  dia); data/hora no rodapé. Sem código para extrusão, SKU e "PESAGEM #N".
 //
 //  O que este teste prova (só o gerador do EPL, sem servidor):
-//   1. o QR leva SÓ o número da etiqueta (o mesmo texto do código de barras
-//      antigo), e não há mais código de barras nem os campos que saíram
+//   1. o QR e o código de barras levam SÓ o número da etiqueta (o mesmo
+//      texto das barras antigas), e os campos que saíram não voltam
 //   2. R no recebimento, T no retorno (com "RETORNO" no topo), VARREDURA
 //      continua aparecendo
 //   3. nada passa da coluna esquerda, do divisor, da largura ou do rodapé —
 //      nem com material/fornecedor enormes
-//   4. o QR fica entre a linha de baixo do topo e o rodapé, sem encostar
+//   4. o QR fica entre a linha de baixo do topo e as barras, com a margem
+//      livre de 4 módulos; as barras ficam entre o QR e a data
 //   5. a etiqueta de bobina (extrusão) não mudou: segue com código de barras
 // ════════════════════════════════════════════════════════════════════
 const path = require('node:path');
@@ -52,7 +54,11 @@ function ler(epl) {
     } else if ((m = l.match(/^b(\d+),(\d+),Q,m2,s(\d+),"(.*)"$/))) {
       const [x, y, s] = m.slice(1, 4).map(Number);
       qrs.push({ x, y, s, dado: m[4], lado: 21 * s });
-    } else if (/^B\d/.test(l)) barras.push(l);
+    } else if ((m = l.match(/^B(\d+),(\d+),0,1,(\d+),(\d+),(\d+),N,"(.*)"$/))) {
+      const [x, y, estreita, larga, alt] = m.slice(1, 6).map(Number);
+      // Code 128 B, pior caso: 11 módulos por caractere + início, checagem e fim.
+      barras.push({ x, y, estreita, larga, alt, dado: m[6], fim_x: x + (11 * (m[6].length + 3) + 2) * estreita });
+    } else if (/^B\d/.test(l)) barras.push({ cru: l });
     else if ((m = l.match(/^LO(\d+),(\d+),(\d+),(\d+)$/))) linhas.push(m.slice(1, 5).map(Number));
   }
   return { textos, qrs, barras, linhas };
@@ -65,7 +71,8 @@ console.log('\n1. QR com o número da etiqueta; o que saiu não volta');
 {
   const epl = gerarEPL(BASE), e = ler(epl);
   ok(e.qrs.length === 1 && e.qrs[0].dado === 'R0001256', 'um QR só, com R0001256', e.qrs);
-  ok(e.barras.length === 0, 'sem código de barras', e.barras);
+  ok(e.barras.length === 1 && e.barras[0].dado === 'R0001256', 'um código de barras só, com R0001256', e.barras);
+  ok(e.barras[0] && e.barras[0].estreita === 3 && e.barras[0].alt <= 90, 'código de barras PEQUENO (barra 3 dots, ≤ 90 de altura)', e.barras[0]);
   ok(!/CODIGO PARA EXTRUSAO/.test(epl) && !/"COL3"/.test(epl), 'sem o código para extrusão');
   ok(!/GBD\.COL\.PIQUIRI/.test(epl), 'sem o SKU');
   ok(!/PESAGEM #/.test(epl), 'sem o selo PESAGEM #N');
@@ -110,15 +117,20 @@ for (const [nome, dados] of CASOS) {
      e.textos.filter(x => x.fim_x > LARG - 16 || x.fim_y > ALT - 8));
   const q = e.qrs[0];
   const linhaQR = e.linhas.find(l => l[3] === 3 && l[2] > 600);      // a linha horizontal
-  ok(q && linhaQR && q.y > linhaQR[1] + 3 && q.y + q.lado < rodape.y - 8, `${nome}: QR entre a linha do topo e o rodapé`,
-     { q, linhaQR, rodape: rodape && rodape.y });
+  const b = e.barras[0];
+  ok(q && linhaQR && b && q.y > linhaQR[1] + 3 && q.y + q.lado < b.y, `${nome}: QR entre a linha do topo e as barras`,
+     { q, linhaQR, barras: b });
+  ok(b && b.dado === q.dado && b.x >= 16 && b.fim_x <= LARG - 16 && b.y + b.alt < rodape.y - 8,
+     `${nome}: barras com o mesmo número, dentro da largura e acima da data`, { b, rodape: rodape && rodape.y });
   ok(q && q.x >= 16 && q.x + q.lado <= LARG - 16, `${nome}: QR dentro da largura`, q);
   ok(q && q.s >= 15, `${nome}: QR grande (módulo ≥ 15 dots ≈ 1,9 mm)`, q && q.s);
   ok(topo.every(x => x.y < linhaQR[1]), `${nome}: textos do topo acima da linha do QR`);
-  // Zona de silêncio: 4 módulos livres entre o QR e a linha de cima / a data.
-  ok(q && linhaQR && q.y - (linhaQR[1] + 3) >= 4 * q.s && rodape.y - (q.y + q.lado) >= 4 * q.s,
+  // Zona de silêncio: 4 módulos livres entre o QR e a linha de cima / as barras.
+  ok(q && linhaQR && b && q.y - (linhaQR[1] + 3) >= 4 * q.s && b.y - (q.y + q.lado) >= 4 * q.s,
      `${nome}: 4 módulos livres em cima e embaixo do QR`,
-     q && { acima: q.y - (linhaQR[1] + 3), abaixo: rodape.y - (q.y + q.lado), quatro_modulos: 4 * q.s });
+     q && b && { acima: q.y - (linhaQR[1] + 3), abaixo: b.y - (q.y + q.lado), quatro_modulos: 4 * q.s });
+  const loteL = e.textos.filter(x => x.txt.startsWith('LOTE:'));
+  ok(loteL.length === 1 && loteL[0].txt.length <= 33, `${nome}: lote numa linha só, sem passar de 33 caracteres`, loteL.map(x => x.txt));
   ok(q && /^[RT]\d{7}$/.test(q.dado), `${nome}: QR com o formato que os leitores aceitam`, q && q.dado);
 }
 
