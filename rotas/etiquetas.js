@@ -354,6 +354,7 @@ async function rotasEtiquetas(req, res, parsed, pathname) {
       fornecedor:     et.fornecedor,
       seq:            et.seq,
       seq_sessao:     et.seq_sessao,
+      hora_impressao: et.hora_impressao,             // MP: a cópia leva a data da pesagem, não a de hoje
       // campos de bobina (extrusão), caso a etiqueta seja de extrusão
       tipo_bobina:    et.tipo_bobina,
       largura:        et.largura,
