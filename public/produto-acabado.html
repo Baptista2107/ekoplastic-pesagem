@@ -225,14 +225,20 @@
     flex-wrap: wrap !important; min-height: 60px; padding: 2px 8px 2px 12px !important; column-gap: 8px;
   }
   body[data-tela="Produto Acabado"] header .logo {
-    flex: 1 1 0; min-width: min-content; font-size: 16px !important; letter-spacing: .5px !important; line-height: 1.15;
+    flex: 1 1 0; min-width: 0; font-size: 16px !important; letter-spacing: .5px !important; line-height: 1.15;
   }
-  /* min-content: com o selo OFFLINE os botões descem para uma 2ª linha em
-     vez de o nome da tela passar por cima do aviso. */
   body[data-tela="Produto Acabado"] header .logo-icon,
   body[data-tela="Produto Acabado"] header .clock,
   body[data-tela="Produto Acabado"] header .srv-status.on { display: none !important; }
-  body[data-tela="Produto Acabado"] header .srv-status { font-size: 16px !important; padding: 6px 8px !important; }
+  /* OFFLINE / "SERVIDOR…" aparece POR CIMA do nome da tela, fora do fluxo:
+     com o Wi-Fi oscilando o selo vai e volta a cada 5 s, e se ele ocupasse
+     lugar o cabeçalho ganharia uma 2ª linha e a tela toda pularia debaixo
+     do dedo (revisor de b83c61f, medido: 26 px). */
+  body[data-tela="Produto Acabado"] header .srv-status {
+    position: absolute; left: 8px; top: 50%; transform: translateY(-50%); z-index: 1;
+    max-width: calc(100% - 204px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    font-size: 16px !important; padding: 8px 10px !important; background: #2a0f16 !important;
+  }
   body[data-tela="Produto Acabado"] header .header-right { flex-wrap: nowrap !important; gap: 6px !important; margin-left: auto; }
   body[data-tela="Produto Acabado"] header .btn-icon {
     width: 56px !important; height: 56px !important; min-width: 56px !important; font-size: 22px; border-radius: 12px;

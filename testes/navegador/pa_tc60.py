@@ -173,20 +173,37 @@ def main():
             pg.on("pageerror", lambda e: erros.append(str(e)))
             pg.goto(BASE + "/produto-acabado.html"); ok(senha(pg), "senha aceita"); pg.wait_for_timeout(500)
             medir(pg, "turno e data", ["#turno-A .turno-iniciar", "#turno-C .turno-iniciar", "#turno-EXTRA .turno-iniciar", "#data-EXTRA"])
-            pg.locator("#turno-A .turno-iniciar").click(); pg.wait_for_timeout(1200)
-            # Logo depois do Iniciar o aviso "✓ TURNO A · …" está na tela: não pode tapar o passo 1.
+            pg.locator("#turno-A .turno-iniciar").click(); pg.wait_for_selector("#main.on", timeout=15000)
+            # Logo depois do Iniciar o aviso "✓ TURNO A · …" está na tela: não pode tapar o passo 1,
+            # e o toque atravessa o aviso (a 🏠 por baixo dele continua respondendo).
+            try: pg.wait_for_selector("#toast-area .toast", timeout=5000); com_aviso = True
+            except Exception: com_aviso = False
+            ok(com_aviso, "aviso do Iniciar na tela durante a medida")
             medir(pg, "lançamento vazio", ["#maq-P1", "#maq-P2", "#fmt-30x40", "#btn-add", "#preview"])
-            # Sem servidor: o selo OFFLINE aparece e o nome da tela não pode encavalar nele.
+            atravessa = pg.evaluate("""() => { const b = document.querySelector('header .btn-icon[title^="Voltar"]').getBoundingClientRect();
+                const h = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2); return h && h.closest('button') ? h.closest('button').title : String(h && h.className); }""")
+            ok(atravessa.startswith("Voltar"), "com o aviso na tela, o toque na 🏠 chega ao botão", atravessa)
+            # Sem servidor: o selo OFFLINE aparece SEM mexer no resto. Com Wi-Fi oscilando o
+            # selo vai e volta a cada 5 s; se o cabeçalho mudasse de altura, a máquina e os
+            # formatos pulariam debaixo do dedo.
+            geo = """() => { const h = document.querySelector('header').getBoundingClientRect(),
+                m = document.getElementById('maq-P1').getBoundingClientRect(),
+                s = document.getElementById('srv-status').getBoundingClientRect(),
+                d = document.querySelector('header .header-right').getBoundingClientRect();
+                return { cab: Math.round(h.height), maq: Math.round(m.top), selo: [Math.round(s.left), Math.round(s.right), Math.round(s.top), Math.round(s.bottom)],
+                         seloNosBotoes: s.width > 0 && s.right > d.left + 0.5 && s.left < d.right }; }"""
+            antes = pg.evaluate(geo)
             pg.route("**/healthcheck", lambda r: r.fulfill(status=500, body="{}"))
             pg.evaluate("pingServidor()"); pg.wait_for_selector("#srv-status.off", state="visible")
-            r = pg.evaluate("""() => { const g = new Range(); g.selectNodeContents(document.querySelector('header .logo'));
-                const a = [...g.getClientRects()], s = document.getElementById('srv-status').getBoundingClientRect();
-                const bate = x => x.left < s.right && x.right > s.left && x.top < s.bottom && x.bottom > s.top;
-                return { encavala: a.some(bate), direita: Math.max(...a.map(x => x.right)), selo: [s.left, s.top] }; }""")
-            ok(not r["encavala"], "OFFLINE: o nome da tela não encavala no selo", json.dumps(r))
+            fora = pg.evaluate(geo)
+            ok(fora["cab"] == antes["cab"] and fora["maq"] == antes["maq"], "OFFLINE: cabeçalho e máquina não mudam de lugar",
+               f"online {antes} · offline {fora}")
+            ok(not fora["seloNosBotoes"] and fora["selo"][2] >= 0 and fora["selo"][3] <= antes["cab"] + 1,
+               "OFFLINE: selo dentro do cabeçalho, sem cobrir ⇄ 🗺 🏠", json.dumps(fora))
             # O aviso passageiro (até 5 s) fica por cima do cabeçalho de propósito, para não
             # tapar a máquina; o selo OFFLINE é medido depois que ele some.
-            pg.wait_for_function("!document.querySelector('#toast-area .toast')", timeout=10000)
+            try: pg.wait_for_function("!document.querySelector('#toast-area .toast')", timeout=10000)
+            except Exception: pass
             medir(pg, "OFFLINE", ["#srv-status", "#maq-P1", "#btn-add"])
             pg.unroute("**/healthcheck"); pg.evaluate("pingServidor()"); pg.wait_for_selector("#srv-status.on", state="attached")
             pg.wait_for_timeout(300)
@@ -236,9 +253,17 @@ def main():
             ctx = br.new_context(viewport={"width": 320, "height": 640}, device_scale_factor=2, user_agent=UA_APP,
                                  locale="pt-BR", has_touch=True, is_mobile=True)
             pg = ctx.new_page(); pg.set_default_timeout(6000); pg.set_default_navigation_timeout(30000)
-            pg.goto(BASE + "/produto-acabado.html"); senha(pg); pg.wait_for_timeout(800)
+            # "SERVIDOR…" (antes do 1º ping responder) é o selo mais largo: segura o ping.
+            presos = []
+            pg.route("**/healthcheck", lambda r: presos.append(r))
+            pg.goto(BASE + "/produto-acabado.html"); ok(senha(pg), "320: senha aceita"); pg.wait_for_timeout(800)
             if pg.locator("#overlay-turno.on").count() == 0: pg.evaluate("trocarTurno()")
-            medir(pg, "320 · turno e data", ["#turno-A .turno-iniciar"], largura=320)
+            ok("SERVIDOR" in pg.locator("#srv-status").inner_text(), "320: selo SERVIDOR… na tela", pg.locator("#srv-status").inner_text())
+            medir(pg, "320 · turno e data com SERVIDOR…", ["#srv-status", "#overlay-turno h2", "#turno-A .turno-iniciar"], largura=320)
+            pg.unroute("**/healthcheck")
+            for r in presos:     # solta os pings presos (os que a página já largou dão erro: ignora)
+                try: r.fulfill(status=200, content_type="application/json", body='{"ok":true}')
+                except Exception: pass
             pg.locator("#turno-A .turno-iniciar").click(); pg.wait_for_selector("#main.on")
             pg.locator("#maq-P1").click(); pg.locator("#fmt-80x100").click(); pg.locator("#cor-REC").click()
             medir(pg, "320 · lançamento", ["#maq-P1", "#btn-add"], largura=320)
@@ -252,7 +277,7 @@ def main():
             erros_monitor = []
             pg.on("pageerror", lambda e: erros_monitor.append(str(e)))
             def abrir():
-                pg.goto(BASE + "/produto-acabado.html"); senha(pg); pg.wait_for_timeout(1500)
+                pg.goto(BASE + "/produto-acabado.html"); ok(senha(pg), "1366: senha aceita"); pg.wait_for_timeout(1500)
             abrir(); igual_no_monitor(pg, "turno e data")
             abrir(); pg.locator("#turno-A .turno-iniciar").click(); pg.wait_for_timeout(1000)
             for cor in ("BC", "AM"):
