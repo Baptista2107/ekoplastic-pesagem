@@ -29,9 +29,11 @@ Não entra no rodar-todos.js (o Mini PC não tem navegador de teste).
 
     cd ~/bling-claude && timeout 300 venv/bin/python -I <repo>/testes/navegador/inventario_tc60.py <repo> [--fotos PASTA --prefixo depois]
 
---gravar-largo ARQ regrava a referência de tela larga (só com a tela de ANTES
-de uma mudança de layout de propósito). Sai 1 se falhar."""
-import argparse, atexit, json, os, shutil, subprocess, sys, tempfile, time, urllib.parse, urllib.request
+--gravar-largo ARQ regrava a referência de tela larga: rodar contra uma cópia
+da tela de ANTES da mudança (ex.: `git archive 7b95b41 | tar -x -C /tmp/x`), nunca
+contra o HEAD. Ela guarda posição e fonte em px: trocar Chromium, Playwright ou
+fonte da VPS pode pedir regravar a partir da mesma cópia. Sai 1 se falhar."""
+import argparse, atexit, json, os, shutil, signal, subprocess, sys, tempfile, time, urllib.parse, urllib.request
 from pathlib import Path
 sys.path.insert(0, "/home/ekoplastic/bling-claude")
 from playwright.sync_api import sync_playwright
@@ -49,13 +51,14 @@ FOTOS = Path(A.fotos) if A.fotos else None
 if FOTOS: FOTOS.mkdir(parents=True, exist_ok=True)
 REF = Path(__file__).with_name("inventario_tc60_largo.json")
 UA_APP = "Mozilla/5.0 (Linux; Android 14; TC60) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Mobile Safari/537.36 EkoColetor/2.0"
-# o que o app injeta em toda página (MainActivity.esconderSaidas + __ekoApp)
-APP_JS = """window.__ekoApp = 1;
-document.addEventListener('DOMContentLoaded', () => { const s = document.createElement('style');
-  s.textContent = '.btn-sair,.rodape a[href="/"]{display:none!important}'; document.head.appendChild(s); });"""
+# o que o app MP injeta em toda página. No hub o ✕ NÃO some (MainActivity:
+# esconderSaidas só roda sem hub): ele volta ao hub, então fica na medida.
+APP_JS = "window.__ekoApp = 1;"
 W, H = 360, 690
 MIN_TOQUE, MIN_FONTE = 56, 16
 falhas = []
+# `timeout` manda SIGTERM: vira sys.exit para o atexit derrubar o servidor
+signal.signal(signal.SIGTERM, lambda *a: sys.exit(143))
 
 
 def ok(cond, msg, det=""):
@@ -103,6 +106,8 @@ def subir_servidor(porta):
     atexit.register(lambda: srv.poll() is None and srv.kill())
     base = f"http://127.0.0.1:{porta}"
     for _ in range(300):          # até 60 s: com a VPS carregada o node demora a subir
+        if srv.poll() is not None:      # morreu (porta ocupada?): não testar contra outro servidor
+            sys.exit(f"servidor de teste saiu (código {srv.returncode}); a porta {porta} está livre?")
         try:
             if req(base, "/healthcheck").get("ok"): break
         except Exception: pass
@@ -175,7 +180,7 @@ def percorrer(pg, base, em_cada):
     clica = lambda s: (pg.locator(s).first.click(), pg.wait_for_timeout(350))
     janela = lambda: pg.wait_for_selector(".eko-dlg", timeout=15000)
     cancela = lambda: (pg.locator("#md-cancelar").click(), pg.wait_for_timeout(300))
-    def ler(cod):
+    def ler(cod):                # o evaluate espera o onLeu (e o fetch dele) terminar
         pg.evaluate("c => onLeu(c)", cod); pg.wait_for_timeout(120)
     def escolher(sel, valor):
         pg.locator(sel).select_option(valor); pg.wait_for_timeout(150)
@@ -193,7 +198,16 @@ def percorrer(pg, base, em_cada):
     em_cada("04-janela-produto-ja-inventariado")
     cancela()                                  # "Manter o que já estava": volta com os 24 bags
     ler("R0000201")
+    ok(pg.evaluate("document.querySelector('#lista-leituras .leitura-item .id').textContent") == "R0000201",
+       "o bag recém-lido é o primeiro da lista")
     em_cada("05-contagem-lista-longa", ["#leit-prod", "#c-qtd", "#c-kg", "#lista-leituras .leitura-item"])
+
+    # câmera ligada com lanterna (sem câmera de verdade: o texto e o 🔦 que ela põe)
+    pg.evaluate("""document.getElementById('btn-camera').textContent = '⏹️ Desligar câmera';
+                   document.getElementById('btn-torch').classList.remove('oculto'); 0""")
+    em_cada("05b-camera-ligada-com-lanterna")
+    pg.evaluate("""document.getElementById('btn-camera').textContent = '▶️ Ligar câmera';
+                   document.getElementById('btn-torch').classList.add('oculto'); 0""")
 
     clica("#btn-digitar"); janela()
     em_cada("06-janela-digitar")
@@ -232,7 +246,12 @@ def percorrer(pg, base, em_cada):
     clica("#comp-corpo .btn-verde"); pg.wait_for_selector("#tela-tipo:not(.oculto)", timeout=15000)
 
     clica(".tipo-bt.pa")
-    escolher("#pa-formato", "30x40"); escolher("#pa-cor", "Amarela")
+    # entrar em PA recarrega as listas (carregarProdutosPA): escolha feita antes
+    # disso some. Escolhe de novo até o botão habilitar.
+    for _ in range(20):
+        escolher("#pa-formato", "30x40"); escolher("#pa-cor", "Amarela")
+        if pg.locator("#pa-btn-iniciar").is_enabled(): break
+        pg.wait_for_timeout(500)
     em_cada("15-selecao-pa")
     clica("#pa-btn-iniciar")
     clica("#pa-chip-man"); clica("#bloco-pa-manual .manual-op >> text=+10"); clica("#bloco-pa-manual .manual-op >> text=+1")

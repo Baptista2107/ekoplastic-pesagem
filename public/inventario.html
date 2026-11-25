@@ -266,7 +266,6 @@
     .rotulo{font-size:16px; margin:16px 0 8px; letter-spacing:0.6px;}
     .tipo-tit{font-size:16px;}
     .vazio{font-size:16px; padding:18px 8px;}
-    .carregando{font-size:16px;}
     #bloco-mp > div[style], #bloco-pa > div[style]{font-size:16px !important; margin:12px 0 2px !important;}
     #tela-selecao .btn-cinza > span{font-size:16px !important; line-height:1.3;}
 
@@ -275,9 +274,9 @@
     .sec-fim-tit{font-size:16px; letter-spacing:0.6px; gap:10px;}
     /* 4 caixas lado a lado não cabem em 336 px: "27.643 kg CONTADO" saía
        da tela. Viram 2 × 2. */
-    .resumo-inv{display:grid; grid-template-columns:1fr 1fr; gap:8px;}
+    .resumo-inv{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:8px;}
     .resumo-inv .ri .l{font-size:16px; letter-spacing:0.3px;}
-    .resumo-inv .ri .n{font-size:22px !important;}
+    .resumo-inv .ri .n{font-size:22px !important;}   /* !important: o total CONTADO vem com style="font-size:16px" */
     .fim-item{padding:12px; gap:10px;}
     .fim-item .fi-sub{font-size:16px;}
     .fim-item .fi-badge{font-size:16px; padding:6px 10px;}
@@ -287,11 +286,10 @@
     /* contagem: o que se olha a cada bipe fica no alto */
     .prod-sel{padding:12px 14px; margin-bottom:10px;}
     .prod-sel .p1{font-size:20px;}
-    .prod-sel .p2{font-size:16px;}
     #pa-modo, #mp-modo{margin-bottom:10px;}
     .pa-chip{min-height:56px !important; font-size:16px; letter-spacing:0.2px;}
     .cam-controles{margin-top:10px; gap:8px;}
-    .cam-controles .btn{min-height:56px !important; padding:0 12px; font-size:16px; white-space:nowrap;}
+    .cam-controles .btn{min-height:56px !important; padding:0 12px; font-size:16px;}
     #btn-digitar{padding:0 14px; font-size:16px;}
     #btn-torch{min-width:56px; padding:0 12px;}
     .contador{margin:12px 0; gap:8px;}
@@ -323,7 +321,6 @@
     .sacos-cx{padding:14px 12px;}
     .sacos-cx select{min-height:56px !important; font-size:16px;}
     .mp-man-kg{height:64px;}
-    .mp-man-un{font-size:20px;}
 
     /* leitura livre */
     .grupo-livre{padding:12px;}
@@ -355,7 +352,7 @@
     body .eko-dlg .eko-cx{padding:16px;}
     body .eko-dlg .eko-tx{font-size:16px;}
     body .eko-dlg .eko-bt{min-height:56px !important;}
-    body .eko-dlg input{min-height:56px !important;}
+    body .eko-dlg input#eko-dlg-in{min-height:56px !important;}
   }
 </style>
 <!-- Ajuste automatico para celular: so vale abaixo de 900px de largura -->
