@@ -316,7 +316,10 @@ def main():
                 req("/etiquetas/outras", {"clientToken": f"tc60-{i}-{time.time_ns()}", "sessao_id": sid, "item_codigo": cod,
                     "peso": round(12 + i * 7.3, 1), "peso_bruto": round(12 + i * 7.3, 1), "tara": 0})
             bal["peso"] = 0.0
-            pg.reload(wait_until="domcontentloaded", timeout=30000); senha(pg)
+            pg.reload(wait_until="domcontentloaded", timeout=30000)
+            pg.wait_for_function("() => document.getElementById('eko-acesso') || /ONLINE/.test((document.getElementById('srv-status') || {}).textContent)", timeout=15000, polling=200)
+            ok(pg.locator("#eko-acesso").count() == 0, "app: reabrir com a pesagem aberta no nome da pessoa NÃO pede a senha")
+            senha(pg)
             pg.wait_for_function("() => document.querySelectorAll('#hist-lista .hist-item').length === 12", timeout=15000, polling=200)
             ok(True, "lista com 12 pesagens")
             conferir(pg, "lista-12")
@@ -340,8 +343,18 @@ def main():
             pg.fill("#refugo-etiqueta", "X12"); tocar(pg, "#modal-refugo .btn-peso-ok", "refugo: OK")
             pg.wait_for_function("() => /inválida/.test(document.getElementById('refugo-bobina').textContent)", polling=200)
             conferir(pg, "refugo-invalida")
-            pg.fill("#refugo-etiqueta", "E0009999"); tocar(pg, "#modal-refugo .btn-peso-ok", "refugo: OK")
-            pg.wait_for_function("() => document.getElementById('refugo-bobina').textContent.trim().length > 0 && !/inválida/.test(document.getElementById('refugo-bobina').textContent)", polling=200)
+            # No app o Enter do leitor não chega à página: o bipe vem pelo onLeu,
+            # com o campo da etiqueta em foco (abrirRefugo põe o foco nele).
+            pg.evaluate("document.getElementById('refugo-etiqueta').focus(); typeof onLeu === 'function' && onLeu('E0009999')")
+            try:
+                pg.wait_for_function("() => /E0009999/.test(document.getElementById('refugo-bobina').textContent) && !/inválida/.test(document.getElementById('refugo-bobina').textContent)", timeout=8000, polling=200)
+                leu = True
+            except Exception:
+                leu = False
+            ok(leu, "refugo: bipe pelo leitor do app (onLeu) consulta a etiqueta", pg.evaluate("document.getElementById('refugo-bobina').textContent"))
+            if not leu:
+                pg.fill("#refugo-etiqueta", "E0009999"); tocar(pg, "#modal-refugo .btn-peso-ok", "refugo: OK")
+                pg.wait_for_function("() => /E0009999/.test(document.getElementById('refugo-bobina').textContent)", polling=200)
             conferir(pg, "refugo-nao-achada")
             tocar(pg, "#modal-refugo .btn-modal.secundario", "refugo: Fechar")
 
@@ -370,6 +383,15 @@ def main():
             except Exception:
                 pediu = False
             ok(pediu, "app: depois do FINALIZAR a senha é pedida de novo (coletor compartilhado)")
+            if pediu:
+                pg.wait_for_selector("#toast-area .toast", timeout=5000)
+                vis = pg.evaluate("""() => { const pe = document.createElement('style'); pe.textContent = '* { pointer-events: auto !important; }';
+                    document.head.appendChild(pe);
+                    const ts = [...document.querySelectorAll('#toast-area .toast')];
+                    const r = ts.map(t => { const b = t.getBoundingClientRect(); const e = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+                        return [t.textContent, !!e && (e === t || t.contains(e))]; });
+                    pe.remove(); return r; }""")
+                ok(vis and all(v for _, v in vis), "app: os avisos do FINALIZAR ficam à vista por cima do teclado da senha", vis)
             if PRINTS: pg.screenshot(path=str(PRINTS / f"{PREFIXO}senha-depois-de-finalizar.png"))
             senha(pg)
             conferir(pg, "finalizado")
@@ -378,6 +400,28 @@ def main():
             pg.wait_for_function("() => document.getElementById('eko-acesso') || /ONLINE/.test((document.getElementById('srv-status') || {}).textContent)", timeout=15000, polling=200)
             ok(pg.locator("#eko-acesso").count() == 1, "app: reabrir sem pesagem aberta pede a senha")
             senha(pg)
+            # A senha confere a MESMA pesagem que a tela retoma (a mais nova):
+            # com uma pesagem antiga do Teste e uma mais nova de OUTRO, reabrir
+            # pede a senha (antes "valia" pela antiga e entrava na de OUTRO).
+            def sessao_com_item(op, i):
+                sid_ = req("/sessoes", {"tipo": "outras", "operador": op})["sessao_id"]
+                req("/etiquetas/outras", {"clientToken": f"dono-{op}-{i}-{time.time_ns()}", "sessao_id": sid_, "item_codigo": "RES.BORRA",
+                    "peso": 10.0 + i, "peso_bruto": 10.0 + i, "tara": 0})
+                return sid_
+            s_meu = sessao_com_item("TESTE TC60", 1)
+            pg.reload(wait_until="domcontentloaded", timeout=30000)
+            pg.wait_for_function("() => document.getElementById('eko-acesso') || /ONLINE/.test((document.getElementById('srv-status') || {}).textContent)", timeout=15000, polling=200)
+            ok(pg.locator("#eko-acesso").count() == 0, "app: com a pesagem dele aberta, reabrir não pede a senha")
+            s_outro = None
+            for i in range(20):   # o servidor ordena por início: espera a de OUTRO ser a mais nova
+                if s_outro is None: s_outro = sessao_com_item("OUTRO", 2)
+                if req("/sessoes/abertas?tipo=outras")["sessoes"][0]["id"] == s_outro: break
+                req(f"/sessoes/{s_outro}/cancelar", {}); s_outro = None; pg.wait_for_timeout(300)
+            pg.reload(wait_until="domcontentloaded", timeout=30000)
+            pg.wait_for_function("() => document.getElementById('eko-acesso') || /ONLINE/.test((document.getElementById('srv-status') || {}).textContent)", timeout=15000, polling=200)
+            ok(pg.locator("#eko-acesso").count() == 1, "app: pesagem mais nova é de OUTRO: reabrir pede a senha (não entra calado na dele)")
+            for x in (s_meu, s_outro):
+                if x: req(f"/sessoes/{x}/cancelar", {})
             ctx.close()
 
             # ── 4. Monitor do Mini PC ──────────────────────────────────

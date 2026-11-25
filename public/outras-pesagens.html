@@ -469,10 +469,12 @@ header {
 </style>
 <!-- 25/11/2026 (Gustavo: Resíduos no hub do app "Ekoplastic MP" para o Bruno):
      coletor TC60, 360×690 CSS (~648 com as barras do Android), uma mão, luva
-     às vezes. Só abaixo de 600 px e nunca no quadro (.embed): o monitor do
-     Mini PC não muda. Vence as regras do celular.css (que vem logo abaixo) por
-     especificidade: toda regra daqui tem :not(.embed) a mais e !important onde
-     o celular.css tem.
+     às vezes. Só abaixo de 600 px: o monitor do Mini PC (1366 px) não muda.
+     Vale também no navegador de celular estreito. O :not(.embed) segue o
+     padrão das telas da MP; esta tela não tem modo ?embed=1 (o quadro do menu
+     a abre sem parâmetro), quem protege o monitor é o limite de 600 px. Vence
+     as regras do celular.css (que vem logo abaixo) por especificidade: toda
+     regra daqui tem :not(.embed) a mais e !important onde o celular.css tem.
        · o item escolhido, o peso, IMPRIMIR e a última etiqueta numa barra fixa
          embaixo: pesar → imprimir → bipar sem rolar a tela;
        · toque mínimo 56 px, texto mínimo 16 px (a prévia da etiqueta é a
@@ -585,9 +587,8 @@ header {
     grid-template-areas: "id peso peso" "desc acao del";
     gap: 4px 6px; padding: 6px 6px 6px 8px;
   }
-  body[data-tela="Resíduos"]:not(.embed) #hist-lista .hist-peso { justify-self: end; }
   body[data-tela="Resíduos"]:not(.embed) #hist-lista .hist-id { grid-area: id; }
-  body[data-tela="Resíduos"]:not(.embed) #hist-lista .hist-peso { grid-area: peso; }
+  body[data-tela="Resíduos"]:not(.embed) #hist-lista .hist-peso { grid-area: peso; justify-self: end; }
   body[data-tela="Resíduos"]:not(.embed) #hist-lista .hist-desc { grid-area: desc; }
   body[data-tela="Resíduos"]:not(.embed) #hist-lista .hist-acao,
   body[data-tela="Resíduos"]:not(.embed) #hist-lista .hist-check { grid-area: acao; }
@@ -607,7 +608,10 @@ header {
   body[data-tela="Resíduos"]:not(.embed) .hist-del { width: 56px; height: 56px; min-height: 56px !important; font-size: 20px; }
 
   /* ─── Toast em cima: embaixo ficava atrás da barra (e do dedo). ─── */
-  body[data-tela="Resíduos"]:not(.embed) #toast-area { top: 8px; left: 8px; right: 8px; }
+  /* Acima do teclado da senha (z 99999): no app o FINALIZAR pede a senha de
+     novo na hora, e "Bling: enviado" / "o papel sai no Resumo do dia" ficavam
+     escondidos atrás dele (revisor de c950492). */
+  body[data-tela="Resíduos"]:not(.embed) #toast-area { top: 8px; left: 8px; right: 8px; z-index: 100000; }
   body[data-tela="Resíduos"]:not(.embed) .toast { min-width: 0; font-size: 16px; padding: 12px 14px; }
   /* Crachá "👤 NOME": no fim da página (o celular.css o punha no canto de
      baixo, onde agora fica a barra). */
@@ -1213,13 +1217,22 @@ window.addEventListener('keydown', (e) => {
 // App do coletor "Ekoplastic MP" (25/11/2026): no TC60 o código chega inteiro
 // pelo app (→ onLeu), não pelo teclado — o app mantém um campo invisível
 // (#__ekoScan) em foco, e o leitor-teclado acima ignora tecla em campo.
-// Mesmas travas do leitor-teclado (campo de verdade em foco, janela aberta
-// que não seja a de "bipe antes") mais o teclado da senha, e o mesmo
-// biparItem. No Mini PC ninguém chama esta função.
+// Travas do leitor-teclado (campo de verdade em foco, janela aberta que não
+// seja a de "bipe antes"), mais a da Entrada: com o teclado da senha na tela
+// não lê. Chama o mesmo biparItem. A cadência (≥ 4 teclas em < 300 ms) não
+// entra: o app entrega o código inteiro. No Mini PC ninguém chama esta função.
 function onLeu(codigo) {
   const ae = document.activeElement;
-  if (ae && ae.id !== '__ekoScan' && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.tagName === 'SELECT')) return;
   if (window.EkoAcesso && EkoAcesso.bloqueando && EkoAcesso.bloqueando()) return;
+  // Refugo aberto: no Mini PC o leitor "digita" no campo da etiqueta e o Enter
+  // consulta. No app o Enter do leitor não chega à página (o app o usa), então
+  // faz o mesmo aqui: põe o código no campo e consulta (revisor de c950492).
+  if (refugoAberto() && (!ae || ae === document.body || ae.id === '__ekoScan' || ae.id === 'refugo-etiqueta')) {
+    const t = String(codigo == null ? '' : codigo).trim().toUpperCase();
+    if (t) { document.getElementById('refugo-etiqueta').value = t; consultarRefugo(); }
+    return;
+  }
+  if (ae && ae.id !== '__ekoScan' && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.tagName === 'SELECT')) return;
   const modalAberto = document.querySelector('.modal-overlay.on');
   if (modalAberto && modalAberto.id !== 'modal-bipagem-pendente') return;
   const raw = String(codigo == null ? '' : codigo).trim().toUpperCase();
@@ -1626,10 +1639,11 @@ async function residuosAbertaDe(lib) {
   const d = await r.json();
   if (!d || !d.ok) throw new Error('consulta das pesagens abertas falhou');
   const nome = String(lib.nome || '').trim().toUpperCase();
-  const cont = lib.continuada != null ? String(lib.continuada) : null;
-  // Pesagem VAZIA não conta: a sessão só abre na 1ª etiqueta.
-  return (d.sessoes || []).some(s => s.tipo === 'outras' && (s.etiquetas || []).length > 0
-    && (String(s.operador || '').trim().toUpperCase() === nome || (cont !== null && String(s.id) === cont)));
+  // A MESMA sessão que restaurarSessaoAberta() retoma (a 1ª da lista, a mais
+  // nova): senão a senha de B "valia" por uma sessão antiga dele e a tela
+  // entrava imprimindo na de A (revisor de c950492). Vazia não conta.
+  const s = (d.sessoes || [])[0];
+  return !!(s && (s.etiquetas || []).length > 0 && String(s.operador || '').trim().toUpperCase() === nome);
 }
 // Depois do FINALIZAR o teclado volta e chama o mesmo aoEntrar: a tela já
 // está iniciada, só troca o responsável e retoma o que estiver aberto.
