@@ -197,3 +197,27 @@ Um revisor leu o primeiro commit. O que ele achou e o que foi feito:
 3. Na Entrada, pesar e imprimir uma etiqueta de verdade a partir do coletor.
 4. Decidir sobre o defeito do PA antes de o Bruno lançar PA pelo coletor
    enquanto o Mini PC também lança.
+
+## Revisto em 2026-11-25 (tarde): telas ajustadas ao TC60, 7 botões, app 2.1
+
+Gustavo: "todas as telas merecem atenção uma a uma, corrige uma publica sobe pra produção";
+depois "retorno também" e "resíduo". Feito um agente por tela, cada um com teste de navegador
+a 360×690/648 com o user-agent do app (56 px de toque, 16 px de texto, o principal sem rolar)
+e o monitor de 1366 px comparado elemento a elemento com o de antes: `hub_tc60.py`,
+`entrada_tc60.py` (Recebimento e Retorno), `retirada_tc60.py`, `mapeamento_tc60.py`,
+`inventario_tc60.py`, `pa_tc60.py`, `residuos_tc60.py`. Cada um vermelho na tela de antes.
+
+- Hub com 7 botões: Entrada (só Recebimento), Retorno (`?aba=retorno`, senha da aba),
+  Retirada, Resíduos (`/outras-pesagens.html`), Mapeamento, Inventário, PA.
+- Resíduos no coletor: `onLeu()` (bipe do app), aviso do app com texto, senha com chave
+  própria `residuos` válida só com a pesagem aberta no nome da pessoa. No Mini PC igual.
+- App 2.1 (versionCode 12): `setTextZoom(100)` (fonte do Android a 115 % estourava o hub) e
+  `/outras-pesagens.html` na lista de páginas — o 2.0 manda Resíduos de volta ao hub.
+- Inventário: corrigido o contador que sumia na leitura livre depois de contagem por sacos.
+
+**Não medido:** nada foi visto no TC60 de verdade (WebView real, emoji, teclado do Android por
+cima dos campos, modo deitado). **Aberto para decidir (Resíduos, já era assim no Mini PC):** a
+tela retoma calada a pesagem aberta de outra pessoa (as da MP perguntam "continuar no nome de
+X"); com Mini PC e coletor na mesma sessão, uma etiqueta pode cair em sessão já finalizada e não
+ir ao Bling. **Compartilhado ainda pequeno:** teclado da senha e janela "sessão de outro"
+(`acesso-colaborador.js`) com texto de 14–15 px; `celular.css` baixa botão de janela a 44 px.
