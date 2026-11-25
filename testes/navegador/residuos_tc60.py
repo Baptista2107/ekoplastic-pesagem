@@ -82,6 +82,15 @@ def senha(pg):
     pg.wait_for_function("() => /ONLINE/.test(document.getElementById('srv-status').textContent)", timeout=15000, polling=200)
 
 
+# Espera que não derruba o teste: na versão antiga o texto esperado nunca vem,
+# e isso tem de sair como falha contada, não como exceção.
+def esperar(pg, expr, timeout=10000):
+    try:
+        pg.wait_for_function(expr, timeout=timeout, polling=200); return True
+    except Exception:
+        return False
+
+
 # Toque de verdade (o Playwright recusa o que está fora da tela e não rola).
 # Se não der, registra a falha e aperta pelo JS para seguir com as fotos.
 def tocar(pg, sel, nome):
@@ -193,7 +202,7 @@ def principal(pg, nome, item, kg, ultima=None):
 # por cima: entra a caixa, não o texto. As linhas novas do coletor saem.
 FOTO_LAYOUT = """() => { const out = [];
   for (const e of document.querySelectorAll('body *')) {
-    if (['eko-resp-tag', 'ultima-etq', 'peso-item', 'peso-liq'].includes(e.id) || e.closest('#toast-area')) continue;
+    if (e.closest('#eko-resp-tag, #ultima-etq, #peso-item, #peso-liq, #toast-area')) continue;   // peças só do coletor (e o que é delas)
     if (e.ownerSVGElement) continue;   // barras do código: o número muda de uma rodada para a outra
     const cs = getComputedStyle(e); const b = e.getBoundingClientRect();
     out.push([e.tagName, e.id, e.className && e.className.baseVal === undefined ? e.className : '',
@@ -465,13 +474,24 @@ def main():
                 pg.set_viewport_size({"width": W, "height": H})
                 if PRINTS: pg.screenshot(path=str(PRINTS / f"{PREFIXO}ad-pesada{suf}-tela.png"))
                 pesar(pg, 1600.0)
-                pg.wait_for_timeout(300)
-                pb = pg.evaluate(PRINCIPAL, ["#btn-imprimir"])["#btn-imprimir"]
+                esperar(pg, "() => /LÍQUIDO/.test(document.getElementById('btn-imprimir').textContent)")
+                pg.evaluate("window.scrollTo(0, 0)")
+                r = pg.evaluate(PRINCIPAL, ["#btn-imprimir", "#peso-liq"])
+                pb, pl = r["#btn-imprimir"], r["#peso-liq"]
+                bom = lambda x: x.get("dentro") and not x.get("coberto") and not x.get("cortado")
                 desl = pg.evaluate("document.getElementById('btn-imprimir').disabled")
-                ok(desl and "PESO FORA" in pb.get("txt", "") and "1.500" in pb.get("txt", "") and not pb.get("cortado"),
-                   f"AD 1600 kg ({rot}): IMPRIMIR apagado diz o motivo (peso fora de 20–1.500)", pb)
+                ok(desl and bom(pb) and "LÍQUIDO > 1.500" in pb.get("txt", ""),
+                   f"AD 1600 kg ({rot}): IMPRIMIR apagado diz o motivo (líquido > 1.500), inteiro", pb)
+                ok(bom(pl) and "1596.7" in pl.get("txt", ""), f"AD 1600 kg ({rot}): a barra mostra 1596.7 sem cortar", pl)
                 conferir(pg, f"ad-peso-fora{suf}")
                 if PRINTS: pg.screenshot(path=str(PRINTS / f"{PREFIXO}ad-peso-fora{suf}-tela.png"))
+                # Só o tubete na balança (bruto 3.0, acima do zero de 2 kg):
+                # líquido nunca negativo, e o botão diz o lado certo.
+                pesar(pg, 3.0)
+                esperar(pg, "() => /LÍQUIDO </.test(document.getElementById('btn-imprimir').textContent)")
+                pl = pg.evaluate("document.getElementById('peso-liq').textContent")
+                bt = pg.evaluate("document.getElementById('btn-imprimir').textContent")
+                ok(pl.startswith("0.0") and "LÍQUIDO < 20" in bt, f"AD bruto 3.0 ({rot}): barra 0.0 (não -0.3) e botão 'líquido < 20'", [pl, bt])
                 if not sem_fontes:
                     pesar(pg, 503.3)
                     pg.wait_for_function("() => !document.getElementById('btn-imprimir').disabled", timeout=10000, polling=200)
@@ -519,6 +539,24 @@ def main():
                     ok(ch[0] and not ch[1], "Mini PC: a senha continua na chave 'mp' (igual a antes)", ch)
                 f = {"inicio": fr.evaluate(FOTO_LAYOUT)}
                 if PRINTS: pg.screenshot(path=str(PRINTS / f"{PREFIXO}monitor-inicio-{'sem' if sem else 'com'}.png"))
+                # Bobina AD no monitor: o #peso-liq e a classe com-tubete não
+                # mexem no layout; o texto do botão fora da faixa não muda a altura.
+                fr.locator('[id="it-BOB.VER.1,52"]').click(); pesar(fr, 503.3)
+                fr.wait_for_function("() => !document.getElementById('btn-imprimir').disabled", polling=200)
+                f["ad"] = fr.evaluate(FOTO_LAYOUT)
+                h_ok = fr.evaluate("document.getElementById('btn-imprimir').getBoundingClientRect().height")
+                if PRINTS: pg.screenshot(path=str(PRINTS / f"{PREFIXO}monitor-ad-{'sem' if sem else 'com'}.png"))
+                pesar(fr, 1600.0)
+                fr.wait_for_function("() => document.getElementById('btn-imprimir').disabled", polling=200)
+                fr.wait_for_timeout(300)
+                f["ad-fora"] = fr.evaluate(FOTO_LAYOUT)
+                if not sem:
+                    h_fora = fr.evaluate("document.getElementById('btn-imprimir').getBoundingClientRect().height")
+                    tx = fr.evaluate("document.getElementById('btn-imprimir').textContent")
+                    ok(abs(h_fora - h_ok) < 0.5, f"Mini PC: o texto '{tx}' cabe numa linha (botão com a mesma altura)", [h_ok, h_fora])
+                if PRINTS: pg.screenshot(path=str(PRINTS / f"{PREFIXO}monitor-ad-fora-{'sem' if sem else 'com'}.png"))
+                bal["peso"] = 0.0
+                fr.wait_for_function("() => document.getElementById('peso-val').textContent === '0.0'", polling=200)
                 fr.locator("#it-RES\\.BORRA").click(); pesar(fr, 41.7)
                 fr.wait_for_function("() => !document.getElementById('btn-imprimir').disabled", polling=200)
                 f["peso"] = fr.evaluate(FOTO_LAYOUT)

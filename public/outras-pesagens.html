@@ -559,16 +559,16 @@ header {
   body[data-pagina="outras"]:not(.embed) #peso-val { font-size: 28px; line-height: 1.15; white-space: nowrap; }
   body[data-pagina="outras"]:not(.embed) .peso-unit { font-size: 16px; }
   /* Bobina AD: a etiqueta sai com o LÍQUIDO (balança − tubete). A barra mostra
-     o líquido e o tubete no lugar do número da balança (que segue no cartão
-     da balança, mais acima). */
+     o líquido e o tubete no lugar do número da balança; o bruto da AD só
+     aparece na prévia da etiqueta, mais abaixo. */
   body[data-pagina="outras"]:not(.embed) .peso-display.com-tubete { row-gap: 0; padding: 2px 8px; }
   body[data-pagina="outras"]:not(.embed) .peso-display.com-tubete #peso-val,
   body[data-pagina="outras"]:not(.embed) .peso-display.com-tubete .peso-unit { display: none; }
   body[data-pagina="outras"]:not(.embed) .peso-display.com-tubete .peso-item { line-height: 1.1; }
   body[data-pagina="outras"]:not(.embed) .peso-display.com-tubete .peso-liq {
     display: block; flex: 1 1 100%; min-width: 0; font-size: 16px; line-height: 1.1; color: var(--muted); white-space: nowrap; }
-  body[data-pagina="outras"]:not(.embed) .peso-liq b { font-size: 24px; line-height: 1; color: var(--accent); font-weight: 600; }
-  body[data-pagina="outras"]:not(.embed) .peso-liq .tb { display: block; }
+  body[data-pagina="outras"]:not(.embed) .peso-display.com-tubete .peso-liq b { font-size: 24px; line-height: 1; color: var(--accent); font-weight: 600; }
+  body[data-pagina="outras"]:not(.embed) .peso-display.com-tubete .peso-liq .tb { display: block; }
   body[data-pagina="outras"]:not(.embed) .balanca-card:has(.balanca-status.instavel, .balanca-status.descarga) .peso-liq b { color: var(--warn); }
   /* Peso instável ou balança para descarregar: o número da barra fica laranja. */
   body[data-pagina="outras"]:not(.embed) .balanca-card:has(.balanca-status.instavel, .balanca-status.descarga) #peso-val { color: var(--warn); }
@@ -1130,8 +1130,8 @@ function pintarPesoItem() {
   if (box) box.classList.toggle('com-tubete', !!tubete);
   const liq = document.getElementById('peso-liq');
   if (liq) liq.innerHTML = tubete
-    // Balança vazia (abaixo de LIMIAR_ZERO_KG): 0.0, não "-3.3".
-    ? `<b>${(state.pesoAtual >= LIMIAR_ZERO_KG ? pesoLiquido(state.itemCodigo, state.pesoAtual) : 0).toFixed(1)}</b> kg`
+    // Nunca negativo: balança vazia ou só o tubete (bruto até 3,3) dá 0.0.
+    ? `<b>${Math.max(0, pesoLiquido(state.itemCodigo, state.pesoAtual)).toFixed(1)}</b> kg`
       + `<span class="tb">−${tubete.toFixed(1)} tubete</span>` : '';
 }
 /* </barra-coletor> */
@@ -1152,10 +1152,18 @@ function atualizarBotaoImprimir() {
   } else if (camposOk && !state.balancaEstavel) {
     btn.textContent = '⏳ AGUARDANDO ESTABILIDADE...';
     btn.disabled = true;
-  } else if (state.itemCodigo && (OUTRAS_ITENS[state.itemCodigo] || {}).tubete && state.pesoAtual >= LIMIAR_ZERO_KG && !camposOk) {
-    // Bobina AD com peso na balança mas fora da faixa: o botão diz por quê
-    // (antes só ficava apagado). Vale também no Mini PC: só o texto.
-    btn.textContent = `⚠ PESO FORA (${BOBINA_MIN_KG}–${BOBINA_MAX_KG.toLocaleString('pt-BR')} kg)`;
+  } else if (state.itemCodigo && (OUTRAS_ITENS[state.itemCodigo] || {}).tubete && state.pesoAtual >= LIMIAR_ZERO_KG
+             && state.balancaEstavel && !camposOk) {
+    // Bobina AD com peso parado na balança mas fora da faixa: o botão diz por
+    // quê (antes só ficava apagado). A faixa é do LÍQUIDO (balança − tubete):
+    // no Mini PC o número grande é o bruto, então o texto diz "líquido" e o
+    // lado (22.0 na balança = 18.7 líquido, abaixo de 20). Vale também no
+    // Mini PC: só o texto.
+    const liq = pesoLiquido(state.itemCodigo, state.pesoAtual);
+    // Curto para caber numa linha do botão do monitor (não muda a altura).
+    btn.textContent = liq > BOBINA_MAX_KG
+      ? `⚠ LÍQUIDO > ${BOBINA_MAX_KG.toLocaleString('pt-BR')} kg`
+      : `⚠ LÍQUIDO < ${BOBINA_MIN_KG} kg`;
     btn.disabled = true;
   } else {
     btn.textContent = '⎙ IMPRIMIR ETIQUETA';

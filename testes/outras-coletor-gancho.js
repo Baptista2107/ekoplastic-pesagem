@@ -14,7 +14,11 @@
 //       body[data-pagina="outras"] (nenhuma vaza para outra tela nem
 //       depende do nome mostrado);
 //   [3] todo atributo body[...] usado no bloco existe no <body> com o mesmo
-//       valor (pega o "renomeou e ninguém viu").
+//       valor (pega o "renomeou e ninguém viu");
+//   e fora do @media o bloco só esconde as peças do coletor (display: none):
+//   qualquer outra regra ali valeria no monitor do Mini PC.
+//  (O celular.css já é conferido em bobina-alta-densidade.js [10]: todo
+//  data-tela dele existe numa tela.)
 //
 //  O celular.css (compartilhado) ainda prende as regras estruturais desta
 //  tela ao data-tela="Outras Pesagens": renomear a tela de novo exige mudar
@@ -36,17 +40,19 @@ const attrsBody = {};
 for (const m of tagBody.matchAll(/([\w-]+)="([^"]*)"/g)) attrsBody[m[1]] = m[2];
 
 // Bloco do coletor e o @media de dentro dele (até a chave que fecha).
-const bloco = (html.match(/<style id="estilo-coletor">([\s\S]*?)<\/style>/) || [, ''])[1];
-function corpoDoMedia(css) {
+// Comentários fora antes de tudo: uma chave dentro de comentário cortaria o @media.
+const bloco = ((html.match(/<style id="estilo-coletor">([\s\S]*?)<\/style>/) || [, ''])[1]).replace(/\/\*[\s\S]*?\*\//g, '');
+function partesDoMedia(css) {
   const i = css.indexOf('@media');
-  if (i < 0) return '';
+  if (i < 0) return ['', css];
   let n = 0, ini = css.indexOf('{', i);
   for (let k = ini; k < css.length; k++) {
     if (css[k] === '{') n++;
-    else if (css[k] === '}' && --n === 0) return css.slice(ini + 1, k);
+    else if (css[k] === '}' && --n === 0) return [css.slice(ini + 1, k), css.slice(0, i) + css.slice(k + 1)];
   }
-  return '';
+  return ['', css];
 }
+function corpoDoMedia(css) { return partesDoMedia(css)[0]; }
 // Seletores das regras (comentários fora; cada regra = "seletores { ... }").
 function seletores(css) {
   const limpo = css.replace(/\/\*[\s\S]*?\*\//g, '');
@@ -74,11 +80,21 @@ console.log('\n[2] Regras do coletor presas ao gancho');
 const media = corpoDoMedia(bloco);
 ok(bloco && media, 'bloco <style id="estilo-coletor"> com @media achado');
 const sels = seletores(media);
-ok(sels.length > 50, `${sels.length} seletores no @media do bloco`);
+// Todo "body[" do bloco tem de estar num seletor lido: nada truncado nem perdido.
+const nBody = (media.match(/body\[/g) || []).length;
+ok(sels.length > 50 && sels.length === nBody, `${sels.length} seletores no @media do bloco (= ${nBody} "body[")`);
 const fora = sels.filter(s => !s.startsWith('body[data-pagina="outras"]'));
 ok(fora.length === 0, 'todo seletor começa por body[data-pagina="outras"]', fora.slice(0, 5));
 ok(!sels.some(s => /data-tela/.test(s)), 'nenhum seletor depende do nome mostrado (data-tela)',
    sels.filter(s => /data-tela/.test(s)).slice(0, 3));
+
+// Fora do @media o bloco vale no monitor do Mini PC: só pode esconder as
+// peças que existem só no coletor.
+const resto = seletores(partesDoMedia(bloco)[1]);
+const PERMITIDO = ['.ultima-etq', '.peso-item', '.peso-liq'];
+const regrasFora = [...partesDoMedia(bloco)[1].matchAll(/([^{}]+)\{([^{}]*)\}/g)].map(m => [m[1].trim(), m[2].trim()]);
+ok(resto.every(s => PERMITIDO.includes(s)) && regrasFora.every(([, d]) => /^display:\s*none;?$/.test(d)),
+   'fora do @media só "display: none" das peças do coletor (o monitor não muda)', regrasFora);
 
 console.log('\n[3] Atributos do body usados no bloco existem no <body>');
 const usados = new Set();
