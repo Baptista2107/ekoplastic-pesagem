@@ -18,19 +18,22 @@ O `build.sh` agora tem `VARIANTE=mp`.
 
 - **Ekoplastic MP** (`br.com.ekoplastic.mp`, v2.0). Instala ao lado do
   Coletor e do Inventário, sem substituir nenhum dos dois.
-- Abre em `/hub-mp.html`, que tem 5 botões grandes:
-  - Entrada → `/mp-recebimento-retorno.html?aba=recebimento` (o Retorno de
-    produção está numa aba da própria tela)
+- Abre em `/hub-mp.html`, que tem 7 botões grandes (eram 5; o Gustavo pediu
+  "retorno também" e "residuo" no mesmo dia):
+  - Entrada → `/mp-recebimento-retorno.html?aba=recebimento`
+  - Retorno → `/mp-recebimento-retorno.html?aba=retorno` (a mesma página; o
+    `?aba=` escolhe a aba e a senha, como o toque na aba RETORNO já fazia)
   - Retirada → `/mp-retirada.html`
+  - Resíduos → `/outras-pesagens.html` (borra, varredura, pó, aparas)
   - Mapeamento → `/enderecamento.html`
   - Inventário → `/inventario.html`
   - Produto Acabado → `/produto-acabado.html`
 - O hub não pede senha e não grava nada. Cada tela continua pedindo o PIN dela,
-  como no Mini PC: Entrada e Retirada pedem a permissão `mp`, Mapeamento e PA
+  como no Mini PC: Entrada, Retorno, Retirada e Resíduos pedem a permissão `mp`, Mapeamento e PA
   pedem `pa`, e o Inventário não pede PIN. No botão aparece "● em andamento"
   quando há sessão aberta daquele tipo, em qualquer aparelho. A informação vem
   de `GET /sessoes/abertas`, que só lê.
-- A navegação fica presa ao hub e às 5 telas, sem barra de endereço e sem link
+- A navegação fica presa ao hub e às telas dele, sem barra de endereço e sem link
   externo. O que levaria a outra página do Mini PC (🏠, ✕, "voltar ao menu" do
   PIN, 📦 da MP) volta ao hub.
 - Voltar do Android: fecha a janela que estiver aberta, usando o botão
@@ -110,10 +113,19 @@ função só roda depois da senha.
 neste commit.
 A correção fica para um commit separado, com validação do Gustavo.
 
+## Tela do hub no TC60 (25/11, depois de instalado)
+Gustavo: "não tá legal de ver no android do TC60". O hub já cabia na largura,
+mas tinha texto de 12 a 14 px e cores abaixo de 7:1 de contraste. Agora:
+uma coluna de 7 botões que enchem a tela, texto ≥ 16 px, contraste ≥ 7:1
+(também com o dedo em cima), status numa etiqueta cheia ao lado do nome
+("● Conectado" / "✕ Sem conexão", vermelho cheio). Com sessão aberta, o
+"● N em andamento" toma o lugar do subtítulo, para o botão não crescer. Cabe
+sem rolar a 360×648 (tela do TC60 com as barras do Android) e a 690; a
+560 px rola, mas nada sai do botão. Medido por
+`testes/navegador/hub_tc60.py`; não visto no aparelho.
+
 ## O que ficou fora
 - A correção do defeito do PA (acima).
-- Um botão separado para o Retorno de produção. Ele está numa aba dentro da
-  Entrada. Se o Bruno usa muito, pode virar o 6º botão.
 - Ajustar o tamanho de texto ou de toque dentro das telas além do layout. O
   `celular.css` já leva todo botão a 44 px.
 - Instalar, pôr no Drive, mudar o main ou o Mini PC.
@@ -149,8 +161,8 @@ A correção fica para um commit separado, com validação do Gustavo.
   900 px. Rodado contra o main: 8 itens das telas falham e a parte do app não
   carrega. Mutação no `voltar.js` (apertar Confirmar e ignorar o teclado da
   senha): 3 falhas.
-- `testes/navegador/hub_coletor.py` (VPS, fora do `rodar-todos.js`): hub e 5
-  telas em 360 px; Entrada pesando e imprimindo pelo servidor; bipe da etiqueta
+- `testes/navegador/hub_coletor.py` (VPS, fora do `rodar-todos.js`): hub e 7
+  telas em 360 px (Entrada e Retorno abrindo direto na aba deles); Entrada pesando e imprimindo pelo servidor; bipe da etiqueta
   na Entrada e na Retirada pelo `onLeu`; `voltar.js` nas janelas de verdade;
   monitor a 1366 px sem mudança; medição do PA. Contra as telas do main ele
   falha em 7 itens e depois trava.
@@ -180,7 +192,7 @@ Um revisor leu o primeiro commit. O que ele achou e o que foi feito:
 ## Para o Gustavo validar
 1. Conferir no Mini PC se o PIN do Bruno tem as permissões `mp` e `pa`.
 2. Instalar `ekoplastic-mp-2.0.apk` no TC60 do Bruno, confiar no Mini PC, e
-   abrir cada um dos 5 botões. Em cada tela: entrar com o PIN, bipar uma
+   abrir cada um dos 7 botões. Em cada tela: entrar com o PIN, bipar uma
    etiqueta, usar o Voltar do Android e a 🏠.
 3. Na Entrada, pesar e imprimir uma etiqueta de verdade a partir do coletor.
 4. Decidir sobre o defeito do PA antes de o Bruno lançar PA pelo coletor

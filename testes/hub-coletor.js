@@ -2,12 +2,13 @@
 //  HUB DO COLETOR "Ekoplastic MP" (25/11/2026, Gustavo)
 //  ------------------------------------------------------------------
 //  "pro coletor do Bruno vou precisar de um hub de aplicativos onde ele
-//  consegue fazer entrada e retirada, mapeamento e inventário" (+ PA).
+//  consegue fazer entrada e retirada, mapeamento e inventário" (+ PA;
+//  + Retorno e Resíduos no mesmo dia).
 //
 //  Sem navegador e sem servidor (node:vm + documento de mentira):
-//   [1] public/hub-mp.js: os 5 botões, cada um numa tela que existe;
+//   [1] public/hub-mp.js: os 7 botões, cada um numa tela que existe;
 //       "em andamento" conta as sessões abertas certas.
-//   [2] android/build.sh (VARIANTE=mp) abre exatamente o hub + as 5 telas
+//   [2] android/build.sh (VARIANTE=mp) abre exatamente o hub + as telas dele
 //       — a lista do app e a do hub não podem divergir.
 //   [3] android/app/src/main/assets/voltar.js: o Voltar do Android fecha a
 //       janela aberta de cada tela; sem janela, pede o hub.
@@ -75,15 +76,25 @@ console.log('\n[1] Os botões do hub');
 const Hub = require('../public/hub-mp.js');
 tenta('hub-mp.js', () => {
   const ids = Hub.TELAS.map(t => t.id);
-  ok(JSON.stringify(ids) === JSON.stringify(['entrada', 'retirada', 'mapeamento', 'inventario', 'pa']),
-     '5 botões, na ordem: Entrada, Retirada, Mapeamento, Inventário, Produto Acabado', ids);
-  const esperado = { entrada: '/mp-recebimento-retorno.html', retirada: '/mp-retirada.html',
+  // Gustavo 25/11: "retorno também" e "residuo" → 7 botões.
+  ok(JSON.stringify(ids) === JSON.stringify(['entrada', 'retorno', 'retirada', 'residuos', 'mapeamento', 'inventario', 'pa']),
+     '7 botões, na ordem: Entrada, Retorno, Retirada, Resíduos, Mapeamento, Inventário, Produto Acabado', ids);
+  const esperado = { entrada: '/mp-recebimento-retorno.html', retorno: '/mp-recebimento-retorno.html',
+                     retirada: '/mp-retirada.html', residuos: '/outras-pesagens.html',
                      mapeamento: '/enderecamento.html', inventario: '/inventario.html', pa: '/produto-acabado.html' };
   for (const t of Hub.TELAS) {
     ok(Hub.caminho(t.url) === esperado[t.id], `${t.nome} abre ${esperado[t.id]}`, t.url);
     ok(fs.existsSync(path.join(RAIZ, 'public', Hub.caminho(t.url))), `${Hub.caminho(t.url)} existe em public/`);
   }
-  ok(/aba=recebimento/.test(Hub.TELAS[0].url), 'Entrada abre na aba Recebimento (o Retorno está na própria tela)');
+  const porId = Object.fromEntries(Hub.TELAS.map(t => [t.id, t]));
+  ok(/[?&]aba=recebimento(&|$)/.test(porId.entrada.url), 'Entrada abre na aba Recebimento', porId.entrada.url);
+  ok(/[?&]aba=retorno(&|$)/.test(porId.retorno.url), 'Retorno abre na aba Retorno (a página lê ?aba=retorno)', porId.retorno.url);
+  // A página escolhe aba e senha pelo ?aba= (ABA_PIN); se o nome mudar lá, o botão Retorno cai no Recebimento.
+  ok(/get\('aba'\)\s*===\s*'retorno'/.test(ler('public/mp-recebimento-retorno.html')),
+     "mp-recebimento-retorno.html ainda reconhece ?aba=retorno");
+  ok(!/em andamento|Recebimento e retorno/.test(porId.entrada.sub), 'subtítulo da Entrada é só recebimento', porId.entrada.sub);
+  const cores = Hub.TELAS.map(t => t.cor.toLowerCase());
+  ok(new Set(cores).size === cores.length, 'uma cor por botão', cores);
   ok(fs.existsSync(path.join(RAIZ, 'public', 'hub-mp.html')), 'public/hub-mp.html existe');
   ok(/<script src="\/hub-mp\.js"><\/script>/.test(ler('public/hub-mp.html')), 'hub-mp.html carrega /hub-mp.js');
   ok(!/fetch\([^)]*method\s*:\s*['"](POST|PUT|PATCH|DELETE)/i.test(ler('public/hub-mp.js')),
@@ -91,8 +102,10 @@ tenta('hub-mp.js', () => {
 
   const c = Hub.abertasPorTela({ ok: true, sessoes: [
     { tipo: 'recebimento' }, { tipo: 'retorno' }, { tipo: 'retirada' }, { tipo: 'produto-acabado' }, { tipo: 'extrusao' }, null] });
-  ok(c.entrada === 2 && c.retirada === 1 && c.pa === 1 && c.mapeamento === 0 && c.inventario === 0,
-     'em andamento: recebimento+retorno na Entrada, retirada na Retirada, PA no PA; extrusão em nenhum', JSON.stringify(c));
+  ok(c.entrada === 1 && c.retorno === 1 && c.retirada === 1 && c.residuos === 0 && c.pa === 1 && c.mapeamento === 0 && c.inventario === 0,
+     'em andamento: recebimento na Entrada, retorno no Retorno, retirada na Retirada, PA no PA; extrusão em nenhum', JSON.stringify(c));
+  const r2 = Hub.abertasPorTela({ ok: true, sessoes: [{ tipo: 'outras' }, { tipo: 'outras' }, { tipo: 'retorno' }] });
+  ok(r2.residuos === 2 && r2.retorno === 1 && r2.entrada === 0, "em andamento: 'outras' acende Resíduos; retorno não acende a Entrada", JSON.stringify(r2));
   const z = Hub.abertasPorTela({ ok: false, erro: 'x' });
   ok(Object.values(z).every(n => n === 0), 'resposta com erro: nenhum botão acende');
   ok(Object.values(Hub.abertasPorTela(null)).every(n => n === 0), 'sem resposta: nenhum botão acende');

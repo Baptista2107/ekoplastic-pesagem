@@ -4,9 +4,9 @@
 
 | | Ekoplastic Coletor | Ekoplastic Inventário | Ekoplastic MP |
 |---|---|---|---|
-| Tela | `/retirada-bobinas.html` (bobina na sacoleira) | `/inventario.html` (MP e produto acabado) | `/hub-mp.html`: hub com Entrada, Retirada, Mapeamento, Inventário e Produto Acabado |
+| Tela | `/retirada-bobinas.html` (bobina na sacoleira) | `/inventario.html` (MP e produto acabado) | `/hub-mp.html`: hub com Entrada, Retorno, Retirada, Resíduos, Mapeamento, Inventário e Produto Acabado |
 | Leitura | só etiqueta exata (letra + 7 dígitos) | texto como vier; a tela valida (gaiola `EKOPA\|…`, big bag) | texto como vier; cada tela valida |
-| Navegação | presa na tela | presa na tela de inventário; por dentro dela, tudo (v1.7) | presa no hub e nas 5 telas; 🏠, ✕ e "voltar ao menu" voltam ao hub |
+| Navegação | presa na tela | presa na tela de inventário; por dentro dela, tudo (v1.7) | presa no hub e nas telas dele; 🏠, ✕ e "voltar ao menu" voltam ao hub |
 | Voltar do Android | fecha janelas abertas | fecha janelas; senão, o "← Voltar" da própria tela | fecha janelas; senão o "← Voltar" da tela; senão volta ao hub |
 | Ícone | bobina | caixinha | quatro quadrados |
 | Pacote | `br.com.ekoplastic.coletor` | `br.com.ekoplastic.inventario` | `br.com.ekoplastic.mp` |
