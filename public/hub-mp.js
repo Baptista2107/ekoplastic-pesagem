@@ -62,8 +62,7 @@
   }
 
   function textoAberta(n) {
-    if (!n) return '';
-    return n === 1 ? '● 1 em andamento' : `● ${n} em andamento`;
+    return n ? `● ${n} em andamento` : '';
   }
 
   // ───────────────────────── navegador ─────────────────────────
@@ -101,6 +100,7 @@
     try {
       const r = await fetch('/sessoes/abertas', { cache: 'no-store' });
       const d = await r.json();
+      if (!r.ok || !d || !d.ok) throw new Error('resposta ' + r.status);
       pintarAbertas(doc, d);
       if (st) { st.className = 'status on'; st.textContent = 'Mini PC conectado'; }
     } catch (e) {
@@ -108,7 +108,7 @@
     }
   }
 
-  const api = { HUB, TELAS, caminho, caminhosPermitidos, abertasPorTela, textoAberta, montar, pintarAbertas };
+  const api = { HUB, TELAS, caminho, caminhosPermitidos, abertasPorTela, textoAberta, montar, pintarAbertas, atualizar };
   if (typeof module === 'object' && module.exports) module.exports = api;
   if (raiz && raiz.document) {
     raiz.EkoHub = api;

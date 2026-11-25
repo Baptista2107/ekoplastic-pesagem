@@ -144,6 +144,17 @@ def main():
                 b = pg.locator(sel).bounding_box()
                 ok(b and b["x"] >= 0 and b["x"] + b["width"] <= 360, f"entrada: {sel} inteiro na tela", b)
             ok(pg.locator(".abas-modo").is_visible(), "entrada: aba RETORNO DE PRODUÇÃO à mão")
+            # Resumo do dia aberto: o Voltar fecha o resumo e fica na tela.
+            pg.evaluate("abrirResumoDia('retorno')"); pg.wait_for_timeout(800)
+            r = voltar(pg); pg.wait_for_timeout(300)
+            ok(r == "fechou" and pg.locator("#rd-overlay.ativo").count() == 0, "entrada: Voltar fecha o Resumo do dia", r)
+            # Revisor 25/11: tocar RETORNO tem de trocar também a senha/responsável.
+            pg.locator(".aba-modo[data-modo=retorno]").click(); pg.wait_for_timeout(1500)
+            ok("aba=retorno" in pg.url and pg.locator("#eko-acesso").is_visible()
+               and "Retorno" in pg.locator("#eko-acesso .tela").inner_text(),
+               "entrada: tocar RETORNO reabre na aba retorno e pede a senha do Retorno", pg.url)
+            ok(senha(pg) and pg.evaluate("ABA_PIN") == "retorno" and pg.evaluate("estado.modo") == "retorno",
+               "retorno: senha aceita, tela no modo retorno")
             pg.goto(base + "/mp-retirada.html"); pg.wait_for_timeout(1500); senha(pg)
             ok(not pg.locator(".layout > .menu").is_visible(), "retirada: menu lateral escondido (a 🏠 faz o mesmo)")
             ctx.close()

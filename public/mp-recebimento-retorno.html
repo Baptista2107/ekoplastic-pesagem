@@ -1223,10 +1223,10 @@ body.modo-retorno #btn-corrigir { display: none; }
   <section class="central">
 
     <div class="abas-modo">
-      <button class="aba-modo ativa" data-modo="recebimento" onclick="trocarModo('recebimento')">
+      <button class="aba-modo ativa" data-modo="recebimento" onclick="trocarAba('recebimento')">
         <span class="ico">📥</span> RECEBIMENTO
       </button>
-      <button class="aba-modo" data-modo="retorno" onclick="trocarModo('retorno')">
+      <button class="aba-modo" data-modo="retorno" onclick="trocarAba('retorno')">
         <span class="ico">↩</span> RETORNO DE PRODUÇÃO
       </button>
     </div>
@@ -4234,6 +4234,22 @@ function avisarSeTrocado(mat, cor, forn) {
 // pessoa encerrar (finalizar ou cancelar). A permissão continua sendo 'mp'.
 const ABA_PIN = (new URLSearchParams(location.search).get('aba') === 'retorno') ? 'retorno' : 'recebimento';
 const CHAVE_PIN = 'mp-' + ABA_PIN;
+
+/* <troca-aba> */
+// Abas RECEBIMENTO | RETORNO DE PRODUÇÃO desta tela (25/11/2026). Só aparecem
+// fora do quadro da MP: no app do coletor (hub "Ekoplastic MP") e no celular.
+// A senha, o responsável e a conferência de "sessão de outro" são da aba que
+// veio na URL (ABA_PIN). Trocar só o modo deixava o retorno com a senha do
+// recebimento; por isso a troca reabre a tela com ?aba= da aba escolhida.
+// No Mini PC cada aba é um quadro próprio e estas abas ficam escondidas.
+function trocarAba(modo) {
+  if (modo !== 'retorno' && modo !== 'recebimento') return;
+  if (modo === ABA_PIN) { trocarModo(modo); return; }
+  const p = new URLSearchParams(location.search);
+  p.set('aba', modo);
+  location.replace(location.pathname + '?' + p.toString());
+}
+/* </troca-aba> */
 
 // Processo encerrado pela própria pessoa: a senha vale até aqui.
 function encerrouProcesso() {

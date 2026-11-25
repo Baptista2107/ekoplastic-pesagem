@@ -72,6 +72,14 @@ Nenhuma regra de negócio mudou. São estas mudanças:
    não faz nada: não reabre, não cria o 🔒 de sair nem trata o ESC. No PC e no
    celular pelo navegador continua como antes.
 
+5. **Entrada: aba Retorno de produção.** Fora do quadro da MP (no app e no
+   celular), a Entrada mostra as abas RECEBIMENTO | RETORNO DE PRODUÇÃO. A
+   senha, o responsável e a conferência de "sessão de outro" vêm da aba que está
+   na URL. Tocar RETORNO só trocava o modo e deixava o retorno com a senha do
+   recebimento (achado do revisor). Agora a troca reabre a tela com `?aba=` da
+   aba escolhida e pede a senha do Retorno. No Mini PC essas abas ficam
+   escondidas e nada muda.
+
 O Mapeamento e o Inventário já cabiam em 360 px e não mudaram.
 
 ## Defeito de 18/11 do PA, medido abrindo pelo hub
@@ -125,6 +133,11 @@ A correção fica para um commit separado, com validação do Gustavo.
 - Duas pessoas na mesma tela ao mesmo tempo (Mini PC e coletor). A caixa
   "sessão de outro" das telas da MP já existe. Não testamos com dois aparelhos
   de verdade.
+- Bipe com o campo de peso em foco, na Entrada. O leitor do app não lê
+  enquanto um campo de verdade está em foco, igual ao leitor-teclado do Mini PC.
+  Se o TC60 também "digitar" o código, ele cai dentro do campo de peso. No
+  Mini PC acontece o mesmo; no coletor, onde o dedo fica no campo, pode
+  acontecer mais. Precisa ser visto no aparelho antes de decidir.
 - Se o coletor tem internet. A prévia do código de barras na Entrada usa
   JsBarcode de um CDN. Sem internet, falta só a prévia: a impressão é feita no
   servidor.
@@ -142,8 +155,27 @@ A correção fica para um commit separado, com validação do Gustavo.
   monitor a 1366 px sem mudança; medição do PA. Contra as telas do main ele
   falha em 7 itens e depois trava.
 - Testes de navegador já existentes, rodados de novo:
-  `aditivo_balanca.py`, `retirada_leitor.py`, `reabrir_com_sessao.py`,
-  `inventario_leitor.py` e `enderecamento_coletor.py`.
+  `aditivo_balanca.py`, `retirada_leitor.py`, `reabrir_com_sessao.py` e
+  `inventario_leitor.py` passam. O `enderecamento_coletor.py` falha em 1 item
+  ("RETIRAR: botão desligado com o POST no ar"), e falha igual com as telas do
+  main: não vem desta mudança.
+
+## Revisão do commit
+Um revisor leu o primeiro commit. O que ele achou e o que foi feito:
+- Na Entrada aberta pelo hub, o Retorno ficava com a senha do Recebimento:
+  corrigido (item 5 acima), com teste.
+- O Voltar com o "Resumo do dia" aberto saía da tela: agora fecha o resumo.
+- O Voltar com a confirmação "Encerrar a de X?" aberta ia ao hub: agora aperta
+  o "Voltar" dela e fica na tela.
+- O hub dizia "Mini PC conectado" mesmo com erro do servidor: agora diz "Sem
+  conexão".
+- Bipe com o campo de peso em foco: ficou para medir no aparelho (acima).
+- Ficou como sugestão, sem mudança: o `voltar.js` escolhe o botão de fechar
+  pelo texto (Cancelar, Fechar, Voltar, ✕, ←). Um botão novo de confirmar que
+  comece com essas palavras seria apertado pelo Voltar. A saída mais segura é
+  cada tela marcar o seu botão de cancelar.
+- O revisor não achou mudança de comportamento nos apps Coletor e Inventário,
+  nem no monitor do Mini PC.
 
 ## Para o Gustavo validar
 1. Conferir no Mini PC se o PIN do Bruno tem as permissões `mp` e `pa`.

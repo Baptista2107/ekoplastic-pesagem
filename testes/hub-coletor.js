@@ -100,6 +100,23 @@ tenta('hub-mp.js', () => {
      'texto: vazio, "1 em andamento", "3 em andamento"');
 });
 
+// Status do hub: só diz "conectado" com resposta boa do Mini PC (revisor, 25/11).
+async function statusCom(resp) {
+  const st = { className: '', textContent: '' };
+  const doc = { getElementById: id => (id === 'hub-status' ? st : null) };
+  const antes = global.fetch;
+  global.fetch = async () => { if (resp instanceof Error) throw resp; return { ok: resp.status === 200, status: resp.status, json: async () => resp.corpo }; };
+  try { await Hub.atualizar(doc); } finally { global.fetch = antes; }
+  return st.className;
+}
+const statusPromessa = (async () => {
+  console.log('\n[1b] Status do hub');
+  ok(await statusCom({ status: 200, corpo: { ok: true, sessoes: [] } }) === 'status on', 'resposta boa: "Mini PC conectado"');
+  ok(await statusCom({ status: 500, corpo: { ok: false, erro: 'x' } }) === 'status off', 'erro 500: "Sem conexão", não "conectado"');
+  ok(await statusCom({ status: 200, corpo: { ok: false } }) === 'status off', 'ok:false: "Sem conexão"');
+  ok(await statusCom(new Error('rede')) === 'status off', 'sem rede: "Sem conexão"');
+})();
+
 // ════════════════════════════════════════════════════════════════════
 console.log('\n[2] O app abre o hub e só as telas dele');
 tenta('build.sh', () => {
@@ -139,6 +156,14 @@ tenta('voltar.js', () => {
   const atras2 = el('button', { txt: 'Cancelar' });
   ok(voltar(docCom(el('div', { id: 'eko-outro' }), el('div', { cls: 'modal-overlay ativo' }).add(atras2))) === 'hub' && atras2.cliques === 0,
      'caixa "sessão de outro" aberta: volta ao hub sem responder');
+  // "Encerrar a de X?" (eko-confirma): Voltar é o "Voltar" dela, fica na tela (revisor, 25/11).
+  const sim = el('button', { id: 'eko-confirma-sim', txt: 'Encerrar' }), nao = el('button', { id: 'eko-confirma-nao', txt: 'Voltar' });
+  ok(voltar(docCom(el('div', { id: 'eko-confirma' }).add(sim, nao))) === 'fechou' && nao.cliques === 1 && sim.cliques === 0,
+     'confirmação "Encerrar a de X?": aperta Voltar dela, nunca Encerrar, e fica na tela');
+  // Resumo do dia (resumo-dia.js) aberto na Entrada/Retirada: fecha, não sai da tela.
+  const rdF = el('button', { id: 'rd-fechar', txt: '← FECHAR' }), rdI = el('button', { id: 'rd-imprimir', txt: '🖨 IMPRIMIR' });
+  ok(voltar(docCom(el('div', { id: 'rd-overlay', cls: 'ativo' }).add(el('button', { txt: '‹' }), rdF, rdI))) === 'fechou'
+     && rdF.cliques === 1 && rdI.cliques === 0, 'Resumo do dia aberto: ← FECHAR, não imprime e não sai da tela');
 
   const canc = el('button', { id: 'md-cancelar', txt: 'Cancelar' }), okb = el('button', { id: 'eko-dlg-ok', txt: 'Confirmar' });
   ok(voltar(docCom(el('div', { cls: 'eko-dlg modal-fundo' }).add(okb, canc))) === 'fechou' && canc.cliques === 1 && okb.cliques === 0,
@@ -269,6 +294,36 @@ tenta('Retirada onLeu', () => {
 });
 
 // ════════════════════════════════════════════════════════════════════
+console.log('\n[6b] Entrada: trocar para Retorno troca também a senha (revisor, 25/11)');
+tenta('troca de aba', () => {
+  ok(/data-modo="recebimento" onclick="trocarAba\('recebimento'\)"/.test(RECEB) && /data-modo="retorno" onclick="trocarAba\('retorno'\)"/.test(RECEB),
+     'as abas RECEBIMENTO | RETORNO chamam trocarAba');
+  const i = RECEB.indexOf('/* <troca-aba> */'), f = RECEB.indexOf('/* </troca-aba> */');
+  ok(i > 0 && f > i, 'trecho <troca-aba> existe');
+  function rodar(aba, url) {
+    const trocas = [], modos = [];
+    const u = new URL('https://minipc:3443' + url);
+    const ctx = { ABA_PIN: aba, URLSearchParams, trocarModo: m => modos.push(m),
+                  location: { search: u.search, pathname: u.pathname, replace: x => trocas.push(x) } };
+    vm.runInNewContext(RECEB.slice(i, f) + ';this.trocarAba = trocarAba;', ctx, { timeout: 2000 });
+    return { ctx, trocas, modos };
+  }
+  let r = rodar('recebimento', '/mp-recebimento-retorno.html?aba=recebimento');
+  r.ctx.trocarAba('retorno');
+  ok(r.trocas.join() === '/mp-recebimento-retorno.html?aba=retorno' && !r.modos.length,
+     'no Recebimento, tocar RETORNO reabre com ?aba=retorno (senha e responsável do retorno)', r.trocas);
+  r = rodar('retorno', '/mp-recebimento-retorno.html?aba=retorno');
+  r.ctx.trocarAba('recebimento');
+  ok(r.trocas.join() === '/mp-recebimento-retorno.html?aba=recebimento', 'no Retorno, tocar RECEBIMENTO reabre com ?aba=recebimento', r.trocas);
+  r = rodar('retorno', '/mp-recebimento-retorno.html?aba=retorno');
+  r.ctx.trocarAba('retorno');
+  ok(!r.trocas.length && r.modos.join() === 'retorno', 'tocar a aba em que já está: não recarrega');
+  r = rodar('recebimento', '/mp-recebimento-retorno.html?embed=1');
+  r.ctx.trocarAba('retorno');
+  ok(r.trocas.join() === '/mp-recebimento-retorno.html?embed=1&aba=retorno', 'mantém os outros parâmetros da URL', r.trocas);
+});
+
+// ════════════════════════════════════════════════════════════════════
 console.log('\n[7] Entrada e Retirada cabem no coletor sem mudar o Mini PC');
 tenta('celular.css', () => {
   const RET = ler('public/mp-retirada.html');
@@ -287,7 +342,9 @@ tenta('celular.css', () => {
   ok(ini >= 0 && usos.every(i => i > ini && i < fim), 'todas dentro do @media (max-width: 900px): o monitor do Mini PC não muda');
 });
 
-console.log('\n═══════════════════════════════════════════════════');
-console.log(` ${passou} passaram, ${falhou} falharam`);
-console.log('═══════════════════════════════════════════════════');
-process.exit(falhou ? 1 : 0);
+statusPromessa.catch(e => ok(false, 'status do hub (erro: ' + e.message + ')')).then(() => {
+  console.log('\n═══════════════════════════════════════════════════');
+  console.log(` ${passou} passaram, ${falhou} falharam`);
+  console.log('═══════════════════════════════════════════════════');
+  process.exit(falhou ? 1 : 0);
+});

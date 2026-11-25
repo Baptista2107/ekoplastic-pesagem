@@ -12,9 +12,13 @@
  * cada tela foram listadas uma a uma (classe e botão de fechar).
  */
 (function (d, w) {
+  // Confirmação do acesso-colaborador.js ("Encerrar a de X?"): Voltar é o
+  // "Voltar" dela — fica na tela, nada é encerrado.
+  var ec = d.getElementById('eko-confirma');
+  if (ec) { var n = ec.querySelector('#eko-confirma-nao'); if (n) { n.click(); return 'fechou'; } }
   // Teclado da senha ou caixa "sessão de outro" do acesso-colaborador.js:
   // quem apertou Voltar não quer entrar nesta tela.
-  if (d.getElementById('eko-acesso') || d.getElementById('eko-outro') || d.getElementById('eko-confirma')) return 'hub';
+  if (d.getElementById('eko-acesso') || d.getElementById('eko-outro') || ec) return 'hub';
 
   // Botão de fechar de uma janela: o que diz Cancelar / Fechar / Voltar / ✕ / ←.
   // Nunca o de confirmar.
@@ -37,7 +41,8 @@
   // Janelas das telas da MP e do PA (a classe que as mostra muda por tela):
   //  .modal-overlay.ativo  Retirada de MP     .kp-overlay.ativo  teclado da Retirada
   //  .modal-overlay.on     Produto Acabado    .ov-correcao.on    correção da Entrada
-  var abertas = d.querySelectorAll('.modal-overlay.on, .modal-overlay.ativo, .kp-overlay.ativo, .ov-correcao.on');
+  //  #rd-overlay.ativo     Resumo do dia (resumo-dia.js, Entrada e Retirada)
+  var abertas = d.querySelectorAll('.modal-overlay.on, .modal-overlay.ativo, .kp-overlay.ativo, .ov-correcao.on, #rd-overlay.ativo');
   if (abertas.length) {
     var j = abertas[abertas.length - 1];
     if (!fechar(j)) { j.classList.remove('on'); j.classList.remove('ativo'); }
