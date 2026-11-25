@@ -203,6 +203,137 @@
 </style>
 <!-- Ajuste automatico para celular: so vale abaixo de 900px de largura -->
 <link rel="stylesheet" href="/celular.css">
+<style id="pa-coletor">
+/* ══════════════════════════════════════════════════════════════════
+   COLETOR TC60 (app "Ekoplastic MP", 25/11/2026)
+   Gustavo: "não tá legal de ver no android do TC60". O aparelho tem
+   ~360 x 690 px; o Bruno usa com uma mão, às vezes de luva.
+   Vale SÓ abaixo de 600 px: o monitor do Mini PC (1366 px) e o celular
+   largo continuam como estavam (testes/navegador/pa_tc60.py confere).
+   Só aparência: nenhuma regra, rota ou passo do lançamento muda.
+   Medidas: toque >= 56 px, texto >= 16 px, nada passa da borda.
+   ══════════════════════════════════════════════════════════════════ */
+@media (max-width: 599px) {
+  /* Rolagem pelo documento (o celular.css punha a rolagem no body, e aí
+     nada "gruda" na tela: nem o cabeçalho nem a barra do Adicionar). */
+  html { overflow-y: auto !important; }
+  body[data-tela="Produto Acabado"] { overflow: visible !important; overflow-x: clip !important; }
+
+  /* ── Cabeçalho numa linha só ──
+     O relógio sai (o coletor mostra a hora na barra do Android) e o
+     ONLINE só aparece quando é aviso (OFFLINE). */
+  body[data-tela="Produto Acabado"] header {
+    flex-wrap: wrap !important; min-height: 60px; padding: 2px 8px 2px 12px !important; column-gap: 8px;
+  }
+  body[data-tela="Produto Acabado"] header .logo {
+    flex: 1 1 0; min-width: 0; font-size: 16px !important; letter-spacing: .5px !important; line-height: 1.15;
+  }
+  body[data-tela="Produto Acabado"] header .logo-icon,
+  body[data-tela="Produto Acabado"] header .clock,
+  body[data-tela="Produto Acabado"] header .srv-status.on { display: none !important; }
+  body[data-tela="Produto Acabado"] header .srv-status { font-size: 16px !important; padding: 6px 8px !important; }
+  body[data-tela="Produto Acabado"] header .header-right { flex-wrap: nowrap !important; gap: 6px !important; margin-left: auto; }
+  body[data-tela="Produto Acabado"] header .btn-icon {
+    width: 56px !important; height: 56px !important; min-width: 56px !important; font-size: 22px; border-radius: 12px;
+  }
+
+  /* ── Turno e data: os três turnos cabem sem rolar ── */
+  body[data-tela="Produto Acabado"] #overlay-turno.on { gap: 10px !important; padding: 12px 12px 12px !important; }
+  body[data-tela="Produto Acabado"] #overlay-turno.on > :first-child { margin-top: 60px; }
+  body[data-tela="Produto Acabado"] #overlay-turno .sub { font-size: 16px !important; margin-top: -6px; text-align: center; }
+  body[data-tela="Produto Acabado"] .turno-grid { gap: 10px !important; }
+  body[data-tela="Produto Acabado"] .turno-card {
+    display: grid; grid-template-columns: 84px 1fr; grid-template-areas: "tn dl" "tn dt" "tn in";
+    column-gap: 10px; row-gap: 4px; align-items: center; padding: 8px 12px; border-radius: 16px;
+  }
+  body[data-tela="Produto Acabado"] .turno-card .tn { grid-area: tn; font-size: 28px; text-align: center; letter-spacing: 0; }
+  body[data-tela="Produto Acabado"] #turno-EXTRA .tn { font-size: 21px; }
+  /* "SACOLEIRAS EKOPLASTIC" é igual nos três cartões. */
+  body[data-tela="Produto Acabado"] .turno-card .td { display: none; }
+  body[data-tela="Produto Acabado"] .turno-card .dlabel { grid-area: dl; font-size: 16px; margin: 0; }
+  body[data-tela="Produto Acabado"] #overlay-turno input.turno-data { grid-area: dt; min-height: 56px !important; padding: 6px 8px; font-size: 20px; }
+  body[data-tela="Produto Acabado"] .turno-iniciar { grid-area: in; min-height: 56px !important; padding: 8px; font-size: 18px; }
+
+  /* ── Lançamento ── */
+  body[data-tela="Produto Acabado"] .col-sel { padding: 8px 12px 0 !important; gap: 8px; }
+  body[data-tela="Produto Acabado"] .step-lbl { font-size: 16px; letter-spacing: .5px; margin-bottom: 4px; }
+  body[data-tela="Produto Acabado"] .step-lbl .n { width: 24px; height: 24px; font-size: 16px; }
+  body[data-tela="Produto Acabado"] .maq-btn { min-height: 56px !important; font-size: 20px; padding: 6px; }
+  body[data-tela="Produto Acabado"] .fmt-btn { min-height: 56px !important; font-size: 16px; padding: 4px 2px; font-family: inherit; }
+  body[data-tela="Produto Acabado"] .maq-btn,
+  body[data-tela="Produto Acabado"] .fmt-btn { display: flex; align-items: center; justify-content: center; gap: 4px; }
+  body[data-tela="Produto Acabado"] .fmt-btn.indisponivel::after { font-size: 16px; }
+  /* Cor: as quatro numa linha (o celular.css punha duas por linha). */
+  body[data-tela="Produto Acabado"] .main .cor-grid { grid-template-columns: repeat(4, 1fr) !important; gap: 6px; }
+  body[data-tela="Produto Acabado"] .cor-btn { min-height: 56px !important; padding: 5px 2px; gap: 3px; justify-content: center; }
+  body[data-tela="Produto Acabado"] .cor-dot { width: 18px; height: 18px; }
+  body[data-tela="Produto Acabado"] .cor-btn .cl { font-size: 16px; letter-spacing: 0; white-space: nowrap; }
+  body[data-tela="Produto Acabado"] .fardos-card { padding: 8px; }
+  body[data-tela="Produto Acabado"] .stepper { gap: 16px; }
+  body[data-tela="Produto Acabado"] .step-btn { width: 56px; height: 56px; font-size: 28px; border-radius: 12px; }
+  body[data-tela="Produto Acabado"] .fardos-num { font-size: 32px; line-height: 1.1; }
+  body[data-tela="Produto Acabado"] .fardos-num small { font-size: 16px !important; margin-top: 0; }
+  body[data-tela="Produto Acabado"] .quick-grid { gap: 6px; margin-top: 8px; }
+  body[data-tela="Produto Acabado"] .quick-btn { min-height: 56px !important; font-size: 18px; font-family: inherit; }
+  /* Escolha conferida + Adicionar presos no rodapé enquanto se escolhe:
+     o botão fica sempre debaixo do dedão. */
+  body[data-tela="Produto Acabado"] .pa-acao {
+    position: sticky; bottom: 0; z-index: 5; margin: 8px -12px 0; padding: 8px 12px 10px;
+    background: var(--bg); border-top: 2px solid var(--border);
+  }
+  body[data-tela="Produto Acabado"] .preview {
+    margin-top: 0; flex-wrap: wrap; gap: 2px 10px; padding: 6px 10px; min-height: 44px; font-size: 16px;
+  }
+  body[data-tela="Produto Acabado"] .btn-add { min-height: 56px !important; margin-top: 8px; font-size: 18px; }
+
+  /* ── Lista do turno ── */
+  body[data-tela="Produto Acabado"] .list-head { padding: 12px; }
+  body[data-tela="Produto Acabado"] .list-turno,
+  body[data-tela="Produto Acabado"] .list-resumo { font-size: 16px; }
+  body[data-tela="Produto Acabado"] .list-body { padding: 8px; }
+  body[data-tela="Produto Acabado"] .empty { font-size: 16px; padding: 28px 10px; }
+  body[data-tela="Produto Acabado"] .item { grid-template-columns: 1fr auto 56px; gap: 8px; padding: 8px 8px 8px 10px; }
+  body[data-tela="Produto Acabado"] .item .nm { font-size: 16px; }
+  body[data-tela="Produto Acabado"] .item .dt { font-size: 16px; overflow-wrap: anywhere; }
+  body[data-tela="Produto Acabado"] .item .kg { font-size: 16px; white-space: nowrap; }
+  body[data-tela="Produto Acabado"] .maq-tag { font-size: 16px; padding: 0 5px; }
+  body[data-tela="Produto Acabado"] .item-x { width: 56px; height: 56px; font-size: 22px; }
+  body[data-tela="Produto Acabado"] .list-foot { padding: 12px 12px 16px; }
+  body[data-tela="Produto Acabado"] .btn-fim { min-height: 56px !important; padding: 14px 10px; font-size: 18px; }
+  body[data-tela="Produto Acabado"] .btn-gaiola { min-height: 56px !important; font-size: 16px; }
+  /* Crachá: no rodapé da página, sem cobrir botão nenhum. */
+  body[data-tela="Produto Acabado"] .eko-resp-tag {
+    position: static !important; display: block; width: max-content; max-width: calc(100% - 24px) !important;
+    margin: 0 auto 16px; font-size: 16px !important;
+  }
+
+  /* ── Avisos: no alto, sem tapar o Adicionar e sem pegar o toque ── */
+  body[data-tela="Produto Acabado"] #toast-area {
+    top: 64px; bottom: auto; left: 8px; right: 8px; transform: none; pointer-events: none;
+  }
+  body[data-tela="Produto Acabado"] .toast { font-size: 16px; max-width: 100%; }
+
+  /* ── Janelas: o conteúdo rola, os botões ficam sempre à vista ── */
+  body[data-tela="Produto Acabado"] .modal-overlay { padding: 8px; }
+  body[data-tela="Produto Acabado"] .modal { padding: 14px 14px 0; max-height: calc(100dvh - 16px); border-radius: 14px; }
+  body[data-tela="Produto Acabado"] .modal-corpo { font-size: 16px; margin-bottom: 4px; }
+  body[data-tela="Produto Acabado"] .modal .step-lbl { flex-wrap: wrap; row-gap: 0; }
+  body[data-tela="Produto Acabado"] .modal [style*="font-size:11px"],
+  body[data-tela="Produto Acabado"] .modal [style*="font-size:12px"],
+  body[data-tela="Produto Acabado"] .modal [style*="font-size:13px"],
+  body[data-tela="Produto Acabado"] .modal [style*="font-size:14px"],
+  body[data-tela="Produto Acabado"] .modal small { font-size: 16px !important; }
+  body[data-tela="Produto Acabado"] .modal-acoes {
+    position: sticky; bottom: 0; z-index: 2; background: var(--panel); padding: 10px 0 14px; margin: 0;
+  }
+  body[data-tela="Produto Acabado"] .modal-acoes .btn-modal { flex: 1 1 0; min-height: 56px !important; padding: 8px 10px; font-size: 16px; }
+  body[data-tela="Produto Acabado"] .rev-item,
+  body[data-tela="Produto Acabado"] .g-item { font-size: 16px; align-items: center; }
+  body[data-tela="Produto Acabado"] .g-item .btn-modal { flex: 0 0 auto; min-height: 56px !important; padding: 6px 12px !important; font-size: 16px !important; }
+  body[data-tela="Produto Acabado"] #g-preview { display: block; line-height: 1.5; font-size: 16px; }
+  body[data-tela="Produto Acabado"] #g-hoje { padding-bottom: 14px; }
+}
+</style>
 </head>
 <body data-tela="Produto Acabado">
 
@@ -252,8 +383,12 @@
         </div>
         <div class="quick-grid" id="quick-grid"></div>
       </div>
-      <div class="preview" id="preview"><span>Selecione máquina, formato, cor e fardos</span></div>
-      <button class="btn-add" id="btn-add" disabled onclick="adicionarItem()">➕ Adicionar à lista</button>
+      <!-- .pa-acao: no coletor (< 600 px) fica presa no rodapé da tela. No
+           monitor é uma div sem estilo e a tela fica igual. -->
+      <div class="pa-acao">
+        <div class="preview" id="preview"><span>Selecione máquina, formato, cor e fardos</span></div>
+        <button class="btn-add" id="btn-add" disabled onclick="adicionarItem()">➕ Adicionar à lista</button>
+      </div>
     </div>
   </div>
 
