@@ -144,6 +144,106 @@ header .sp{flex:1;min-width:0}
 </style>
 <!-- Ajuste automatico para celular: so vale abaixo de 900px de largura -->
 <link rel="stylesheet" href="/celular.css">
+<!-- 25/11/2026 (Gustavo: "não tá legal de ver no android do TC60"). O coletor
+     do Bruno mostra ~360x690 px, uma mão, às vezes de luva. Só abaixo de
+     600 px: toque de 56 px, texto de 16 px, nada cortado na borda e, no
+     ENDEREÇAR, os quadros e o CONFIRMAR à vista sem rolar. Vem depois do
+     celular.css para ganhar dele (mesmo seletor com body[data-tela]).
+     O monitor do Mini PC (1366 px) não lê nada daqui — o teste
+     testes/navegador/mapeamento_tc60.py compara com a tela de antes. -->
+<style>
+@media (max-width: 600px) {
+  body[data-tela="Endereçamento"] { font-size: 16px; }
+
+  /* Cabeçalho numa linha: o ícone decorativo sai para o nome caber em 16 px. */
+  /* 56 do botão + 3+3 + 1 da borda = 63 px (o teste do coletor cobra ≤ 64). */
+  body[data-tela="Endereçamento"] header { padding: 3px 10px !important; column-gap: 6px; }
+  body[data-tela="Endereçamento"] header .logo { font-size: 16px !important; letter-spacing: 0 !important; }
+  body[data-tela="Endereçamento"] header .logo .ic { display: none; }
+  body[data-tela="Endereçamento"] header .btn-ic {
+    flex: 0 0 56px; width: 56px; height: 56px; min-width: 56px !important; min-height: 56px !important;
+    font-size: 22px; border-radius: 10px;
+  }
+
+  /* Abas e COLOCAR/RETIRAR: 56 px. */
+  body[data-tela="Endereçamento"] .abas { padding: 8px 10px 0; }
+  body[data-tela="Endereçamento"] .aba { min-height: 56px !important; font-size: 17px; padding: 8px; }
+  body[data-tela="Endereçamento"] .pg { padding: 10px !important; }
+  body[data-tela="Endereçamento"] .modos { margin-bottom: 10px; }
+  body[data-tela="Endereçamento"] .modos .chip { min-height: 56px !important; font-size: 17px; padding: 8px; }
+
+  /* ENDEREÇAR: o que bipar (os dois quadros) e o CONFIRMAR logo abaixo das
+     abas; a faixa "Pronto para bipar" (DIGITAR e câmera de reserva) desce
+     para baixo do CONFIRMAR. Só a ordem na tela: nada muda no que faz. */
+  body[data-tela="Endereçamento"] #pg-acao.on { display: flex; flex-direction: column; }
+  body[data-tela="Endereçamento"] #pg-acao > .modos  { order: 1; }
+  body[data-tela="Endereçamento"] #pg-acao > #msg    { order: 2; }
+  body[data-tela="Endereçamento"] #pg-acao > div[style] { order: 3; margin-top: 0 !important; }
+  body[data-tela="Endereçamento"] #pg-acao > .acoes  { order: 4; margin-top: 2px; }
+  body[data-tela="Endereçamento"] #pg-acao > #reader { order: 5; margin-top: 12px; margin-bottom: 0; }
+  body[data-tela="Endereçamento"] #pg-acao > .leitor { order: 6; margin-top: 12px; }
+  body[data-tela="Endereçamento"] #pg-acao > .dica   { order: 7; }
+  body[data-tela="Endereçamento"] #pg-acao > .hist   { order: 8; }
+
+  body[data-tela="Endereçamento"] .slot { padding: 10px 12px; margin-bottom: 8px; min-height: 56px; }
+  body[data-tela="Endereçamento"] .slot .rot { font-size: 16px; letter-spacing: .8px; }
+  body[data-tela="Endereçamento"] .slot .val { font-size: 24px; margin-top: 2px; overflow-wrap: anywhere; }
+  body[data-tela="Endereçamento"] .slot .val.vazio2 { font-size: 17px; }
+  body[data-tela="Endereçamento"] .slot .extra { font-size: 16px; margin-top: 2px; line-height: 1.35; }
+  body[data-tela="Endereçamento"] .aviso { font-size: 16px; padding: 10px 12px; line-height: 1.4; margin-bottom: 8px; }
+  body[data-tela="Endereçamento"] .aviso code { font-size: 1em; font-family: 'IBM Plex Mono', monospace; overflow-wrap: anywhere; }
+  body[data-tela="Endereçamento"] .btn { min-height: 56px !important; font-size: 17px; padding: 10px 14px; }
+  body[data-tela="Endereçamento"] .acoes { gap: 8px; }
+  /* Faixa do leitor em duas linhas: o recado em cima, DIGITAR e câmera
+     embaixo (lado a lado com o recado, o DIGITAR vazava do botão). */
+  body[data-tela="Endereçamento"] .leitor { flex-wrap: wrap; font-size: 16px; padding: 10px; gap: 8px 10px; }
+  body[data-tela="Endereçamento"] .leitor > span:nth-child(2) { flex: 1 1 calc(100% - 20px); }
+  body[data-tela="Endereçamento"] .leitor .sp { display: none; }
+  body[data-tela="Endereçamento"] .leitor .btn { flex: 1 1 auto; min-width: 56px; padding: 6px 10px; font-size: 16px; white-space: nowrap; }
+  body[data-tela="Endereçamento"] .leitor #btn-cam { flex: 0 0 72px; }
+  body[data-tela="Endereçamento"] .dica { font-size: 16px; line-height: 1.45; }
+  body[data-tela="Endereçamento"] .vazio { font-size: 16px; }
+  body[data-tela="Endereçamento"] .rua-tit { font-size: 16px; letter-spacing: .8px; }
+  body[data-tela="Endereçamento"] .hist-item { font-size: 16px; min-height: 56px; padding: 10px 4px; }
+  body[data-tela="Endereçamento"] .hist-top { flex-wrap: wrap; row-gap: 2px; }
+  body[data-tela="Endereçamento"] .hist-top span:last-child { font-size: 16px; }
+  body[data-tela="Endereçamento"] .hist-desc,
+  body[data-tela="Endereçamento"] .hist-det { font-size: 16px; }
+  body[data-tela="Endereçamento"] .hist-det b { min-width: 96px; }
+
+  /* MAPA: resumo em duas colunas (o kg ocupa a linha toda); busca na linha
+     dela e as ruas lado a lado embaixo. */
+  body[data-tela="Endereçamento"] .resumo { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-bottom: 10px; }
+  body[data-tela="Endereçamento"] .rz { padding: 8px 10px; }
+  body[data-tela="Endereçamento"] .rz:last-child { grid-column: 1 / -1; }
+  body[data-tela="Endereçamento"] .rz b { font-size: 22px; }
+  body[data-tela="Endereçamento"] .rz span { font-size: 16px; letter-spacing: .5px; }
+  body[data-tela="Endereçamento"] .barra { gap: 8px; }
+  body[data-tela="Endereçamento"] #busca { flex: 1 1 100%; min-height: 56px !important; font-size: 16px; }
+  body[data-tela="Endereçamento"] .barra .chip { flex: 1 1 0; min-height: 56px !important; font-size: 16px; padding: 8px 6px; }
+
+  /* Os vãos quebram linha em vez de rolar de lado dentro da caixa (antes,
+     do vão 08 em diante ficava escondido à direita): 5 por linha, 56 px. */
+  body[data-tela="Endereçamento"] .niveis { overflow-x: visible; padding: 8px; }
+  body[data-tela="Endereçamento"] .nivel { flex-direction: column; align-items: stretch; gap: 6px; margin-bottom: 14px; }
+  body[data-tela="Endereçamento"] .nivel-lb { flex: none; font-size: 16px; letter-spacing: .5px; }
+  body[data-tela="Endereçamento"] .nivel-lb small { display: inline; margin-left: 6px; font-size: 16px !important; }
+  body[data-tela="Endereçamento"] .vaos { display: grid; grid-template-columns: repeat(auto-fill, minmax(56px, 1fr)); gap: 6px; }
+  body[data-tela="Endereçamento"] .vao { width: auto; height: 56px; font-size: 16px; border-radius: 8px; }
+  /* No toque o :hover fica grudado no vão tocado e o deixava 2 px fora da linha. */
+  body[data-tela="Endereçamento"] .vao:hover { transform: none; }
+  body[data-tela="Endereçamento"] .legenda { font-size: 16px; gap: 8px 16px; }
+  body[data-tela="Endereçamento"] .legenda i { width: 14px; height: 14px; }
+
+  /* Detalhe do vão tocado. Ao rolar até ele, para abaixo do cabeçalho fixo
+     (antes o título do endereço ficava escondido atrás do cabeçalho). */
+  body[data-tela="Endereçamento"] #detalhe { scroll-margin-top: 72px; }
+  body[data-tela="Endereçamento"] .det { padding: 12px; }
+  body[data-tela="Endereçamento"] .det h3 { font-size: 22px; }
+  body[data-tela="Endereçamento"] .det .sub { font-size: 16px !important; line-height: 1.35; }
+  body[data-tela="Endereçamento"] .linha { font-size: 16px; padding: 8px 0; }
+}
+</style>
 </head>
 <body data-tela="Endereçamento">
 
