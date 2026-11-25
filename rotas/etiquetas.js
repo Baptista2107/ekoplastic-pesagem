@@ -4,7 +4,7 @@
 
 const {
   CAPAS_CATALOGO, OUTRAS_CATALOGO, PA_CORES, PA_FORMATOS, PA_FORMATOS_POR_MAQUINA, PA_KG_FARDO,
-  PA_MAQUINAS, PA_TURNOS,
+  PA_MAQUINAS, PA_TURNOS, fornecedorOutras, OUTRAS_BOBINA_MIN_KG, OUTRAS_BOBINA_MAX_KG,
 } = require('../lib/config');
 const {
   dataLocalISO, gravarLogProducaoBipagem, hashSenha, logDesvio, logE, logI, logW,
@@ -90,6 +90,14 @@ async function rotasEtiquetas(req, res, parsed, pathname) {
         etiqueta_id: et.id, status: et.status, ja_bipada_em: et.hora_bipagem || null,
         trava: 'bipagem_duplicada',
       });
+    }
+
+    // OUTRAS PESAGENS (24/11/2026): etiqueta excluída (✕) não volta pelo bipe.
+    // Voltava a 'bipada' e, numa pesagem de bobina AD, trazia de volta a
+    // apara/borra já excluída — misturando fornecedores no mesmo pedido.
+    if (et.tipo === 'outras' && et.status === 'cancelada') {
+      return jsonErr(res, 409, `A etiqueta ${et.id} foi EXCLUÍDA e não volta atrás. Se o material é bom, pese e imprima de novo.`,
+        { etiqueta_id: et.id, status: et.status, trava: 'outras_cancelada' });
     }
 
     // MP: etiqueta de sessão já fechada não volta a valer pelo bipe (a
@@ -1018,24 +1026,61 @@ async function rotasEtiquetas(req, res, parsed, pathname) {
     const item = OUTRAS_CATALOGO[body.item_codigo];
     if (!item) return jsonErr(res, 400, `Item "${body.item_codigo}" não cadastrado em Outras Pesagens.`);
 
+    // 1 sessão = 1 pedido de compra = 1 fornecedor (24/11/2026). Bobina de
+    // alta densidade é da IKATUPLAST; aparas/resíduos são da EKOPLASTIC.
+    // Misturar lançaria um no fornecedor do outro: recusa e diz o que fazer.
+    const fornNovo = fornecedorOutras(body.item_codigo);
+    const outroForn = db.prepare(`SELECT sku FROM etiquetas WHERE sessao_id = ? AND tipo = 'outras' AND status != 'cancelada'`)
+      .all(sessao.id).map(e => e.sku).find(sku => fornecedorOutras(sku) !== fornNovo);
+    if (outroForn) {
+      const ehBobina = !!item.contatoBling;
+      return jsonErr(res, 409, ehBobina
+        ? 'Esta pesagem já tem aparas/resíduos. Finalize e envie antes de pesar bobina de alta densidade (vão em pedidos separados no Bling).'
+        : 'Esta pesagem é de bobina de alta densidade. Finalize e envie antes de pesar aparas/resíduos (vão em pedidos separados no Bling).',
+        { motivo: 'fornecedor_diferente' });
+    }
+
+    // Bobina AD (24/11/2026): o tubete é descontado AQUI, pelo catálogo — a
+    // tela só mostra a mesma conta. Peso que vale = balança − tubete.
+    // Contrato: com tubete, o BRUTO é peso_bruto (ou, sem ele, `peso`); o
+    // `peso` mandado não é usado como líquido — senão desconto em dobro.
+    // Mínimo de 20 kg líquidos, como a bobina recuperada: menos que isso é
+    // tubete vazio ou leitura errada, não bobina.
+    let pesoItem = Number(body.peso), brutoItem = body.peso_bruto != null ? Number(body.peso_bruto) : null;
+    let taraItem = body.tara != null ? Number(body.tara) : null;
+    if (item.tubete) {
+      brutoItem = brutoItem != null ? brutoItem : pesoItem;
+      if (!Number.isFinite(brutoItem)) return jsonErr(res, 400, 'Peso inválido.');
+      taraItem  = item.tubete;
+      pesoItem  = Math.round((brutoItem - item.tubete) * 10) / 10;
+      if (!(pesoItem >= OUTRAS_BOBINA_MIN_KG))
+        return jsonErr(res, 400, `Balança ${brutoItem} kg − tubete ${item.tubete} kg = ${pesoItem} kg: abaixo de ${OUTRAS_BOBINA_MIN_KG} kg não é bobina. Confira a balança.`);
+      if (pesoItem > OUTRAS_BOBINA_MAX_KG)
+        return jsonErr(res, 400, `${pesoItem} kg passa de ${OUTRAS_BOBINA_MAX_KG.toLocaleString('pt-BR')} kg: confira o peso digitado.`);
+    }
+
     return imprimirEPersistirEtiqueta({
       tipo:           'outras',
       clientToken:    body.clientToken || null,
-      material_key:   item.categoria,                // APARA | RESIDUO
+      material_key:   item.categoria,                // APARA | RESIDUO | BOBINA_AD
       material_nome:  item.nome,                     // ex "Apara Amarela", "Borra"
       material_label: body.item_codigo,
       cor:            item.cor,                       // cor da apara, ou null
-      fornecedor:     'EKOPLASTIC',                   // NOT NULL — sem fornecedor real
+      fornecedor:     item.contatoNome || 'EKOPLASTIC', // NOT NULL; bobina AD = IKATUPLAST (só no banco, não sai na etiqueta)
       lote:           (function(){ const s = dataLocalISO().split('-'); return s[2] + s[1] + s[0].slice(-2); })(),  // DDMMAA (data local)
-      peso:           Number(body.peso),
-      peso_bruto:     body.peso_bruto != null ? Number(body.peso_bruto) : null,
-      tara:           body.tara       != null ? Number(body.tara)       : null,
+      peso:           pesoItem,
+      peso_bruto:     brutoItem,
+      tara:           taraItem,
       codigo:         body.item_codigo,               // sem cód. gravimétrico → usa o código do item
       sku:            body.item_codigo,               // p/ borra/varredura é o SKU real (RES.BORRA / RES.VARREDURA)
       sessao_id:      sessao.id,
       printerName:    body.printerName || null,
     }, resp => {
-      if (resp.ok) jsonOk(res, { ...resp, item });
+      // O que FICOU gravado (na repetição pelo clientToken é a etiqueta
+      // antiga): a tela mostra isto, não o item/peso que tem na mão agora.
+      const gravada = resp.ok && resp.id ? dbStmts.getEtiqueta.get(resp.id) : null;
+      if (resp.ok) jsonOk(res, { ...resp, item,
+        ...(gravada ? { peso: gravada.peso, peso_bruto: gravada.peso_bruto, tara: gravada.tara, sku: gravada.sku } : {}) });
       else jsonErr(res, 500, resp.erro, { printer: resp.printer });
     });
   }
