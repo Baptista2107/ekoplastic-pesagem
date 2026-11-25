@@ -129,9 +129,15 @@ def main():
                 pg.locator("#hub-telas a.tela").filter(has=pg.locator("b", has_text=nome)).click(); pg.wait_for_timeout(1800)
                 ok(pg.url.split("?")[0].endswith(caminho), f"{nome} abre {caminho}", pg.url)
                 if nome in ("Entrada", "Retorno"):
+                    # A senha tem de ser pedida e ser a da aba: o Retorno logo
+                    # depois da Entrada não pode herdar a liberação dela
+                    # (senha() sozinha dá True quando nada é pedido — revisor).
                     aba = "recebimento" if nome == "Entrada" else "retorno"
-                    ok(f"aba={aba}" in pg.url and senha(pg) and pg.evaluate("ABA_PIN") == aba and pg.evaluate("estado.modo") == aba,
-                       f"{nome}: abre direto na aba {aba}, com a senha dela", pg.url)
+                    pg.wait_for_timeout(800)
+                    pediu = pg.locator("#eko-acesso").is_visible() and \
+                        ("Retorno" if aba == "retorno" else "Recebimento") in pg.locator("#eko-acesso .tela").inner_text()
+                    ok(f"aba={aba}" in pg.url and pediu and senha(pg) and pg.evaluate("ABA_PIN") == aba and pg.evaluate("estado.modo") == aba,
+                       f"{nome}: abre direto na aba {aba} e pede a senha dela", pg.url)
             ctx.close()
 
             # ── 2/3. As telas no coletor ──────────────────────────────

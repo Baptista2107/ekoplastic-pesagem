@@ -2,12 +2,13 @@
 //  HUB DO COLETOR "Ekoplastic MP" (25/11/2026, Gustavo)
 //  ------------------------------------------------------------------
 //  "pro coletor do Bruno vou precisar de um hub de aplicativos onde ele
-//  consegue fazer entrada e retirada, mapeamento e inventário" (+ PA).
+//  consegue fazer entrada e retirada, mapeamento e inventário" (+ PA;
+//  + Retorno e Resíduos no mesmo dia).
 //
 //  Sem navegador e sem servidor (node:vm + documento de mentira):
-//   [1] public/hub-mp.js: os 5 botões, cada um numa tela que existe;
+//   [1] public/hub-mp.js: os 7 botões, cada um numa tela que existe;
 //       "em andamento" conta as sessões abertas certas.
-//   [2] android/build.sh (VARIANTE=mp) abre exatamente o hub + as 5 telas
+//   [2] android/build.sh (VARIANTE=mp) abre exatamente o hub + as telas dele
 //       — a lista do app e a do hub não podem divergir.
 //   [3] android/app/src/main/assets/voltar.js: o Voltar do Android fecha a
 //       janela aberta de cada tela; sem janela, pede o hub.
