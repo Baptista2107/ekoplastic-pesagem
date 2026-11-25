@@ -16,7 +16,7 @@ const { kgIndicadoDe, lerCatalogoMP, MP_MATERIAIS_PADRAO } = require('../lib/mat
 const { gerarEPL, imprimir } = require('../lib/impressao');
 const { exigeCampos, jsonErr, jsonOk, lerBodyJson, NAO_TRATADA } = require('../lib/http');
 const {
-  aplicarSubstituicao, chaveProduto, idempotenciaGet, imprimirEPersistirEtiqueta,
+  aplicarSubstituicao, chaveProduto, dadosReimpressao, idempotenciaGet, imprimirEPersistirEtiqueta,
   materiaisPorSacos, mensagemProdutoTrocado, paSku, proximoSeqSessao, substituicaoAtiva,
 } = require('../lib/negocio');
 const { enviarBlingIndividualExtrusao } = require('../lib/turnos');
@@ -347,30 +347,11 @@ async function rotasEtiquetas(req, res, parsed, pathname) {
     if (!etReg) return jsonErr(res, 404, `Etiqueta ${idRe} não encontrada`);
     if (etReg.status === 'cancelada') return jsonErr(res, 400, `Etiqueta ${idRe} está cancelada — não faz sentido reimprimir`);
     // Produto trocado: a cópia sai com o nome do produto que vale hoje.
-    const et = aplicarSubstituicao(etReg);
-    // Reconstrói os dados a partir do que foi salvo, para gerar o MESMO EPL.
-    const dadosRe = {
-      tipo:           et.tipo,
-      sub_tipo:       et.sub_tipo,                   // capa/recuperada saem com o mesmo layout
-      material_nome:  et.material_nome,
-      materialNomeEt: et.material_nome,
-      cor:            et.cor,
-      peso:           et.peso,
-      codigo:         et.codigo,
-      sku:            et.sku,
-      lote:           et.lote,
-      fornecedor:     et.fornecedor,
-      seq:            et.seq,
-      seq_sessao:     et.seq_sessao,
-      // campos de bobina (extrusão), caso a etiqueta seja de extrusão
-      tipo_bobina:    et.tipo_bobina,
-      largura:        et.largura,
-      operador:       et.operador,
-      maquina:        et.maquina,
-      turno_codigo:   et.turno_codigo,
-    };
+    // Reconstrói os dados a partir do que foi salvo, para gerar o MESMO EPL
+    // (função comum com a troca em lote, tools/reimprimir-mp-lote.js).
+    const dadosRe = dadosReimpressao(etReg);
     const eplRe = gerarEPL(dadosRe);
-    logI('print', `Reimprimindo ${idRe} (${et.tipo}) — mesmo número, sem alterar status`);
+    logI('print', `Reimprimindo ${idRe} (${dadosRe.tipo}) — mesmo número, sem alterar status`);
     imprimir(eplRe, null, (ok, out, err, printer) => {
       if (!ok) {
         logE('print', `Falha ao reimprimir ${idRe}`, { erro: err || out });
