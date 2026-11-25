@@ -31,7 +31,7 @@ Não entra no rodar-todos.js (o Mini PC não tem navegador de teste).
 
 --gravar-largo ARQ regrava a referência de tela larga (só com a tela de ANTES
 de uma mudança de layout de propósito). Sai 1 se falhar."""
-import argparse, json, os, shutil, subprocess, sys, tempfile, time, urllib.parse, urllib.request
+import argparse, atexit, json, os, shutil, subprocess, sys, tempfile, time, urllib.parse, urllib.request
 from pathlib import Path
 sys.path.insert(0, "/home/ekoplastic/bling-claude")
 from playwright.sync_api import sync_playwright
@@ -99,12 +99,17 @@ def subir_servidor(porta):
            "EKO_DB_FILE": str(tmp / "t.db"), "EKO_LOG_DIR": str(tmp / "logs"), "TZ": "America/Sao_Paulo",
            "EKO_PRINT_SIMULAR": "1", "EKO_FECHAR_TELA_SIMULAR": "1"}
     srv = subprocess.Popen(["node", str(REPO / "server.js")], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    # erro no meio do teste não deixa servidor órfão segurando as portas
+    atexit.register(lambda: srv.poll() is None and srv.kill())
     base = f"http://127.0.0.1:{porta}"
-    for _ in range(75):
+    for _ in range(300):          # até 60 s: com a VPS carregada o node demora a subir
         try:
             if req(base, "/healthcheck").get("ok"): break
         except Exception: pass
         time.sleep(0.2)
+    else:
+        srv.terminate(); srv.wait(10); shutil.rmtree(tmp, ignore_errors=True)
+        sys.exit(f"servidor de teste não subiu na porta {porta} em 60 s")
     # Nada deste banco de teste vai para a VPS de verdade.
     req(base, "/config", {"vps_sacoleiras_url": "http://127.0.0.1:9/api/sacoleiras/agora"})
     # inventário já com 3 produtos: um diverge (24 bags), um bate, um sem saldo
