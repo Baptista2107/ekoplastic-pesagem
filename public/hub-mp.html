@@ -9,10 +9,12 @@
      botões está em /hub-mp.js. -->
 <style>
   /* Coletor TC60 (25/11/2026): a WebView do app tem ~360×690 px de CSS.
-     Uma mão, às vezes de luva, galpão claro: botões que enchem a tela (≥ 72 px,
-     10 px de folga), texto ≥ 16 px e contraste ≥ 7:1 com o fundo
-     (testes/navegador/hub_tc60.py mede tudo isso). No monitor do Mini PC a
-     coluna fica no meio, com no máximo 640 px. */
+     Uma mão, às vezes de luva, galpão claro: botões que enchem a tela (10 px
+     de folga), texto ≥ 16 px e contraste ≥ 7:1 com o fundo, também no toque
+     (testes/navegador/hub_tc60.py mede tudo isso, de 560 a 690 px de altura).
+     O botão não tem min/max-height: o mínimo é o próprio conteúdo, então
+     em tela baixa ou com fonte maior a página rola, mas o texto nunca sai
+     do botão. No monitor do Mini PC a coluna fica no meio, até 640 px. */
   :root { --bg:#070c13; --panel:#111b2a; --borda:#3a4e6b; --txt:#f4f8fc; --muted:#c9d6e8; }
   * { box-sizing:border-box; margin:0; padding:0; }
   html, body { background:var(--bg); color:var(--txt); min-height:100%;
@@ -29,11 +31,11 @@
   .status.on  { color:#5dffb8; background:#0b2e22; border-color:#1f8a5e; }
   .status.off { color:#fff; background:#a51616; border-color:#ff6b6b; }
   main { flex:1 0 auto; display:flex; flex-direction:column; gap:10px; padding:10px 8px; }
-  .tela { flex:1 1 0; display:flex; align-items:center; gap:10px; min-height:72px; max-height:128px; padding:10px 10px 10px 8px;
+  .tela { flex:1 1 0; display:flex; align-items:center; gap:10px; padding:10px 10px 10px 8px;
     border-radius:16px; background:var(--panel); border:2px solid var(--borda);
     border-left:9px solid var(--cor); color:var(--txt); text-decoration:none;
-    touch-action:manipulation; user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; }
-  .tela:active { transform:scale(.98); background:#1d2c42; border-color:var(--cor); }
+    user-select:none; -webkit-user-select:none; }
+  .tela:active { transform:scale(.98); background:#0b1420; border-color:var(--cor); }
   .tela .ico { font-size:30px; line-height:1; width:36px; text-align:center; flex:0 0 36px; }
   .tela .txt { display:flex; flex-direction:column; align-items:flex-start; gap:3px; min-width:0; }
   .tela b { font-size:23px; line-height:27px; font-weight:900; color:var(--cor); }
