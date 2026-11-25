@@ -106,10 +106,13 @@ def barra_ok(pg, nome):
         // liga o toque em tudo só durante a medida.
         const pe = document.createElement('style'); pe.textContent = '* { pointer-events: auto !important; }';
         document.head.appendChild(pe);
-        for (const s of ['.liquido-display', '.qtd-calc', '#btn-imprimir', '#ultima-etq']) {
+        for (const s of ['.liquido-display', '.qtd-calc', '#btn-imprimir', '#ultima-etq', '#ret-pesagem .peso-row',
+                         '.reto-pesagem-bloco .peso-row', '.reto-resumo-aditivos', '#btn-add-aditivo',
+                         '#reto-pesagem-inline .peso-row', '#btn-imp-parcial']) {
           const e = document.querySelector(s); if (!e) continue;
           const cs = getComputedStyle(e); const b = e.getBoundingClientRect();
-          if (cs.display === 'none' || !b.width || !b.height || e.closest('[style*="display: none"],[style*="display:none"]')) continue;
+          // Só o que está na barra (fixo): no saco parcial, TOTAL e ADICIONAR voltam para a página.
+          if (cs.position !== 'fixed' || cs.display === 'none' || !b.width || !b.height || e.closest('[style*="display: none"],[style*="display:none"]')) continue;
           const topo = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
           if (!topo || !(e === topo || e.contains(topo))) out.push(s + ' coberto por ' + (topo ? (topo.id || topo.tagName + '.' + topo.className) : 'nada'));
           for (const x of [e, ...e.querySelectorAll('*')])
@@ -118,6 +121,25 @@ def barra_ok(pg, nome):
         pe.remove();
         return out; }""")
     ok(not r, f"{nome}: barra de baixo à vista e sem texto cortado", r)
+
+
+# Retorno (Gustavo 25/11: "retorno também"): o essencial na tela sem rolar,
+# inteiro, sem nada por cima (barra, última etiqueta, toast).
+def essencial(pg, sels, nome):
+    pg.evaluate("window.scrollTo(0, 0)"); pg.wait_for_timeout(300)
+    r = pg.evaluate("""(sels) => { const out = [];
+        const pe = document.createElement('style'); pe.textContent = '* { pointer-events: auto !important; }';
+        document.head.appendChild(pe);
+        for (const s of sels) {
+          const e = document.querySelector(s);
+          const b = e && e.getBoundingClientRect();
+          if (!e || !b.width || !b.height) { out.push(s + ' não aparece'); continue; }
+          if (b.top < 0 || b.bottom > innerHeight || b.left < 0 || b.right > innerWidth) { out.push(s + ' fora da tela ' + Math.round(b.top) + '..' + Math.round(b.bottom)); continue; }
+          const t = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+          if (!t || !(e === t || e.contains(t))) out.push(s + ' coberto por ' + (t ? (t.id || t.className || t.tagName) : 'nada'));
+        }
+        pe.remove(); return out; }""", sels)
+    ok(not r, f"{nome}: sem rolar, à vista: {', '.join(sels)}", r)
 
 
 def inteiro_na_tela(pg, sel):
@@ -262,10 +284,77 @@ def main():
             pg.evaluate(f"onLeu({json.dumps(etq)})"); pg.wait_for_timeout(1500)
             ok(pg.locator("#ret-etiqueta-card").is_visible(), "retorno: etiqueta lida pelo onLeu", etq)
             conferir(pg, "retorno-etiqueta-lida")
+            barra_ok(pg, "retorno-etiqueta-lida")
+            # Essencial do retorno com etiqueta: número, material, peso da sobra e IMPRIMIR,
+            # na altura do TC60 (690) e com a barra do Android maior (648).
+            ESS_COM = ["#ret-orig-seq", "#ret-orig-mat", "#ret-peso-input", "#btn-imprimir"]
+            for alt in (690, 648):
+                pg.set_viewport_size({"width": W, "height": alt}); pg.wait_for_timeout(300)
+                essencial(pg, ESS_COM, f"retorno com etiqueta {W}×{alt}")
+            # A partir da 2ª etiqueta do Retorno a linha da última etiqueta existe;
+            # ela não pode cobrir o cartão (a 648 cobria lote e peso original).
+            pg.evaluate("pintarUltimaEtq([{id: 'R0000099', status: 'bipada', peso: 12.5}])")
+            for alt in (690, 648):
+                pg.set_viewport_size({"width": W, "height": alt}); pg.wait_for_timeout(300)
+                essencial(pg, ESS_COM + ["#ret-orig-lote", "#ret-orig-peso"], f"retorno com etiqueta e última etiqueta {W}×{alt}")
+            pg.evaluate("pintarUltimaEtq([])")
+            pg.set_viewport_size({"width": W, "height": H})
+            # MATERIAL INTEIRO: pode pedir rolagem, mas rolando ele fica livre da barra.
+            pg.evaluate("document.getElementById('btn-ret-inteiro').scrollIntoView({block: 'center'})"); pg.wait_for_timeout(300)
+            livre = pg.evaluate("""() => { const pe = document.createElement('style'); pe.textContent = '* { pointer-events: auto !important; }';
+                document.head.appendChild(pe); const e = document.getElementById('btn-ret-inteiro'), b = e.getBoundingClientRect();
+                const t = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2); pe.remove();
+                return t === e || e.contains(t); }""")
+            ok(livre, "retorno: MATERIAL INTEIRO alcançável rolando, sem a barra por cima")
+            # Vão entre as duas metades da barra e margens: o toque fica na barra.
+            vao = pg.evaluate("""() => [[innerWidth / 2, innerHeight - 40], [2, innerHeight - 40], [innerWidth / 2, innerHeight - 3]]
+                .map(([x, y]) => { const t = document.elementFromPoint(x, y); return t === document.body || t === document.documentElement ? '' : (t.id || t.className || t.tagName); })
+                .filter(Boolean)""")
+            ok(not vao, "retorno: toque no vão/margem da barra não atravessa para a página", vao)
+            lado = pg.evaluate("""() => { const p = document.getElementById('ret-peso-input').getBoundingClientRect(),
+                i = document.getElementById('btn-imprimir').getBoundingClientRect(); return [p.right, i.left]; }""")
+            ok(lado[0] <= lado[1], "retorno: peso à esquerda e IMPRIMIR à direita, sem sobrepor", lado)
+            # "✕ Trocar" com cara de botão ligado (antes: borda e texto apagados).
+            tr = pg.evaluate("""() => { const c = getComputedStyle(document.querySelector('.ret-card-btn-trocar'));
+                return [c.color, c.borderTopColor]; }""")
+            ok(tr[0] not in ("rgb(107, 116, 144)",) and tr[1] not in ("rgb(42, 48, 69)",),
+               "retorno: ✕ Trocar sem a cor apagada (texto/borda)", tr)
+            # Toast não cobre o 📦/🏠 do topo nem rouba o toque.
+            pg.evaluate("showToast('info', 'i', 'teste de aviso do coletor', 4000)"); pg.wait_for_timeout(400)
+            tt = pg.evaluate("""() => { const t = document.getElementById('toast').getBoundingClientRect();
+                const bs = [...document.querySelectorAll('header .btn-icon')].map(b => b.getBoundingClientRect());
+                const cruza = bs.some(b => !(t.right <= b.left || t.left >= b.right || t.bottom <= b.top || t.top >= b.bottom));
+                return { cruza, pe: getComputedStyle(document.getElementById('toast')).pointerEvents }; }""")
+            ok(not tt["cruza"] and tt["pe"] == "none", "toast não cobre 📦/🏠 e não pega toque", tt)
             pg.evaluate("setRetoOrigem('sem-etiqueta')"); pg.wait_for_timeout(400)
             conferir(pg, "retorno-sem-etiqueta")
+            barra_ok(pg, "retorno-sem-etiqueta")
+            for alt in (690, 648):
+                pg.set_viewport_size({"width": W, "height": alt}); pg.wait_for_timeout(300)
+                essencial(pg, ["#reto-se-peso-input", "#btn-imprimir"], f"retorno sem etiqueta {W}×{alt}")
+            pg.set_viewport_size({"width": W, "height": H})
             pg.evaluate("setRetoTipo('aditivos')"); pg.wait_for_timeout(400)
             conferir(pg, "retorno-aditivos")
+            barra_ok(pg, "retorno-aditivos")
+            for alt in (690, 648):
+                pg.set_viewport_size({"width": W, "height": alt}); pg.wait_for_timeout(300)
+                essencial(pg, ["#resumo-total", "#btn-add-aditivo"], f"retorno aditivos {W}×{alt}")
+            pg.set_viewport_size({"width": W, "height": H})
+            # Saco parcial: a barra vira peso do saco + ⎙ Imprimir Etiqueta; o
+            # ➕ ADICIONAR sai da barra (a ação do momento é outra).
+            pg.locator("#reto-aditivos-flow button", has_text="Amarelo").first.click()
+            pg.wait_for_timeout(300)
+            pg.evaluate("iniciarPesagemSacoParcial()"); pg.wait_for_timeout(400)
+            ok(pg.locator("#reto-pesagem-inline").is_visible(), "retorno aditivos: pesagem do saco parcial aberta")
+            conferir(pg, "retorno-saco-parcial")
+            barra_ok(pg, "retorno-saco-parcial")
+            for alt in (690, 648):
+                pg.set_viewport_size({"width": W, "height": alt}); pg.wait_for_timeout(300)
+                essencial(pg, ["#reto-saco-peso-input", "#btn-imp-parcial"], f"retorno saco parcial {W}×{alt}")
+            pg.set_viewport_size({"width": W, "height": H})
+            fixo = pg.evaluate("getComputedStyle(document.getElementById('btn-add-aditivo')).position")
+            ok(fixo != "fixed", "retorno saco parcial: ➕ ADICIONAR fora da barra", fixo)
+            pg.evaluate("cancelarPesagemSacoParcial()"); pg.wait_for_timeout(300)
             pg.evaluate("abrirResumoDia('retorno')"); pg.wait_for_timeout(1200)
             conferir(pg, "resumo-do-dia")
             pg.locator("#rd-fechar").click(); pg.wait_for_timeout(300)
