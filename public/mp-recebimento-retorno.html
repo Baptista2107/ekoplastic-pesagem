@@ -1197,6 +1197,235 @@ body.modo-retorno #btn-corrigir { display: none; }
 .ret-peso-input { border-color: var(--devol) !important; }
 .ret-peso-input:focus { border-color: var(--devol) !important; }
 </style>
+<!-- 25/11/2026 (Gustavo: "não tá legal de ver no android do TC60"): coletor
+     TC60 do Bruno, 360×690 CSS, uma mão, luva às vezes. Só abaixo de 600 px e
+     nunca no quadro do Mini PC (.embed): o monitor não muda. Vence as regras
+     do celular.css (que vem logo abaixo) por especificidade: toda regra
+     daqui tem :not(.embed) a mais e !important onde o celular.css tem.
+       · peso, IMPRIMIR e a última etiqueta numa barra fixa embaixo: o ciclo
+         pesa → imprime → bipa não precisa rolar a tela;
+       · toque mínimo 56 px, texto mínimo 16 px (a miniatura da etiqueta é a
+         exceção: é o desenho da etiqueta de 100 mm);
+       · nada passa da largura (a janela de Corrigir estourava 42 px).
+     Só aparência: nenhum botão, campo, rota ou regra muda. -->
+<style id="estilo-coletor">
+@media (max-width: 600px) {
+  body[data-tela="MP Recebimento"]:not(.embed) { padding-bottom: 168px; }
+
+  /* ─── Cabeçalho: linha 1 = nome + 📦 + 🏠; linha 2 = lote + servidor ─── */
+  body[data-tela="MP Recebimento"]:not(.embed) header { padding: 6px 10px !important; column-gap: 8px; row-gap: 6px; }
+  body[data-tela="MP Recebimento"]:not(.embed) header .logo { font-size: 17px !important; letter-spacing: 1px !important; flex: 1 1 calc(100% - 140px); order: 0; }
+  body[data-tela="MP Recebimento"]:not(.embed) header .crumb,
+  body[data-tela="MP Recebimento"]:not(.embed) header .clock { display: none !important; }
+  body[data-tela="MP Recebimento"]:not(.embed) header .header-right { display: contents; }
+  body[data-tela="MP Recebimento"]:not(.embed) header .btn-icon { order: 1; width: 56px; height: 56px; min-width: 56px !important; min-height: 56px !important; font-size: 22px; }
+  body[data-tela="MP Recebimento"]:not(.embed) header .info-lote { order: 2; font-size: 16px; padding: 8px 10px; }
+  body[data-tela="MP Recebimento"]:not(.embed) header .info-lote .lbl { display: none; }
+  body[data-tela="MP Recebimento"]:not(.embed) header .info-lote b::before { content: 'LOTE '; color: var(--muted); letter-spacing: 1px; }
+  body[data-tela="MP Recebimento"]:not(.embed) header .srv-status { order: 3; flex: 1 1 0; min-width: 0; font-size: 16px !important; padding: 8px 10px !important;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* ─── Abas Recebimento | Retorno ─── */
+  body[data-tela="MP Recebimento"]:not(.embed) .aba-modo { min-height: 56px !important; font-size: 16px; letter-spacing: .5px; padding: 6px 8px; gap: 6px; line-height: 1.15; }
+
+  /* ─── Blocos de escolha: opções em 2 colunas, alvo de luva ─── */
+  body[data-tela="MP Recebimento"]:not(.embed) .bloco { padding: 12px; }
+  body[data-tela="MP Recebimento"]:not(.embed) .bloco-head { flex-wrap: wrap; row-gap: 6px; }
+  body[data-tela="MP Recebimento"]:not(.embed) .bloco-num { width: 30px; height: 30px; font-size: 16px; }
+  body[data-tela="MP Recebimento"]:not(.embed) .bloco-titulo { font-size: 16px; letter-spacing: .5px; }
+  body[data-tela="MP Recebimento"]:not(.embed) .bloco-valor { font-size: 17px; }
+  body[data-tela="MP Recebimento"]:not(.embed) .bloco-cadeado { font-size: 16px; }
+  body[data-tela="MP Recebimento"]:not(.embed) .opcoes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  body[data-tela="MP Recebimento"]:not(.embed) .opt { min-height: 56px !important; font-size: 17px; padding: 8px 10px; justify-content: center;
+    text-align: center; flex-wrap: wrap; gap: 2px 6px; line-height: 1.15; min-width: 0; }
+  body[data-tela="MP Recebimento"]:not(.embed) .opt .sub,
+  body[data-tela="MP Recebimento"]:not(.embed) .opt span[style*="font-size"] { font-size: 16px !important; letter-spacing: .3px; }
+  body[data-tela="MP Recebimento"]:not(.embed) .opt-vazio { font-size: 16px; grid-column: 1 / -1; }
+  body[data-tela="MP Recebimento"]:not(.embed) .banner-recebimento { flex-wrap: wrap; font-size: 16px; row-gap: 4px; }
+  body[data-tela="MP Recebimento"]:not(.embed) .banner-recebimento .info { font-size: 16px; }
+
+  /* ─── Peso ─── */
+  body[data-tela="MP Recebimento"]:not(.embed) .peso-label { font-size: 16px; letter-spacing: .5px; }
+  /* Campos por id: o celular.css pega input com 4 :not() e vence classe. */
+  body[data-tela="MP Recebimento"]:not(.embed) .peso-input,
+  body[data-tela="MP Recebimento"]:not(.embed) #peso-bruto,
+  body[data-tela="MP Recebimento"]:not(.embed) #ret-peso-input,
+  body[data-tela="MP Recebimento"]:not(.embed) #reto-se-peso-input,
+  body[data-tela="MP Recebimento"]:not(.embed) #reto-saco-peso-input { font-size: 34px; min-height: 64px !important; padding: 6px 10px; }
+  body[data-tela="MP Recebimento"]:not(.embed) .btn-bal { min-height: 56px !important; font-size: 16px; letter-spacing: .5px; }
+  body[data-tela="MP Recebimento"]:not(.embed) .bal-status-mini { font-size: 16px; letter-spacing: .3px; }
+  body[data-tela="MP Recebimento"]:not(.embed) .btn-varredura .vr-txt { font-size: 16px; letter-spacing: .5px; }
+  body[data-tela="MP Recebimento"]:not(.embed) .btn-varredura .vr-sub { font-size: 16px; letter-spacing: 0; text-align: center; }
+  body[data-tela="MP Recebimento"]:not(.embed) .aviso-bal { font-size: 16px; }
+  body[data-tela="MP Recebimento"]:not(.embed) .comp-modo .cm-lbl { font-size: 16px; }
+  body[data-tela="MP Recebimento"]:not(.embed) .comp-modo .cm-op { min-height: 56px !important; font-size: 16px; min-width: 0; }
+
+  /* ─── Quantidade de sacos ─── */
+  body[data-tela="MP Recebimento"]:not(.embed) .btn-qtd { width: 64px; height: 64px; font-size: 28px; }
+  body[data-tela="MP Recebimento"]:not(.embed) #qtd-input { font-size: 36px; min-height: 64px !important; width: 120px; }
+  body[data-tela="MP Recebimento"]:not(.embed) .qtd-sub { font-size: 16px; }
+  body[data-tela="MP Recebimento"]:not(.embed) .atalho { min-height: 56px !important; font-size: 18px; }
+
+  /* ─── Barra fixa embaixo: peso (ou sacos) + IMPRIMIR + última etiqueta ───
+     São os elementos de sempre, só fixados na tela. O fundo da barra é o
+     body::after. No Retorno não há display de peso: IMPRIMIR ocupa a linha. */
+  body[data-tela="MP Recebimento"]:not(.embed)::after {
+    content: ''; position: fixed; left: 0; right: 0; bottom: 0; height: 88px; z-index: 140;
+    background: var(--surface); border-top: 1px solid var(--border); box-shadow: 0 -6px 18px rgba(0,0,0,.45);
+  }
+  /* Bloco travado: o opacity do bloco criava um contexto de empilhamento e o
+     peso fixo ficava atrás do fundo da barra. Esmaece os filhos, não o bloco. */
+  body[data-tela="MP Recebimento"]:not(.embed) #bloco-peso.locked, body[data-tela="MP Recebimento"]:not(.embed) #bloco-qtd.locked { opacity: 1; }
+  body[data-tela="MP Recebimento"]:not(.embed) #bloco-peso.locked > :not(.liquido-display),
+  body[data-tela="MP Recebimento"]:not(.embed) #bloco-qtd.locked > :not(.qtd-calc) { opacity: .42; }
+  body[data-tela="MP Recebimento"]:not(.embed) #bloco-peso.locked .liquido-display, body[data-tela="MP Recebimento"]:not(.embed) #bloco-qtd.locked .qtd-calc { opacity: .6; }
+  body[data-tela="MP Recebimento"]:not(.embed) .liquido-display,
+  body[data-tela="MP Recebimento"]:not(.embed) .qtd-calc {
+    position: fixed; left: 6px; bottom: 8px; z-index: 150; margin: 0;
+    width: calc(50% - 9px); height: 72px; padding: 4px 6px;
+    flex-direction: column; align-items: flex-start; justify-content: center; gap: 0;
+    background: #0e1d27; overflow: hidden;
+  }
+  body[data-tela="MP Recebimento"]:not(.embed) .liquido-display .lbl,
+  body[data-tela="MP Recebimento"]:not(.embed) .qtd-calc .lbl { font-size: 16px; letter-spacing: .3px; line-height: 1.1; white-space: nowrap; }
+  body[data-tela="MP Recebimento"]:not(.embed) .qtd-calc .lbl { white-space: normal; }
+  body[data-tela="MP Recebimento"]:not(.embed) .liquido-display .val { font-size: 28px; line-height: 1.1; white-space: nowrap; }
+  body[data-tela="MP Recebimento"]:not(.embed) .qtd-calc .val { font-size: 24px; line-height: 1.1; white-space: nowrap; }
+  /* Peso instável: o número da barra também fica laranja. */
+  body[data-tela="MP Recebimento"]:not(.embed) #bloco-peso:has(.peso-input.instavel) .liquido-display .val { color: var(--warn); }
+  body[data-tela="MP Recebimento"]:not(.embed) #btn-imprimir {
+    position: fixed; right: 6px; bottom: 8px; z-index: 150;
+    width: calc(50% - 9px); height: 72px; min-height: 72px !important; padding: 6px 8px;
+    font-size: 18px; letter-spacing: .5px; line-height: 1.15;
+  }
+  body.modo-retorno[data-tela="MP Recebimento"]:not(.embed) #btn-imprimir { left: 6px; width: auto; }
+  body[data-tela="MP Recebimento"]:not(.embed) .ultima-etq {
+    display: block; position: fixed; left: 8px; right: 8px; bottom: 92px; z-index: 150;
+    padding: 10px 12px; border-radius: 10px; background: var(--panel); border: 1.5px solid var(--border);
+    border-left: 6px solid var(--devol); font-size: 16px; font-weight: 800; line-height: 1.25;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-shadow: 0 -4px 14px rgba(0,0,0,.4);
+  }
+  body[data-tela="MP Recebimento"]:not(.embed) .ultima-etq.pendente { border-left-color: var(--warn); color: var(--warn); }
+  body[data-tela="MP Recebimento"]:not(.embed) .ultima-etq:empty { display: none; }
+
+  /* ─── Coluna da etiqueta / lista / finalizar (desce, rola com a página) ─── */
+  body[data-tela="MP Recebimento"]:not(.embed) .coluna-direita { padding: 12px 10px 12px !important; }
+  /* "Preencha ao lado para gerar a etiqueta": no coletor não há "ao lado". */
+  body[data-tela="MP Recebimento"]:not(.embed) .etiqueta-vazia { display: none !important; }
+  body[data-tela="MP Recebimento"]:not(.embed) .etiqueta-box { width: 100%; max-width: 300px; min-height: 0; }
+  body[data-tela="MP Recebimento"]:not(.embed) .etiqueta-box .e-peso { font-size: 20px; }
+  body[data-tela="MP Recebimento"]:not(.embed) .etiqueta-box .e-cod-valor { font-size: 28px; }
+  body[data-tela="MP Recebimento"]:not(.embed) .recebimento-head { flex-wrap: wrap; gap: 4px 10px; }
+  body[data-tela="MP Recebimento"]:not(.embed) .recebimento-head .titulo { font-size: 16px; letter-spacing: 1px; }
+  body[data-tela="MP Recebimento"]:not(.embed) .totais .linha { font-size: 16px; }
+  body[data-tela="MP Recebimento"]:not(.embed) .itens-lista { flex: none; overflow: visible; padding: 6px; gap: 6px; }
+  body[data-tela="MP Recebimento"]:not(.embed) .item {
+    grid-template-columns: minmax(0, 1fr) auto 76px 56px;
+    grid-template-areas: "n peso acao del" "desc desc acao del";
+    gap: 2px 6px; padding: 8px; font-size: 16px;
+  }
+  body[data-tela="MP Recebimento"]:not(.embed) .item .n { grid-area: n; font-size: 16px; white-space: nowrap; }
+  body[data-tela="MP Recebimento"]:not(.embed) .item .peso { grid-area: peso; font-size: 16px; white-space: nowrap; }
+  body[data-tela="MP Recebimento"]:not(.embed) .item .desc { grid-area: desc; font-size: 16px; white-space: normal; line-height: 1.25; }
+  body[data-tela="MP Recebimento"]:not(.embed) .item .desc .small { font-size: 16px; letter-spacing: 0; }
+  body[data-tela="MP Recebimento"]:not(.embed) .item .tag-varr { font-size: 16px; }
+  body[data-tela="MP Recebimento"]:not(.embed) .item .acao { grid-area: acao; min-height: 56px !important; padding: 0 6px; font-size: 16px; letter-spacing: .5px; }
+  body[data-tela="MP Recebimento"]:not(.embed) .item .check { grid-area: acao; font-size: 24px; text-align: center; }
+  body[data-tela="MP Recebimento"]:not(.embed) .item .acao-del { grid-area: del; width: 56px; height: 56px; font-size: 20px; }
+  body[data-tela="MP Recebimento"]:not(.embed) .item-vazio { font-size: 16px; }
+  body[data-tela="MP Recebimento"]:not(.embed) .btn-relatorio { min-height: 56px !important; font-size: 16px; }
+  body[data-tela="MP Recebimento"]:not(.embed) .btn-finalizar { min-height: 64px !important; font-size: 17px; letter-spacing: .5px; line-height: 1.2; }
+  body[data-tela="MP Recebimento"]:not(.embed) .btn-cancelar { min-height: 64px !important; min-width: 64px; font-size: 18px; letter-spacing: .5px; }
+  /* Toast em cima: embaixo ficava atrás da barra (e do dedo). */
+  body[data-tela="MP Recebimento"]:not(.embed) .toast { top: 8px; bottom: auto; left: 8px; right: 8px; font-size: 16px; padding: 12px 14px; }
+  /* Crachá "👤 NOME · trocar": no fim da página, como botão inteiro (o
+     celular.css o punha no canto de baixo, onde agora fica a barra). */
+  body[data-tela="MP Recebimento"]:not(.embed) #eko-resp-tag {
+    position: static !important; display: flex; align-items: center; justify-content: center;
+    margin: 12px 10px 0; max-width: none !important; min-height: 56px !important; border-radius: 12px !important;
+    font-size: 16px !important;
+  }
+
+  /* ─── Corrigir etiqueta: cabe na largura, campos um embaixo do outro ─── */
+  body[data-tela="MP Recebimento"]:not(.embed) .ov-correcao { align-items: flex-start; padding: 8px; overflow-y: auto; }
+  body[data-tela="MP Recebimento"]:not(.embed) .corr-card { width: 100%; min-width: 0; max-height: none; padding: 16px; }
+  body[data-tela="MP Recebimento"]:not(.embed) .corr-head { font-size: 18px; gap: 8px; }
+  body[data-tela="MP Recebimento"]:not(.embed) .corr-x { min-width: 56px; min-height: 56px !important; font-size: 24px; }
+  body[data-tela="MP Recebimento"]:not(.embed) .corr-sub,
+  body[data-tela="MP Recebimento"]:not(.embed) .corr-info,
+  body[data-tela="MP Recebimento"]:not(.embed) .corr-trava,
+  body[data-tela="MP Recebimento"]:not(.embed) .corr-antes,
+  body[data-tela="MP Recebimento"]:not(.embed) .corr-resumo { font-size: 16px; overflow-wrap: anywhere; }
+  body[data-tela="MP Recebimento"]:not(.embed) .corr-busca { flex-wrap: wrap; }
+  body[data-tela="MP Recebimento"]:not(.embed) #corr-cod { flex: 1 1 100%; min-width: 0; min-height: 56px !important; font-size: 20px; }
+  body[data-tela="MP Recebimento"]:not(.embed) .corr-btn-buscar { flex: 1 1 100%; min-height: 56px !important; font-size: 17px; }
+  body[data-tela="MP Recebimento"]:not(.embed) .corr-campos { grid-template-columns: 1fr; }
+  body[data-tela="MP Recebimento"]:not(.embed) .corr-campos label { font-size: 16px; }
+  body[data-tela="MP Recebimento"]:not(.embed) .corr-campos select { min-height: 56px !important; font-size: 17px; }
+  body[data-tela="MP Recebimento"]:not(.embed) .corr-btn-ok { min-height: 56px !important; }
+
+  /* ─── Retorno de produção ─── */
+  body[data-tela="MP Recebimento"]:not(.embed) .reto-tab,
+  body[data-tela="MP Recebimento"]:not(.embed) .reto-orig-btn { min-height: 56px !important; font-size: 16px; letter-spacing: .3px; padding: 6px 8px; }
+  body[data-tela="MP Recebimento"]:not(.embed) .reto-alerta { font-size: 16px; }
+  body[data-tela="MP Recebimento"]:not(.embed) .reto-pair { grid-template-columns: minmax(0, 1fr); }
+  body[data-tela="MP Recebimento"]:not(.embed) .ret-bipa-display { padding: 20px 14px; }
+  body[data-tela="MP Recebimento"]:not(.embed) .ret-bipa-display .ret-icone { font-size: 40px; }
+  body[data-tela="MP Recebimento"]:not(.embed) .ret-bipa-display .ret-msg-grande { font-size: 17px; letter-spacing: .5px; }
+  body[data-tela="MP Recebimento"]:not(.embed) .ret-bipa-display .ret-msg-sub { font-size: 16px; }
+  body[data-tela="MP Recebimento"]:not(.embed) .btn-sim-bipe { min-height: 56px !important; font-size: 16px; }
+  body[data-tela="MP Recebimento"]:not(.embed) .ret-etiqueta-card,
+  body[data-tela="MP Recebimento"]:not(.embed) .ret-pesagem { padding: 12px; }
+  body[data-tela="MP Recebimento"]:not(.embed) .ret-card-head { flex-wrap: wrap; gap: 8px; }
+  body[data-tela="MP Recebimento"]:not(.embed) .ret-card-tag { font-size: 16px; letter-spacing: .5px; }
+  body[data-tela="MP Recebimento"]:not(.embed) .ret-card-seq { font-size: 20px; }
+  body[data-tela="MP Recebimento"]:not(.embed) .ret-card-btn-trocar { min-height: 56px !important; padding: 0 14px; font-size: 16px; }
+  body[data-tela="MP Recebimento"]:not(.embed) .ret-card-linha { font-size: 16px; flex-wrap: wrap; gap: 2px 8px; }
+  body[data-tela="MP Recebimento"]:not(.embed) .ret-card-linha .lbl { min-width: 0; }
+  body[data-tela="MP Recebimento"]:not(.embed) .ret-pesagem-titulo { font-size: 16px; letter-spacing: 1px; }
+  body[data-tela="MP Recebimento"]:not(.embed) .btn-ret-inteiro { min-height: 56px !important; font-size: 16px; }
+  body[data-tela="MP Recebimento"]:not(.embed) .ret-pesagem-ou { font-size: 16px; }
+  body[data-tela="MP Recebimento"]:not(.embed) .peso-row { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  body[data-tela="MP Recebimento"]:not(.embed) .peso-row label { font-size: 16px; }
+  body[data-tela="MP Recebimento"]:not(.embed) .reto-pesagem-acoes { flex-wrap: wrap; }
+  body[data-tela="MP Recebimento"]:not(.embed) .reto-pesagem-acoes .btn-bal { flex: 1 1 40%; }
+  body[data-tela="MP Recebimento"]:not(.embed) .btn-imp-parcial { flex: 1 1 100%; min-height: 56px !important; font-size: 16px; }
+  body[data-tela="MP Recebimento"]:not(.embed) .btn-cont { width: 64px; height: 64px; font-size: 28px; }
+  body[data-tela="MP Recebimento"]:not(.embed) #reto-sacos-input { width: 104px; min-height: 64px !important; font-size: 30px; }
+  body[data-tela="MP Recebimento"]:not(.embed) .btn-add-aditivo,
+  body[data-tela="MP Recebimento"]:not(.embed) .btn-pesar-saco { min-height: 56px !important; font-size: 16px; }
+  body[data-tela="MP Recebimento"]:not(.embed) .reto-parcial-item,
+  body[data-tela="MP Recebimento"]:not(.embed) .reto-parciais-vazio,
+  body[data-tela="MP Recebimento"]:not(.embed) .resumo-linha,
+  body[data-tela="MP Recebimento"]:not(.embed) .resumo-linha.total .lbl { font-size: 16px; letter-spacing: .5px; }
+
+  /* ─── Janelas que vêm de arquivos compartilhados (senha, sessão de outro,
+     resumo do dia): só o tamanho de texto e de toque, e só nesta tela. ─── */
+  body[data-tela="MP Recebimento"]:not(.embed) #eko-acesso .tl,
+  body[data-tela="MP Recebimento"]:not(.embed) #eko-acesso .hint,
+  body[data-tela="MP Recebimento"]:not(.embed) #eko-acesso .rodape a { font-size: 16px; }
+  body[data-tela="MP Recebimento"]:not(.embed) #eko-acesso .rodape a { display: inline-flex; align-items: center; min-height: 56px !important; padding: 0 12px; }
+  body[data-tela="MP Recebimento"]:not(.embed) #eko-outro button,
+  body[data-tela="MP Recebimento"]:not(.embed) #eko-confirma button { min-height: 56px !important; font-size: 17px !important; }
+  body[data-tela="MP Recebimento"]:not(.embed) #eko-outro [style*="font-size:14px"],
+  body[data-tela="MP Recebimento"]:not(.embed) #eko-confirma [style*="font-size:14px"] { font-size: 16px !important; }
+  body[data-tela="MP Recebimento"]:not(.embed) #rd-box .rd-sub,
+  body[data-tela="MP Recebimento"]:not(.embed) #rd-box .rd-lb,
+  body[data-tela="MP Recebimento"]:not(.embed) #rd-box .rd-diaext,
+
+  body[data-tela="MP Recebimento"]:not(.embed) #rd-box .rd-g,
+  body[data-tela="MP Recebimento"]:not(.embed) #rd-box .rd-vazio,
+  body[data-tela="MP Recebimento"]:not(.embed) #rd-box .rd-alerta { font-size: 16px; }
+  body[data-tela="MP Recebimento"]:not(.embed) #rd-box .rd-total small { font-size: 16px !important; }
+  body[data-tela="MP Recebimento"]:not(.embed) #rd-box .rd-seta { width: 56px; flex-basis: 56px; }
+  body[data-tela="MP Recebimento"]:not(.embed) #rd-box .rd-seta,
+  body[data-tela="MP Recebimento"]:not(.embed) #rd-box .rd-atalho,
+  body[data-tela="MP Recebimento"]:not(.embed) #rd-box .rd-btn,
+  body[data-tela="MP Recebimento"]:not(.embed) #rd-box #rd-data { min-height: 56px !important; font-size: 16px; }
+}
+/* Fora do coletor a linha "Última etiqueta" não existe. */
+.ultima-etq { display: none; }
+</style>
 <!-- 25/11/2026: no coletor (app Ekoplastic MP) e no celular a tela vira uma coluna.
      Só vale abaixo de 900 px: o monitor do Mini PC não muda. -->
 <link rel="stylesheet" href="/celular.css">
@@ -1561,6 +1790,9 @@ body.modo-retorno #btn-corrigir { display: none; }
     <button class="btn-imprimir" id="btn-imprimir" onclick="imprimir()" disabled>
       ⎙ IMPRIMIR ETIQUETA
     </button>
+    <!-- Coletor (abaixo de 600 px): a última etiqueta da lista, fixa acima do
+         IMPRIMIR. Só leitura. Fora do coletor não aparece. -->
+    <div class="ultima-etq" id="ultima-etq" aria-live="polite"></div>
 
     <div class="recebimento-atual">
       <div class="recebimento-head">
@@ -3151,9 +3383,28 @@ function resetarRecebimento() {
 }
 
 // ─── HISTÓRICO (com status visual + clique para bipar) ───
+/* <ultima-etq> 25/11/2026: linha "Última etiqueta" do coletor (só aparece
+   abaixo de 600 px, pelo CSS). Mostra o item mais novo da lista do modo e se
+   já foi bipado. Só escreve texto: não muda estado nem regra. */
+function pintarUltimaEtq(lista) {
+  const el = document.getElementById('ultima-etq');
+  if (!el) return;
+  const it = lista && lista[0];
+  if (!it) { el.textContent = ''; el.className = 'ultima-etq'; return; }
+  const ok = it.status === 'bipada' || it.status === 'consumida';
+  el.className = 'ultima-etq ' + (ok ? 'ok' : 'pendente');
+  // Status primeiro: se a linha não couber, a reticência corta o peso, não o status.
+  const id = it.id || ('#' + String(it.n).padStart(4, '0'));
+  const kg = Number(it.peso).toFixed(it.qtdSacos ? 0 : 1) + ' kg';
+  el.textContent = ok ? `✓ ${id} ${estado.modo === 'retorno' ? 'registrada' : 'bipada'} · ${kg}`
+                      : `⚠ BIPAR ${id} · ${kg}`;
+}
+/* </ultima-etq> */
+
 function renderHistorico() {
   const cont = document.getElementById('hist-lista');
   const lista = estado.modo === 'retorno' ? estado.retItens : estado.itens;
+  pintarUltimaEtq(lista);
 
   if (lista.length === 0) {
     const vazioMsg = estado.modo === 'retorno' ? 'Nenhum retorno ainda' : 'Nenhuma etiqueta ainda';
