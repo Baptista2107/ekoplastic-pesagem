@@ -86,15 +86,31 @@ async function reimprimir(id) {
     return;
   }
   const PASTA = arg('--arquivo', null);
+  // "--arquivo" sem pasta não pode cair na impressão de verdade (revisor de 3547d1f).
+  if (tem('--arquivo') && (!PASTA || PASTA.startsWith('--'))) {
+    console.error('ERRO: --arquivo precisa da pasta de saída. Nada impresso.');
+    process.exit(2);
+  }
   if (PASTA) {
     // As libs abrem o banco em ESCRITA (migração de schema): só numa cópia.
     // Revisor de f742d0f: sem isto, no Mini PC abriria o etiquetas.db de
     // produção num segundo processo; apontado para o pesagem.db da VPS,
     // mudaria o schema dele.
-    const prod = [path.join(RAIZ, 'etiquetas.db'), path.join(os.homedir(), 'dados', 'pesagem', 'pesagem.db')]
-      .map(p => path.resolve(p).toLowerCase());
-    if (!process.env.EKO_DB_FILE || prod.includes(path.resolve(DB_FILE).toLowerCase())) {
+    // Caminhos de produção FIXOS também: rodando de uma cópia do código, o
+    // RAIZ é a cópia e o banco do Mini PC passaria (revisor de 3547d1f).
+    const PASTA_PROD = 'c:\\ekoplastic\\pesagem';
+    const prod = [path.join(RAIZ, 'etiquetas.db'), PASTA_PROD + '\\etiquetas.db',
+                  path.join(os.homedir(), 'dados', 'pesagem', 'pesagem.db')]
+      .map(p => path.resolve(p).toLowerCase().replace(/\//g, '\\'));
+    const alvo = path.resolve(DB_FILE).toLowerCase().replace(/\//g, '\\');
+    if (!process.env.EKO_DB_FILE || prod.includes(alvo)) {
       console.error('ERRO: --arquivo só roda com EKO_DB_FILE apontando para uma CÓPIA do banco do Mini PC.');
+      process.exit(2);
+    }
+    // Carregar as libs grava backup diário e logs na pasta do código: na
+    // pasta de produção, o backup do dia sairia da cópia e o servidor pularia o dele.
+    if (path.resolve(RAIZ).toLowerCase().replace(/\//g, '\\') === PASTA_PROD) {
+      console.error('ERRO: --arquivo roda de uma CÓPIA do código, não de C:\\Ekoplastic\\pesagem.');
       process.exit(2);
     }
     // Só aqui carrega as libs do servidor (abrem o banco): o modo normal no

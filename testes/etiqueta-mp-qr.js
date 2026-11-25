@@ -87,9 +87,17 @@ console.log('\n1. QR com o número da etiqueta; o que saiu não volta');
 console.log('\n1b. data da pesagem em hora de Brasília, qualquer que seja o fuso da máquina');
 {
   const tzAntes = process.env.TZ;
-  process.env.TZ = 'UTC';                        // máquina em UTC (ex.: troca gerada fora do Mini PC)
-  const epl = gerarEPL({ ...BASE, hora_impressao: '2026-07-10T01:30:00.000Z' });
-  process.env.TZ = tzAntes === undefined ? '' : tzAntes;
+  const fusoAntes = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  let epl;
+  try {
+    process.env.TZ = 'UTC';                      // máquina em UTC (ex.: troca gerada fora do Mini PC)
+    epl = gerarEPL({ ...BASE, hora_impressao: '2026-07-10T01:30:00.000Z' });
+  } finally {
+    // TZ='' não devolve o fuso da máquina (vira "Etc/Unknown"): apagar.
+    if (tzAntes === undefined) delete process.env.TZ; else process.env.TZ = tzAntes;
+  }
+  ok(Intl.DateTimeFormat().resolvedOptions().timeZone === fusoAntes, 'fuso do processo restaurado depois do teste',
+     Intl.DateTimeFormat().resolvedOptions().timeZone);
   ok(/"DATA \/ HORA: 09\/07\/2026  22:30"/.test(epl), 'pesada 09/07 22:30 em Brasília sai 09/07 22:30, não 10/07 01:30',
      (epl.match(/"DATA[^"]*"/) || [])[0]);
 }
