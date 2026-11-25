@@ -8,30 +8,41 @@
      Só leva às telas que já existem; cada uma pede o PIN dela. A lista de
      botões está em /hub-mp.js. -->
 <style>
-  :root { --bg:#0a1119; --panel:#131f30; --borda:#2a3a52; --txt:#eef4fb; --muted:#94a8c4; }
+  /* Coletor TC60 (25/11/2026): a WebView do app tem ~360×690 px de CSS.
+     Uma mão, às vezes de luva, galpão claro: botões que enchem a tela (≥ 72 px,
+     10 px de folga), texto ≥ 16 px e contraste ≥ 7:1 com o fundo
+     (testes/navegador/hub_tc60.py mede tudo isso). No monitor do Mini PC a
+     coluna fica no meio, com no máximo 640 px. */
+  :root { --bg:#070c13; --panel:#111b2a; --borda:#3a4e6b; --txt:#f4f8fc; --muted:#c9d6e8; }
   * { box-sizing:border-box; margin:0; padding:0; }
   html, body { background:var(--bg); color:var(--txt); min-height:100%;
-    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; -webkit-tap-highlight-color:transparent; }
-  header { display:flex; align-items:center; justify-content:space-between; gap:10px;
-    padding:14px 14px 10px; border-bottom:1px solid var(--borda); }
-  header h1 { font-size:20px; font-weight:900; letter-spacing:.3px; user-select:none; }
+    font-family:Roboto,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; -webkit-tap-highlight-color:transparent;
+    -webkit-text-size-adjust:100%; text-size-adjust:100%; }
+  body { min-height:100vh; min-height:100dvh; display:flex; flex-direction:column; overflow-x:hidden; }
+  header, main, footer { width:100%; max-width:640px; margin:0 auto; }
+  header { display:flex; flex-direction:column; gap:8px; padding:10px 8px 0; }
+  header h1 { font-size:22px; line-height:28px; font-weight:900; letter-spacing:.3px; user-select:none; padding:0 4px; }
   header h1 span { color:#00ff9d; }
-  .status { font-size:12px; font-weight:800; padding:6px 10px; border-radius:999px;
-    border:1px solid var(--borda); color:var(--muted); white-space:nowrap; }
-  .status.on  { color:#00ff9d; border-color:rgba(0,255,157,.45); }
-  .status.off { color:#ff6b6b; border-color:rgba(255,107,107,.5); }
-  main { padding:12px 12px 20px; display:flex; flex-direction:column; gap:12px; }
-  .tela { display:flex; align-items:center; gap:14px; min-height:84px; padding:14px 16px;
-    border-radius:18px; background:var(--panel); border:2px solid var(--borda);
-    border-left:8px solid var(--cor); color:var(--txt); text-decoration:none; }
-  .tela:active { transform:scale(.98); background:#1d2c42; }
-  .tela .ico { font-size:34px; width:44px; text-align:center; flex:0 0 44px; }
-  .tela .txt { display:flex; flex-direction:column; gap:3px; min-width:0; }
-  .tela b { font-size:22px; font-weight:900; color:var(--cor); }
-  .tela small { font-size:14px; color:var(--muted); font-weight:600; }
-  .tela .aberta { font-style:normal; font-size:13px; font-weight:800; color:#ffc250; }
+  /* Status numa faixa inteira: "Sem conexão" tem de saltar aos olhos. */
+  .status { font-size:16px; line-height:20px; font-weight:800; padding:9px 12px; border-radius:12px; text-align:center;
+    border:2px solid var(--borda); background:#1b2738; color:var(--txt); }
+  .status.on  { color:#5dffb8; background:#0b2e22; border-color:#1f8a5e; }
+  .status.off { color:#fff; background:#a51616; border-color:#ff6b6b; }
+  main { flex:1 0 auto; display:flex; flex-direction:column; gap:10px; padding:10px 8px; }
+  .tela { flex:1 1 0; display:flex; align-items:center; gap:10px; min-height:72px; max-height:128px; padding:10px 10px 10px 8px;
+    border-radius:16px; background:var(--panel); border:2px solid var(--borda);
+    border-left:9px solid var(--cor); color:var(--txt); text-decoration:none;
+    touch-action:manipulation; user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; }
+  .tela:active { transform:scale(.98); background:#1d2c42; border-color:var(--cor); }
+  .tela .ico { font-size:30px; line-height:1; width:36px; text-align:center; flex:0 0 36px; }
+  .tela .txt { display:flex; flex-direction:column; align-items:flex-start; gap:3px; min-width:0; }
+  .tela b { font-size:23px; line-height:27px; font-weight:900; color:var(--cor); }
+  .tela small { font-size:16px; line-height:20px; color:var(--muted); font-weight:500; }
+  /* "em andamento": etiqueta amarela cheia, para ver de longe. */
+  .tela .aberta { font-style:normal; font-size:16px; line-height:20px; font-weight:800; color:#1a1300;
+    background:#ffc250; border-radius:999px; padding:1px 10px; margin-top:2px; }
   .tela .aberta:empty { display:none; }
-  footer { text-align:center; color:#5d708c; font-size:12px; padding:4px 0 18px; }
+  footer { text-align:center; color:var(--muted); font-size:16px; line-height:20px; padding:0 8px 12px; }
 </style>
 </head>
 <body data-tela="Hub MP">

@@ -25,17 +25,21 @@
   // sessoes: tipos de sessão (GET /sessoes/abertas) que acendem o "em
   // andamento" do botão. Retorno de produção é aberto pela tela de Entrada
   // (aba "Retorno de produção" dentro dela), por isso conta lá.
+  // cor: o nome do botão é escrito nela, sobre o fundo escuro do botão; todas
+  // com contraste ≥ 7:1 (galpão claro, TC60 — testes/navegador/hub_tc60.py).
+  // O 🗺 leva o seletor de emoji (U+FE0F): sem ele o Android desenha o mapa
+  // em preto e branco, como letra.
   const TELAS = [
     { id: 'entrada',    nome: 'Entrada',         sub: 'Recebimento e retorno de MP',
       url: '/mp-recebimento-retorno.html?aba=recebimento', ico: '📥', cor: '#00d4ff', sessoes: ['recebimento', 'retorno'] },
     { id: 'retirada',   nome: 'Retirada',        sub: 'Saída de MP para a produção',
-      url: '/mp-retirada.html',                            ico: '📤', cor: '#f07040', sessoes: ['retirada'] },
+      url: '/mp-retirada.html',                            ico: '📤', cor: '#ff9466', sessoes: ['retirada'] },
     { id: 'mapeamento', nome: 'Mapeamento',      sub: 'Endereço de bag e gaiola',
-      url: '/enderecamento.html',                          ico: '🗺', cor: '#2ee6a6', sessoes: [] },
+      url: '/enderecamento.html',                          ico: '🗺️', cor: '#2ee6a6', sessoes: [] },
     { id: 'inventario', nome: 'Inventário',      sub: 'Contagem de MP e PA',
       url: '/inventario.html',                             ico: '📋', cor: '#ffc250', sessoes: [] },
     { id: 'pa',         nome: 'Produto Acabado', sub: 'Lançamento de fardos',
-      url: '/produto-acabado.html',                        ico: '📦', cor: '#b892ff', sessoes: ['produto-acabado'] },
+      url: '/produto-acabado.html',                        ico: '📦', cor: '#c4a6ff', sessoes: ['produto-acabado'] },
   ];
 
   /** Caminho (sem ?…) de uma URL do hub. */
