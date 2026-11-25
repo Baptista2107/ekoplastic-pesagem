@@ -467,6 +467,205 @@ header {
 /* Inputs do modal de início de turno */
 
 </style>
+<!-- 25/11/2026 (Gustavo: Resíduos no hub do app "Ekoplastic MP" para o Bruno):
+     coletor TC60, 360×690 CSS (~648 com as barras do Android), uma mão, luva
+     às vezes. Só abaixo de 600 px: o monitor do Mini PC (1366 px) não muda.
+     Vale também no navegador de celular estreito. O :not(.embed) segue o
+     padrão das telas da MP; esta tela não tem modo ?embed=1 (o quadro do menu
+     a abre sem parâmetro), quem protege o monitor é o limite de 600 px. Vence
+     as regras do celular.css (que vem logo abaixo) por especificidade: toda
+     regra daqui tem :not(.embed) a mais e !important onde o celular.css tem.
+       · o item escolhido, o peso, IMPRIMIR e a última etiqueta numa barra fixa
+         embaixo: pesar → imprimir → bipar sem rolar a tela;
+       · toque mínimo 56 px, texto mínimo 16 px (a prévia da etiqueta é a
+         exceção: é o desenho da etiqueta);
+       · janelas (refugo, bobina sem etiqueta) rolam dentro da tela: antes o
+         topo e o Fechar ficavam fora dela, sem como alcançar.
+     Só aparência: nenhum botão, campo, rota ou regra muda. -->
+<style id="estilo-coletor">
+@media (max-width: 600px) {
+  body[data-tela="Resíduos"]:not(.embed) { padding-bottom: 156px; }
+
+  /* ─── Cabeçalho: linha 1 = nome + ← + 🏠; linha 2 = Resumo do dia + servidor ─── */
+  body[data-tela="Resíduos"]:not(.embed) header { padding: 6px 10px !important; column-gap: 8px; row-gap: 6px; }
+  body[data-tela="Resíduos"]:not(.embed) header .logo { font-size: 18px !important; letter-spacing: 1px !important; flex: 1 1 calc(100% - 140px); order: 0; }
+  body[data-tela="Resíduos"]:not(.embed) header .logo-icon { width: 32px !important; height: 32px !important; font-size: 18px; }
+  body[data-tela="Resíduos"]:not(.embed) header .header-center { display: none !important; }
+  body[data-tela="Resíduos"]:not(.embed) header .header-right { display: contents; }
+  body[data-tela="Resíduos"]:not(.embed) header .btn-icon { order: 1; width: 56px; height: 56px; min-width: 56px !important; min-height: 56px !important; font-size: 22px; }
+  body[data-tela="Resíduos"]:not(.embed) header .btn-dia { order: 2; flex: 1 1 0; min-width: 0; min-height: 56px !important; font-size: 16px !important; letter-spacing: .3px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  body[data-tela="Resíduos"]:not(.embed) header .srv-status { order: 3; font-size: 16px !important; padding: 8px 10px !important; letter-spacing: .5px; }
+
+  /* ─── Faixa "pesagem em andamento" + FINALIZAR ─── */
+  body[data-tela="Resíduos"]:not(.embed) #banner-turno { padding: 8px 10px !important; gap: 8px !important; }
+  body[data-tela="Resíduos"]:not(.embed) #banner-turno > div:first-child { flex-wrap: wrap; gap: 4px 12px !important; }
+  body[data-tela="Resíduos"]:not(.embed) .banner-label { font-size: 16px; letter-spacing: .5px; }
+  body[data-tela="Resíduos"]:not(.embed) .banner-info { font-size: 16px; }
+  body[data-tela="Resíduos"]:not(.embed) .banner-resumo { font-size: 16px; padding-left: 0; border-left: none; flex-basis: 100%; }
+  body[data-tela="Resíduos"]:not(.embed) .btn-finalizar { flex: 1 1 100%; min-height: 56px !important; font-size: 17px; letter-spacing: .5px; }
+
+  /* ─── Escolha do item: alvo de luva ─── */
+  body[data-tela="Resíduos"]:not(.embed) .page { padding: 10px !important; }
+  body[data-tela="Resíduos"]:not(.embed) .touch-panel { gap: 12px; }
+  body[data-tela="Resíduos"]:not(.embed) .section-label { font-size: 16px; letter-spacing: .5px; line-height: 1.2; margin-bottom: 6px; }
+  body[data-tela="Resíduos"]:not(.embed) .touch-grid { gap: 8px; }
+  body[data-tela="Resíduos"]:not(.embed) .touch-btn { min-height: 56px !important; font-size: 17px; padding: 8px; line-height: 1.2;
+    display: flex; align-items: center; justify-content: center; }
+  body[data-tela="Resíduos"]:not(.embed) .cor-btn { min-height: 56px !important; padding: 8px 10px; }
+  body[data-tela="Resíduos"]:not(.embed) .cor-label { font-size: 17px; }
+  body[data-tela="Resíduos"]:not(.embed) #refugo-hoje-btn { font-size: 16px !important; }
+  body[data-tela="Resíduos"]:not(.embed) #refugo-aguardando-aviso { font-size: 16px; line-height: 1.3; overflow-wrap: anywhere; }
+
+  /* ─── Balança ─── */
+  body[data-tela="Resíduos"]:not(.embed) .balanca-card { padding: 10px 12px; }
+  body[data-tela="Resíduos"]:not(.embed) .balanca-top { gap: 8px; }
+  body[data-tela="Resíduos"]:not(.embed) .balanca-label { font-size: 16px; letter-spacing: .5px; }
+  body[data-tela="Resíduos"]:not(.embed) .balanca-status { font-size: 16px; letter-spacing: .3px; padding: 4px 10px; }
+  body[data-tela="Resíduos"]:not(.embed) .peso-sub { font-size: 16px; }
+  body[data-tela="Resíduos"]:not(.embed) .peso-manual-wrap { gap: 8px; }
+  /* Campos por id: o celular.css pega input com 4 :not() e vence classe. */
+  body[data-tela="Resíduos"]:not(.embed) #peso-manual,
+  body[data-tela="Resíduos"]:not(.embed) #refugo-etiqueta { min-width: 0; min-height: 56px !important; font-size: 18px; padding: 6px 10px; }
+  body[data-tela="Resíduos"]:not(.embed) .btn-peso-ok,
+  body[data-tela="Resíduos"]:not(.embed) .btn-peso-sim { min-height: 56px !important; min-width: 64px; font-size: 16px !important; letter-spacing: .5px; padding: 6px 10px; }
+
+  /* ─── Barra fixa embaixo: item + peso | IMPRIMIR; a última etiqueta acima ───
+     São os elementos de sempre, só fixados na tela. O fundo da barra é o
+     body::after. */
+  body[data-tela="Resíduos"]:not(.embed)::after {
+    content: ''; position: fixed; left: 0; right: 0; bottom: 0; height: 88px; z-index: 140;
+    background: var(--surface); border-top: 1px solid var(--border); box-shadow: 0 -6px 18px rgba(0,0,0,.45);
+  }
+  body[data-tela="Resíduos"]:not(.embed) .peso-display {
+    position: fixed; left: 6px; bottom: 8px; z-index: 150; margin: 0;
+    width: calc(50% - 9px); height: 72px; padding: 4px 8px;
+    display: flex; flex-wrap: wrap; align-content: center; align-items: baseline; column-gap: 4px;
+    text-align: left; background: #0e1d27; border: 1.5px solid var(--border); border-radius: 12px;
+    overflow: hidden; letter-spacing: .5px;
+  }
+  body[data-tela="Resíduos"]:not(.embed) .peso-item {
+    display: block; flex: 1 1 100%; min-width: 0; font-family: 'Nunito', sans-serif; font-size: 16px; font-weight: 800;
+    letter-spacing: .3px; line-height: 1.15; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  body[data-tela="Resíduos"]:not(.embed) .peso-item.vazio { color: var(--muted); }
+  body[data-tela="Resíduos"]:not(.embed) #peso-val { font-size: 28px; line-height: 1.15; white-space: nowrap; }
+  body[data-tela="Resíduos"]:not(.embed) .peso-unit { font-size: 16px; }
+  /* Peso instável ou balança para descarregar: o número da barra fica laranja. */
+  body[data-tela="Resíduos"]:not(.embed) .balanca-card:has(.balanca-status.instavel, .balanca-status.descarga) #peso-val { color: var(--warn); }
+  body[data-tela="Resíduos"]:not(.embed) #btn-imprimir {
+    position: fixed; right: 6px; bottom: 8px; z-index: 150;
+    width: calc(50% - 9px); height: 72px; min-height: 72px !important; padding: 4px 8px;
+    font-size: 17px; letter-spacing: .3px; line-height: 1.15; overflow-wrap: anywhere;
+  }
+  /* :disabled esmaecia o botão a 25% em cima do fundo da barra: fica legível. */
+  body[data-tela="Resíduos"]:not(.embed) #btn-imprimir:disabled { opacity: .55; }
+  body[data-tela="Resíduos"]:not(.embed) .ultima-etq {
+    display: block; position: fixed; left: 8px; right: 8px; bottom: 92px; z-index: 150;
+    padding: 10px 12px; border-radius: 10px; background: var(--panel); border: 1.5px solid var(--border);
+    border-left: 6px solid var(--accent2); font-size: 16px; font-weight: 800; line-height: 1.25;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-shadow: 0 -4px 14px rgba(0,0,0,.4);
+  }
+  body[data-tela="Resíduos"]:not(.embed) .ultima-etq.pendente { border-left-color: var(--warn); color: var(--warn); }
+  body[data-tela="Resíduos"]:not(.embed) .ultima-etq.cancelada { border-left-color: var(--danger); color: var(--danger); }
+  body[data-tela="Resíduos"]:not(.embed) .ultima-etq:empty { display: none; }
+
+  /* ─── Prévia + lista (descem e rolam com a página) ─── */
+  body[data-tela="Resíduos"]:not(.embed) .preview-wrap { padding: 10px; }
+  body[data-tela="Resíduos"]:not(.embed) .preview-label { font-size: 16px; letter-spacing: .5px; }
+  body[data-tela="Resíduos"]:not(.embed) .preview-etiqueta { max-width: 300px; margin: 0 auto; }
+  body[data-tela="Resíduos"]:not(.embed) .hist-card { padding: 10px 8px; }
+  body[data-tela="Resíduos"]:not(.embed) .hist-head { flex-wrap: wrap; gap: 4px 10px; }
+  body[data-tela="Resíduos"]:not(.embed) .hist-titulo,
+  body[data-tela="Resíduos"]:not(.embed) .hist-totais { font-size: 16px; letter-spacing: .5px; }
+  body[data-tela="Resíduos"]:not(.embed) .hist-lista { flex: none; overflow: visible; gap: 6px; }
+  body[data-tela="Resíduos"]:not(.embed) .hist-vazio { font-size: 16px; padding: 18px 0; }
+  /* Nº e peso na 1ª linha (lado a lado com os botões não cabiam: o nº
+     invadia o peso); descrição, BIPAR e ✕ na 2ª. */
+  body[data-tela="Resíduos"]:not(.embed) #hist-lista .hist-item {
+    grid-template-columns: minmax(0, 1fr) 76px 56px;
+    grid-template-areas: "id peso peso" "desc acao del";
+    gap: 4px 6px; padding: 6px 6px 6px 8px;
+  }
+  body[data-tela="Resíduos"]:not(.embed) #hist-lista .hist-id { grid-area: id; }
+  body[data-tela="Resíduos"]:not(.embed) #hist-lista .hist-peso { grid-area: peso; justify-self: end; }
+  body[data-tela="Resíduos"]:not(.embed) #hist-lista .hist-desc { grid-area: desc; }
+  body[data-tela="Resíduos"]:not(.embed) #hist-lista .hist-acao,
+  body[data-tela="Resíduos"]:not(.embed) #hist-lista .hist-check { grid-area: acao; }
+  body[data-tela="Resíduos"]:not(.embed) #hist-lista .hist-del { grid-area: del; }
+  /* Nas janelas (refugo, bipe pendente) a linha quebra: nº e peso, descrição, botões. */
+  body[data-tela="Resíduos"]:not(.embed) .modal .hist-item { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 8px; }
+  body[data-tela="Resíduos"]:not(.embed) .modal .hist-item .hist-id { order: 1; flex: 1 1 auto; }
+  body[data-tela="Resíduos"]:not(.embed) .modal .hist-item .hist-peso { order: 2; }
+  body[data-tela="Resíduos"]:not(.embed) .modal .hist-item .hist-desc { order: 3; flex: 1 1 100%; }
+  body[data-tela="Resíduos"]:not(.embed) .modal .hist-item > button { order: 4; flex: 1 1 56px; }
+  body[data-tela="Resíduos"]:not(.embed) .hist-id,
+  body[data-tela="Resíduos"]:not(.embed) .hist-peso { font-size: 16px; white-space: nowrap; }
+  body[data-tela="Resíduos"]:not(.embed) .hist-desc { font-size: 16px; white-space: normal; line-height: 1.25; }
+  body[data-tela="Resíduos"]:not(.embed) .hist-small { font-size: 16px; letter-spacing: 0; }
+  body[data-tela="Resíduos"]:not(.embed) .hist-acao { min-height: 56px !important; min-width: 56px; padding: 0 6px; font-size: 16px; letter-spacing: .5px; }
+  body[data-tela="Resíduos"]:not(.embed) .hist-check { font-size: 24px; }
+  body[data-tela="Resíduos"]:not(.embed) .hist-del { width: 56px; height: 56px; min-height: 56px !important; font-size: 20px; }
+
+  /* ─── Toast em cima: embaixo ficava atrás da barra (e do dedo). ─── */
+  /* Acima do teclado da senha (z 99999): no app o FINALIZAR pede a senha de
+     novo na hora, e "Bling: enviado" / "o papel sai no Resumo do dia" ficavam
+     escondidos atrás dele (revisor de c950492). */
+  body[data-tela="Resíduos"]:not(.embed) #toast-area { top: 8px; left: 8px; right: 8px; z-index: 100000; }
+  body[data-tela="Resíduos"]:not(.embed) .toast { min-width: 0; font-size: 16px; padding: 12px 14px; }
+  /* Crachá "👤 NOME": no fim da página (o celular.css o punha no canto de
+     baixo, onde agora fica a barra). */
+  body[data-tela="Resíduos"]:not(.embed) #eko-resp-tag {
+    position: static !important; display: flex; align-items: center; justify-content: center;
+    margin: 12px 10px 0; max-width: none !important; min-height: 56px; border-radius: 12px !important;
+    font-size: 16px !important;
+  }
+
+  /* ─── Janelas: rolam dentro da tela, botões de luva ─── */
+  body[data-tela="Resíduos"]:not(.embed) .modal-overlay { align-items: flex-start; padding: 8px; overflow-y: auto; }
+  body[data-tela="Resíduos"]:not(.embed) .modal { padding: 16px 14px; border-radius: 14px; }
+  body[data-tela="Resíduos"]:not(.embed) .modal-titulo { font-size: 20px; line-height: 1.25; }
+  body[data-tela="Resíduos"]:not(.embed) .modal-corpo { font-size: 16px; margin-bottom: 14px; }
+  body[data-tela="Resíduos"]:not(.embed) .modal-acoes { flex-wrap: wrap; gap: 8px; }
+  body[data-tela="Resíduos"]:not(.embed) .btn-modal { flex: 1 1 40%; min-height: 56px !important; font-size: 17px; padding: 6px 12px; }
+  body[data-tela="Resíduos"]:not(.embed) #lista-pendentes-modal [style*="font-size:13px"],
+  body[data-tela="Resíduos"]:not(.embed) #lista-pendentes-modal [style*="font-size:11px"] { font-size: 16px !important; }
+  body[data-tela="Resíduos"]:not(.embed) #lista-pendentes-modal > div { flex-wrap: wrap; }
+  body[data-tela="Resíduos"]:not(.embed) #refugo-bobina,
+  body[data-tela="Resíduos"]:not(.embed) #refugo-peso,
+  body[data-tela="Resíduos"]:not(.embed) #rec-peso { font-size: 16px !important; overflow-wrap: anywhere; }
+  body[data-tela="Resíduos"]:not(.embed) #refugo-lista { max-height: none !important; overflow: visible; }
+  body[data-tela="Resíduos"]:not(.embed) #refugo-aguardando > div:first-child { font-size: 16px; }
+  body[data-tela="Resíduos"]:not(.embed) #rec-teclado { gap: 8px !important; }
+  body[data-tela="Resíduos"]:not(.embed) #rec-teclado .touch-btn { font-size: 22px; }
+
+  /* ─── Janelas que vêm de arquivos compartilhados (senha, resumo do dia):
+     só o tamanho de texto e de toque, e só nesta tela. ─── */
+  body[data-tela="Resíduos"]:not(.embed) #eko-acesso .tl,
+  body[data-tela="Resíduos"]:not(.embed) #eko-acesso .hint,
+  body[data-tela="Resíduos"]:not(.embed) #eko-acesso .msg,
+  body[data-tela="Resíduos"]:not(.embed) #eko-acesso .rodape a { font-size: 16px; }
+  body[data-tela="Resíduos"]:not(.embed) #eko-acesso .rodape a { display: inline-flex; align-items: center; min-height: 56px !important; padding: 0 12px; }
+  body[data-tela="Resíduos"]:not(.embed) #eko-outro button,
+  body[data-tela="Resíduos"]:not(.embed) #eko-confirma button { min-height: 56px !important; font-size: 17px !important; }
+  body[data-tela="Resíduos"]:not(.embed) #eko-outro [style*="font-size:14px"],
+  body[data-tela="Resíduos"]:not(.embed) #eko-confirma [style*="font-size:14px"] { font-size: 16px !important; }
+  body[data-tela="Resíduos"]:not(.embed) #rd-box .rd-sub,
+  body[data-tela="Resíduos"]:not(.embed) #rd-box .rd-lb,
+  body[data-tela="Resíduos"]:not(.embed) #rd-box .rd-diaext,
+  body[data-tela="Resíduos"]:not(.embed) #rd-box .rd-g,
+  body[data-tela="Resíduos"]:not(.embed) #rd-box .rd-vazio,
+  body[data-tela="Resíduos"]:not(.embed) #rd-box .rd-alerta { font-size: 16px; }
+  body[data-tela="Resíduos"]:not(.embed) #rd-box .rd-total small { font-size: 16px !important; }
+  body[data-tela="Resíduos"]:not(.embed) #rd-box .rd-seta { width: 56px; flex-basis: 56px; }
+  body[data-tela="Resíduos"]:not(.embed) #rd-box .rd-seta,
+  body[data-tela="Resíduos"]:not(.embed) #rd-box .rd-atalho,
+  body[data-tela="Resíduos"]:not(.embed) #rd-box .rd-btn,
+  body[data-tela="Resíduos"]:not(.embed) #rd-box #rd-data { min-height: 56px !important; font-size: 16px; }
+}
+/* Fora do coletor a linha "Última etiqueta" e o nome do item na barra não existem. */
+.ultima-etq, .peso-item { display: none; }
+</style>
 <!-- Ajuste automatico para celular: so vale abaixo de 900px de largura -->
 <link rel="stylesheet" href="/celular.css">
 </head>
@@ -545,7 +744,7 @@ header {
           <span class="balanca-label">Peso</span>
           <span class="balanca-status disconnected" id="balanca-status">Desconectada</span>
         </div>
-        <div class="peso-display"><span id="peso-val">0.0</span><span class="peso-unit"> kg</span></div>
+        <div class="peso-display"><span class="peso-item" id="peso-item"></span><span id="peso-val">0.0</span><span class="peso-unit"> kg</span></div>
         <div class="peso-sub" id="peso-sub" style="visibility:hidden;">—</div>
         <div class="peso-manual-wrap">
           <input type="number" class="peso-manual-input" id="peso-manual"
@@ -569,6 +768,7 @@ header {
         <button class="btn-imprimir" id="btn-imprimir" onclick="imprimirEtiqueta()" disabled>
           ⎙ IMPRIMIR ETIQUETA
         </button>
+        <div class="ultima-etq" id="ultima-etq" aria-live="polite"></div>
       </div>
 
       <div class="hist-card">
@@ -830,8 +1030,20 @@ function atualizarPreview() {
   } catch(e) { console.error('Erro JsBarcode:', e); }
 }
 
+/* <barra-coletor> 25/11/2026: nome do item na barra de baixo do coletor (só
+   aparece abaixo de 600 px, pelo CSS). Só escreve texto: não muda estado. */
+function pintarPesoItem() {
+  const el = document.getElementById('peso-item');
+  if (!el) return;
+  const item = OUTRAS_ITENS[state.itemCodigo];
+  el.textContent = item ? item.nome : 'Escolha o item';
+  el.className = 'peso-item' + (item ? '' : ' vazio');
+}
+/* </barra-coletor> */
+
 // ─── BOTÃO IMPRIMIR ───
 function atualizarBotaoImprimir() {
+  pintarPesoItem();
   const btn = document.getElementById('btn-imprimir');
   if (!btn) return;
   const camposOk = !!state.itemCodigo && state.pesoAtual > 0;
@@ -897,7 +1109,24 @@ async function imprimirEtiqueta() {
 }
 
 // ─── HISTÓRICO ───
+/* <ultima-etq> 25/11/2026: linha "Última etiqueta" do coletor (só aparece
+   abaixo de 600 px, pelo CSS). Mostra a pesagem mais nova da lista e se já
+   foi bipada. Só escreve texto: não muda estado nem regra. */
+function pintarUltimaEtq() {
+  const el = document.getElementById('ultima-etq');
+  if (!el) return;
+  const it = state.itens[0];
+  if (!it) { el.textContent = ''; el.className = 'ultima-etq'; return; }
+  const kg = Number(it.peso || 0).toFixed(1) + ' kg';
+  // Status primeiro: se a linha não couber, a reticência corta o peso, não o status.
+  if (it.status === 'bipada')         { el.className = 'ultima-etq ok';        el.textContent = `✓ ${it.id} bipada · ${kg}`; }
+  else if (it.status === 'cancelada') { el.className = 'ultima-etq cancelada'; el.textContent = `✕ ${it.id} cancelada · ${kg}`; }
+  else                                { el.className = 'ultima-etq pendente';  el.textContent = `⚠ BIPAR ${it.id} · ${kg}`; }
+}
+/* </ultima-etq> */
+
 function renderHistorico() {
+  pintarUltimaEtq();
   const lista = document.getElementById('hist-lista');
   if (!state.itens.length) {
     lista.innerHTML = '<div class="hist-vazio">Nenhuma pesagem ainda</div>';
@@ -984,6 +1213,36 @@ window.addEventListener('keydown', (e) => {
   }
 });
 
+/* <leitor-app> */
+// App do coletor "Ekoplastic MP" (25/11/2026): no TC60 o código chega inteiro
+// pelo app (→ onLeu), não pelo teclado — o app mantém um campo invisível
+// (#__ekoScan) em foco, e o leitor-teclado acima ignora tecla em campo.
+// Travas do leitor-teclado (campo de verdade em foco, janela aberta que não
+// seja a de "bipe antes"), mais a da Entrada: com o teclado da senha na tela
+// não lê. Chama o mesmo biparItem. A cadência (≥ 4 teclas em < 300 ms) não
+// entra: o app entrega o código inteiro. No Mini PC ninguém chama esta função.
+function onLeu(codigo) {
+  const ae = document.activeElement;
+  if (window.EkoAcesso && EkoAcesso.bloqueando && EkoAcesso.bloqueando()) return;
+  // Refugo aberto: no Mini PC o leitor "digita" no campo da etiqueta e o Enter
+  // consulta. No app o Enter do leitor não chega à página (o app o usa), então
+  // faz o mesmo aqui: põe o código no campo e consulta (revisor de c950492).
+  if (refugoAberto() && (!ae || ae === document.body || ae.id === '__ekoScan' || ae.id === 'refugo-etiqueta')) {
+    const t = String(codigo == null ? '' : codigo).trim().toUpperCase();
+    if (t) { document.getElementById('refugo-etiqueta').value = t; consultarRefugo(); }
+    return;
+  }
+  if (ae && ae.id !== '__ekoScan' && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.tagName === 'SELECT')) return;
+  const modalAberto = document.querySelector('.modal-overlay.on');
+  if (modalAberto && modalAberto.id !== 'modal-bipagem-pendente') return;
+  const raw = String(codigo == null ? '' : codigo).trim().toUpperCase();
+  let id = null;
+  if (/^O\d+$/.test(raw))      id = raw;
+  else if (/^\d+$/.test(raw))  id = 'O' + raw.padStart(7, '0');
+  if (id) biparItem(id);
+}
+/* </leitor-app> */
+
 // ─── SESSÃO ───
 async function garantirSessaoAberta() {
   if (state.sessaoId) return true;
@@ -1039,6 +1298,8 @@ async function finalizarSessao() {
     aplicarBanner(false);
     document.querySelectorAll('.touch-panel .cor-btn, .touch-panel .touch-btn').forEach(b => b.classList.remove('selected'));
     atualizarBotaoImprimir(); atualizarPreview();
+    // Coletor compartilhado: a senha vale até encerrar a pesagem (como na MP).
+    if (NO_APP && window.EkoAcesso && EkoAcesso.encerrar) EkoAcesso.encerrar(CHAVE_PIN_APP);
   } catch(e) { toast('Erro: ' + e.message, 'error'); }
 }
 
@@ -1301,6 +1562,10 @@ async function cancelarRefugo(id, etq) {
 
 // ─── TOAST ───
 function toast(msg, tipo = 'info', dur = 3500) {
+  // O app do coletor avisa com toast('aviso', mensagem, ms) — a ordem do
+  // retirada-bobinas.html (25/11/2026: aqui saía só a palavra "aviso"). Nenhum
+  // aviso desta tela tem o texto "aviso", então o Mini PC não muda.
+  if (msg === 'aviso' && typeof tipo === 'string') { msg = tipo; tipo = 'warn'; }
   const wrap = document.getElementById('toast-area');
   const t = document.createElement('div');
   t.className = 'toast ' + tipo;
@@ -1358,7 +1623,40 @@ function init() {
   carregarRefugosHoje();
   setInterval(() => { if (!refugoAberto()) carregarRefugosHoje(); }, 30000);   // aviso de repesagem
 }
-comAcesso('mp', init);
+// ─── SENHA NO APP DO COLETOR (25/11/2026) ───
+// O coletor é compartilhado. Com a chave padrão ('mp') a senha de quem entrou
+// valia 8 h para qualquer um que pegasse o aparelho. No app a senha tem chave
+// própria e vale como nos frames da MP: enquanto houver pesagem de Resíduos
+// aberta no nome dessa pessoa, e acaba ao FINALIZAR. No Mini PC (teclado e
+// leitor USB) nada muda: mesma chave, mesma regra de antes.
+const NO_APP = /\bEkoColetor\//.test(navigator.userAgent || '');
+const CHAVE_PIN_APP = 'residuos';
+async function residuosAbertaDe(lib) {
+  const r = await fetch(URL_BASE + '/sessoes/abertas?tipo=outras');
+  // Consulta que falha NÃO é "não há pesagem": o componente mantém quem está
+  // e confere de novo no minuto seguinte (igual à MP).
+  if (!r.ok) throw new Error('consulta das pesagens abertas: HTTP ' + r.status);
+  const d = await r.json();
+  if (!d || !d.ok) throw new Error('consulta das pesagens abertas falhou');
+  const nome = String(lib.nome || '').trim().toUpperCase();
+  // A MESMA sessão que restaurarSessaoAberta() retoma (a 1ª da lista, a mais
+  // nova): senão a senha de B "valia" por uma sessão antiga dele e a tela
+  // entrava imprimindo na de A (revisor de c950492). Vazia não conta.
+  const s = (d.sessoes || [])[0];
+  return !!(s && (s.etiquetas || []).length > 0 && String(s.operador || '').trim().toUpperCase() === nome);
+}
+// Depois do FINALIZAR o teclado volta e chama o mesmo aoEntrar: a tela já
+// está iniciada, só troca o responsável e retoma o que estiver aberto.
+let telaIniciada = false;
+function entrarNoApp() {
+  if (!telaIniciada) { telaIniciada = true; init(); return; }
+  mostrarResponsavel();
+  restaurarSessaoAberta().then(() => { atualizarBotaoImprimir(); atualizarPreview(); });
+}
+if (NO_APP && window.EkoAcesso && typeof EkoAcesso.exigir === 'function')
+  EkoAcesso.exigir('mp', entrarNoApp, { chave: CHAVE_PIN_APP, nomeTela: 'Resíduos', aindaValida: residuosAbertaDe });
+else
+  comAcesso('mp', init);
 </script>
 
 <script src="/seguranca-saida.js"></script>
