@@ -1305,16 +1305,19 @@ body.modo-retorno #btn-corrigir { display: none; }
      etiqueta) é o próprio campo, fixado à esquerda da barra; IMPRIMIR vai
      para a direita. Só quando aquele campo está à vista (:has). ─── */
   body[data-tela="MP Recebimento"]:not(.embed) #ret-pesagem .peso-row,
-  body[data-tela="MP Recebimento"]:not(.embed) .reto-pesagem-bloco .peso-row {
+  body[data-tela="MP Recebimento"]:not(.embed) .reto-pesagem-bloco .peso-row,
+  body[data-tela="MP Recebimento"]:not(.embed) #reto-pesagem-inline .peso-row {
     position: fixed; left: 6px; bottom: 8px; z-index: 150; margin: 0;
     width: calc(50% - 9px); height: 80px; padding: 2px 6px;
     display: flex; flex-direction: column; justify-content: center; gap: 2px;
     background: #0e1d27; border: 1.5px dashed var(--devol); border-radius: 8px;
   }
   body[data-tela="MP Recebimento"]:not(.embed) #ret-pesagem .peso-row label,
-  body[data-tela="MP Recebimento"]:not(.embed) .reto-pesagem-bloco .peso-row label { font-size: 16px; line-height: 1; color: var(--devol); font-weight: 800; white-space: nowrap; }
+  body[data-tela="MP Recebimento"]:not(.embed) .reto-pesagem-bloco .peso-row label,
+  body[data-tela="MP Recebimento"]:not(.embed) #reto-pesagem-inline .peso-row label { font-size: 16px; line-height: 1; color: var(--devol); font-weight: 800; white-space: nowrap; }
   body[data-tela="MP Recebimento"]:not(.embed) #ret-pesagem .peso-row #ret-peso-input,
-  body[data-tela="MP Recebimento"]:not(.embed) .reto-pesagem-bloco .peso-row #reto-se-peso-input { min-height: 56px !important; height: 56px; font-size: 28px; padding: 2px 8px; min-width: 0; }
+  body[data-tela="MP Recebimento"]:not(.embed) .reto-pesagem-bloco .peso-row #reto-se-peso-input,
+  body[data-tela="MP Recebimento"]:not(.embed) #reto-pesagem-inline #reto-saco-peso-input { min-height: 56px !important; height: 56px; font-size: 28px; padding: 2px 8px; min-width: 0; }
   body.modo-retorno[data-tela="MP Recebimento"]:not(.embed):has(#reto-graos-flow:not([style*="none"]) #reto-com-etiq:not([style*="none"]) #ret-pesagem:not([style*="none"])) #btn-imprimir,
   body.modo-retorno[data-tela="MP Recebimento"]:not(.embed):has(#reto-graos-flow:not([style*="none"]) #reto-sem-etiq:not([style*="none"])) #btn-imprimir { left: auto; width: calc(50% - 9px); }
   /* Aditivos: o IMPRIMIR não serve ali (a impressão é pelo saco parcial).
@@ -1331,6 +1334,21 @@ body.modo-retorno #btn-corrigir { display: none; }
     position: fixed; right: 6px; bottom: 8px; z-index: 150; margin: 0;
     width: calc(50% - 9px); height: 80px; padding: 6px 8px; line-height: 1.15;
   }
+  /* Pesando o saco parcial: a barra passa a ser o peso do saco + ⎙ Imprimir
+     Etiqueta. TOTAL e ➕ ADICIONAR voltam para a página (não ficam ao alcance
+     do dedo enquanto a ação é outra). "Peso do saco parcial (kg)" não cabe em
+     meia barra: vira "Saco parcial (kg)". */
+  body.modo-retorno[data-tela="MP Recebimento"]:not(.embed):has(#reto-aditivos-flow:not([style*="none"]) #reto-pesagem-inline:not([style*="none"])) .reto-resumo-aditivos,
+  body.modo-retorno[data-tela="MP Recebimento"]:not(.embed):has(#reto-aditivos-flow:not([style*="none"]) #reto-pesagem-inline:not([style*="none"])) #btn-add-aditivo { position: static; width: auto; height: auto; min-height: 56px; }
+  body[data-tela="MP Recebimento"]:not(.embed) #reto-pesagem-inline .peso-row label { display: none; }
+  body[data-tela="MP Recebimento"]:not(.embed) #reto-pesagem-inline .peso-row::before { content: 'Saco parcial (kg)'; font-size: 16px; line-height: 1; color: var(--devol); font-weight: 800; white-space: nowrap; }
+  body[data-tela="MP Recebimento"]:not(.embed) #btn-imp-parcial {
+    position: fixed; right: 6px; bottom: 8px; z-index: 150; margin: 0;
+    width: calc(50% - 9px); height: 80px; min-height: 80px !important; font-size: 18px;
+  }
+  /* Com a etiqueta lida, a última etiqueta (fixa acima da barra) cobria o
+     lote e o peso original a 648 de altura; ali ela não é o assunto. */
+  body.modo-retorno[data-tela="MP Recebimento"]:not(.embed):has(#reto-graos-flow:not([style*="none"]) #reto-com-etiq:not([style*="none"]) #ret-pesagem:not([style*="none"])) .ultima-etq { display: none; }
   /* "Lista aparece à direita": no coletor não há direita. */
   body[data-tela="MP Recebimento"]:not(.embed) #reto-aditivos-flow > .reto-alerta.info { display: none; }
   /* Menos folga entre as faixas do Retorno: a etiqueta lida sobe na tela. */
@@ -1419,11 +1437,9 @@ body.modo-retorno #btn-corrigir { display: none; }
   body[data-tela="MP Recebimento"]:not(.embed) .ret-card-head { display: grid; grid-template-columns: minmax(0, 1fr) auto;
     grid-template-areas: "tag trocar" "seq trocar"; align-items: center; gap: 4px 10px; padding-bottom: 6px; margin-bottom: 6px; }
   body[data-tela="MP Recebimento"]:not(.embed) .ret-card-tag { grid-area: tag; justify-self: start; font-size: 16px; letter-spacing: .5px; }
-  body[data-tela="MP Recebimento"]:not(.embed) .ret-card-seq { grid-area: seq; }
-  body[data-tela="MP Recebimento"]:not(.embed) .ret-card-btn-trocar { grid-area: trocar; }
-  body[data-tela="MP Recebimento"]:not(.embed) .ret-card-seq { font-size: 20px; }
+  body[data-tela="MP Recebimento"]:not(.embed) .ret-card-seq { grid-area: seq; font-size: 20px; }
   /* "✕ Trocar" parecia desligado (borda e texto apagados): vira botão de verdade. */
-  body[data-tela="MP Recebimento"]:not(.embed) .ret-card-btn-trocar { min-height: 56px !important; padding: 0 14px; font-size: 16px;
+  body[data-tela="MP Recebimento"]:not(.embed) .ret-card-btn-trocar { grid-area: trocar; min-height: 56px !important; padding: 0 14px; font-size: 16px;
     color: var(--text); background: var(--panel-hi); border: 1.5px solid var(--muted); border-radius: 10px; }
   body[data-tela="MP Recebimento"]:not(.embed) .ret-card-linha { font-size: 16px; flex-wrap: wrap; gap: 0 8px; line-height: 1.3; }
   body[data-tela="MP Recebimento"]:not(.embed) .ret-card-corpo { gap: 2px; }
@@ -1468,6 +1484,13 @@ body.modo-retorno #btn-corrigir { display: none; }
   body[data-tela="MP Recebimento"]:not(.embed) #rd-box .rd-atalho,
   body[data-tela="MP Recebimento"]:not(.embed) #rd-box .rd-btn,
   body[data-tela="MP Recebimento"]:not(.embed) #rd-box #rd-data { min-height: 56px !important; font-size: 16px; }
+  /* WebView sem :has (Chrome < 105): sem saber o estado, nada do Retorno
+     vai para a barra — volta ao jeito anterior (IMPRIMIR na linha inteira,
+     peso na página), em vez de o IMPRIMIR cobrir o peso. */
+  @supports not selector(:has(a)) {
+    body[data-tela="MP Recebimento"]:not(.embed) #ret-pesagem .peso-row, body[data-tela="MP Recebimento"]:not(.embed) .reto-pesagem-bloco .peso-row, body[data-tela="MP Recebimento"]:not(.embed) #reto-pesagem-inline .peso-row,
+    body[data-tela="MP Recebimento"]:not(.embed) .reto-resumo-aditivos, body[data-tela="MP Recebimento"]:not(.embed) #btn-add-aditivo, body[data-tela="MP Recebimento"]:not(.embed) #btn-imp-parcial { position: static; width: auto; height: auto; }
+  }
 }
 /* Fora do coletor a linha "Última etiqueta" não existe. */
 .ultima-etq { display: none; }

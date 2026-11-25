@@ -107,10 +107,12 @@ def barra_ok(pg, nome):
         const pe = document.createElement('style'); pe.textContent = '* { pointer-events: auto !important; }';
         document.head.appendChild(pe);
         for (const s of ['.liquido-display', '.qtd-calc', '#btn-imprimir', '#ultima-etq', '#ret-pesagem .peso-row',
-                         '.reto-pesagem-bloco .peso-row', '.reto-resumo-aditivos', '#btn-add-aditivo']) {
+                         '.reto-pesagem-bloco .peso-row', '.reto-resumo-aditivos', '#btn-add-aditivo',
+                         '#reto-pesagem-inline .peso-row', '#btn-imp-parcial']) {
           const e = document.querySelector(s); if (!e) continue;
           const cs = getComputedStyle(e); const b = e.getBoundingClientRect();
-          if (cs.display === 'none' || !b.width || !b.height || e.closest('[style*="display: none"],[style*="display:none"]')) continue;
+          // Só o que está na barra (fixo): no saco parcial, TOTAL e ADICIONAR voltam para a página.
+          if (cs.position !== 'fixed' || cs.display === 'none' || !b.width || !b.height || e.closest('[style*="display: none"],[style*="display:none"]')) continue;
           const topo = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
           if (!topo || !(e === topo || e.contains(topo))) out.push(s + ' coberto por ' + (topo ? (topo.id || topo.tagName + '.' + topo.className) : 'nada'));
           for (const x of [e, ...e.querySelectorAll('*')])
@@ -289,7 +291,26 @@ def main():
             for alt in (690, 648):
                 pg.set_viewport_size({"width": W, "height": alt}); pg.wait_for_timeout(300)
                 essencial(pg, ESS_COM, f"retorno com etiqueta {W}×{alt}")
+            # A partir da 2ª etiqueta do Retorno a linha da última etiqueta existe;
+            # ela não pode cobrir o cartão (a 648 cobria lote e peso original).
+            pg.evaluate("pintarUltimaEtq([{id: 'R0000099', status: 'bipada', peso: 12.5}])")
+            for alt in (690, 648):
+                pg.set_viewport_size({"width": W, "height": alt}); pg.wait_for_timeout(300)
+                essencial(pg, ESS_COM + ["#ret-orig-lote", "#ret-orig-peso"], f"retorno com etiqueta e última etiqueta {W}×{alt}")
+            pg.evaluate("pintarUltimaEtq([])")
             pg.set_viewport_size({"width": W, "height": H})
+            # MATERIAL INTEIRO: pode pedir rolagem, mas rolando ele fica livre da barra.
+            pg.evaluate("document.getElementById('btn-ret-inteiro').scrollIntoView({block: 'center'})"); pg.wait_for_timeout(300)
+            livre = pg.evaluate("""() => { const pe = document.createElement('style'); pe.textContent = '* { pointer-events: auto !important; }';
+                document.head.appendChild(pe); const e = document.getElementById('btn-ret-inteiro'), b = e.getBoundingClientRect();
+                const t = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2); pe.remove();
+                return t === e || e.contains(t); }""")
+            ok(livre, "retorno: MATERIAL INTEIRO alcançável rolando, sem a barra por cima")
+            # Vão entre as duas metades da barra e margens: o toque fica na barra.
+            vao = pg.evaluate("""() => [[innerWidth / 2, innerHeight - 40], [2, innerHeight - 40], [innerWidth / 2, innerHeight - 3]]
+                .map(([x, y]) => { const t = document.elementFromPoint(x, y); return t === document.body || t === document.documentElement ? '' : (t.id || t.className || t.tagName); })
+                .filter(Boolean)""")
+            ok(not vao, "retorno: toque no vão/margem da barra não atravessa para a página", vao)
             lado = pg.evaluate("""() => { const p = document.getElementById('ret-peso-input').getBoundingClientRect(),
                 i = document.getElementById('btn-imprimir').getBoundingClientRect(); return [p.right, i.left]; }""")
             ok(lado[0] <= lado[1], "retorno: peso à esquerda e IMPRIMIR à direita, sem sobrepor", lado)
@@ -319,6 +340,21 @@ def main():
                 pg.set_viewport_size({"width": W, "height": alt}); pg.wait_for_timeout(300)
                 essencial(pg, ["#resumo-total", "#btn-add-aditivo"], f"retorno aditivos {W}×{alt}")
             pg.set_viewport_size({"width": W, "height": H})
+            # Saco parcial: a barra vira peso do saco + ⎙ Imprimir Etiqueta; o
+            # ➕ ADICIONAR sai da barra (a ação do momento é outra).
+            pg.locator("#reto-aditivos-flow button", has_text="Amarelo").first.click()
+            pg.wait_for_timeout(300)
+            pg.evaluate("iniciarPesagemSacoParcial()"); pg.wait_for_timeout(400)
+            ok(pg.locator("#reto-pesagem-inline").is_visible(), "retorno aditivos: pesagem do saco parcial aberta")
+            conferir(pg, "retorno-saco-parcial")
+            barra_ok(pg, "retorno-saco-parcial")
+            for alt in (690, 648):
+                pg.set_viewport_size({"width": W, "height": alt}); pg.wait_for_timeout(300)
+                essencial(pg, ["#reto-saco-peso-input", "#btn-imp-parcial"], f"retorno saco parcial {W}×{alt}")
+            pg.set_viewport_size({"width": W, "height": H})
+            fixo = pg.evaluate("getComputedStyle(document.getElementById('btn-add-aditivo')).position")
+            ok(fixo != "fixed", "retorno saco parcial: ➕ ADICIONAR fora da barra", fixo)
+            pg.evaluate("cancelarPesagemSacoParcial()"); pg.wait_for_timeout(300)
             pg.evaluate("abrirResumoDia('retorno')"); pg.wait_for_timeout(1200)
             conferir(pg, "resumo-do-dia")
             pg.locator("#rd-fechar").click(); pg.wait_for_timeout(300)
