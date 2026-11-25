@@ -203,6 +203,10 @@ public class MainActivity extends Activity {
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);          // a tela usa localStorage/sessionStorage
         s.setMediaPlaybackRequiresUserGesture(false);
+        // v2.1: a fonte do Android (Configurações > Tamanho da fonte) não escala a página —
+        // as telas foram medidas a 100 % (56 px de toque, 16 px de texto); com 115 % o hub
+        // passava da largura (revisor do hub, 25/11/2026).
+        s.setTextZoom(100);
         s.setUserAgentString(s.getUserAgentString() + " EkoColetor/" + versao());
         web.addJavascriptInterface(new Ponte(), "EkoApp");
 

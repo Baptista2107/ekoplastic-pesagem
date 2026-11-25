@@ -6,8 +6,8 @@
      (bobinas | inventario | mp). Não edite os marcadores à mão. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="@PACOTE@"
-    android:versionCode="11"
-    android:versionName="2.0">
+    android:versionCode="12"
+    android:versionName="2.1">
 
     <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="34" />
 
