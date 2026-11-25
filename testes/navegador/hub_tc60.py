@@ -18,7 +18,7 @@ navegação de 3 botões sobra ~648 px (revisor, 25/11). Em cada estado, a 360 p
 de largura e 690 e 648 px de altura, confere:
 
   1. Sem rolagem para o lado e nada passando da borda direita.
-  2. Os 5 botões e o status inteiros dentro da tela, SEM rolar.
+  2. Os 7 botões e o status inteiros dentro da tela, SEM rolar.
   3. Cada botão com ≥ 56 px de altura e ≥ 8 px de folga entre um e outro.
   4. Nada do botão (ícone, nome, subtítulo, "em andamento") sai dele.
   5. Todo texto com ≥ 16 px.
@@ -27,7 +27,7 @@ de largura e 690 e 648 px de altura, confere:
      também com o botão apertado.
 
 A 560 px (tela baixa, fonte maior) a página pode rolar, mas valem 1, 3, 4 e 5.
-Por fim, a 1366×768 (monitor do Mini PC): sem rolagem nenhuma, 5 botões
+Por fim, a 1366×768 (monitor do Mini PC): sem rolagem nenhuma, 7 botões
 inteiros com a altura mínima, texto ≥ 16 px.
 
     cd ~/bling-claude && timeout 300 venv/bin/python -I <repo pesagem>/testes/navegador/hub_tc60.py <repo pesagem> [pasta-prints] [prefixo]
@@ -50,6 +50,7 @@ if PRINTS: PRINTS.mkdir(parents=True, exist_ok=True)
 UA_APP = "Mozilla/5.0 (Linux; Android 14; TC60) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Mobile Safari/537.36 EkoColetor/2.0"
 LARG, ALT = 360, 690
 ALTURAS_SEM_ROLAR = (690, 648)   # sem barras / com barra de status + navegação
+N_BOTOES = 7                     # Gustavo 25/11: + Retorno e Resíduos
 ALT_BAIXA = 560                  # aqui pode rolar, mas nada vaza
 BOTAO_MIN, FOLGA_MIN, FONTE_MIN, CONTRASTE_MIN = 56, 8, 16, 7.0
 falhas = []
@@ -114,7 +115,7 @@ def medir(pg, estado, alt, sem_rolar):
     e = f"{estado} {alt}"
     ok(r["sw"] <= LARG and r["nFora"] == 0, f"{e}: sem rolagem para o lado, nada além da borda", json.dumps({"sw": r["sw"], "fora": r["fora"]}, ensure_ascii=False))
     bt = r["botoes"]
-    ok(len(bt) == 5, f"{e}: 5 botões", len(bt))
+    ok(len(bt) == N_BOTOES, f"{e}: {N_BOTOES} botões", len(bt))
     ok(bt and min(b["h"] for b in bt) >= BOTAO_MIN, f"{e}: botões com ≥ {BOTAO_MIN} px de altura", [round(b["h"]) for b in bt])
     folgas = [round(bt[i + 1]["top"] - bt[i]["bottom"]) for i in range(len(bt) - 1)]
     ok(folgas and min(folgas) >= FOLGA_MIN, f"{e}: ≥ {FOLGA_MIN} px entre um botão e outro", folgas)
@@ -123,7 +124,7 @@ def medir(pg, estado, alt, sem_rolar):
     ok(r["nBaixos"] == 0, f"{e}: contraste do texto ≥ {CONTRASTE_MIN:g}:1", "; ".join(r["baixos"]))
     if sem_rolar:
         fora = [b["id"] for b in bt if b["top"] < 0 or b["bottom"] > alt + 0.5 or b["left"] < 0 or b["right"] > LARG + 0.5]
-        ok(not fora, f"{e}: os 5 botões inteiros na tela sem rolar", json.dumps([(b["id"], round(b["bottom"])) for b in bt]))
+        ok(not fora, f"{e}: os {N_BOTOES} botões inteiros na tela sem rolar", json.dumps([(b["id"], round(b["bottom"])) for b in bt]))
         ok(r["sh"] <= alt, f"{e}: a página inteira (rodapé junto) cabe sem rolar", r["sh"])
         s = r["status"]
         ok(s and s["top"] >= 0 and s["bottom"] <= alt and s["left"] >= 0 and s["right"] <= LARG, f"{e}: status inteiro na tela", json.dumps(s, ensure_ascii=False))
@@ -200,13 +201,15 @@ def main():
 
             print(f"\n[3] Em andamento (sessões abertas de verdade no banco de teste)")
             hoje = date.today().isoformat()
-            for tipo in ("recebimento", "retirada", "produto-acabado"):
+            for tipo in ("recebimento", "retorno", "retirada", "outras", "produto-acabado"):
                 req(base, "/sessoes", {"tipo": tipo, "operador": "TESTE TC60", "turno_codigo": "A", "data_lancamento": hoje})
             ctx, pg = coletor()
             pg.goto(base + "/hub-mp.html"); pg.wait_for_selector("#hub-status.on")
             pg.wait_for_selector("#hub-aberta-pa:not(:empty)")
-            acesos = [i for i in ("entrada", "retirada", "pa") if pg.locator(f"#hub-aberta-{i}").inner_text().strip()]
-            ok(acesos == ["entrada", "retirada", "pa"], "em andamento: Entrada, Retirada e PA acesos", acesos)
+            todos = ("entrada", "retorno", "retirada", "residuos", "mapeamento", "inventario", "pa")
+            acesos = [i for i in todos if pg.locator(f"#hub-aberta-{i}").count() and pg.locator(f"#hub-aberta-{i}").inner_text().strip()]
+            ok(acesos == ["entrada", "retorno", "retirada", "residuos", "pa"],
+               "em andamento: Entrada, Retorno, Retirada, Resíduos e PA acesos (1 cada)", acesos)
             conferir(pg, "em-andamento")
             apertado(pg)
 
@@ -233,8 +236,8 @@ def main():
             ok(r["sh"] <= 768, "1366: cabe em 768 px sem rolar", r["sh"])
             ok(r["nPequenos"] == 0 and r["nVaza"] == 0, "1366: texto ≥ 16 px e nada sai do botão", "; ".join(r["pequenos"] + r["vaza"]))
             bt = r["botoes"]
-            ok(len(bt) == 5 and all(b["left"] >= 0 and b["right"] <= 1366 and b["h"] >= BOTAO_MIN for b in bt),
-               "1366: 5 botões inteiros e com altura mínima", json.dumps(bt))
+            ok(len(bt) == N_BOTOES and all(b["left"] >= 0 and b["right"] <= 1366 and b["h"] >= BOTAO_MIN for b in bt),
+               f"1366: {N_BOTOES} botões inteiros e com altura mínima", json.dumps(bt))
             if PRINTS: pg.screenshot(path=str(PRINTS / f"{PREFIXO}-1366.png"), full_page=True)
             ctx.close()
 

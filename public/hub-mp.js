@@ -23,19 +23,26 @@
   const HUB = '/hub-mp.html';
 
   // sessoes: tipos de sessão (GET /sessoes/abertas) que acendem o "em
-  // andamento" do botão. Retorno de produção é aberto pela tela de Entrada
-  // (aba "Retorno de produção" dentro dela), por isso conta lá.
+  // andamento" do botão. Entrada (recebimento) e Retorno de produção são a
+  // mesma página; o ?aba= da URL escolhe a aba e a senha (mp-recebimento-
+  // retorno.html: ABA_PIN). Resíduos são as sessões 'outras'.
   // cor: o nome do botão é escrito nela, sobre o fundo escuro do botão; todas
-  // com contraste ≥ 7:1 (galpão claro, TC60 — testes/navegador/hub_tc60.py).
+  // com contraste ≥ 7:1, também com o botão apertado (galpão claro, TC60 —
+  // testes/navegador/hub_tc60.py), e uma cor por botão.
   // O 🗺 leva o seletor de emoji (U+FE0F): sem ele o Android desenha o mapa
   // em preto e branco, como letra.
+  // Gustavo 25/11: "retorno também" e "residuo" → 7 botões.
   const TELAS = [
-    { id: 'entrada',    nome: 'Entrada',         sub: 'Recebimento e retorno de MP',
-      url: '/mp-recebimento-retorno.html?aba=recebimento', ico: '📥', cor: '#00d4ff', sessoes: ['recebimento', 'retorno'] },
+    { id: 'entrada',    nome: 'Entrada',         sub: 'Recebimento de MP',
+      url: '/mp-recebimento-retorno.html?aba=recebimento', ico: '📥', cor: '#00d4ff', sessoes: ['recebimento'] },
+    { id: 'retorno',    nome: 'Retorno',         sub: 'Retorno de produção',
+      url: '/mp-recebimento-retorno.html?aba=retorno',     ico: '↩️', cor: '#ff9ad0', sessoes: ['retorno'] },
     { id: 'retirada',   nome: 'Retirada',        sub: 'Saída de MP para a produção',
       url: '/mp-retirada.html',                            ico: '📤', cor: '#ff9466', sessoes: ['retirada'] },
+    { id: 'residuos',   nome: 'Resíduos',        sub: 'Borra, varredura, pó, aparas',
+      url: '/outras-pesagens.html',                        ico: '♻️', cor: '#b5e655', sessoes: ['outras'] },
     { id: 'mapeamento', nome: 'Mapeamento',      sub: 'Endereço de bag e gaiola',
-      url: '/enderecamento.html',                          ico: '🗺️', cor: '#2ee6a6', sessoes: [] },
+      url: '/enderecamento.html',                          ico: '🗺\uFE0F', cor: '#2ee6a6', sessoes: [] },
     { id: 'inventario', nome: 'Inventário',      sub: 'Contagem de MP e PA',
       url: '/inventario.html',                             ico: '📋', cor: '#ffc250', sessoes: [] },
     { id: 'pa',         nome: 'Produto Acabado', sub: 'Lançamento de fardos',
@@ -96,6 +103,9 @@
     for (const t of TELAS) {
       const el = doc.getElementById('hub-aberta-' + t.id);
       if (el) el.textContent = textoAberta(conta[t.id]);
+      // Com sessão aberta, a etiqueta toma o lugar do subtítulo (hub-mp.html).
+      const bt = doc.getElementById('hub-' + t.id);
+      if (bt && bt.classList) bt.classList.toggle('com-aberta', conta[t.id] > 0);
     }
   }
 
@@ -106,9 +116,9 @@
       const d = await r.json();
       if (!r.ok || !d || !d.ok) throw new Error('resposta ' + r.status);
       pintarAbertas(doc, d);
-      if (st) { st.className = 'status on'; st.textContent = 'Mini PC conectado'; }
+      if (st) { st.className = 'status on'; st.textContent = '● Conectado'; }
     } catch (e) {
-      if (st) { st.className = 'status off'; st.textContent = 'Sem conexão com o Mini PC'; }
+      if (st) { st.className = 'status off'; st.textContent = '✕ Sem conexão'; }
     }
   }
 

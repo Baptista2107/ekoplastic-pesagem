@@ -7,8 +7,9 @@ Sobe o server.js de verdade com banco temporário (impressão simulada) e abre a
 telas como o app abre: 360 px de largura sem "viewport largo" (o padrão da
 WebView do Android) e o user-agent "… EkoColetor/2.0". Confere:
 
-  1. Hub: 5 botões grandes, sem rolagem para o lado, cada um abre a sua tela.
-  2. As 5 telas cabem em 360 px depois da senha (nada passa da borda direita).
+  1. Hub: 7 botões grandes, sem rolagem para o lado, cada um abre a sua tela
+     (Entrada e Retorno direto na aba deles, com a senha da aba).
+  2. As 7 telas cabem em 360 px depois da senha (nada passa da borda direita).
   3. Produto Acabado fica aberto no app (no navegador ele pula para o menu).
   4. Entrada: o peso vem do MINI PC (/balanca/raw do próprio servidor, não do
      localhost do coletor) e a etiqueta sai pela impressora do Mini PC
@@ -112,25 +113,33 @@ def main():
             ctx, pg = coletor(); pg.on("pageerror", lambda e: erros.append("hub: " + str(e)))
             pg.goto(base + "/hub-mp.html"); pg.wait_for_timeout(1200)
             botoes = pg.locator("#hub-telas a.tela")
-            ok(botoes.count() == 5, "5 botões", botoes.count())
+            # Gustavo 25/11: "retorno também" e "residuo" → 7 botões.
+            ok(botoes.count() == 7, "7 botões", botoes.count())
             nomes = [botoes.nth(i).locator("b").inner_text() for i in range(botoes.count())]
-            ok(nomes == ["Entrada", "Retirada", "Mapeamento", "Inventário", "Produto Acabado"], "nomes na ordem", nomes)
+            ok(nomes == ["Entrada", "Retorno", "Retirada", "Resíduos", "Mapeamento", "Inventário", "Produto Acabado"], "nomes na ordem", nomes)
             alturas = [botoes.nth(i).bounding_box()["height"] for i in range(botoes.count())]
             ok(min(alturas) >= 72, "botões grandes (≥ 72 px de altura)", alturas)
             ok(pg.locator("#hub-status.on").count() == 1, "status: Mini PC conectado", pg.locator("#hub-status").inner_text())
             cabe(pg, "hub")
-            destinos = {"Entrada": "/mp-recebimento-retorno.html", "Retirada": "/mp-retirada.html", "Mapeamento": "/enderecamento.html",
+            destinos = {"Entrada": "/mp-recebimento-retorno.html", "Retorno": "/mp-recebimento-retorno.html",
+                        "Retirada": "/mp-retirada.html", "Resíduos": "/outras-pesagens.html", "Mapeamento": "/enderecamento.html",
                         "Inventário": "/inventario.html", "Produto Acabado": "/produto-acabado.html"}
             for nome, caminho in destinos.items():
                 pg.goto(base + "/hub-mp.html"); pg.wait_for_timeout(500)
-                pg.locator("#hub-telas a.tela", has_text=nome).click(); pg.wait_for_timeout(1800)
+                pg.locator("#hub-telas a.tela").filter(has=pg.locator("b", has_text=nome)).click(); pg.wait_for_timeout(1800)
                 ok(pg.url.split("?")[0].endswith(caminho), f"{nome} abre {caminho}", pg.url)
+                if nome in ("Entrada", "Retorno"):
+                    aba = "recebimento" if nome == "Entrada" else "retorno"
+                    ok(f"aba={aba}" in pg.url and senha(pg) and pg.evaluate("ABA_PIN") == aba and pg.evaluate("estado.modo") == aba,
+                       f"{nome}: abre direto na aba {aba}, com a senha dela", pg.url)
             ctx.close()
 
             # ── 2/3. As telas no coletor ──────────────────────────────
-            print("\n[2] As 5 telas em 360 px (depois da senha)")
+            print("\n[2] As 7 telas em 360 px (depois da senha)")
             ctx, pg = coletor(); pg.on("pageerror", lambda e: erros.append(pg.url + ": " + str(e)))
-            for nome, caminho in [("entrada", "/mp-recebimento-retorno.html?aba=recebimento"), ("retirada", "/mp-retirada.html"),
+            for nome, caminho in [("entrada", "/mp-recebimento-retorno.html?aba=recebimento"),
+                                  ("retorno", "/mp-recebimento-retorno.html?aba=retorno"), ("retirada", "/mp-retirada.html"),
+                                  ("residuos", "/outras-pesagens.html"),
                                   ("mapeamento", "/enderecamento.html"), ("inventario", "/inventario.html"),
                                   ("pa", "/produto-acabado.html")]:
                 pg.goto(base + caminho); pg.wait_for_timeout(1200)

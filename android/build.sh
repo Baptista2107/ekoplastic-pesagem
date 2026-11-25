@@ -57,7 +57,7 @@ case "$VARIANTE" in
   # (testes/hub-coletor.js confere).
   mp)         PACOTE=br.com.ekoplastic.mp;         NOME="Ekoplastic MP";         ICONE=icone_mp
               PAGINA=/hub-mp.html;                 ESTRITA=false; TRAVAR=true;  ARQ=ekoplastic-mp
-              PAGINAS=/mp-recebimento-retorno.html,/mp-retirada.html,/enderecamento.html,/inventario.html,/produto-acabado.html ;;
+              PAGINAS=/mp-recebimento-retorno.html,/mp-retirada.html,/outras-pesagens.html,/enderecamento.html,/inventario.html,/produto-acabado.html ;;
   *) echo "VARIANTE desconhecida: $VARIANTE (bobinas | inventario | mp)"; exit 1 ;;
 esac
 echo "=== $NOME ($PACOTE) · $PAGINA · v$VERSAO"
