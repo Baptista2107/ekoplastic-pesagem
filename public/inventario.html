@@ -2068,6 +2068,10 @@ function aplicarModo(){
   if(MODO_LIVRE){
     document.getElementById('bloco-camera').classList.remove('oculto');
     document.getElementById('bloco-manual').classList.add('oculto');
+    // 25/11/2026: a contagem por sacos esconde o contador; sem devolvê-lo
+    // aqui, a leitura livre aberta depois dela ficava sem "N lidas / kg".
+    const contL = document.querySelector('.contador');
+    if(contL) contL.classList.remove('oculto');
     aplicarModoPA();          // no PA, quem manda na câmera é o modo escolhido
     aplicarModoMP();
     return;
