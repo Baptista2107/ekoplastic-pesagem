@@ -34,6 +34,21 @@ const RAIZ = path.join(__dirname, '..');
 const arg = (nome, padrao) => { const i = process.argv.indexOf(nome); return i > 0 ? process.argv[i + 1] : padrao; };
 const tem = nome => process.argv.includes(nome);
 
+// Argumento desconhecido ou "--x=y" para antes de tudo: "--arquivo=C:\saida"
+// ou "--arquivos" eram ignorados e o script caía na impressão de verdade
+// (revisor de 13cac00).
+{
+  const COM_VALOR = new Set(['--servidor', '--pausa', '--fornecedor', '--arquivo']);
+  const SEM_VALOR = new Set(['--todos']);
+  const a = process.argv.slice(2);
+  for (let i = 0; i < a.length; i++) {
+    if (SEM_VALOR.has(a[i])) continue;
+    if (COM_VALOR.has(a[i]) && i + 1 < a.length && !a[i + 1].startsWith('--')) { i++; continue; }
+    console.error(`ERRO: argumento "${a[i]}" não reconhecido (ou sem valor). Nada impresso.`);
+    process.exit(2);
+  }
+}
+
 const SERVIDOR = arg('--servidor', 'http://localhost:3000');
 const PAUSA    = Math.max(0, Number(arg('--pausa', 400)) || 0);
 const SO_FORN  = arg('--fornecedor', null);
