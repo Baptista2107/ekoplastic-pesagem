@@ -93,3 +93,15 @@ O conserto (teste + hook) já está no main desde 6b0e0d3.
 - As validações de fornecedor e de peso rodam antes da idempotência. Repetir o mesmo token com outro item ou peso dá 400/409, não a etiqueta gravada.
 - Se a etiqueta foi cancelada entre o envio e a repetição, ela volta à lista como "aguardando bipe".
 - O servidor continua sem validar peso NaN, zero ou negativo para apara e resíduo (era assim antes).
+
+## Merge do main e revisores da data (25/11)
+
+O ramo recebeu o main até 1dbc9f3 (b4593da). O git juntou sem conflito, e a suíte passou 51 de 51. O revisor do merge achou que a etiqueta O reimpressa saía com a data do dia, sem o fuso de Brasília. Consertado em 7571a40: `_dataHoraPesagem()` agora serve a MP e as Outras Pesagens. O teste `testes/outras-data-pesagem.js` ficou vermelho sem o conserto e verde com ele.
+
+Nada disto é da bobina AD e nada foi mexido aqui. Fica para o dono de cada parte:
+- `/etiquetas/R…/corrigir` reimprime a R com a data da correção. Devia ser a da pesagem: usar `dadosReimpressao`.
+- A reimpressão de E (bobina) usa `pesado_em` ou agora, sem fuso, e ignora `hora_impressao`.
+- `POST /etiquetas` e `/print/etiqueta` leem `hora_impressao` do corpo do pedido. Uma etiqueta nova pode sair no papel com uma data diferente da gravada no banco. A tela de Outras Pesagens não passa por aí, porque `/etiquetas/outras` monta o objeto sozinha.
+- O resumo de sessão e o do dia imprimem hora sem fuso. No Mini PC isso não aparece, porque ele já está em Brasília.
+- Teste que falta: relógio injetável em `_dataHoraPesagem` para pegar o fuso entre 21 h e 24 h numa etiqueta nova.
+- As barras da etiqueta O ainda usam o modo antigo do Code 128, que o main trocou na MP. Só vale mexer se o leitor falhar com ela.
